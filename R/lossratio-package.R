@@ -3,7 +3,6 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @import ChainLadder
 #' @import data.table
 #' @import ggplot2
 NULL

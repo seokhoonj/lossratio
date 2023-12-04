@@ -10,7 +10,6 @@ License: GPL (>= 3)
 Encoding: UTF-8
 Depends: R (>= 3.5.0)
 Imports:
-  ChainLadder (>= 0.2.18),
   data.table (>= 1.14.8),
   ggplot2 (>= 3.3.3)
 Roxygen: list(markdown = TRUE)
