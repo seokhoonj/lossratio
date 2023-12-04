@@ -21,6 +21,9 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
 #' @method plot ata_factors
 #' @export
 plot.ata_factors <- function(ata_factors) {
+  if (!any(class(object) %in% "ata_factors"))
+    stop(deparse(substitute(obejct)),
+         " is not an object of class ata_factors.", call. = FALSE)
   smean <- attr(ata_factors, "smean")
   wmean <- attr(ata_factors, "wmean")
   dev <- 1:length(smean)

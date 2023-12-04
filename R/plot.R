@@ -1,16 +1,7 @@
 
-#' @method plot ata
-#' @export
-plot.ata <- function(object) {
-  if (!any(class(object) %in% "triangle"))
-    stop(deparse(substitute(obejct)),
-         " is not an object of class chain_ladder.", call. = FALSE)
-  object
-}
-
 #' @method plot chain_ladder
 #' @export
-plot.chain_ladder <- function(object, value.name = "clr") {
+plot.chain_ladder <- function(object, value.name = "clr", alpha = .3) {
   if (!any(class(object) %in% "chain_ladder"))
     stop(deparse(substitute(obejct)),
          " is not an object of class chain_ladder.", call. = FALSE)
@@ -37,6 +28,6 @@ plot.chain_ladder <- function(object, value.name = "clr") {
                  function(x) if (!is.null(x) & !is.numeric(x)) sym(x) else x)
   ggplot(df, aes(!!!args)) +
     geom_line() +
-    geom_ribbon(alpha = .1, linetype = "longdash") +
+    geom_ribbon(alpha = alpha, linetype = "longdash") +
     facet_wrap(as.formula(sprintf("~ %s", group)))
 }
