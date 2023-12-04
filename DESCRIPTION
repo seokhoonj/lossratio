@@ -1,0 +1,17 @@
+Package: lossratio
+Title: Loss ratio calculation method for Korean healthcare products
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Seokhoon", family = "Joo", role = c("aut", "cre"),
+           email = "seokhoonj@gmail.com")
+Description: Applying chain ladder methods to predict the loss ratio 
+             for Korean health care products, not for loss reserving.
+License: GPL (>= 3)
+Encoding: UTF-8
+Depends: R (>= 3.5.0)
+Imports:
+  ChainLadder (>= 0.2.18),
+  data.table (>= 1.14.8),
+  ggplot2 (>= 3.3.3)
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
