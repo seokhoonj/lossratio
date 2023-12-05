@@ -16,16 +16,15 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
                    smean = smean, wmean = wmean))
 }
 
-#' @method
-
 #' @method plot ata_factors
+#'
 #' @export
-plot.ata_factors <- function(ata_factors) {
+plot.ata_factors <- function(object) {
   if (!any(class(object) %in% "ata_factors"))
     stop(deparse(substitute(obejct)),
          " is not an object of class ata_factors.", call. = FALSE)
-  smean <- attr(ata_factors, "smean")
-  wmean <- attr(ata_factors, "wmean")
+  smean <- attr(object, "smean")
+  wmean <- attr(object, "wmean")
   dev <- 1:length(smean)
   df <- data.table::data.table(dev = dev, smean = smean, wmean = wmean)
   m <- melt(df, id.vars = "dev", measure.vars = c("smean", "wmean"))
