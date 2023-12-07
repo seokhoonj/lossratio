@@ -4,6 +4,7 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
   n <- ncol(triangle)
   numer <- triangle[, -1, drop = FALSE]
   denom <- triangle[, -n, drop = FALSE]
+  denom[is.na(numer)] <- NA
   mat <- numer / denom
   if (NArow.rm)
     mat <- mat[!apply(mat, 1, function(x) all(is.na(x))), , drop = FALSE]

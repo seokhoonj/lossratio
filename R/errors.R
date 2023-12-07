@@ -1,5 +1,4 @@
 
-#' @export
 get_mack_se <- function(models, full_triangle, est.sigma = "Mack", weights,
                         alpha) {
   n <- ncol(full_triangle)
@@ -38,7 +37,6 @@ get_mack_se <- function(models, full_triangle, est.sigma = "Mack", weights,
   return(list(sigma = sigma, f = f, f.se = f.se, F.se = F.se))
 }
 
-#' @export
 rep_mack_se <- function(full_triangle, f, f.se, F.se, mse.method = "Mack") {
   n <- ncol(full_triangle)
   m <- nrow(full_triangle)
@@ -63,7 +61,6 @@ rep_mack_se <- function(full_triangle, f, f.se, F.se, mse.method = "Mack") {
   ))
 }
 
-#' @export
 sum_mack_se <- function(full_triangle, f, f.se, F.se, full_triangle.procrisk,
                         mse.method = "Mack") {
   n <- ncol(full_triangle)

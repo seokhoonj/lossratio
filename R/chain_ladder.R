@@ -2,7 +2,8 @@
 #' @export
 basic_chain_ladder <- function(triangle, weights = 1, delta = 1) {
   n <- ncol(triangle)
-  weights <- set_weights_triangle(triangle = triangle, weights = weights)
+  if (!all(dim(triangle) == dim(weights)))
+    weights <- set_triangle_weights(triangle = triangle, weights = weights)
   delta <- rep(delta, (n-1))
   cl <- function(i, triangle) {
     lm(y ~ x + 0, weights = weights[, i] / triangle[, i]^delta[i],

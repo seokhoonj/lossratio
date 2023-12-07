@@ -3,6 +3,6 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @import data.table
+#' @importFrom data.table as.data.table dcast melt
 #' @import ggplot2
 NULL

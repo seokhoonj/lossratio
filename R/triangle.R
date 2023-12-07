@@ -5,6 +5,7 @@ set_triangle <- function(data, formula = uym ~ elp, value.var = "clr") {
              fun.aggregate = sum, fill = NA)
   triangle <- as.matrix(d[, -1L])
   rownames(triangle) <- as.character(d[["uym"]])
+  class(triangle) <- c("triangle", class(triangle))
   return(triangle)
 }
 
@@ -15,4 +16,13 @@ subset_triangle <- function(triangle, dev.after = 1) {
   rows <- 1:(m - dev.after + 1)
   cols <- dev.after:n
   return(triangle[rows, cols])
+}
+
+#' @method as.data.frame triangle
+#' @export
+as.data.frame.triangle <- function(triangle, value.name = "clr") {
+  dim_nms <- names(dimnames(triangle))
+  if (is.null(dim_nms)) names(dimnames(triangle)) <- c("uym", "period")
+  df <- as.data.frame.table(triangle, responseName = value.name)
+  return(df[!is.na(df[[value.name]]),])
 }

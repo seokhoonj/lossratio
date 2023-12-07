@@ -1,8 +1,9 @@
 
 #' @export
-set_weights_triangle <- function(triangle, weights = 1) {
+set_triangle_weights <- function(triangle, weights = 1, zero.rm = TRUE) {
   w <- triangle
   w[!is.na(w)] <- weights
+  if (zero.rm) w[triangle == 0] <- 0
   return(w)
 }
 
@@ -16,3 +17,4 @@ get_recent_weights <- function(weights, recent) {
   }
   return(weights)
 }
+
