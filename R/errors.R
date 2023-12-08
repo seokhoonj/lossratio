@@ -1,8 +1,4 @@
 
-models = bcl[["models"]]
-est.sigma = "Mack"
-weights = bcl[["weights"]]
-alpha = alpha
 get_mack_se <- function(models, full_triangle, est.sigma = "Mack", weights,
                         alpha) {
   n <- ncol(full_triangle)
