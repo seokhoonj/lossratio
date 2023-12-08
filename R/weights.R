@@ -17,4 +17,3 @@ get_recent_weights <- function(weights, recent) {
   }
   return(weights)
 }
-

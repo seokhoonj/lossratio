@@ -37,3 +37,10 @@ get_runoff_triangle <- function(triangle) {
   m[upper.tri(m)] <- NA
   return(apply(t(m), 1, rev))
 }
+
+#' @export
+get_slash_mean <- function(triangle) {
+  mat <- apply(t(triangle), 1, rev)
+  slash <- as.numeric(tapply(mat, abs(col(mat)- row(mat) + ncol(mat)), FUN = mean))
+  return(slash[!is.na(slash)])
+}
