@@ -10,19 +10,30 @@ set_triangle <- function(data, formula = uym ~ elp, value.var = "clr") {
 }
 
 #' @export
-subset_triangle <- function(triangle, dev.after = 1) {
-  m <- nrow(triangle)
+subset_triangle <- function(triangle, elapsed.start) {
   n <- ncol(triangle)
-  rows <- 1:(m - dev.after + 1)
-  cols <- dev.after:n
-  return(triangle[rows, cols])
+  if (missing(elapsed.start))
+    elapsed.start <- 1L
+  if (elapsed.start > n)
+    elapsed.start <- n
+  rn <- length(na.omit(triangle[, elapsed.start]))
+  st <- triangle[1:rn, elapsed.start:n]
+  dn <- floor((rn + 1) / 2)
+  return(st[1:dn, 1:dn])
 }
 
-#' @method as.data.frame triangle
+#' @method as.data.table triangle
 #' @export
-as.data.frame.triangle <- function(triangle, value.name = "clr") {
+as.data.table.triangle <- function(triangle, value.name = "clr") {
   dim_nms <- names(dimnames(triangle))
-  if (is.null(dim_nms)) names(dimnames(triangle)) <- c("uym", "period")
-  df <- as.data.frame.table(triangle, responseName = value.name)
-  return(df[!is.na(df[[value.name]]),])
+  if (is.null(dim_nms)) names(dimnames(triangle)) <- c("uw", "elapsed")
+  dt <- as.data.table(as.data.frame.table(triangle, responseName = value.name))
+  return(dt[!is.na(dt[[value.name]]),])
+}
+
+#' @export
+get_runoff_triangle <- function(triangle) {
+  m <- apply(t(triangle), 1, rev)
+  m[upper.tri(m)] <- NA
+  return(apply(t(m), 1, rev))
 }

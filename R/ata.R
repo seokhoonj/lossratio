@@ -4,6 +4,7 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
   n <- ncol(triangle)
   numer <- triangle[, -1, drop = FALSE]
   denom <- triangle[, -n, drop = FALSE]
+  numer[is.na(denom)] <- NA
   denom[is.na(numer)] <- NA
   mat <- numer / denom
   if (NArow.rm)
@@ -13,7 +14,7 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
   smean <- apply(mat, 2, function(x) mean(x[is.finite(x)]))
   wmean <- colSums(numer, na.rm = TRUE)/colSums(denom, na.rm = TRUE)
   colnames(mat) <- names(smean) <- names(wmean) <- colnms
-  return(structure(mat, class = c("ata_factors", class(mat)),
+  return(structure(mat, class = c("ata_factors", "triangle", class(mat)),
                    smean = smean, wmean = wmean))
 }
 

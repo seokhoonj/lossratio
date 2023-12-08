@@ -1,4 +1,8 @@
 
+models = bcl[["models"]]
+est.sigma = "Mack"
+weights = bcl[["weights"]]
+alpha = alpha
 get_mack_se <- function(models, full_triangle, est.sigma = "Mack", weights,
                         alpha) {
   n <- ncol(full_triangle)
@@ -12,7 +16,9 @@ get_mack_se <- function(models, full_triangle, est.sigma = "Mack", weights,
   sigma <- sapply(smmry, function(x) x$sigma)
   df <- sapply(smmry, function(x) x$df[2L])
   if (est.sigma[1L] %in% "Mack") {
-    for (i in which(is.na(sigma))) {
+    sigma.loc <- which(is.na(sigma)) # search NaN
+    sigma.loc <- sigma.loc[sigma.loc >= 3]
+    for (i in sigma.loc) {
       ratio <- (sigma[i - 1]^4/sigma[i - 2]^2)
       if (is.nan(ratio) | is.infinite(ratio)) {
         sigma[i] <- sqrt(abs(min(sigma[i - 2]^2, sigma[i - 1]^2)))
