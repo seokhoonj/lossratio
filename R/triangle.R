@@ -10,7 +10,16 @@ set_triangle <- function(data, formula = uym ~ elp, value.var = "clr") {
 }
 
 #' @export
-subset_triangle <- function(triangle, elapsed.start) {
+subset_triangle <- function(triangle, origin.start, origin.end) {
+  tri <- triangle[rownames(triangle) >= origin.start &
+                    rownames(triangle) <= origin.end,]
+  scol <- length(na.omit(tri[nrow(mat), ]))
+  mat <- tri[, !apply(tri, 2, function(x) all(is.na(x))), drop = FALSE]
+  return(mat[, scol:ncol(mat)])
+}
+
+#' @export
+subset_full_triangle <- function(triangle, elapsed.start) {
   n <- ncol(triangle)
   if (missing(elapsed.start))
     elapsed.start <- 1L

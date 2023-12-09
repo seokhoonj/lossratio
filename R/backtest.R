@@ -3,7 +3,7 @@
 backtest <- function(triangle, elapsed.start = 1) {
   m <- nrow(triangle)
   n <- ncol(triangle)
-  st <- subset_triangle(triangle, elapsed.start)
+  st <- subset_full_triangle(triangle, elapsed.start)
   rt <- get_runoff_triangle(st)
   wt <- set_triangle_weights(rt)
   ft <- mack_chain_ladder(rt, wt)[["full_triangle"]]
