@@ -1,7 +1,7 @@
 
 #' @method plot chain_ladder
 #' @export
-plot.chain_ladder <- function(object, value.name = "clr", alpha = .3) {
+plot.chain_ladder <- function(object, value.name = "clr", alpha = .3, scales = "fixed") {
   if (!any(class(object) %in% "chain_ladder"))
     stop(deparse(substitute(obejct)),
          " is not an object of class chain_ladder.", call. = FALSE)
@@ -29,5 +29,5 @@ plot.chain_ladder <- function(object, value.name = "clr", alpha = .3) {
   ggplot(df, aes(!!!args)) +
     geom_line() +
     geom_ribbon(alpha = alpha, linetype = "longdash") +
-    facet_wrap(as.formula(sprintf("~ %s", group)))
+    facet_wrap(as.formula(sprintf("~ %s", group)), scales = scales)
 }
