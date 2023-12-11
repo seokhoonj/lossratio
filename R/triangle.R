@@ -4,7 +4,9 @@ set_triangle <- function(data, formula = uym ~ elp, value.var = "clr") {
   d <- dcast(data, formula, value.var = value.var,
              fun.aggregate = sum, fill = NA)
   triangle <- as.matrix(d[, -1L])
-  rownames(triangle) <- as.character(d[["uym"]])
+  dimnms <- trimws(strsplit(deparse(formula), split = "~")[[1L]])
+  names(dimnames(triangle)) <- dimnms
+  rownames(triangle) <- as.character(d[[dimnms[1L]]])
   class(triangle) <- c("triangle", class(triangle))
   return(triangle)
 }

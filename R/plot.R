@@ -1,7 +1,7 @@
 
 #' @method plot chain_ladder
 #' @export
-plot.chain_ladder <- function(object, value.name = "clr", alpha = .3, scales = "fixed") {
+plot.chain_ladder <- function(object, subset, value.name = "clr", alpha = .3, scales = "fixed") {
   if (!any(class(object) %in% "chain_ladder"))
     stop(deparse(substitute(obejct)),
          " is not an object of class chain_ladder.", call. = FALSE)
@@ -22,6 +22,9 @@ plot.chain_ladder <- function(object, value.name = "clr", alpha = .3, scales = "
   df$lower <- dl$lower
   df$upper <- du$upper
   df[[x]] <- as.numeric(df[[x]])
+
+  if (!missing(subset))
+    df <- subset(df, subset = eval(parse(text = subset)))
 
   args <- lapply(list(x = x, y = value.name, ymin = "lower", ymax = "upper",
                       group = group, color = color),
