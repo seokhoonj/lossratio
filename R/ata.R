@@ -68,6 +68,7 @@ plot.ata_factors <- function(object, type = c("se", "mean")) {
     nan_num <- attr(object, "nan_num")
     df <- data.table::data.table(ata = ata, std_err = std_err, inf_num = inf_num,
                                  nan_num = nan_num)
+    set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     ggplot(df, aes(x = ata, y = std_err, group = 1)) +
       geom_text(aes(label = round(std_err, 3)), vjust = -.25) +
       geom_line()
@@ -75,6 +76,7 @@ plot.ata_factors <- function(object, type = c("se", "mean")) {
     sp_mean <- attr(object, "sp_mean")
     wt_mean <- attr(object, "wt_mean")
     df <- data.table::data.table(ata = ata, sp_mean = sp_mean, wt_mean = wt_mean)
+    set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     m <- melt(df, id.vars = "ata", measure.vars = c("sp_mean", "wt_mean"),
               value.name = "mean")
     ggplot(m, aes(x = ata, y = mean, group = variable, color = variable)) +
