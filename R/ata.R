@@ -81,5 +81,3 @@ plot.ata_factors <- function(object, type = c("se", "mean")) {
       geom_line()
   }
 }
-
-vuw::risk_plot()
