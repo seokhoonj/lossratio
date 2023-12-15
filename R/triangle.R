@@ -12,6 +12,15 @@ set_triangle <- function(data, formula = uym ~ elp, value.var = "clr") {
 }
 
 #' @export
+cut_triangle <- function(triangle, elapsed.after = 1, NArow.rm = TRUE) {
+  n <- ncol(triangle)
+  mat <- triangle[, elapsed.after:n]
+  if (NArow.rm)
+    mat <- mat[!apply(mat, 1, function(x) all(is.na(x))), , drop = FALSE]
+  return(mat)
+}
+
+#' @export
 subset_triangle <- function(triangle, origin.start, origin.end) {
   rnms <- rownames(triangle)
   if (missing(origin.start))
