@@ -68,7 +68,6 @@ plot.ata_factors <- function(object, type = c("se", "mean")) {
     nan_num <- attr(object, "nan_num")
     df <- data.table::data.table(ata = ata, std_err = std_err, inf_num = inf_num,
                                  nan_num = nan_num)
-    if (log)
     ggplot(df, aes(x = ata, y = std_err, group = 1)) +
       geom_text(aes(label = round(std_err, 3)), vjust = -.25) +
       geom_line()
@@ -82,3 +81,5 @@ plot.ata_factors <- function(object, type = c("se", "mean")) {
       geom_line()
   }
 }
+
+vuw::risk_plot()
