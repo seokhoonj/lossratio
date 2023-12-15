@@ -11,25 +11,74 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
     mat <- mat[!apply(mat, 1, function(x) all(is.na(x))), , drop = FALSE]
   colnms <- sprintf("%s-%s", colnames(triangle)[1:(n-1)],
                     colnames(triangle)[2:n])
-  smean <- apply(mat, 2, function(x) mean(x[is.finite(x)]))
-  wmean <- colSums(numer, na.rm = TRUE)/colSums(denom, na.rm = TRUE)
-  colnames(mat) <- names(smean) <- names(wmean) <- colnms
+  sp_mean <- apply(mat, 2, function(x) mean(x[is.finite(x)]))
+  wt_mean <- colSums(numer, na.rm = TRUE) / colSums(denom, na.rm = TRUE)
+  std_err <- apply(mat, 2, function(x) sd(x, na.rm = TRUE) / sqrt(length(x[!is.na(x)])))
+  inf_num <- apply(mat, 2, function(x) sum(is.infinite(x)))
+  nan_num <- apply(mat, 2, function(x) sum(is.nan(x)))
+  colnames(mat) <- names(sp_mean) <- names(wt_mean) <- names(std_err) <-
+    names(inf_num) <- names(nan_num) <- colnms
   return(structure(mat, class = c("ata_factors", "triangle", class(mat)),
-                   smean = smean, wmean = wmean))
+                   sp_mean = sp_mean, wt_mean = wt_mean, std_err = std_err,
+                   inf_num = inf_num, nan_num = nan_num))
+}
+
+#' @method summary ata_factors
+#' @export
+summary.ata_factors <- function(object, digits = 3) {
+  dms <- dimnames(object)
+  dms[[1]] <- c(dms[[1]], "sp_mean", "wt_mean", "std_err", "inf_num", "nan_num")
+  sp_mean <- attr(object, "sp_mean")
+  wt_mean <- attr(object, "wt_mean")
+  std_err <- attr(object, "std_err")
+  inf_num <- attr(object, "inf_num")
+  nan_num <- attr(object, "nan_num")
+  if (!is.null(digits)) {
+    digits <- suppressWarnings(as.numeric(digits[1L]))
+    if (length(digits) == 0 || is.na(digits))
+      stop("Non-numeric 'digits' specified.")
+    object  <- round(object, digits)
+    sp_mean <- round(sp_mean, digits)
+    wt_mean <- round(wt_mean, digits)
+    std_err <- round(std_err, digits)
+    inf_num <- round(inf_num, digits)
+    nan_num <- round(nan_num, digits)
+  }
+  structure(rbind(object, sp_mean, wt_mean, std_err, inf_num, nan_num), dimnames = dms)
+}
+
+#' @method print ata_factors
+#' @export
+print.ata_factors <- function(x, ...) {
+  print(summary(x), ...)
+  invisible(x)
 }
 
 #' @method plot ata_factors
-#'
 #' @export
-plot.ata_factors <- function(object) {
+plot.ata_factors <- function(object, type = c("se", "mean")) {
   if (!any(class(object) %in% "ata_factors"))
     stop(deparse(substitute(obejct)),
          " is not an object of class ata_factors.", call. = FALSE)
-  smean <- attr(object, "smean")
-  wmean <- attr(object, "wmean")
-  dev <- 1:length(smean)
-  df <- data.table::data.table(dev = dev, smean = smean, wmean = wmean)
-  m <- melt(df, id.vars = "dev", measure.vars = c("smean", "wmean"))
-  ggplot(m, aes(x = dev, y = value, group = variable, color = variable)) +
-    geom_line()
+  ata <- dimnames(object)[[2]]
+
+  if (type[[1L]] == "se") {
+    std_err <- attr(object, "std_err")
+    inf_num <- attr(object, "inf_num")
+    nan_num <- attr(object, "nan_num")
+    df <- data.table::data.table(ata = ata, std_err = std_err, inf_num = inf_num,
+                                 nan_num = nan_num)
+    if (log)
+    ggplot(df, aes(x = ata, y = std_err, group = 1)) +
+      geom_text(aes(label = round(std_err, 3)), vjust = -.25) +
+      geom_line()
+  } else {
+    sp_mean <- attr(object, "sp_mean")
+    wt_mean <- attr(object, "wt_mean")
+    df <- data.table::data.table(ata = ata, sp_mean = sp_mean, wt_mean = wt_mean)
+    m <- melt(df, id.vars = "ata", measure.vars = c("sp_mean", "wt_mean"),
+              value.name = "mean")
+    ggplot(m, aes(x = ata, y = mean, group = variable, color = variable)) +
+      geom_line()
+  }
 }
