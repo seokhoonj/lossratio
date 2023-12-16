@@ -56,7 +56,7 @@ print.ata_factors <- function(x, ...) {
 
 #' @method plot ata_factors
 #' @export
-plot.ata_factors <- function(object, type = c("se", "mean")) {
+plot.ata_factors <- function(object, type = c("se", "mean"), label = FALSE, logscale = FALSE) {
   if (!any(class(object) %in% "ata_factors"))
     stop(deparse(substitute(obejct)),
          " is not an object of class ata_factors.", call. = FALSE)
@@ -69,17 +69,36 @@ plot.ata_factors <- function(object, type = c("se", "mean")) {
     df <- data.table::data.table(ata = ata, std_err = std_err, inf_num = inf_num,
                                  nan_num = nan_num)
     set(df, j = "ata", value = factor(df$ata, levels = df$ata))
-    ggplot(df, aes(x = ata, y = std_err, group = 1)) +
-      geom_text(aes(label = round(std_err, 3)), vjust = -.25) +
-      geom_line()
+    if (logscale) {
+      ggplot(df, aes(x = ata, y = log(std_err), group = "se")) +
+        geom_line() +
+        geom_hline(yintercept = .05, color = "red", linetype = "dashed") +
+        list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
+        labs(title = "Std.err of age-to-age factors")
+    } else {
+      ggplot(df, aes(x = ata, y = std_err, group = "se")) +
+        geom_line() +
+        geom_hline(yintercept = log(.05), color = "red", linetype = "dashed") +
+        list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
+        labs(title = "Std.err of age-to-age factors")
+    }
   } else {
     sp_mean <- attr(object, "sp_mean")
     wt_mean <- attr(object, "wt_mean")
     df <- data.table::data.table(ata = ata, sp_mean = sp_mean, wt_mean = wt_mean)
     set(df, j = "ata", value = factor(df$ata, levels = df$ata))
-    m <- melt(df, id.vars = "ata", measure.vars = c("sp_mean", "wt_mean"),
-              value.name = "mean")
-    ggplot(m, aes(x = ata, y = mean, group = variable, color = variable)) +
-      geom_line()
+    m <- data.table::melt(df, id.vars = "ata", measure.vars = c("sp_mean", "wt_mean"),
+                          value.name = "mean")
+    if (logscale) {
+      ggplot(m, aes(x = ata, y = log(mean), group = variable, color = variable)) +
+        geom_line() +
+        list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
+        labs(title = "Simple mean vs. Weighted mean of age-to-age factors")
+    } else {
+      ggplot(m, aes(x = ata, y = mean, group = variable, color = variable)) +
+        geom_line() +
+        list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
+        labs(title = "Simple mean vs. Weighted mean of age-to-age factors")
+    }
   }
 }
