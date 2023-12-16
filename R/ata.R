@@ -72,13 +72,13 @@ plot.ata_factors <- function(object, type = c("se", "mean"), label = FALSE, logs
     if (logscale) {
       ggplot(df, aes(x = ata, y = log(std_err), group = "se")) +
         geom_line() +
-        geom_hline(yintercept = .05, color = "red", linetype = "dashed") +
+        geom_hline(yintercept = log(.05), color = "red", linetype = "dashed") +
         list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
         labs(title = "Std.err of age-to-age factors")
     } else {
       ggplot(df, aes(x = ata, y = std_err, group = "se")) +
         geom_line() +
-        geom_hline(yintercept = log(.05), color = "red", linetype = "dashed") +
+        geom_hline(yintercept = .05, color = "red", linetype = "dashed") +
         list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
         labs(title = "Std.err of age-to-age factors")
     }
