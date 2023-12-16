@@ -88,14 +88,14 @@ plot.ata_factors <- function(object, type = c("se", "mean"), label = FALSE, logs
     df <- data.table::data.table(ata = ata, sp_mean = sp_mean, wt_mean = wt_mean)
     set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     m <- data.table::melt(df, id.vars = "ata", measure.vars = c("sp_mean", "wt_mean"),
-                          value.name = "mean")
+                          variable.name = "method", value.name = "mean")
     if (logscale) {
-      ggplot(m, aes(x = ata, y = log(mean), group = variable, color = variable)) +
+      ggplot(m, aes(x = ata, y = log(mean), group = method, color = method)) +
         geom_line() +
         list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
         labs(title = "Simple mean vs. Weighted mean of age-to-age factors")
     } else {
-      ggplot(m, aes(x = ata, y = mean, group = variable, color = variable)) +
+      ggplot(m, aes(x = ata, y = mean, group = method, color = method)) +
         geom_line() +
         list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
         labs(title = "Simple mean vs. Weighted mean of age-to-age factors")
