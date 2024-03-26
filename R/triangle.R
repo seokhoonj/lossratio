@@ -1,6 +1,6 @@
 
 #' @export
-set_triangle <- function(data, formula = uym ~ elp, value.var = "clr") {
+set_triangle <- function(data, formula = uym ~ elpm, value.var = "clr") {
   d <- dcast(data, formula, value.var = value.var,
              fun.aggregate = sum, fill = NA)
   triangle <- as.matrix(d[, -1L])
