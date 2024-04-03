@@ -1,6 +1,6 @@
 
 #' @export
-get_ata_factors <- function(triangle, NArow.rm = TRUE) {
+get_ata <- function(triangle, NArow.rm = TRUE) {
   n <- ncol(triangle)
   numer <- triangle[, -1, drop = FALSE]
   denom <- triangle[, -n, drop = FALSE]
@@ -18,14 +18,14 @@ get_ata_factors <- function(triangle, NArow.rm = TRUE) {
   nan_num <- apply(mat, 2, function(x) sum(is.nan(x)))
   colnames(mat) <- names(sp_mean) <- names(wt_mean) <- names(std_err) <-
     names(inf_num) <- names(nan_num) <- colnms
-  return(structure(mat, class = c("ata_factors", "triangle", class(mat)),
+  return(structure(mat, class = c("ata", "triangle", class(mat)),
                    sp_mean = sp_mean, wt_mean = wt_mean, std_err = std_err,
                    inf_num = inf_num, nan_num = nan_num))
 }
 
-#' @method summary ata_factors
+#' @method summary ata
 #' @export
-summary.ata_factors <- function(object, digits = 3) {
+summary.ata <- function(object, digits = 3) {
   dms <- dimnames(object)
   dms[[1]] <- c(dms[[1]], "sp_mean", "wt_mean", "std_err", "inf_num", "nan_num")
   sp_mean <- attr(object, "sp_mean")
@@ -47,19 +47,19 @@ summary.ata_factors <- function(object, digits = 3) {
   structure(rbind(object, sp_mean, wt_mean, std_err, inf_num, nan_num), dimnames = dms)
 }
 
-#' @method print ata_factors
+#' @method print ata
 #' @export
-print.ata_factors <- function(x, ...) {
+print.ata <- function(x, ...) {
   print(summary(x), ...)
   invisible(x)
 }
 
-#' @method plot ata_factors
+#' @method plot ata
 #' @export
-plot.ata_factors <- function(object, type = c("se", "mean"), label = FALSE, logscale = FALSE) {
-  if (!any(class(object) %in% "ata_factors"))
+plot.ata <- function(object, type = c("se", "mean"), label = FALSE, logscale = FALSE) {
+  if (!any(class(object) %in% "ata"))
     stop(deparse(substitute(obejct)),
-         " is not an object of class ata_factors.", call. = FALSE)
+         " is not an object of class ata.", call. = FALSE)
   ata <- dimnames(object)[[2]]
 
   if (type[[1L]] == "se") {
