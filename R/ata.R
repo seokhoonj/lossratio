@@ -56,13 +56,14 @@ print.ata <- function(x, ...) {
 
 #' @method plot ata
 #' @export
-plot.ata <- function(object, type = c("se", "mean"), label = FALSE, logscale = FALSE) {
+plot.ata <- function(object, type = c("se", "mean", "ata"), label = FALSE,
+                     logscale = FALSE, theme = c("view", "save", "shiny")) {
   if (!any(class(object) %in% "ata"))
     stop(deparse(substitute(obejct)),
          " is not an object of class ata.", call. = FALSE)
   ata <- dimnames(object)[[2]]
-
-  if (type[[1L]] == "se") {
+  type <- match.arg(type)
+  if (type == "se") {
     std_err <- attr(object, "std_err")
     inf_num <- attr(object, "inf_num")
     nan_num <- attr(object, "nan_num")
@@ -70,35 +71,72 @@ plot.ata <- function(object, type = c("se", "mean"), label = FALSE, logscale = F
                                  nan_num = nan_num)
     set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     if (logscale) {
-      ggplot(df, aes(x = ata, y = log(std_err), group = "se")) +
-        geom_line() +
-        geom_hline(yintercept = log(.05), color = "red", linetype = "dashed") +
-        list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
-        labs(title = "Std.err of age-to-age factors")
+      return(
+        ggplot(df, aes(x = ata, y = log(std_err), group = "se")) +
+          geom_line() +
+          geom_hline(yintercept = log(.05), color = "red", linetype = "dashed") +
+          list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
+          labs(title = "Std.err of age-to-age factors") +
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
+      )
     } else {
-      ggplot(df, aes(x = ata, y = std_err, group = "se")) +
-        geom_line() +
-        geom_hline(yintercept = .05, color = "red", linetype = "dashed") +
-        list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
-        labs(title = "Std.err of age-to-age factors")
+      return(
+        ggplot(df, aes(x = ata, y = std_err, group = "se")) +
+          geom_line() +
+          geom_hline(yintercept = .05, color = "red", linetype = "dashed") +
+          list(if (label) geom_text(aes(label = round(std_err, 3)), vjust = -.25)) +
+          labs(title = "Std.err of age-to-age factors") +
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
+      )
     }
-  } else {
+  }
+  if (type == "mean") {
     sp_mean <- attr(object, "sp_mean")
     wt_mean <- attr(object, "wt_mean")
     df <- data.table::data.table(ata = ata, sp_mean = sp_mean, wt_mean = wt_mean)
     set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     m <- data.table::melt(df, id.vars = "ata", measure.vars = c("sp_mean", "wt_mean"),
                           variable.name = "method", value.name = "mean")
+    method <- NULL
     if (logscale) {
-      ggplot(m, aes(x = ata, y = log(mean), group = method, color = method)) +
-        geom_line() +
-        list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
-        labs(title = "Simple mean vs. Weighted mean of age-to-age factors")
+      return(
+        ggplot(m, aes(x = ata, y = log(mean), group = method, color = method)) +
+          geom_line() +
+          list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
+          labs(title = "Simple mean vs. Weighted mean of age-to-age factors") +
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
+      )
     } else {
-      ggplot(m, aes(x = ata, y = mean, group = method, color = method)) +
-        geom_line() +
-        list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
-        labs(title = "Simple mean vs. Weighted mean of age-to-age factors")
+      return(
+        ggplot(m, aes(x = ata, y = mean, group = method, color = method)) +
+          geom_line() +
+          list(if (label) geom_point(aes(label = round(mean, 3)), vjust = -.25)) +
+          labs(title = "Simple mean vs. Weighted mean of age-to-age factors") +
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
+      )
+    }
+  }
+  if (type == "ata") {
+    m <- data.table::melt(
+      data.table::data.table(as.data.frame(ata), keep.rownames = "uym"),
+      id.vars = "uym", variable.name = "ata", value.name = "ata_factor"
+    )
+    if (logscale) {
+      return(
+        ggplot(m, aes(x = ata, y = log(factor))) +
+          geom_boxplot() +
+          geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
+          labs(title = "Distribution of age-to-age factors") +
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
+        )
+    } else {
+      return(
+        ggplot(m, aes(x = ata, y = factor)) +
+          geom_boxplot() +
+          geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
+          labs(title = "Distribution of age-to-age factors") +
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
+      )
     }
   }
 }

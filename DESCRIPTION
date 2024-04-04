@@ -9,8 +9,11 @@ Description: Applying chain ladder methods to predict the loss ratio
 License: GPL (>= 3)
 Encoding: UTF-8
 Depends: R (>= 3.5.0)
+Remotes:
+  github::seokhoonj/ggshort
 Imports:
   data.table (>= 1.14.8),
-  ggplot2 (>= 3.3.3)
+  ggplot2 (>= 3.3.3),
+  ggshort (>= 0.0.0.9000)
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3

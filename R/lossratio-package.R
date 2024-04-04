@@ -3,6 +3,8 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @importFrom data.table as.data.table dcast melt set
 #' @import ggplot2
+#' @importFrom data.table as.data.table dcast melt set
+#' @importFrom ggshort match_theme
+#' @importFrom stats as.formula coef lm na.omit predict sd
 NULL
