@@ -56,8 +56,9 @@ print.ata <- function(x, ...) {
 
 #' @method plot ata
 #' @export
-plot.ata <- function(object, type = c("se", "mean", "ata"), label = FALSE,
-                     logscale = FALSE, theme = c("view", "save", "shiny")) {
+plot.ata <- function(object, type = c("se", "mean", "box", "point"),
+                     label = FALSE, logscale = FALSE,
+                     theme = c("view", "save", "shiny")) {
   if (!any(class(object) %in% "ata"))
     stop(deparse(substitute(obejct)),
          " is not an object of class ata.", call. = FALSE)
@@ -116,7 +117,7 @@ plot.ata <- function(object, type = c("se", "mean", "ata"), label = FALSE,
       )
     }
   }
-  if (type == "ata") {
+  if (type == "box") {
     m <- data.table::melt(
       data.table::data.table(as.data.frame(object), keep.rownames = "uym"),
       id.vars = "uym", variable.name = "ata", value.name = "factor"
@@ -128,7 +129,7 @@ plot.ata <- function(object, type = c("se", "mean", "ata"), label = FALSE,
           geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
           labs(title = "Distribution of age-to-age factors") +
           match_theme(theme = theme, x.angle = 90, legend.position = "none")
-        )
+      )
     } else {
       return(
         ggplot(m, aes(x = ata, y = factor)) +
@@ -136,6 +137,29 @@ plot.ata <- function(object, type = c("se", "mean", "ata"), label = FALSE,
           geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
           labs(title = "Distribution of age-to-age factors") +
           match_theme(theme = theme, x.angle = 90, legend.position = "none")
+      )
+    }
+  }
+  if (type == "point") {
+    m <- data.table::melt(
+      data.table::data.table(as.data.frame(object), keep.rownames = "uym"),
+      id.vars = "uym", variable.name = "ata", value.name = "factor"
+    )
+    if (logscale) {
+      return(
+        ggplot(m, aes(x = ata, y = log(factor), group = 1)) +
+          geom_point() +
+          geom_hline1(logscale = logscale) +
+          stat_summary(fun.y = mean, geom = "line") +
+          match_theme(theme = "view", x.angle = 90, legend.position = "none")
+      )
+    } else {
+      return(
+        ggplot(m, aes(x = ata, y = factor, group = 1)) +
+          geom_point() +
+          geom_hline1(logscale = logscale) +
+          stat_summary(fun.y = mean, geom = "line") +
+          match_theme(theme = "view", x.angle = 90, legend.position = "none")
       )
     }
   }
