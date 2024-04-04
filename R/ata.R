@@ -119,7 +119,7 @@ plot.ata <- function(object, type = c("se", "mean", "ata"), label = FALSE,
   if (type == "ata") {
     m <- data.table::melt(
       data.table::data.table(as.data.frame(ata), keep.rownames = "uym"),
-      id.vars = "uym", variable.name = "ata", value.name = "ata_factor"
+      id.vars = "uym", variable.name = "ata", value.name = "factor"
     )
     if (logscale) {
       return(
