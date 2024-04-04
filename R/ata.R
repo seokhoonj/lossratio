@@ -152,7 +152,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
           geom_hline1(logscale = logscale) +
           stat_summary(fun = mean, geom = "line") +
           labs(title = "Distribution of age-to-age factors") +
-          match_theme(theme = "view", x.angle = 90, legend.position = "none")
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
       )
     } else {
       return(
@@ -161,7 +161,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
           geom_hline1(logscale = logscale) +
           stat_summary(fun = mean, geom = "line") +
           labs(title = "Distribution of age-to-age factors") +
-          match_theme(theme = "view", x.angle = 90, legend.position = "none")
+          match_theme(theme = theme, x.angle = 90, legend.position = "none")
       )
     }
   }
