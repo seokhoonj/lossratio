@@ -126,7 +126,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
       return(
         ggplot(m, aes(x = ata, y = log(factor))) +
           geom_boxplot() +
-          geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
+          geom_hline1(logscale = logscale) +
           labs(title = "Box plot of age-to-age factors") +
           match_theme(theme = theme, x.angle = 90, legend.position = "none")
       )
@@ -134,7 +134,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
       return(
         ggplot(m, aes(x = ata, y = factor)) +
           geom_boxplot() +
-          geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
+          geom_hline1(logscale = logscale) +
           labs(title = "Box plot of age-to-age factors") +
           match_theme(theme = theme, x.angle = 90, legend.position = "none")
       )
