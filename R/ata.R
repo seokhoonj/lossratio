@@ -127,7 +127,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
         ggplot(m, aes(x = ata, y = log(factor))) +
           geom_boxplot() +
           geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
-          labs(title = "Distribution of age-to-age factors") +
+          labs(title = "Box plot of age-to-age factors") +
           match_theme(theme = theme, x.angle = 90, legend.position = "none")
       )
     } else {
@@ -135,7 +135,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
         ggplot(m, aes(x = ata, y = factor)) +
           geom_boxplot() +
           geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
-          labs(title = "Distribution of age-to-age factors") +
+          labs(title = "Box plot of age-to-age factors") +
           match_theme(theme = theme, x.angle = 90, legend.position = "none")
       )
     }
@@ -150,7 +150,8 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
         ggplot(m, aes(x = ata, y = log(factor), group = 1)) +
           geom_point() +
           geom_hline1(logscale = logscale) +
-          stat_summary(fun.y = mean, geom = "line") +
+          stat_summary(fun = mean, geom = "line") +
+          labs(title = "Distribution of age-to-age factors") +
           match_theme(theme = "view", x.angle = 90, legend.position = "none")
       )
     } else {
@@ -158,7 +159,8 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
         ggplot(m, aes(x = ata, y = factor, group = 1)) +
           geom_point() +
           geom_hline1(logscale = logscale) +
-          stat_summary(fun.y = mean, geom = "line") +
+          stat_summary(fun = mean, geom = "line") +
+          labs(title = "Distribution of age-to-age factors") +
           match_theme(theme = "view", x.angle = 90, legend.position = "none")
       )
     }
