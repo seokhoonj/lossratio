@@ -54,6 +54,8 @@ mack_chain_ladder <- function(triangle, weights = 1, alpha = 1,
                            alpha = alpha)
   }
 
+  pred_triangle <- full_triangle
+  pred_triangle[triangle > 0] <- 0
   std.err <- c(std.err, rep_mack_se(
     full_triangle, std.err$f, std.err$f.se, std.err$F.se,
     mse.method = mse.method))
@@ -65,6 +67,7 @@ mack_chain_ladder <- function(triangle, weights = 1, alpha = 1,
   object[["call"]] <- match.call(expand.dots = FALSE)
   object[["triangle"]] <- triangle
   object[["full_triangle"]] <- full_triangle
+  object[["pred_triangle"]] <- pred_triangle
   object[["models"]] <- bcl[["models"]]
   object[["f"]] <- std.err$f
   object[["f.se"]] <- std.err$f.se

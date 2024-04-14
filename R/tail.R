@@ -26,8 +26,9 @@ get_tail_factor <- function(ldf) {
 set_triangle_tail <- function(full_triangle, tail.factor) {
   n <- ncol(full_triangle)
   m <- nrow(full_triangle)
-  full_triangle <- cbind(full_triangle, "Inf" = full_triangle[, n] * tail.factor)
-  return(full_triangle)
+  z <- cbind(full_triangle, "Inf" = full_triangle[, n] * tail.factor)
+  class(z) <- class(full_triangle)
+  return(z)
 }
 
 #' @export
