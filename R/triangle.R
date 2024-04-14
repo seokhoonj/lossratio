@@ -17,6 +17,7 @@ cut_triangle <- function(triangle, elapsed.after = 1, NArow.rm = TRUE) {
   mat <- triangle[, elapsed.after:n]
   if (NArow.rm)
     mat <- mat[!apply(mat, 1, function(x) all(is.na(x))), , drop = FALSE]
+  class(mat) <- c("triangle", class(mat))
   return(mat)
 }
 
@@ -31,7 +32,9 @@ subset_triangle <- function(triangle, origin.start, origin.end) {
                   rownames(triangle) <= origin.end,]
   mat <- tri[, !apply(tri, 2, function(x) all(is.na(x))), drop = FALSE]
   scol <- length(na.omit(tri[nrow(mat),]))
-  return(mat[, scol:ncol(mat)])
+  mat <- mat[, scol:ncol(mat)]
+  class(mat) <- c("triangle", class(mat))
+  return(mat)
 }
 
 #' @export
@@ -44,7 +47,9 @@ subset_full_triangle <- function(triangle, elapsed.start) {
   rn <- length(na.omit(triangle[, elapsed.start]))
   st <- triangle[1:rn, elapsed.start:n]
   dn <- floor((rn + 1) / 2)
-  return(st[1:dn, 1:dn])
+  st <- st[1:dn, 1:dn]
+  class(st) <- c("triangle", class(st))
+  return(st)
 }
 
 #' @method as.data.table triangle
