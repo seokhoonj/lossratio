@@ -6,33 +6,37 @@ get_ata <- function(triangle, NArow.rm = TRUE) {
   denom <- triangle[, -n, drop = FALSE]
   numer[is.na(denom)] <- NA
   denom[is.na(numer)] <- NA
-  mat <- numer / denom
+  mat <- numer/denom
   if (NArow.rm)
-    mat <- mat[!apply(mat, 1, function(x) all(is.na(x))), , drop = FALSE]
-  colnms <- sprintf("%s-%s", colnames(triangle)[1:(n-1)],
+    mat <- mat[!apply(mat, 1, function(x) all(is.na(x))),
+               , drop = FALSE]
+  colnms <- sprintf("%s-%s", colnames(triangle)[1:(n - 1)],
                     colnames(triangle)[2:n])
   sp_mean <- apply(mat, 2, function(x) mean(x[is.finite(x)]))
-  wt_mean <- colSums(numer, na.rm = TRUE) / colSums(denom, na.rm = TRUE)
-  std_err <- apply(mat, 2, function(x) sd(x, na.rm = TRUE) / sqrt(length(x[!is.na(x)])))
+  wt_mean <- colSums(numer, na.rm = TRUE)/colSums(denom, na.rm = TRUE)
+  std_err <- apply(mat, 2, function(x)
+    sd(x[!is.nan(x) & !is.infinite(x)], na.rm = TRUE)/
+      sqrt(length(x[!is.na(x) & !is.nan(x) & !is.infinite(x)])))
   inf_num <- apply(mat, 2, function(x) sum(is.infinite(x)))
   nan_num <- apply(mat, 2, function(x) sum(is.nan(x)))
-  colnames(mat) <- names(sp_mean) <- names(wt_mean) <- names(std_err) <-
-    names(inf_num) <- names(nan_num) <- colnms
+  std_num <- apply(mat, 2, function(x) length(x[!is.na(x) & !is.nan(x) & !is.infinite(x)]))
+  colnames(mat) <- names(sp_mean) <- names(wt_mean) <- names(std_err) <- names(inf_num) <- names(nan_num) <- colnms
   return(structure(mat, class = c("ata", "triangle", class(mat)),
                    sp_mean = sp_mean, wt_mean = wt_mean, std_err = std_err,
-                   inf_num = inf_num, nan_num = nan_num))
+                   inf_num = inf_num, nan_num = nan_num, std_num = std_num))
 }
 
 #' @method summary ata
 #' @export
 summary.ata <- function(object, digits = 3) {
   dms <- dimnames(object)
-  dms[[1]] <- c(dms[[1]], "sp_mean", "wt_mean", "std_err", "inf_num", "nan_num")
+  dms[[1]] <- c(dms[[1]], "sp_mean", "wt_mean", "std_err", "inf_num", "nan_num", "std_num")
   sp_mean <- attr(object, "sp_mean")
   wt_mean <- attr(object, "wt_mean")
   std_err <- attr(object, "std_err")
   inf_num <- attr(object, "inf_num")
   nan_num <- attr(object, "nan_num")
+  std_num <- attr(object, "std_num")
   if (!is.null(digits)) {
     digits <- suppressWarnings(as.numeric(digits[1L]))
     if (length(digits) == 0 || is.na(digits))
@@ -43,8 +47,10 @@ summary.ata <- function(object, digits = 3) {
     std_err <- round(std_err, digits)
     inf_num <- round(inf_num, digits)
     nan_num <- round(nan_num, digits)
+    std_num <- round(std_num, digits)
   }
-  structure(rbind(object, sp_mean, wt_mean, std_err, inf_num, nan_num), dimnames = dms)
+  structure(rbind(object, sp_mean, wt_mean, std_err, inf_num, nan_num, std_num),
+            dimnames = dms)
 }
 
 #' @method print ata
@@ -68,8 +74,9 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
     std_err <- attr(object, "std_err")
     inf_num <- attr(object, "inf_num")
     nan_num <- attr(object, "nan_num")
+    std_num <- attr(object, "std_num")
     df <- data.table::data.table(ata = ata, std_err = std_err, inf_num = inf_num,
-                                 nan_num = nan_num)
+                                 nan_num = nan_num, std_num = std_num)
     set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     if (logscale) {
       return(
