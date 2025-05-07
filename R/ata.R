@@ -17,12 +17,13 @@ get_ata <- function(triangle, NArow.rm = TRUE) {
   std_err <- apply(mat, 2, function(x)
     sd(x[!is.nan(x) & !is.infinite(x)], na.rm = TRUE)/
       sqrt(length(x[!is.na(x) & !is.nan(x) & !is.infinite(x)])))
+  cv      <- std_err / sp_mean
   inf_num <- apply(mat, 2, function(x) sum(is.infinite(x)))
   nan_num <- apply(mat, 2, function(x) sum(is.nan(x)))
   std_num <- apply(mat, 2, function(x) length(x[!is.na(x) & !is.nan(x) & !is.infinite(x)]))
-  colnames(mat) <- names(sp_mean) <- names(wt_mean) <- names(std_err) <- names(inf_num) <- names(nan_num) <- colnms
-  return(structure(mat, class = c("ata", "triangle", class(mat)),
-                   sp_mean = sp_mean, wt_mean = wt_mean, std_err = std_err,
+  colnames(mat) <- names(sp_mean) <- names(wt_mean) <- names(std_err) <- names(cv) <- names(inf_num) <- names(nan_num) <- colnms
+  return(structure(mat, class = c("ata", class(triangle)),
+                   sp_mean = sp_mean, wt_mean = wt_mean, std_err = std_err, cv = cv,
                    inf_num = inf_num, nan_num = nan_num, std_num = std_num))
 }
 
@@ -34,6 +35,7 @@ summary.ata <- function(object, digits = 3) {
   sp_mean <- attr(object, "sp_mean")
   wt_mean <- attr(object, "wt_mean")
   std_err <- attr(object, "std_err")
+  cv      <- attr(object, "cv")
   inf_num <- attr(object, "inf_num")
   nan_num <- attr(object, "nan_num")
   std_num <- attr(object, "std_num")
@@ -45,11 +47,12 @@ summary.ata <- function(object, digits = 3) {
     sp_mean <- round(sp_mean, digits)
     wt_mean <- round(wt_mean, digits)
     std_err <- round(std_err, digits)
+    cv      <- round(cv     , digits)
     inf_num <- round(inf_num, digits)
     nan_num <- round(nan_num, digits)
     std_num <- round(std_num, digits)
   }
-  structure(rbind(object, sp_mean, wt_mean, std_err, inf_num, nan_num, std_num),
+  structure(rbind(object, sp_mean, wt_mean, std_err, cv, inf_num, nan_num, std_num),
             dimnames = dms)
 }
 
@@ -62,7 +65,7 @@ print.ata <- function(x, ...) {
 
 #' @method plot ata
 #' @export
-plot.ata <- function(object, type = c("se", "mean", "box", "point"),
+plot.ata <- function(object, type = c("cv", "se", "mean", "box", "point"),
                      logscale = FALSE, label = FALSE,
                      theme = c("view", "save", "shiny"), ...) {
   if (!any(class(object) %in% "ata"))
@@ -70,6 +73,35 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
          call. = FALSE)
   ata <- dimnames(object)[[2L]]
   type <- match.arg(type)
+  if (type == "cv") {
+    cv <- attr(object, "cv")
+    inf_num <- attr(object, "inf_num")
+    nan_num <- attr(object, "nan_num")
+    std_num <- attr(object, "std_num")
+    xintercept <- names(cv[cv <.05][1L])
+    df <- data.table::data.table(ata = ata, cv = cv, inf_num = inf_num,
+                                 nan_num = nan_num, std_num = std_num)
+    data.table::set(df, j = "ata", value = factor(df$ata, levels = df$ata))
+    return(
+      ggplot(df, aes(x = ata, y = cv, group = "se")) +
+        geom_line() +
+        geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+        geom_vline(xintercept = xintercept, color = "grey50", linetype = "longdash") +
+        list(if (logscale) scale_y_continuous(trans = "log")) +
+        list(if (label) geom_text(aes(label = round(cv, 3)), vjust = -.25)) +
+        list(if (logscale) {
+          annotate(geom = "rect", xmin = xintercept, xmax = Inf, ymin = 0, ymax = 0.05,
+                   fill = "#80B1D3", alpha = 0.2)
+        } else {
+          annotate(geom = "rect", xmin = xintercept, xmax = Inf, ymin = -Inf, ymax = 0.05,
+                   fill = "#80B1D3", alpha = 0.2)
+        }) +
+        annotate(geom = "label", x = xintercept, y = 0.05,
+                 label = "cv < .05", vjust = -.25, family = "Comic Sans MS") +
+        labs(title = "CV of age-to-age factors") +
+        match_theme(theme = theme, x.angle = 90, legend.position = "none", ...)
+    )
+  }
   if (type == "se") {
     std_err <- attr(object, "std_err")
     inf_num <- attr(object, "inf_num")
@@ -78,7 +110,7 @@ plot.ata <- function(object, type = c("se", "mean", "box", "point"),
     xintercept <- names(std_err[std_err <.05][1L])
     df <- data.table::data.table(ata = ata, std_err = std_err,
                                  inf_num = inf_num, nan_num = nan_num, std_num = std_num)
-    set(df, j = "ata", value = factor(df$ata, levels = df$ata))
+    data.table::set(df, j = "ata", value = factor(df$ata, levels = df$ata))
     return(
       ggplot(df, aes(x = ata, y = std_err, group = "se")) +
         geom_line() +
