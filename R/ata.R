@@ -31,7 +31,7 @@ get_ata <- function(triangle, NArow.rm = TRUE) {
 #' @export
 summary.ata <- function(object, digits = 3) {
   dms <- dimnames(object)
-  dms[[1]] <- c(dms[[1]], "sp_mean", "wt_mean", "std_err", "inf_num", "nan_num", "std_num")
+  dms[[1]] <- c(dms[[1]], "sp_mean", "wt_mean", "std_err", "cv", "inf_num", "nan_num", "std_num")
   sp_mean <- attr(object, "sp_mean")
   wt_mean <- attr(object, "wt_mean")
   std_err <- attr(object, "std_err")
