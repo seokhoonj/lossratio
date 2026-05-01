@@ -2,14 +2,21 @@ pandoc: 3.8.3
 pkgdown: 2.2.0
 pkgdown_sha: ~
 articles:
+  articles/aggregation-frameworks-ko: aggregation-frameworks-ko.html
   aggregation-frameworks: aggregation-frameworks.html
+  articles/backtest-ko: backtest-ko.html
   backtest: backtest.html
+  articles/chain-ladder-ko: chain-ladder-ko.html
   chain-ladder: chain-ladder.html
+  articles/getting-started-ko: getting-started-ko.html
   getting-started: getting-started.html
+  articles/loss-ratio-methods-ko: loss-ratio-methods-ko.html
   loss-ratio-methods: loss-ratio-methods.html
+  articles/regime-detection-ko: regime-detection-ko.html
   regime-detection: regime-detection.html
+  articles/triangle-diagnostics-ko: triangle-diagnostics-ko.html
   triangle-diagnostics: triangle-diagnostics.html
-last_built: 2026-05-01T13:13Z
+last_built: 2026-05-01T14:00Z
 urls:
   reference: https://seokhoonj.github.io/lossratio/reference
   article: https://seokhoonj.github.io/lossratio/articles
