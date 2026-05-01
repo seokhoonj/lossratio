@@ -10,7 +10,7 @@ home:
 navbar:
   structure:
     left:  [intro, articles, reference, news]
-    right: [korean, search, github]
+    right: [language, search, github]
   components:
     intro:
       text: Get started
@@ -18,9 +18,9 @@ navbar:
     articles:
       text: Articles
       href: articles/index.html
-    korean:
-      text: 한국어
-      href: articles/getting-started-ko.html
+    language:
+      text: KR
+      href: ./ko/
 
 reference:
 - title: Input layer
@@ -117,7 +117,7 @@ articles:
   - triangle-diagnostics
   - regime-detection
   - backtest
-- title: 한국어 (Korean)
+- title: internal
   navbar: ~
   contents:
   - "articles/getting-started-ko"

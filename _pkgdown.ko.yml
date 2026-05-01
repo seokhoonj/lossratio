@@ -1,0 +1,134 @@
+url: https://seokhoonj.github.io/lossratio/ko
+
+template:
+  bootstrap: 5
+  language: ko
+
+home:
+  title: lossratio
+  description: 보험 경험 데이터를 위한 손해율 분석 및 추정 R 패키지.
+
+navbar:
+  structure:
+    left:  [intro, articles, reference, news]
+    right: [language, search, github]
+  components:
+    intro:
+      text: 시작하기
+      href: articles/getting-started-ko.html
+    articles:
+      text: 글
+      href: articles/index.html
+    reference:
+      text: 참조
+      href: reference/index.html
+    news:
+      text: 변경 이력
+      menu:
+      - text: Changelog
+        href: news/index.html
+    language:
+      text: EN
+      href: ../
+
+reference:
+- title: 입력 계층
+  desc: >
+    원시 experience 데이터의 검증·코어션 헬퍼.
+  contents:
+  - check_experience
+  - is_experience
+  - as_experience
+  - add_experience_period
+  - validate_triangle
+
+- title: 집계 빌더
+  desc: >
+    같은 long-format experience 데이터를 보는 세 가지 프레임워크 —
+    cohort × dev (`triangle`), 달력 기간 (`calendar`),
+    포트폴리오 전체 (`total`).
+  contents:
+  - build_triangle
+  - build_calendar
+  - build_total
+
+- title: Age-to-age (ATA) 인자
+  desc: chain ladder 방법의 기본 단위.
+  contents:
+  - build_ata
+  - fit_ata
+  - summary_ata
+  - find_ata_maturity
+
+- title: 노출 기반 (ED) 강도
+  desc: 노출 기반 방법의 기본 단위.
+  contents:
+  - build_ed
+  - fit_ed
+  - summary_ed
+
+- title: 추정
+  desc: >
+    chain ladder 와 손해율 추정. `fit_lr` 은 세 가지 method 지원 —
+    `"sa"` (단계 적응적, default), `"ed"`, `"cl"`.
+  contents:
+  - fit_cl
+  - fit_lr
+
+- title: Regime 탐지
+  desc: 인수 코호트 간 구조적 변화 탐지.
+  contents:
+  - detect_cohort_regime
+
+- title: Backtest
+  desc: >
+    Triangle 의 최근 대각선을 보류한 뒤 재적합·예측을 보류된 실제값과
+    비교.
+  contents:
+  - backtest
+
+- title: 시각화
+  desc: >
+    `plot()` (base generic) 과 `plot_triangle()` (lossratio generic)
+    이 객체 클래스에 따라 dispatch.
+  contents:
+  - plot_triangle
+  - starts_with("plot.")
+  - starts_with("plot_triangle.")
+
+- title: 기타 S3 메서드
+  desc: 패키지 클래스에 등록된 print / summary / longer 메서드.
+  contents:
+  - starts_with("print.")
+  - starts_with("summary.")
+  - starts_with("longer.")
+
+- title: 헬퍼
+  contents:
+  - get_recent_weights
+  - longer
+
+- title: 데이터셋
+  contents:
+  - experience
+
+articles:
+- title: 한국어
+  navbar: ~
+  contents:
+  - "articles/getting-started-ko"
+  - "articles/aggregation-frameworks-ko"
+  - "articles/loss-ratio-methods-ko"
+  - "articles/chain-ladder-ko"
+  - "articles/triangle-diagnostics-ko"
+  - "articles/regime-detection-ko"
+  - "articles/backtest-ko"
+- title: internal
+  contents:
+  - getting-started
+  - aggregation-frameworks
+  - loss-ratio-methods
+  - chain-ladder
+  - triangle-diagnostics
+  - regime-detection
+  - backtest

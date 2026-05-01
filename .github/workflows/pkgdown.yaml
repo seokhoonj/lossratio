@@ -36,9 +36,17 @@ jobs:
           extra-packages: any::pkgdown, local::.
           needs: website
 
-      - name: Build site
+      - name: Build English site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
         shell: Rscript {0}
+
+      - name: Build Korean site
+        run: |
+          cp _pkgdown.yml _pkgdown.en.yml.bak
+          cp _pkgdown.ko.yml _pkgdown.yml
+          Rscript -e 'pkgdown::build_site(new_process = FALSE, install = FALSE, override = list(destination = "docs/ko"))'
+          mv _pkgdown.en.yml.bak _pkgdown.yml
+        shell: bash
 
       - name: Deploy to GitHub pages 🚀
         if: github.event_name != 'pull_request'
