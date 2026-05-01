@@ -1,7 +1,5 @@
 # lossratio
 
-![](reference/figures/logo.png)
-
 Loss ratio analysis and projection for insurance experience data.
 
 ## Overview
