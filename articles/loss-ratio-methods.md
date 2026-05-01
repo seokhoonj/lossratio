@@ -1,0 +1,174 @@
+# Loss-ratio projection methods: SA, ED, CL
+
+[`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
+projects cumulative loss ratio per cohort from a `triangle` object.
+Three methods are available; this vignette explains the trade-offs.
+
+## Notation
+
+For cohort $`i`$ at dev $`k`$:
+
+- $`C^L_{i,k}`$ — cumulative loss
+- $`C^P_{i,k}`$ — cumulative risk premium (exposure)
+- $`f_k = C^L_{k+1} / C^L_k`$ — age-to-age (chain ladder) factor
+- $`g_k = \Delta C^L_k / C^P_k`$ — exposure-driven intensity
+- maturity point $`m_g`$ — dev at which $`f_k`$ stabilises for group
+  $`g`$ (detected from CV / RSE thresholds)
+
+## Method 1: Stage-Adaptive (`"sa"`, default)
+
+The default method exploits the fact that $`f_k`$ is volatile early and
+stable late, while $`g_k`$ behaves the opposite way. SA switches
+estimators at the maturity point:
+
+``` math
+\hat{C}^L_{i,k+1} \;=\;
+\begin{cases}
+\hat{C}^L_{i,k} + g_k \cdot C^P_{i,k} & k < m_g \quad \text{(ED before maturity)} \\
+f_k \cdot \hat{C}^L_{i,k}              & k \ge m_g \quad \text{(CL after maturity)}
+\end{cases}
+```
+
+Behaviour:
+
+- **Before maturity**: anchors the loss estimate to premium volume.
+  Avoids the volatile-link explosion that classical CL suffers when
+  early $`f_k`$ are noisy.
+- **After maturity**: preserves the cohort’s own observed level. Avoids
+  the “all cohorts converge to the average” behaviour that pure ED
+  suffers in the tail.
+
+When to use:
+
+- Long-tail products where development extends across many years.
+- Recent cohorts (immature data) mixed with older cohorts (matured).
+- Health insurance cohorts with structural pre-/post-maturity difference
+  (e.g. waiting period transitions).
+
+``` r
+
+library(lossratio)
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp, group_var = cv_nm)
+
+lr_sa <- fit_lr(tri, method = "sa")        # default
+plot(lr_sa, type = "clr")
+summary(lr_sa)
+```
+
+## Method 2: Exposure-Driven (`"ed"`)
+
+All future increments use ED:
+
+``` math
+\hat{C}^L_{i,k+1} = \hat{C}^L_{i,k} + g_k \cdot C^P_{i,k}
+```
+
+Behaviour:
+
+- Stable when premium volume is informative across full development.
+- Loses the cohort-specific level signal — cohorts with higher observed
+  loss converge toward the group-level $`g_k`$.
+
+When to use:
+
+- Short-tail products where chain ladder offers no advantage.
+- Sparse data where age-to-age factors are unreliable across all links.
+- Comparing against SA / CL for sanity check.
+
+``` r
+
+lr_ed <- fit_lr(tri, method = "ed")
+plot(lr_ed, type = "clr")
+```
+
+## Method 3: Classical Chain Ladder (`"cl"`)
+
+Classical Mack model:
+
+``` math
+\hat{C}^L_{i,k+1} = f_k \cdot \hat{C}^L_{i,k}
+```
+
+Behaviour:
+
+- Standard reserving practice. Equivalent to
+  `fit_cl(tri, value_var = "closs")` for the loss projection, but
+  [`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
+  additionally projects exposure forward via CL on `crp` and computes
+  the loss-ratio uncertainty via the delta method.
+- Volatile when early $`f_k`$ are noisy — small denominators amplify
+  link errors.
+
+When to use:
+
+- Mature, stable portfolios where age-to-age factors are well-behaved
+  across the full development.
+- Reserving exercises where regulators expect the classical Mack form
+  for documentation.
+
+``` r
+
+lr_cl <- fit_lr(tri, method = "cl")
+plot(lr_cl, type = "clr")
+```
+
+## Comparison
+
+``` r
+
+lrs <- list(
+  sa = fit_lr(tri, method = "sa"),
+  ed = fit_lr(tri, method = "ed"),
+  cl = fit_lr(tri, method = "cl")
+)
+
+# Cohort-level summary
+summary(lrs$sa)$ultimate
+summary(lrs$ed)$ultimate
+summary(lrs$cl)$ultimate
+```
+
+## Variance and confidence intervals
+
+[`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
+reports analytical standard errors via the delta method. Two delta
+variants:
+
+- `delta_method = "simple"` (default) — treats exposure as fixed,
+  $`\mathrm{SE}(L/E) \approx \mathrm{SE}(L)/E`$.
+- `delta_method = "full"` — accounts for exposure uncertainty and
+  loss-exposure correlation `rho`:
+
+``` math
+\mathrm{Var}(L/E) \approx \frac{\mathrm{Var}(L)}{E^2}
+  + \frac{L^2 \mathrm{Var}(E)}{E^4}
+  - \frac{2 \rho L \mathrm{SE}(L) \mathrm{SE}(E)}{E^3}
+```
+
+Bootstrap intervals are also available:
+
+``` r
+
+lr_boot <- fit_lr(tri, method = "sa", bootstrap = TRUE, B = 1000, seed = 1)
+summary(lr_boot)
+```
+
+## Choosing a method
+
+Quick decision flow:
+
+    Is the portfolio fully matured (all cohorts past maturity)?
+      ├── Yes  →  "cl" (classical, regulator-friendly)
+      └── No
+            ├── Are early age-to-age factors volatile?
+            │     ├── Yes  →  "sa" (default — exposure-driven smoothing)
+            │     └── No   →  "cl"
+            └── Is exposure (rp) the more informative signal?
+                  ├── Yes  →  "ed"
+                  └── No   →  "sa"
+
+In practice: **start with `"sa"`** (the default), then run `"cl"` and
+`"ed"` for sensitivity. If all three agree, the projection is robust. If
+they diverge, inspect maturity detection and the underlying ata factors.
