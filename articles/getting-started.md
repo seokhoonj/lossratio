@@ -153,3 +153,9 @@ for the dedicated walkthrough.
   [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md),
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md),
   and triangle-style visualisations.
+- [`vignette("regime-detection")`](https://seokhoonj.github.io/lossratio/articles/regime-detection.md)
+  —
+  [`detect_cohort_regime()`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  for structural-change diagnosis across cohorts.
+- [`vignette("backtest")`](https://seokhoonj.github.io/lossratio/articles/backtest.md)
+  — calendar-diagonal hold-out validation with `fit_cl` or `fit_lr`.
