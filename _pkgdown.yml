@@ -9,12 +9,15 @@ home:
 
 navbar:
   structure:
-    left:  [intro, reference, news]
+    left:  [intro, articles, reference, news]
     right: [search, github]
   components:
     intro:
       text: Get started
       href: articles/getting-started.html
+    articles:
+      text: Articles
+      href: articles/index.html
 
 reference:
 - title: Input layer
