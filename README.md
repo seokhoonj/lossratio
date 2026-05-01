@@ -1,6 +1,4 @@
-<img src="man/figures/logo.png" alt="" width="200"/>
-
-# lossratio
+# lossratio <img src="man/figures/logo.png" align="right" alt="" height="120"/>
 
 Loss ratio analysis and projection for insurance experience data.
 

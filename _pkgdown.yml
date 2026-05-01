@@ -2,7 +2,6 @@ url: https://seokhoonj.github.io/lossratio
 
 template:
   bootstrap: 5
-  bootswatch: cosmo
 
 home:
   title: lossratio
