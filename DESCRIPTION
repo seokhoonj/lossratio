@@ -1,0 +1,41 @@
+Package: lossratio
+Type: Package
+Title: Loss Ratio Analysis for Insurance Experience Data
+Version: 0.0.0.9000
+Authors@R:
+    person(given = "Seokhoon", family = "Joo", email = "seokhoonj@gmail.com",
+           role = c("aut", "cre"))
+Description: A toolkit for analysing insurance loss ratios using structured
+    experience data with loss and risk premium. Loss ratio is defined as
+    loss divided by risk premium. Provides underwriting-period,
+    calendar-period, and total aggregation frameworks with cumulative
+    metrics, margin analysis, and composition diagnostics. Intended for
+    actuarial workflows and extended with reserving methods such as
+    chain ladder.
+License: GPL (>= 2)
+URL: https://seokhoonj.github.io/lossratio, https://github.com/seokhoonj/lossratio
+BugReports: https://github.com/seokhoonj/lossratio/issues
+Encoding: UTF-8
+LazyData: true
+Depends: R (>= 4.1.0)
+Imports:
+    cli (>= 3.6.0),
+    data.table (>= 1.14.2),
+    ggplot2 (>= 3.3.3),
+    ggshort,
+    instead,
+    rlang (>= 1.0.0)
+Suggests:
+    changepoint,
+    ecp,
+    knitr,
+    pkgdown,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Remotes:
+    seokhoonj/instead,
+    seokhoonj/ggshort
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3

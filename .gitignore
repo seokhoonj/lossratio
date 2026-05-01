@@ -1,0 +1,48 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Renviron
+.lintr
+
+# renv
+renv/library/
+
+# files
+*.csv
+*.doc
+*.docx
+*.jpg
+*.jpeg
+*.pdf
+*.ppt
+*.pptx
+*.rds
+*.xls
+*.xlsb
+*.xlsm
+*.xlsx
+*.zip
+
+# build artifacts
+*.tar.gz
+*.Rcheck/
+
+# generated docs
+doc/
+docs/
+pkgdown/
+
+# dev / local workspace
+dev/
+CLAUDE.md
+.claude/
+*_files/
+*.html
+
+# OS file
+.DS_Store
+
+/doc/
+/Meta/
+Rplots.pdf

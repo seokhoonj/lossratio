@@ -1,0 +1,129 @@
+url: https://seokhoonj.github.io/lossratio
+
+template:
+  bootstrap: 5
+  bootswatch: cosmo
+
+home:
+  title: lossratio
+  description: Loss ratio analysis and projection for insurance experience data.
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    intro:
+      text: Get started
+      href: articles/getting-started.html
+    articles:
+      text: Articles
+      menu:
+      - text: Aggregation frameworks
+        href: articles/aggregation-frameworks.html
+      - text: Loss-ratio projection methods
+        href: articles/loss-ratio-methods.html
+      - text: Chain ladder
+        href: articles/chain-ladder.html
+      - text: Triangle and ata diagnostics
+        href: articles/triangle-diagnostics.html
+      - text: Regime detection
+        href: articles/regime-detection.html
+      - text: Backtest
+        href: articles/backtest.html
+
+reference:
+- title: Input layer
+  desc: >
+    Validation, coercion, and helpers for raw experience data.
+  contents:
+  - check_experience
+  - is_experience
+  - as_experience
+  - add_experience_period
+  - validate_triangle
+
+- title: Aggregation builders
+  desc: >
+    Three frameworks for viewing the same long-format experience data —
+    cohort × dev (`triangle`), calendar period (`calendar`), or
+    portfolio total (`total`).
+  contents:
+  - build_triangle
+  - build_calendar
+  - build_total
+
+- title: Age-to-age (ATA) factors
+  desc: Building blocks of the chain-ladder method.
+  contents:
+  - build_ata
+  - fit_ata
+  - summary_ata
+  - find_ata_maturity
+
+- title: Exposure-driven (ED) intensity
+  desc: Building blocks of the exposure-driven method.
+  contents:
+  - build_ed
+  - fit_ed
+  - summary_ed
+
+- title: Projection
+  desc: >
+    Chain ladder and loss-ratio projection. `fit_lr` supports three
+    methods — `"sa"` (stage-adaptive, default), `"ed"`, and `"cl"`.
+  contents:
+  - fit_cl
+  - fit_lr
+
+- title: Regime detection
+  desc: Structural change detection across underwriting cohorts.
+  contents:
+  - detect_cohort_regime
+
+- title: Backtest
+  desc: >
+    Hold out the latest calendar diagonals from a triangle, refit, and
+    compare projections against the withheld actuals.
+  contents:
+  - backtest
+
+- title: Visualisation
+  desc: >
+    `plot()` (base generic) and `plot_triangle()` (lossratio generic)
+    dispatch on the object class.
+  contents:
+  - plot_triangle
+  - starts_with("plot.")
+  - starts_with("plot_triangle.")
+
+- title: Other S3 methods
+  desc: print / summary / longer methods registered on package classes.
+  contents:
+  - starts_with("print.")
+  - starts_with("summary.")
+  - starts_with("longer.")
+
+- title: Helpers
+  contents:
+  - get_recent_weights
+  - longer
+
+- title: Datasets
+  contents:
+  - experience
+
+articles:
+- title: Workflow
+  navbar: ~
+  contents:
+  - getting-started
+  - aggregation-frameworks
+- title: Methods
+  navbar: ~
+  contents:
+  - loss-ratio-methods
+  - chain-ladder
+  - triangle-diagnostics
+  - regime-detection
+  - backtest
