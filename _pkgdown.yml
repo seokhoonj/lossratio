@@ -10,7 +10,7 @@ home:
 navbar:
   structure:
     left:  [intro, articles, reference, news]
-    right: [search, github]
+    right: [korean, search, github]
   components:
     intro:
       text: Get started
@@ -18,6 +18,9 @@ navbar:
     articles:
       text: Articles
       href: articles/index.html
+    korean:
+      text: 한국어
+      href: articles/getting-started-ko.html
 
 reference:
 - title: Input layer
@@ -114,3 +117,13 @@ articles:
   - triangle-diagnostics
   - regime-detection
   - backtest
+- title: 한국어 (Korean)
+  navbar: ~
+  contents:
+  - "articles/getting-started-ko"
+  - "articles/aggregation-frameworks-ko"
+  - "articles/loss-ratio-methods-ko"
+  - "articles/chain-ladder-ko"
+  - "articles/triangle-diagnostics-ko"
+  - "articles/regime-detection-ko"
+  - "articles/backtest-ko"

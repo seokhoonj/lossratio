@@ -1,0 +1,183 @@
+---
+title: "손해율 추정 방법론: SA, ED, CL"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{손해율 추정 방법론: SA, ED, CL}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  fig.width  = 8,
+  fig.height = 5
+)
+```
+
+> 영어 원본 보기: [Loss-ratio projection methods: SA, ED, CL](../loss-ratio-methods.html)
+
+`fit_lr()` 은 `triangle` 객체로부터 코호트별 누적 손해율을
+추정한다. 세 가지 방법이 제공되며, 본 vignette 은 각 방법의
+trade-off 를 설명한다.
+
+## 표기
+
+코호트 $i$, dev $k$ 에 대하여:
+
+- $C^L_{i,k}$ — 누적 손해액
+- $C^P_{i,k}$ — 누적 위험보험료 (익스포저)
+- $f_k = C^L_{k+1} / C^L_k$ — 연속 발달비(age-to-age, chain ladder) 계수
+- $g_k = \Delta C^L_k / C^P_k$ — 노출 기반(exposure-driven, ED) intensity
+- 성숙점(maturity point) $m_g$ — 그룹 $g$ 에서 $f_k$ 가 안정화되는
+  dev (CV / RSE 임계값으로 탐지)
+
+## 방법 1: 단계 적응적(stage-adaptive, SA) (`"sa"`, 기본값)
+
+기본 방법은 $f_k$ 가 초반에는 변동성이 크고 후반에는 안정적이라는
+사실, 그리고 $g_k$ 는 그 반대로 거동한다는 사실을 활용한다. SA 는
+성숙점에서 추정량을 전환한다:
+
+$$
+\hat{C}^L_{i,k+1} \;=\;
+\begin{cases}
+\hat{C}^L_{i,k} + g_k \cdot C^P_{i,k} & k < m_g \quad \text{(성숙 이전: ED)} \\
+f_k \cdot \hat{C}^L_{i,k}              & k \ge m_g \quad \text{(성숙 이후: CL)}
+\end{cases}
+$$
+
+거동:
+
+- **성숙 이전**: 손해 추정치를 보험료 규모에 anchor 한다.
+  초기 $f_k$ 가 노이즈가 있을 때 고전적 CL 이 겪는 변동적 link
+  폭발을 회피한다.
+- **성숙 이후**: 코호트 자체의 관측 수준을 보존한다. pure ED 가
+  꼬리에서 겪는 "모든 코호트가 평균으로 수렴" 거동을 회피한다.
+
+사용 시점:
+
+- 발달이 여러 해에 걸치는 long-tail 상품.
+- 최근 코호트(미성숙 데이터)와 오래된 코호트(성숙)가 혼재하는 경우.
+- 성숙 이전·이후의 구조적 차이가 있는 건강보험 코호트
+  (예: 면책기간 전환).
+
+```{r, eval = FALSE}
+library(lossratio)
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp, group_var = cv_nm)
+
+lr_sa <- fit_lr(tri, method = "sa")        # 기본값
+plot(lr_sa, type = "clr")
+summary(lr_sa)
+```
+
+## 방법 2: 노출 기반(exposure-driven, ED) (`"ed"`)
+
+모든 미래 증분에 ED 를 적용한다:
+
+$$
+\hat{C}^L_{i,k+1} = \hat{C}^L_{i,k} + g_k \cdot C^P_{i,k}
+$$
+
+거동:
+
+- 보험료 규모가 전체 발달 구간에 걸쳐 정보를 가질 때 안정적이다.
+- 코호트 고유의 수준 신호를 잃는다 — 관측 손해가 더 높은
+  코호트도 그룹 단위 $g_k$ 로 수렴한다.
+
+사용 시점:
+
+- chain ladder 가 이점을 주지 않는 short-tail 상품.
+- 모든 link 에서 age-to-age 계수가 신뢰할 수 없는 희소 데이터.
+- SA / CL 과 비교하여 sanity check 용도.
+
+```{r, eval = FALSE}
+lr_ed <- fit_lr(tri, method = "ed")
+plot(lr_ed, type = "clr")
+```
+
+## 방법 3: 고전적 chain ladder (`"cl"`)
+
+고전적 Mack 모형:
+
+$$
+\hat{C}^L_{i,k+1} = f_k \cdot \hat{C}^L_{i,k}
+$$
+
+거동:
+
+- 표준적인 적립 실무. 손해 투영에 한해서는 `fit_cl(tri, value_var = "closs")`
+  과 동등하지만, `fit_lr()` 은 추가로 `crp` 에 대한 CL 로 익스포저를
+  전방 추정하고 delta method 로 손해율 불확실성을 계산한다.
+- 초기 $f_k$ 가 노이즈가 있을 때 변동적이다 — 작은 분모가 link 오차를
+  증폭한다.
+
+사용 시점:
+
+- age-to-age 계수가 전체 발달 구간에서 안정적인 성숙·안정 포트폴리오.
+- 규제 당국이 문서화 목적으로 고전적 Mack 형식을 요구하는 적립 작업.
+
+```{r, eval = FALSE}
+lr_cl <- fit_lr(tri, method = "cl")
+plot(lr_cl, type = "clr")
+```
+
+## 비교
+
+```{r, eval = FALSE}
+lrs <- list(
+  sa = fit_lr(tri, method = "sa"),
+  ed = fit_lr(tri, method = "ed"),
+  cl = fit_lr(tri, method = "cl")
+)
+
+# 코호트 단위 요약
+summary(lrs$sa)$ultimate
+summary(lrs$ed)$ultimate
+summary(lrs$cl)$ultimate
+```
+
+## 분산과 신뢰구간
+
+`fit_lr()` 은 delta method 로 해석적 표준오차를 산출한다.
+delta method 변형은 두 가지이다:
+
+- `delta_method = "simple"` (기본값) — 익스포저를 고정으로 취급,
+  $\mathrm{SE}(L/E) \approx \mathrm{SE}(L)/E$.
+- `delta_method = "full"` — 익스포저 불확실성과 손해-익스포저 상관계수
+  `rho` 를 반영한다:
+
+$$
+\mathrm{Var}(L/E) \approx \frac{\mathrm{Var}(L)}{E^2}
+  + \frac{L^2 \mathrm{Var}(E)}{E^4}
+  - \frac{2 \rho L \mathrm{SE}(L) \mathrm{SE}(E)}{E^3}
+$$
+
+부트스트랩 구간도 사용 가능하다:
+
+```{r, eval = FALSE}
+lr_boot <- fit_lr(tri, method = "sa", bootstrap = TRUE, B = 1000, seed = 1)
+summary(lr_boot)
+```
+
+## 방법 선택
+
+빠른 의사결정 흐름:
+
+```
+포트폴리오가 완전히 성숙했는가 (모든 코호트가 성숙점 이후)?
+  ├── Yes  →  "cl" (고전적, 규제 친화적)
+  └── No
+        ├── 초기 age-to-age 계수가 변동적인가?
+        │     ├── Yes  →  "sa" (기본 — 노출 기반 평활)
+        │     └── No   →  "cl"
+        └── 익스포저(rp) 가 더 정보적인 신호인가?
+              ├── Yes  →  "ed"
+              └── No   →  "sa"
+```
+
+실무: **`"sa"` 로 시작하라** (기본값). 이후 민감도 점검을 위해
+`"cl"` 과 `"ed"` 를 함께 실행한다. 셋이 모두 일치하면 추정은
+견고하다. 결과가 갈라지면 성숙점 탐지와 기저 ata 계수를 점검한다.

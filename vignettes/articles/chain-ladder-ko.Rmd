@@ -1,0 +1,178 @@
+---
+title: "fit_cl 을 이용한 chain ladder 준비금 산출"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{fit_cl 을 이용한 chain ladder 준비금 산출}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  fig.width  = 8,
+  fig.height = 5
+)
+```
+
+> 영어 원본 보기: [Chain ladder reserving with fit_cl](../chain-ladder.html)
+
+`fit_cl()` 은 단일 값 컬럼에 대한 전용 chain ladder 적합 함수이다.
+손해와 익스포저를 동시에 추정해 손해율을 산출하는 `fit_lr()` 과 달리,
+`fit_cl()` 은 하나의 누적 지표를 전방으로 추정하고 코호트별 Mack
+방식 표준오차를 함께 계산한다.
+
+## 기본 사용법
+
+```{r, eval = FALSE}
+library(lossratio)
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp, group_var = cv_nm)
+
+cl <- fit_cl(tri, value_var = "closs", method = "mack")
+print(cl)
+```
+
+`value_var` 은 추정 대상 누적 컬럼을 선택한다 — 준비금 산출에는
+보통 `"closs"` (누적 손해), 익스포저 추정에는 `"crp"` (누적
+위험보험료) 를 쓴다.
+
+## 방법: basic vs Mack
+
+두 가지 추정 방법이 제공된다.
+
+| `method`   | 계산 내용                                                       |
+|------------|-----------------------------------------------------------------|
+| `"basic"`  | 점 추정만 (선택된 연속 발달비(age-to-age) 인자)                 |
+| `"mack"`   | 점 추정 + 인자 / 프로세스 / 모수 SE                             |
+
+```{r, eval = FALSE}
+cl_basic <- fit_cl(tri, value_var = "closs", method = "basic")
+cl_mack  <- fit_cl(tri, value_var = "closs", method = "mack")
+
+names(cl_basic)
+#> [1] "call" "data" "method" "group_var" "cohort_var" "dev_var" "value_var"
+#>     "full" "pred" "ata" "summary" "factor" "selected" "maturity"
+#>     "alpha" "sigma_method" "weight_var" "recent" "use_maturity"
+#>     "maturity_args" "tail" "tail_factor"
+
+# Mack 은 $full 과 $summary 에 분산 추정값을 추가한다
+head(cl_mack$summary)
+#>    cv_nm     cohort latest ultimate reserve   proc_se   param_se        se        cv
+#> 1:  ...
+```
+
+`method = "mack"` 으로 적합하면 추정 플롯의 신뢰 구간 (`show_interval
+= TRUE`) 을 사용할 수 있다.
+
+```{r, eval = FALSE}
+plot(cl_mack, type = "projection", show_interval = TRUE)
+```
+
+## Tail 인자
+
+마지막 관측 경과 기간에서도 손해가 여전히 발달 중인 triangle 의
+경우, 외삽한 tail 인자(tail factor) 로 ultimate 를 추정한다.
+
+```{r, eval = FALSE}
+# 선택된 ata 인자로부터 로그 선형 외삽
+cl_tail <- fit_cl(tri, value_var = "closs", method = "mack", tail = TRUE)
+
+# 또는 명시적인 tail 인자 값 지정
+cl_tail <- fit_cl(tri, value_var = "closs", method = "mack", tail = 1.025)
+```
+
+외삽은 추정된 ata 인자에 대해 $\log(f_k - 1) \sim k$ 회귀를 적합한 뒤,
+외삽된 $f_k$ 의 누적 곱만큼 추정 범위를 연장한다. 기본값은
+비활성 (`tail = FALSE`) 이다.
+
+## Maturity 필터링
+
+선택된 ata 인자가 변동성이 크다면, 추정을 성숙(mature) 영역으로
+제한할 수 있다.
+
+```{r, eval = FALSE}
+cl_mat <- fit_cl(
+  tri,
+  value_var     = "closs",
+  method        = "mack",
+  maturity_args = list(cv_threshold = 0.10, rse_threshold = 0.05)
+)
+
+cl_mat$maturity
+#> 그룹별 maturity 인덱스 (이 ata 링크 이후로 CL 추정 사용)
+```
+
+`maturity_args` 는 `find_ata_maturity()` 로 그대로 전달된다.
+
+## 분산 성분 (Mack)
+
+`fit_cl(method = "mack")` 은 추정 분산을 다음과 같이 분해한다.
+
+- `proc_se` — 프로세스 분산. $\sigma^2_k$ (경과 기간별 잔차
+  링크 분산) 으로부터 도출.
+- `param_se` — 모수 분산. 선택된 연속 발달비 인자 $\hat{f}_k$
+  의 불확실성으로부터 도출.
+- `se` — 총 표준오차,
+  $\sqrt{\mathrm{proc\_se}^2 + \mathrm{param\_se}^2}$.
+- `cv` — 변동계수, `se / value_proj`.
+
+```{r, eval = FALSE}
+summary(cl_mack)
+#>    cv_nm     cohort   latest  ultimate  reserve  proc_se param_se       se      cv
+#> 1:   ...                                  ...      ...      ...     ...      ...
+```
+
+## 준비금 플롯
+
+`type = "reserve"` 는 코호트별 준비금을 (Mack 일 경우 선택적
+오차 막대와 함께) 표시한다.
+
+```{r, eval = FALSE}
+plot(cl_mack, type = "reserve", conf_level = 0.95)
+```
+
+## Triangle 시각화
+
+`plot_triangle()` 은 코호트 × dev 셀을 히트맵으로 표시하며,
+관측된 셀과 추정된 셀을 구분한다.
+
+```{r, eval = FALSE}
+plot_triangle(cl_mack, what = "full")    # 관측 + 추정
+plot_triangle(cl_mack, what = "pred")    # 추정만
+plot_triangle(cl_mack, what = "data")    # 관측만
+```
+
+`label_style = "cv"` 모드는 셀별 변동계수를 표시하며, 신뢰성이
+낮은 셀을 식별하는 데 유용하다.
+
+```{r, eval = FALSE}
+plot_triangle(cl_mack, label_style = "cv")
+plot_triangle(cl_mack, label_style = "se")
+plot_triangle(cl_mack, label_style = "ci")
+```
+
+## Sigma 외삽 방법
+
+Mack 분산은 모든 발달 링크에서 $\sigma_k$ 가 필요한데, 마지막
+링크에서는 직접 추정이 불가능하다. `sigma_method` 가 외삽
+방식을 결정한다.
+
+| `sigma_method`  | 동작                                                                 |
+|-----------------|----------------------------------------------------------------------|
+| `"min_last2"`   | (기본) 추정 가능한 마지막 두 $\sigma$ 의 최솟값 — 보수적             |
+| `"locf"`        | 마지막 관측값 carried forward                                        |
+| `"loglinear"`   | 관측된 $\sigma_k$ 시퀀스에 대한 로그 선형 외삽                       |
+
+```{r, eval = FALSE}
+fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
+```
+
+## 함께 보기
+
+- `vignette("loss-ratio-methods")` — `fit_lr()` 을 사용해야 할 때.
+- `vignette("triangle-diagnostics")` — `summary_ata()`,
+  `find_ata_maturity()`, ata 진단 플롯.
+- `?fit_cl`, `?find_ata_maturity`, `?fit_ata`.
