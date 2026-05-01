@@ -31,7 +31,6 @@ renv/library/
 # generated docs
 doc/
 docs/
-pkgdown/
 
 # dev / local workspace
 dev/
