@@ -36,7 +36,7 @@ knitr::opts_chunk$set(
 
 ## 데이터와 설정
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 
 data(experience)
@@ -49,17 +49,9 @@ tri_sur <- build_triangle(exp[cv_nm == "SUR"], cv_nm)
 기본 방법은 `"ecp"` 로, 데이터로부터 regime 의 개수까지 결정하는 비모수
 다변량 변화점 알고리즘이다.
 
-```{r, eval = FALSE}
+```{r}
 r <- detect_cohort_regime(tri_sur, K = 12, method = "ecp")
 r
-#> <cohort_regime>
-#>   method      : ecp
-#>   value_var   : clr
-#>   window (K)  : elap_m 1, ..., 12
-#>   cohorts     : 19 analysed (11 dropped)
-#>   regimes     : 2
-#>   breakpoints : 24.04
-#>   PC1 / PC2   : 79.8% / 13.2%
 ```
 
 창 `K` 는 코호트 특징 벡터를 정의하는 경과 기간 수를 조절한다. 최소 `K` 기간
@@ -68,28 +60,10 @@ r
 
 ## 요약과 regime 별 멤버십
 
-```{r, eval = FALSE}
+```{r}
 summary(r)
-#> Cohort regime detection summary
-#>   method    : ecp
-#>   value_var : clr
-#>   window    : elap_m 1, ..., 12
-#>   cohorts   : 19 analysed (11 dropped)
-#>
-#> Regimes (2):
-#>   1: 23.04, ..., 24.03 (12 cohorts)
-#>   2: 24.04, ..., 24.10 (7 cohorts)
-#>
-#> Breakpoints: 24.04
 
 r$labels
-#>         cohort                regime regime_id
-#>         <Date>                <fctr>     <int>
-#>  1: 2023-04-01  23.04, ..., 24.03         1
-#>  2: 2023-05-01  23.04, ..., 24.03         1
-#>  ...
-#> 13: 2024-04-01  24.04, ..., 24.10         2
-#>  ...
 ```
 
 ## 시각화
@@ -98,7 +72,7 @@ r$labels
 보여 준다. PCA 공간에서 regime 들이 잘 분리된다면 구조적 변화가 시각적으로
 확인된 것이다.
 
-```{r, eval = FALSE}
+```{r}
 plot(r)
 ```
 
@@ -133,7 +107,7 @@ plot(r)
 regime 개수를 고정해 비교하고 싶을 때 — 예를 들어 2-regime 가설과 3-regime
 가설을 비교할 때 — `n_regimes` 를 넘긴다.
 
-```{r, eval = FALSE}
+```{r}
 r2 <- detect_cohort_regime(tri_sur, K = 12, method = "ecp", n_regimes = 3)
 summary(r2)
 ```

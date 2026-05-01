@@ -62,7 +62,7 @@ $$
 - 성숙 이전·이후의 구조적 차이가 있는 건강보험 코호트
   (예: 면책기간 전환).
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
@@ -93,7 +93,7 @@ $$
 - 모든 link 에서 age-to-age 계수가 신뢰할 수 없는 희소 데이터.
 - SA / CL 과 비교하여 sanity check 용도.
 
-```{r, eval = FALSE}
+```{r}
 lr_ed <- fit_lr(tri, method = "ed")
 plot(lr_ed, type = "clr")
 ```
@@ -119,14 +119,14 @@ $$
 - age-to-age 계수가 전체 발달 구간에서 안정적인 성숙·안정 포트폴리오.
 - 규제 당국이 문서화 목적으로 고전적 Mack 형식을 요구하는 적립 작업.
 
-```{r, eval = FALSE}
+```{r}
 lr_cl <- fit_lr(tri, method = "cl")
 plot(lr_cl, type = "clr")
 ```
 
 ## 비교
 
-```{r, eval = FALSE}
+```{r}
 lrs <- list(
   sa = fit_lr(tri, method = "sa"),
   ed = fit_lr(tri, method = "ed"),
@@ -157,7 +157,7 @@ $$
 
 부트스트랩 구간도 사용 가능하다:
 
-```{r, eval = FALSE}
+```{r}
 lr_boot <- fit_lr(tri, method = "sa", bootstrap = TRUE, B = 1000, seed = 1)
 summary(lr_boot)
 ```

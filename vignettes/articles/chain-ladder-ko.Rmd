@@ -25,7 +25,7 @@ knitr::opts_chunk$set(
 
 ## 기본 사용법
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
@@ -48,26 +48,20 @@ print(cl)
 | `"basic"`  | 점 추정만 (선택된 연속 발달비(age-to-age) 인자)                 |
 | `"mack"`   | 점 추정 + 인자 / 프로세스 / 모수 SE                             |
 
-```{r, eval = FALSE}
+```{r}
 cl_basic <- fit_cl(tri, value_var = "closs", method = "basic")
 cl_mack  <- fit_cl(tri, value_var = "closs", method = "mack")
 
 names(cl_basic)
-#> [1] "call" "data" "method" "group_var" "cohort_var" "dev_var" "value_var"
-#>     "full" "pred" "ata" "summary" "factor" "selected" "maturity"
-#>     "alpha" "sigma_method" "weight_var" "recent" "use_maturity"
-#>     "maturity_args" "tail" "tail_factor"
 
 # Mack 은 $full 과 $summary 에 분산 추정값을 추가한다
 head(cl_mack$summary)
-#>    cv_nm     cohort latest ultimate reserve   proc_se   param_se        se        cv
-#> 1:  ...
 ```
 
 `method = "mack"` 으로 적합하면 추정 플롯의 신뢰 구간 (`show_interval
 = TRUE`) 을 사용할 수 있다.
 
-```{r, eval = FALSE}
+```{r}
 plot(cl_mack, type = "projection", show_interval = TRUE)
 ```
 
@@ -76,7 +70,7 @@ plot(cl_mack, type = "projection", show_interval = TRUE)
 마지막 관측 경과 기간에서도 손해가 여전히 발달 중인 triangle 의
 경우, 외삽한 tail 인자(tail factor) 로 ultimate 를 추정한다.
 
-```{r, eval = FALSE}
+```{r}
 # 선택된 ata 인자로부터 로그 선형 외삽
 cl_tail <- fit_cl(tri, value_var = "closs", method = "mack", tail = TRUE)
 
@@ -93,7 +87,7 @@ cl_tail <- fit_cl(tri, value_var = "closs", method = "mack", tail = 1.025)
 선택된 ata 인자가 변동성이 크다면, 추정을 성숙(mature) 영역으로
 제한할 수 있다.
 
-```{r, eval = FALSE}
+```{r}
 cl_mat <- fit_cl(
   tri,
   value_var     = "closs",
@@ -102,7 +96,6 @@ cl_mat <- fit_cl(
 )
 
 cl_mat$maturity
-#> 그룹별 maturity 인덱스 (이 ata 링크 이후로 CL 추정 사용)
 ```
 
 `maturity_args` 는 `find_ata_maturity()` 로 그대로 전달된다.
@@ -119,10 +112,8 @@ cl_mat$maturity
   $\sqrt{\mathrm{proc\_se}^2 + \mathrm{param\_se}^2}$.
 - `cv` — 변동계수, `se / value_proj`.
 
-```{r, eval = FALSE}
+```{r}
 summary(cl_mack)
-#>    cv_nm     cohort   latest  ultimate  reserve  proc_se param_se       se      cv
-#> 1:   ...                                  ...      ...      ...     ...      ...
 ```
 
 ## 준비금 플롯
@@ -130,7 +121,7 @@ summary(cl_mack)
 `type = "reserve"` 는 코호트별 준비금을 (Mack 일 경우 선택적
 오차 막대와 함께) 표시한다.
 
-```{r, eval = FALSE}
+```{r}
 plot(cl_mack, type = "reserve", conf_level = 0.95)
 ```
 
@@ -139,7 +130,7 @@ plot(cl_mack, type = "reserve", conf_level = 0.95)
 `plot_triangle()` 은 코호트 × dev 셀을 히트맵으로 표시하며,
 관측된 셀과 추정된 셀을 구분한다.
 
-```{r, eval = FALSE}
+```{r}
 plot_triangle(cl_mack, what = "full")    # 관측 + 추정
 plot_triangle(cl_mack, what = "pred")    # 추정만
 plot_triangle(cl_mack, what = "data")    # 관측만
@@ -148,7 +139,7 @@ plot_triangle(cl_mack, what = "data")    # 관측만
 `label_style = "cv"` 모드는 셀별 변동계수를 표시하며, 신뢰성이
 낮은 셀을 식별하는 데 유용하다.
 
-```{r, eval = FALSE}
+```{r}
 plot_triangle(cl_mack, label_style = "cv")
 plot_triangle(cl_mack, label_style = "se")
 plot_triangle(cl_mack, label_style = "ci")
@@ -166,7 +157,7 @@ Mack 분산은 모든 발달 링크에서 $\sigma_k$ 가 필요한데, 마지막
 | `"locf"`        | 마지막 관측값 carried forward                                        |
 | `"loglinear"`   | 관측된 $\sigma_k$ 시퀀스에 대한 로그 선형 외삽                       |
 
-```{r, eval = FALSE}
+```{r}
 fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
 ```
 

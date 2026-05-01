@@ -44,23 +44,19 @@ knitr::opts_chunk$set(
 
 ## Triangle (코호트 × dev)
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
 
 tri <- build_triangle(exp, group_var = cv_nm)
 head(tri)
-#>    cv_nm n_obs     cohort dev   loss     rp  closs    crp ...
-#> 1:   SUR    30 2023-04-01       1      0  ...       0  ...
-#> 2:   2CI    30 2023-04-01       1      0  ...       0  ...
-#> ...
 ```
 
 각 행은 (코호트, dev) 셀 하나이며 누적 손해 / 누적 위험보험료
 값을 갖는다. 라인 플롯이나 히트맵으로 시각화할 수 있다.
 
-```{r, eval = FALSE}
+```{r}
 plot(tri)              # 코호트별 궤적, 그룹별 facet
 plot_triangle(tri)     # 코호트 × dev clr 히트맵
 ```
@@ -73,13 +69,9 @@ plot_triangle(tri)     # 코호트 × dev clr 히트맵
 
 ## Calendar (달력 기간만)
 
-```{r, eval = FALSE}
+```{r}
 cal <- build_calendar(exp, group_var = cv_nm, calendar_var = "cym")
 head(cal)
-#>    cv_nm   calendar dev   loss     rp  closs    crp ...
-#> 1:   SUR 2023-04-01       1      0  ...       0  ...
-#> 2:   SUR 2023-05-01       2      0  ...       0  ...
-#> ...
 ```
 
 각 행은 그룹별 달력 기간 하나이다. 여기서 `dev` 컬럼은 그룹
@@ -96,14 +88,14 @@ Calendar 집계는 수학적으로 triangle 의 **대각선 합** 이다.
   on-leveling 이벤트)
 - 포트폴리오 모니터링 대시보드
 
-```{r, eval = FALSE}
+```{r}
 plot(cal)                       # x = calendar
 plot(cal, x_by = "dev")         # x = 순차 인덱스
 ```
 
 ## Total (포트폴리오 요약)
 
-```{r, eval = FALSE}
+```{r}
 tot <- build_total(
   exp,
   group_var = cv_nm,
@@ -112,8 +104,6 @@ tot <- build_total(
   period_to   = "2024-03-01"
 )
 head(tot)
-#>    cv_nm n_obs sales_start sales_end       loss          rp        lr ...
-#> 1:   SUR    12  2023-04-01 2024-03-01  ...        ...       ...
 ```
 
 그룹당 한 행이며 해당 윈도우의 손해 / 위험보험료 / 손해율을
@@ -149,7 +139,7 @@ head(tot)
 집계 후 각 객체는 원본 컬럼 메타데이터를 속성으로 저장한다
 (플롯 라벨과 단위(granularity) 인지 날짜 형식 지정에 사용된다).
 
-```{r, eval = FALSE}
+```{r}
 attr(tri, "cohort_var")      # "uym"
 attr(tri, "cohort_type")     # "month"
 attr(tri, "dev_var")         # "elap_m"

@@ -38,7 +38,7 @@ multivariate sequence.
 
 ## Data and setup
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 
 data(experience)
@@ -52,17 +52,9 @@ The default method is `"ecp"`, a non-parametric multivariate
 change-point algorithm that determines the number of regimes from the
 data:
 
-```{r, eval = FALSE}
+```{r}
 r <- detect_cohort_regime(tri_sur, K = 12, method = "ecp")
 r
-#> <cohort_regime>
-#>   method      : ecp
-#>   value_var   : clr
-#>   window (K)  : elap_m 1, ..., 12
-#>   cohorts     : 19 analysed (11 dropped)
-#>   regimes     : 2
-#>   breakpoints : 24.04
-#>   PC1 / PC2   : 79.8% / 13.2%
 ```
 
 The window `K` controls how many development periods define the cohort
@@ -72,28 +64,10 @@ captures more of the trajectory but drops more recent cohorts.
 
 ## Summary and per-regime membership
 
-```{r, eval = FALSE}
+```{r}
 summary(r)
-#> Cohort regime detection summary
-#>   method    : ecp
-#>   value_var : clr
-#>   window    : elap_m 1, ..., 12
-#>   cohorts   : 19 analysed (11 dropped)
-#>
-#> Regimes (2):
-#>   1: 23.04, ..., 24.03 (12 cohorts)
-#>   2: 24.04, ..., 24.10 (7 cohorts)
-#>
-#> Breakpoints: 24.04
 
 r$labels
-#>         cohort                regime regime_id
-#>         <Date>                <fctr>     <int>
-#>  1: 2023-04-01  23.04, ..., 24.03         1
-#>  2: 2023-05-01  23.04, ..., 24.03         1
-#>  ...
-#> 13: 2024-04-01  24.04, ..., 24.10         2
-#>  ...
 ```
 
 ## Visualisation
@@ -102,7 +76,7 @@ r$labels
 detected regime. If the regimes are well-separated in PCA space, the
 structural shift is visually confirmed:
 
-```{r, eval = FALSE}
+```{r}
 plot(r)
 ```
 
@@ -141,7 +115,7 @@ underwriting/rate shift.
 If you want to compare a fixed number of regimes — for example,
 two-vs-three regime hypotheses — pass `n_regimes`:
 
-```{r, eval = FALSE}
+```{r}
 r2 <- detect_cohort_regime(tri_sur, K = 12, method = "ecp", n_regimes = 3)
 summary(r2)
 ```

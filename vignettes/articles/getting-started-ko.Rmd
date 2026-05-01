@@ -30,27 +30,18 @@ knitr::opts_chunk$set(
 컬럼, 인구통계 차원 (`cv_nm`, `age_band`, `gender`), 금액 컬럼
 (`loss`, `rp`) 을 포함한다.
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 
 data(experience)
 str(experience)
-#> Classes 'data.table' and 'data.frame':  33381 obs. of  17 variables:
-#>  $ cy, cyh, cyq, cym  : Date  (calendar period)
-#>  $ uy, uyh, uyq, uym  : Date  (underwriting period)
-#>  $ elap_y, elap_h, elap_q, elap_m : int  (elapsed period)
-#>  $ cv_nm    : chr   (coverage)
-#>  $ age_band : Ord.factor
-#>  $ gender   : Factor
-#>  $ loss, rp : num
 ```
 
 ## 1단계 — 검증 및 코어션
 
-```{r, eval = FALSE}
+```{r}
 exp <- as_experience(experience)
 class(exp)
-#> [1] "experience" "data.table" "data.frame"
 ```
 
 `as_experience()` 는 필수 컬럼 (`cym`, `uym`, `loss`, `rp`) 의 존재를
@@ -59,14 +50,10 @@ class(exp)
 
 ## 2단계 — 코호트 × 경과 기간 구조 구축
 
-```{r, eval = FALSE}
+```{r}
 tri <- build_triangle(exp, group_var = cv_nm)
 class(tri)
-#> [1] "triangle" "data.table" "data.frame"
 names(tri)
-#> [1] "cv_nm" "n_obs" "cohort" "dev" "loss" "rp" "closs" "crp"
-#> [9] "margin" "cmargin" "profit" "cprofit" "lr" "clr"
-#> [...] proportions
 ```
 
 `build_triangle()` 의 동작:
@@ -80,7 +67,7 @@ names(tri)
 
 ## 3단계 — 진단
 
-```{r, eval = FALSE}
+```{r}
 plot(tri)              # 코호트별 clr 궤적
 plot_triangle(tri)     # clr 셀의 heatmap
 summary(tri)           # 경과 기간별 그룹 통계량
@@ -90,7 +77,7 @@ summary(tri)           # 경과 기간별 그룹 통계량
 
 코호트 발달을 보는 두 가지 상호 보완적 관점.
 
-```{r, eval = FALSE}
+```{r}
 # 연속 발달비(age-to-age) 인자
 ata <- build_ata(tri, value_var = "closs")
 fit_ata(ata)
@@ -108,7 +95,7 @@ fit_ed(ed)
 
 `fit_cl()` 은 chain ladder 추정을 수행한다.
 
-```{r, eval = FALSE}
+```{r}
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 plot(cl, type = "projection")
 summary(cl)
@@ -119,7 +106,7 @@ summary(cl)
 방식, 성숙점 이후에는 chain ladder 를 적용한다. 전환 지점은 ata 인자에서
 그룹별로 탐지된 성숙점이다.
 
-```{r, eval = FALSE}
+```{r}
 lr <- fit_lr(tri, method = "sa")
 plot(lr, type = "clr")
 summary(lr)
@@ -131,7 +118,7 @@ summary(lr)
 검사한다. 동질적 부분집합에 한하여 손해율 적합을 수행하기 위한 전처리
 단계로 활용된다.
 
-```{r, eval = FALSE}
+```{r}
 sub <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 detect_cohort_regime(sub, K = 12, method = "ecp")
 ```

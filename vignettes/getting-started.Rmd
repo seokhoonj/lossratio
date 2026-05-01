@@ -28,27 +28,18 @@ loss-ratio projection.
 period columns at multiple granularities, demographic dimensions
 (`cv_nm`, `age_band`, `gender`), and amounts (`loss`, `rp`).
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 
 data(experience)
 str(experience)
-#> Classes 'data.table' and 'data.frame':  33381 obs. of  17 variables:
-#>  $ cy, cyh, cyq, cym  : Date  (calendar period)
-#>  $ uy, uyh, uyq, uym  : Date  (underwriting period)
-#>  $ elap_y, elap_h, elap_q, elap_m : int  (elapsed period)
-#>  $ cv_nm    : chr   (coverage)
-#>  $ age_band : Ord.factor
-#>  $ gender   : Factor
-#>  $ loss, rp : num
 ```
 
 ## Step 1 — Validate and coerce
 
-```{r, eval = FALSE}
+```{r}
 exp <- as_experience(experience)
 class(exp)
-#> [1] "experience" "data.table" "data.frame"
 ```
 
 `as_experience()` checks required columns (`cym`, `uym`, `loss`,
@@ -57,14 +48,10 @@ class(exp)
 
 ## Step 2 — Build the cohort × dev structure
 
-```{r, eval = FALSE}
+```{r}
 tri <- build_triangle(exp, group_var = cv_nm)
 class(tri)
-#> [1] "triangle" "data.table" "data.frame"
 names(tri)
-#> [1] "cv_nm" "n_obs" "cohort" "dev" "loss" "rp" "closs" "crp"
-#> [9] "margin" "cmargin" "profit" "cprofit" "lr" "clr"
-#> [...] proportions
 ```
 
 `build_triangle()`:
@@ -79,7 +66,7 @@ names(tri)
 
 ## Step 3 — Diagnostics
 
-```{r, eval = FALSE}
+```{r}
 plot(tri)              # cohort trajectories of clr
 plot_triangle(tri)     # heatmap of clr cells
 summary(tri)           # group-wise statistics by dev
@@ -89,7 +76,7 @@ summary(tri)           # group-wise statistics by dev
 
 Two complementary views of cohort development:
 
-```{r, eval = FALSE}
+```{r}
 # Age-to-age factors
 ata <- build_ata(tri, value_var = "closs")
 fit_ata(ata)
@@ -107,7 +94,7 @@ Both are inputs to the projection methods below.
 
 `fit_cl()` runs a chain ladder projection:
 
-```{r, eval = FALSE}
+```{r}
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 plot(cl, type = "projection")
 summary(cl)
@@ -118,7 +105,7 @@ summary(cl)
 after, switching at the per-group maturity point detected from the
 ata factors.
 
-```{r, eval = FALSE}
+```{r}
 lr <- fit_lr(tri, method = "sa")
 plot(lr, type = "clr")
 summary(lr)
@@ -130,7 +117,7 @@ summary(lr)
 differently from earlier ones. Useful as a preprocessing step before
 loss-ratio fitting on a homogeneous subset:
 
-```{r, eval = FALSE}
+```{r}
 sub <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 detect_cohort_regime(sub, K = 12, method = "ecp")
 ```

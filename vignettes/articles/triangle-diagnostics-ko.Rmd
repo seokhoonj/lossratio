@@ -24,7 +24,7 @@ chain ladder 또는 손해율 모형을 적합하기 전에 기반이 되는 tri
 
 ## Triangle 수준 진단
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
@@ -33,7 +33,7 @@ tri <- build_triangle(exp, group_var = cv_nm)
 
 ### 코호트 궤적
 
-```{r, eval = FALSE}
+```{r}
 plot(tri)                              # 코호트별 raw clr 궤적
 plot(tri, value_var = "loss")          # clr 대신 누적 loss
 plot(tri, summary = TRUE)              # raw + overlay (mean / median / weighted)
@@ -44,7 +44,7 @@ plot(tri, summary = TRUE)              # raw + overlay (mean / median / weighted
 
 ### 셀 히트맵
 
-```{r, eval = FALSE}
+```{r}
 plot_triangle(tri)                          # 각 셀의 clr
 plot_triangle(tri, value_var = "loss")      # 누적 loss
 plot_triangle(tri, label_style = "detail")  # 비율 + (loss / rp) 금액
@@ -52,11 +52,9 @@ plot_triangle(tri, label_style = "detail")  # 비율 + (loss / rp) 금액
 
 ### dev 별 그룹 통계
 
-```{r, eval = FALSE}
+```{r}
 sm <- summary(tri)
 head(sm)
-#>    cv_nm dev n_obs lr_mean lr_median   lr_wt clr_mean clr_median  clr_wt
-#> 1:   ...
 ```
 
 (group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은 `triangle_summary` 객체를
@@ -64,16 +62,10 @@ head(sm)
 
 ## Age-to-age 인자 진단
 
-```{r, eval = FALSE}
+```{r}
 ata <- build_ata(tri, value_var = "closs")
 sm  <- summary_ata(ata, alpha = 1)
 head(sm)
-#>    cv_nm ata_from ata_to ata_link  mean median    wt    cv     f  f_se   rse  sigma  n_obs  n_valid  n_inf  n_nan  valid_ratio
-#> 1:   SUR        1      2      1-2  2.85   2.71  2.78  0.31  2.81  0.18  0.06   0.42     12       12      0      0         1.00
-#> 2:   SUR        2      3      2-3  1.42   1.40  1.41  0.08  1.41  0.04  0.03   0.06     11       11      0      0         1.00
-#> 3:   SUR        3      4      3-4  1.18   1.17  1.18  0.05  1.18  0.02  0.02   0.03     10       10      0      0         1.00
-#> 4:   SUR        4      5      4-5  1.09   1.09  1.09  0.03  1.09  0.01  0.01   0.02      9        9      0      0         1.00
-#> ...
 ```
 
 `summary_ata()` 는 성숙점 탐지를 구동하는 링크별 통계를 계산한다.
@@ -89,7 +81,7 @@ head(sm)
 
 ### `ata` 진단 플롯
 
-```{r, eval = FALSE}
+```{r}
 plot(ata, type = "cv")            # ata 링크별 CV (성숙점 overlay 포함)
 plot(ata, type = "rse")           # ata 링크별 RSE
 plot(ata, type = "summary")       # 링크별 mean / median / wt overlay
@@ -99,7 +91,7 @@ plot(ata, type = "point")         # 링크별 관측 ata 의 산점도
 
 ### ata 인자의 triangle
 
-```{r, eval = FALSE}
+```{r}
 plot_triangle(ata)                                # 관측 인자 히트맵
 plot_triangle(ata, label_style = "detail")        # 인자 + (loss / rp) 금액
 plot_triangle(ata, show_maturity = TRUE)          # 성숙점 라인 overlay
@@ -117,7 +109,7 @@ plot_triangle(ata, show_maturity = TRUE)          # 성숙점 라인 overlay
 `find_ata_maturity()` 는 `summary_ata()` 객체를 입력으로 받는다 — 먼저
 기술/WLS 요약을 만들고, 거기서 첫 성숙 링크를 탐색한다.
 
-```{r, eval = FALSE}
+```{r}
 sm  <- summary_ata(ata, alpha = 1)
 mat <- find_ata_maturity(
   sm,
@@ -129,9 +121,6 @@ mat <- find_ata_maturity(
 )
 
 print(mat)
-#>    cv_nm ata_from ata_to ata_link  mean median    wt    cv     f  f_se   rse  sigma  n_obs  n_valid  n_inf  n_nan  valid_ratio
-#> 1:   SUR        4      5      4-5  1.09   1.09  1.09  0.03  1.09  0.01  0.01   0.02      9        9      0      0         1.00
-#> 2:   2CI        3      4      3-4  1.12   1.11  1.12  0.04  1.12  0.02  0.02   0.04     10       10      0      0         1.00
 ```
 
 그룹별로 모든 임계값을 만족하는 첫 경과 기간 링크 한 행이 출력되며, 해당 링크의
@@ -146,7 +135,7 @@ print(mat)
 
 ## ED 진단
 
-```{r, eval = FALSE}
+```{r}
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
 sm <- summary_ed(ed, alpha = 1)
 head(sm)
@@ -163,12 +152,10 @@ $g_k = \Delta C^L_k / C^P_k$ 에 대해 링크별 통계를 계산한다.
 
 경과 기간 시퀀스에 결손이 의심되면 `build_triangle()` 호출 전에 점검한다.
 
-```{r, eval = FALSE}
+```{r}
 gaps <- validate_triangle(exp, group_var = cv_nm,
                           cohort_var = "uym", dev_var = "elap_m")
 head(gaps)
-#>    cv_nm        uym n_observed n_expected missing
-#> 1:                                       <list>
 ```
 
 경과 기간이 비연속인 코호트마다 한 행씩을 담은 `triangle_validation` 객체를
@@ -186,7 +173,7 @@ head(gaps)
 오래된 코호트가 더 이상 대표성이 없을 때 (요율 변경, 적립 regime 변경 등) 추정을
 최근 대각선으로 제한한다.
 
-```{r, eval = FALSE}
+```{r}
 fit_ata(ata, alpha = 1, recent = 12)        # 최근 12개 대각선
 fit_cl(tri, value_var = "closs", recent = 12)
 fit_lr(tri, recent = 12)

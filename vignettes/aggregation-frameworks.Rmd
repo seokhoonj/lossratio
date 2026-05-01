@@ -42,23 +42,19 @@ Conceptually:
 
 ## Triangle (cohort × dev)
 
-```{r, eval = FALSE}
+```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
 
 tri <- build_triangle(exp, group_var = cv_nm)
 head(tri)
-#>    cv_nm n_obs     cohort dev   loss     rp  closs    crp ...
-#> 1:   SUR    30 2023-04-01       1      0  ...       0  ...
-#> 2:   2CI    30 2023-04-01       1      0  ...       0  ...
-#> ...
 ```
 
 Each row is one (cohort, dev) cell with cumulative loss / risk
 premium. Visualise as line plot or heatmap:
 
-```{r, eval = FALSE}
+```{r}
 plot(tri)              # one trajectory per cohort, faceted by group
 plot_triangle(tri)     # cohort × dev heatmap of clr
 ```
@@ -70,13 +66,9 @@ Use `triangle` as input to:
 
 ## Calendar (calendar period only)
 
-```{r, eval = FALSE}
+```{r}
 cal <- build_calendar(exp, group_var = cv_nm, calendar_var = "cym")
 head(cal)
-#>    cv_nm   calendar dev   loss     rp  closs    crp ...
-#> 1:   SUR 2023-04-01       1      0  ...       0  ...
-#> 2:   SUR 2023-05-01       2      0  ...       0  ...
-#> ...
 ```
 
 Each row is one calendar period (per group). The `dev` column
@@ -93,14 +85,14 @@ Use cases:
   on-leveling event)
 - Portfolio monitoring dashboards
 
-```{r, eval = FALSE}
+```{r}
 plot(cal)                           # x = calendar
 plot(cal, x_by = "dev")         # x = sequential index
 ```
 
 ## Total (portfolio summary)
 
-```{r, eval = FALSE}
+```{r}
 tot <- build_total(
   exp,
   group_var = cv_nm,
@@ -109,8 +101,6 @@ tot <- build_total(
   period_to   = "2024-03-01"
 )
 head(tot)
-#>    cv_nm n_obs sales_start sales_end       loss          rp        lr ...
-#> 1:   SUR    12  2023-04-01 2024-03-01  ...        ...       ...
 ```
 
 One row per group, summarising loss / risk premium / loss ratio over
@@ -147,7 +137,7 @@ After aggregation, each object stores its source-column metadata as
 attributes (used for plot labels and granularity-aware date
 formatting):
 
-```{r, eval = FALSE}
+```{r}
 attr(tri, "cohort_var")      # "uym"
 attr(tri, "cohort_type")     # "month"
 attr(tri, "dev_var")     # "elap_m"
