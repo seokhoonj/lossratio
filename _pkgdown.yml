@@ -19,7 +19,7 @@ navbar:
       text: Articles
       href: articles/index.html
     language:
-      text: KR
+      text: KO
       href: ./ko/
 
 reference:
