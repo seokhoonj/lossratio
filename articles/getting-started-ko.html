@@ -40,7 +40,7 @@
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
-<li class="nav-item"><a class="nav-link" href=".././ko/">KR</a></li>
+<li class="nav-item"><a class="nav-link" href=".././ko/">KO</a></li>
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json">
 </form></li>
@@ -87,14 +87,25 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Classes 'data.table' and 'data.frame':  33381 obs. of  17 variables:</span></span>
-<span><span class="co">#&gt;  $ cy, cyh, cyq, cym  : Date  (calendar period)</span></span>
-<span><span class="co">#&gt;  $ uy, uyh, uyq, uym  : Date  (underwriting period)</span></span>
-<span><span class="co">#&gt;  $ elap_y, elap_h, elap_q, elap_m : int  (elapsed period)</span></span>
-<span><span class="co">#&gt;  $ cv_nm    : chr   (coverage)</span></span>
-<span><span class="co">#&gt;  $ age_band : Ord.factor</span></span>
-<span><span class="co">#&gt;  $ gender   : Factor</span></span>
-<span><span class="co">#&gt;  $ loss, rp : num</span></span></code></pre></div>
+<span><span class="co">#&gt; Classes 'data.table' and 'data.frame':   33480 obs. of  17 variables:</span></span>
+<span><span class="co">#&gt;  $ cy      : Date, format: "2023-01-01" "2023-01-01" ...</span></span>
+<span><span class="co">#&gt;  $ cyh     : Date, format: "2023-01-01" "2023-01-01" ...</span></span>
+<span><span class="co">#&gt;  $ cyq     : Date, format: "2023-04-01" "2023-04-01" ...</span></span>
+<span><span class="co">#&gt;  $ cym     : Date, format: "2023-04-01" "2023-04-01" ...</span></span>
+<span><span class="co">#&gt;  $ uy      : Date, format: "2023-01-01" "2023-01-01" ...</span></span>
+<span><span class="co">#&gt;  $ uyh     : Date, format: "2023-01-01" "2023-01-01" ...</span></span>
+<span><span class="co">#&gt;  $ uyq     : Date, format: "2023-04-01" "2023-04-01" ...</span></span>
+<span><span class="co">#&gt;  $ uym     : Date, format: "2023-04-01" "2023-04-01" ...</span></span>
+<span><span class="co">#&gt;  $ elap_y  : int  1 1 1 1 1 1 1 1 1 1 ...</span></span>
+<span><span class="co">#&gt;  $ elap_h  : int  1 1 1 1 1 1 1 1 1 1 ...</span></span>
+<span><span class="co">#&gt;  $ elap_q  : int  1 1 1 1 1 1 1 1 1 1 ...</span></span>
+<span><span class="co">#&gt;  $ elap_m  : int  1 1 1 1 1 1 1 1 1 1 ...</span></span>
+<span><span class="co">#&gt;  $ cv_nm   : chr  "SUR" "SUR" "SUR" "SUR" ...</span></span>
+<span><span class="co">#&gt;  $ age_band: Ord.factor w/ 9 levels "30-34"&lt;"35-39"&lt;..: 1 1 2 2 3 3 4 4 5 5 ...</span></span>
+<span><span class="co">#&gt;  $ gender  : Factor w/ 2 levels "M","F": 1 2 1 2 1 2 1 2 1 2 ...</span></span>
+<span><span class="co">#&gt;  $ loss    : num  0 0 0 0 0 0 0 0 0 0 ...</span></span>
+<span><span class="co">#&gt;  $ rp      : num  3555865 258448 255420 464313 92744 ...</span></span>
+<span><span class="co">#&gt;  - attr(*, ".internal.selfref")=&lt;pointer: (nil)&gt;</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="단계-검증-및-코어션">1단계 — 검증 및 코어션<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EA%B2%80%EC%A6%9D-%EB%B0%8F-%EC%BD%94%EC%96%B4%EC%85%98"></a>
@@ -114,11 +125,12 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tri</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "triangle" "data.table" "data.frame"</span></span>
+<span><span class="co">#&gt; [1] "triangle"   "data.table" "data.frame"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "cv_nm" "n_obs" "cohort" "dev" "loss" "rp" "closs" "crp"</span></span>
-<span><span class="co">#&gt; [9] "margin" "cmargin" "profit" "cprofit" "lr" "clr"</span></span>
-<span><span class="co">#&gt; [...] proportions</span></span></code></pre></div>
+<span><span class="co">#&gt;  [1] "cv_nm"      "n_obs"      "cohort"     "dev"        "loss"      </span></span>
+<span><span class="co">#&gt;  [6] "rp"         "closs"      "crp"        "margin"     "cmargin"   </span></span>
+<span><span class="co">#&gt; [11] "profit"     "cprofit"    "lr"         "clr"        "loss_prop" </span></span>
+<span><span class="co">#&gt; [16] "rp_prop"    "closs_prop" "crp_prop"</span></span></code></pre></div>
 <p><code><a href="../reference/build_triangle.html">build_triangle()</a></code> 의 동작:</p>
 <ul>
 <li>인구통계 차원을 집계하여 제거한다 (여기서는 <code>age_band</code>,
@@ -137,22 +149,71 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <h2 id="단계-진단">3단계 — 진단<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EC%A7%84%EB%8B%A8"></a>
 </h2>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># 코호트별 clr 궤적</span></span>
-<span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>     <span class="co"># clr 셀의 heatmap</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>           <span class="co"># 경과 기간별 그룹 통계량</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># 코호트별 clr 궤적</span></span></code></pre></div>
+<p><img src="getting-started-ko_files/figure-html/unnamed-chunk-4-1.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>     <span class="co"># clr 셀의 heatmap</span></span></code></pre></div>
+<p><img src="getting-started-ko_files/figure-html/unnamed-chunk-4-2.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>           <span class="co"># 경과 기간별 그룹 통계량</span></span>
+<span><span class="co">#&gt; Key: &lt;cv_nm, dev&gt;</span></span>
+<span><span class="co">#&gt;       cv_nm   dev n_obs    lr_mean    lr_median      lr_wt   clr_mean</span></span>
+<span><span class="co">#&gt;      &lt;char&gt; &lt;int&gt; &lt;int&gt;      &lt;num&gt;        &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1:    2CI     1    30 0.07682952 0.0000684217 0.09346191 0.07682952</span></span>
+<span><span class="co">#&gt;   2:    2CI     2    29 0.31682799 0.0002658639 0.37921332 0.21699608</span></span>
+<span><span class="co">#&gt;   3:    2CI     3    28 0.46725413 0.1418544378 0.43601945 0.33392280</span></span>
+<span><span class="co">#&gt;   4:    2CI     4    27 0.64199653 0.5374941298 0.61222448 0.45737038</span></span>
+<span><span class="co">#&gt;   5:    2CI     5    26 0.64809352 0.2890663538 0.65077672 0.50492686</span></span>
+<span><span class="co">#&gt;  ---                                                                 </span></span>
+<span><span class="co">#&gt; 116:    SUR    26     5 1.64442416 0.8460267510 1.63425346 1.84602199</span></span>
+<span><span class="co">#&gt; 117:    SUR    27     4 1.55040105 1.3316006307 1.45324974 1.82084165</span></span>
+<span><span class="co">#&gt; 118:    SUR    28     3 1.97389029 1.0646915297 1.60414765 1.67851251</span></span>
+<span><span class="co">#&gt; 119:    SUR    29     2 1.08484998 1.0848499790 1.12970250 1.64509820</span></span>
+<span><span class="co">#&gt; 120:    SUR    30     1 1.14559716 1.1455971598 1.14559716 1.33809709</span></span>
+<span><span class="co">#&gt;        clr_median     clr_wt</span></span>
+<span><span class="co">#&gt;             &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1: 0.0000684217 0.09346191</span></span>
+<span><span class="co">#&gt;   2: 0.0274751765 0.25081620</span></span>
+<span><span class="co">#&gt;   3: 0.1477140322 0.33811373</span></span>
+<span><span class="co">#&gt;   4: 0.3862054651 0.43323143</span></span>
+<span><span class="co">#&gt;   5: 0.3658265200 0.49590320</span></span>
+<span><span class="co">#&gt;  ---                        </span></span>
+<span><span class="co">#&gt; 116: 1.8691337277 1.85029703</span></span>
+<span><span class="co">#&gt; 117: 1.8463935163 1.82648276</span></span>
+<span><span class="co">#&gt; 118: 1.6839090669 1.67155820</span></span>
+<span><span class="co">#&gt; 119: 1.6450981981 1.63511904</span></span>
+<span><span class="co">#&gt; 120: 1.3380970917 1.33809709</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="단계-경과-기간-모형화">4단계 — 경과 기간 모형화<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EA%B2%BD%EA%B3%BC-%EA%B8%B0%EA%B0%84-%EB%AA%A8%ED%98%95%ED%99%94"></a>
 </h2>
 <p>코호트 발달을 보는 두 가지 상호 보완적 관점.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># 연속 발달비(age-to-age) 인자</span></span>
 <span><span class="va">ata</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ata.html">build_ata</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/fit_ata.html">fit_ata</a></span><span class="op">(</span><span class="va">ata</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;ata_fit&gt;</span></span>
+<span><span class="co">#&gt; alpha       : 1 </span></span>
+<span><span class="co">#&gt; sigma_method: min_last2 </span></span>
+<span><span class="co">#&gt; recent      : all </span></span>
+<span><span class="co">#&gt; use_maturity: FALSE </span></span>
+<span><span class="co">#&gt; groups      : cv_nm </span></span>
+<span><span class="co">#&gt; n_groups    : 4 </span></span>
+<span><span class="co">#&gt; ata links   : 116</span></span>
 <span></span>
 <span><span class="co"># 노출 기반(exposure-driven) 강도</span></span>
 <span><span class="va">ed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ed.html">build_ed</a></span><span class="op">(</span><span class="va">tri</span>, loss_var <span class="op">=</span> <span class="st">"closs"</span>, exposure_var <span class="op">=</span> <span class="st">"crp"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/fit_ed.html">fit_ed</a></span><span class="op">(</span><span class="va">ed</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="../reference/fit_ed.html">fit_ed</a></span><span class="op">(</span><span class="va">ed</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;ed_fit&gt;</span></span>
+<span><span class="co">#&gt; method      : basic </span></span>
+<span><span class="co">#&gt; loss_var    : closs </span></span>
+<span><span class="co">#&gt; exposure_var: crp </span></span>
+<span><span class="co">#&gt; alpha       : 1 </span></span>
+<span><span class="co">#&gt; sigma_method: min_last2 </span></span>
+<span><span class="co">#&gt; recent      : all </span></span>
+<span><span class="co">#&gt; groups      : cv_nm </span></span>
+<span><span class="co">#&gt; n_groups    : 4 </span></span>
+<span><span class="co">#&gt; links       : 116</span></span></code></pre></div>
 <p><code><a href="../reference/fit_ata.html">fit_ata()</a></code> 는 경과 기간 링크별로 선택된 age-to-age 인자를
 반환한다. <code><a href="../reference/fit_ed.html">fit_ed()</a></code> 는 강도 인자
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mi mathvariant="normal">Δ</mi><msubsup><mi>C</mi><mi>k</mi><mi>L</mi></msubsup><mi>/</mi><msubsup><mi>C</mi><mi>k</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">g_k = \Delta C^L_k / C^P_k</annotation></semantics></math>
@@ -162,19 +223,136 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <h2 id="단계-추정">5단계 — 추정<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EC%B6%94%EC%A0%95"></a>
 </h2>
 <p><code><a href="../reference/fit_cl.html">fit_cl()</a></code> 은 chain ladder 추정을 수행한다.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_cl.html">fit_cl</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span>, method <span class="op">=</span> <span class="st">"mack"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cl</span>, type <span class="op">=</span> <span class="st">"projection"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">cl</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; Warning: Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span></code></pre></div>
+<p><img src="getting-started-ko_files/figure-html/unnamed-chunk-6-1.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">cl</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       cv_nm     cohort     latest   ultimate    reserve     proc_se   param_se</span></span>
+<span><span class="co">#&gt;      &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;       &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1:    2CI 2023-04-01 1769961365 1769961365          0           0          0</span></span>
+<span><span class="co">#&gt;   2:    2CI 2023-05-01 2177258013 2408047363  230789349    81021770   94495076</span></span>
+<span><span class="co">#&gt;   3:    2CI 2023-06-01 2004054588 2522359218  518304630   111885319  114904860</span></span>
+<span><span class="co">#&gt;   4:    2CI 2023-07-01 1740086803 2284297217  544210414   115767968  107391009</span></span>
+<span><span class="co">#&gt;   5:    2CI 2023-08-01 1020729631 1487357605  466627974   209491141  103506080</span></span>
+<span><span class="co">#&gt;  ---                                                                          </span></span>
+<span><span class="co">#&gt; 116:    SUR 2025-05-01   79474575 2873248566 2793773992  4722987523  809706186</span></span>
+<span><span class="co">#&gt; 117:    SUR 2025-06-01   44351381 2365070816 2320719436  7190998494 1055891775</span></span>
+<span><span class="co">#&gt; 118:    SUR 2025-07-01   12461511 2312527756 2300066245 20431127319 2852680795</span></span>
+<span><span class="co">#&gt; 119:    SUR 2025-08-01          0          0          0           0          0</span></span>
+<span><span class="co">#&gt; 120:    SUR 2025-09-01          0          0          0           0          0</span></span>
+<span><span class="co">#&gt;               se         cv</span></span>
+<span><span class="co">#&gt;            &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1:           0 0.00000000</span></span>
+<span><span class="co">#&gt;   2:   124474280 0.05169096</span></span>
+<span><span class="co">#&gt;   3:   160379087 0.06358297</span></span>
+<span><span class="co">#&gt;   4:   157908363 0.06912777</span></span>
+<span><span class="co">#&gt;   5:   233666529 0.15710178</span></span>
+<span><span class="co">#&gt;  ---                       </span></span>
+<span><span class="co">#&gt; 116:  4791892659 1.66776126</span></span>
+<span><span class="co">#&gt; 117:  7268106134 3.07310296</span></span>
+<span><span class="co">#&gt; 118: 20629317760 8.92067899</span></span>
+<span><span class="co">#&gt; 119:           0         NA</span></span>
+<span><span class="co">#&gt; 120:           0         NA</span></span></code></pre></div>
 <p><code><a href="../reference/fit_lr.html">fit_lr()</a></code> 은 손해율 추정을 수행한다. 기본값
 <code>method = "sa"</code> (단계 적응적(stage-adaptive)) 는
 성숙점(maturity point) 이전에는 노출 기반 방식, 성숙점 이후에는 chain
 ladder 를 적용한다. 전환 지점은 ata 인자에서 그룹별로 탐지된
 성숙점이다.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">lr</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_lr.html">fit_lr</a></span><span class="op">(</span><span class="va">tri</span>, method <span class="op">=</span> <span class="st">"sa"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">lr</span>, type <span class="op">=</span> <span class="st">"clr"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">lr</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; Warning: Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
+<span><span class="co">#&gt; (`geom_segment()`).</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
+<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span></code></pre></div>
+<p><img src="getting-started-ko_files/figure-html/unnamed-chunk-7-1.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">lr</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       cv_nm     cohort     latest   ultimate    reserve exposure_ult clr_latest</span></span>
+<span><span class="co">#&gt;      &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;        &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1:    2CI 2023-04-01 1769961365 1769961365          0   1991886535  0.8885854</span></span>
+<span><span class="co">#&gt;   2:    2CI 2023-05-01 2177258013 2408047363  230789349   2284418174  1.0198072</span></span>
+<span><span class="co">#&gt;   3:    2CI 2023-06-01 2004054588 2522359218  518304630   2375671198  0.9676132</span></span>
+<span><span class="co">#&gt;   4:    2CI 2023-07-01 1740086803 2284297217  544210414   2091234898  0.9992941</span></span>
+<span><span class="co">#&gt;   5:    2CI 2023-08-01 1020729631 1487357605  466627974   1933805836  0.6725715</span></span>
+<span><span class="co">#&gt;  ---                                                                           </span></span>
+<span><span class="co">#&gt; 116:    SUR 2025-05-01   79474575 5330755348 5251280773   3170694512  0.5208363</span></span>
+<span><span class="co">#&gt; 117:    SUR 2025-06-01   44351381 4669095782 4624744401   2746665433  0.4418904</span></span>
+<span><span class="co">#&gt; 118:    SUR 2025-07-01   12461511 6405537028 6393075517   3705335918  0.1463368</span></span>
+<span><span class="co">#&gt; 119:    SUR 2025-08-01          0 5151619396 5151619396   2969197221  0.0000000</span></span>
+<span><span class="co">#&gt; 120:    SUR 2025-09-01          0 5216378154 5216378154   2995415278  0.0000000</span></span>
+<span><span class="co">#&gt;        clr_ult maturity_from    proc_se  param_se         se         cv</span></span>
+<span><span class="co">#&gt;          &lt;num&gt;         &lt;num&gt;      &lt;num&gt;     &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1: 0.8885854            18          0         0          0 0.00000000</span></span>
+<span><span class="co">#&gt;   2: 1.0541185            18   81021770  94495076  124474280 0.05169096</span></span>
+<span><span class="co">#&gt;   3: 1.0617459            18  111885319 114904860  160379087 0.06358297</span></span>
+<span><span class="co">#&gt;   4: 1.0923198            18  115767968 107391009  157908363 0.06912777</span></span>
+<span><span class="co">#&gt;   5: 0.7691349            18  209491141 103506080  233666529 0.15710178</span></span>
+<span><span class="co">#&gt;  ---                                                                   </span></span>
+<span><span class="co">#&gt; 116: 1.6812579            15 2441571165 725982384 2547218125 0.47783437</span></span>
+<span><span class="co">#&gt; 117: 1.6999143            15 2282292178 633588616 2368605523 0.50729427</span></span>
+<span><span class="co">#&gt; 118: 1.7287331            15 2692258007 868125300 2828762046 0.44161200</span></span>
+<span><span class="co">#&gt; 119: 1.7350210            15 2413061918 697300804 2511791439 0.48757318</span></span>
+<span><span class="co">#&gt; 120: 1.7414541            15 2425838047 705030372 2526214175 0.48428509</span></span>
+<span><span class="co">#&gt;          se_clr     cv_clr    ci_lower  ci_upper</span></span>
+<span><span class="co">#&gt;           &lt;num&gt;      &lt;num&gt;       &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt;   1: 0.00000000 0.00000000 0.888585436 0.8885854</span></span>
+<span><span class="co">#&gt;   2: 0.05448840 0.05169096 0.947323166 1.1609138</span></span>
+<span><span class="co">#&gt;   3: 0.06750896 0.06358297 0.929430801 1.1940611</span></span>
+<span><span class="co">#&gt;   4: 0.07550963 0.06912777 0.944323622 1.2403159</span></span>
+<span><span class="co">#&gt;   5: 0.12083247 0.15710178 0.532307642 1.0059622</span></span>
+<span><span class="co">#&gt;  ---                                            </span></span>
+<span><span class="co">#&gt; 116: 0.80336283 0.47783437 0.106695729 3.2558202</span></span>
+<span><span class="co">#&gt; 117: 0.86235677 0.50729427 0.009726071 3.3901025</span></span>
+<span><span class="co">#&gt; 118: 0.76342931 0.44161200 0.232439195 3.2250271</span></span>
+<span><span class="co">#&gt; 119: 0.84594968 0.48757318 0.076990049 3.3930519</span></span>
+<span><span class="co">#&gt; 120: 0.84336025 0.48428509 0.088498365 3.3944098</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="단계-구조-변화-진단">6단계 — 구조 변화 진단<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EA%B5%AC%EC%A1%B0-%EB%B3%80%ED%99%94-%EC%A7%84%EB%8B%A8"></a>
@@ -182,9 +360,17 @@ ladder 를 적용한다. 전환 지점은 ata 인자에서 그룹별로 탐지�
 <p><code><a href="../reference/detect_cohort_regime.html">detect_cohort_regime()</a></code> 은 최근 코호트가 이전 코호트와
 다르게 행동하는지 검사한다. 동질적 부분집합에 한하여 손해율 적합을
 수행하기 위한 전처리 단계로 활용된다.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sub</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span><span class="op">[</span><span class="va">cv_nm</span> <span class="op">==</span> <span class="st">"SUR"</span><span class="op">]</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/detect_cohort_regime.html">detect_cohort_regime</a></span><span class="op">(</span><span class="va">sub</span>, K <span class="op">=</span> <span class="fl">12</span>, method <span class="op">=</span> <span class="st">"ecp"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="../reference/detect_cohort_regime.html">detect_cohort_regime</a></span><span class="op">(</span><span class="va">sub</span>, K <span class="op">=</span> <span class="fl">12</span>, method <span class="op">=</span> <span class="st">"ecp"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;cohort_regime&gt;</span></span>
+<span><span class="co">#&gt;   method      : ecp</span></span>
+<span><span class="co">#&gt;   value_var   : clr</span></span>
+<span><span class="co">#&gt;   window (K)  : elap_m 1, ..., 12</span></span>
+<span><span class="co">#&gt;   cohorts     : 19 analysed (11 dropped)</span></span>
+<span><span class="co">#&gt;   regimes     : 1</span></span>
+<span><span class="co">#&gt;   breakpoints : (none)</span></span>
+<span><span class="co">#&gt;   PC1 / PC2   : 58.2% / 16.5%</span></span></code></pre></div>
 <p>상세 설명은 <code><a href="../articles/regime-detection.html">vignette("regime-detection")</a></code> 을
 참고한다.</p>
 </div>

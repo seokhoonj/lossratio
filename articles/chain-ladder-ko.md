@@ -23,6 +23,17 @@ tri <- build_triangle(exp, group_var = cv_nm)
 
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 print(cl)
+#> <cl_fit>
+#> method      : mack 
+#> value_var   : closs 
+#> weight_var  : none 
+#> alpha       : 1 
+#> sigma_method: min_last2 
+#> recent      : all 
+#> use_maturity: FALSE 
+#> tail_factor : 1 
+#> groups      : cv_nm 
+#> periods     : 120
 ```
 
 `value_var` 은 추정 대상 누적 컬럼을 선택한다 — 준비금 산출에는 보통
@@ -44,15 +55,31 @@ cl_basic <- fit_cl(tri, value_var = "closs", method = "basic")
 cl_mack  <- fit_cl(tri, value_var = "closs", method = "mack")
 
 names(cl_basic)
-#> [1] "call" "data" "method" "group_var" "cohort_var" "dev_var" "value_var"
-#>     "full" "pred" "ata" "summary" "factor" "selected" "maturity"
-#>     "alpha" "sigma_method" "weight_var" "recent" "use_maturity"
-#>     "maturity_args" "tail" "tail_factor"
+#>  [1] "call"          "data"          "method"        "group_var"    
+#>  [5] "cohort_var"    "dev_var"       "value_var"     "full"         
+#>  [9] "pred"          "ata"           "summary"       "factor"       
+#> [13] "selected"      "maturity"      "alpha"         "sigma_method" 
+#> [17] "weight_var"    "recent"        "use_maturity"  "maturity_args"
+#> [21] "tail"          "tail_factor"
 
 # Mack 은 $full 과 $summary 에 분산 추정값을 추가한다
 head(cl_mack$summary)
-#>    cv_nm     cohort latest ultimate reserve   proc_se   param_se        se        cv
-#> 1:  ...
+#>     cv_nm     cohort     latest   ultimate   reserve   proc_se  param_se
+#>    <char>     <Date>      <num>      <num>     <num>     <num>     <num>
+#> 1:    2CI 2023-04-01 1769961365 1769961365         0         0         0
+#> 2:    2CI 2023-05-01 2177258013 2408047363 230789349  81021770  94495076
+#> 3:    2CI 2023-06-01 2004054588 2522359218 518304630 111885319 114904860
+#> 4:    2CI 2023-07-01 1740086803 2284297217 544210414 115767968 107391009
+#> 5:    2CI 2023-08-01 1020729631 1487357605 466627974 209491141 103506080
+#> 6:    2CI 2023-09-01 1274137934 1994001146 719863212 260688161 144891377
+#>           se         cv
+#>        <num>      <num>
+#> 1:         0 0.00000000
+#> 2: 124474280 0.05169096
+#> 3: 160379087 0.06358297
+#> 4: 157908363 0.06912777
+#> 5: 233666529 0.15710178
+#> 6: 298247931 0.14957260
 ```
 
 `method = "mack"` 으로 적합하면 추정 플롯의 신뢰 구간
@@ -61,7 +88,33 @@ head(cl_mack$summary)
 ``` r
 
 plot(cl_mack, type = "projection", show_interval = TRUE)
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> Warning: Removed 1 row containing missing values or values outside the scale range
+#> (`geom_segment()`).
+#> Removed 1 row containing missing values or values outside the scale range
+#> (`geom_segment()`).
+#> Removed 1 row containing missing values or values outside the scale range
+#> (`geom_segment()`).
+#> Removed 1 row containing missing values or values outside the scale range
+#> (`geom_segment()`).
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
+#> `geom_line()`: Each group consists of only one observation.
+#> ℹ Do you need to adjust the group aesthetic?
 ```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-3-1.png)
 
 ## Tail 인자
 
@@ -96,7 +149,19 @@ cl_mat <- fit_cl(
 )
 
 cl_mat$maturity
-#> 그룹별 maturity 인덱스 (이 ata 링크 이후로 CL 추정 사용)
+#> Key: <cv_nm>
+#>     cv_nm ata_from ata_to ata_link  mean median    wt    cv     f  f_se   rse
+#>    <char>    <num>  <num>   <char> <num>  <num> <num> <num> <num> <num> <num>
+#> 1:    2CI       18     19    18-19 1.076  1.047 1.076 0.055 1.076 0.017 0.016
+#> 2:    CAN       17     18    17-18 1.137  1.119 1.126 0.093 1.126 0.027 0.024
+#> 3:    HOS       17     18    17-18 1.107  1.092 1.101 0.054 1.101 0.018 0.016
+#> 4:    SUR       15     16    15-16 1.092  1.038 1.098 0.094 1.098 0.027 0.025
+#>       sigma n_obs n_valid n_inf n_nan valid_ratio
+#>       <num> <num>   <num> <num> <num>       <num>
+#> 1: 1650.456    12      12     0     0           1
+#> 2: 2473.092    13      13     0     0           1
+#> 3: 1350.950    13      13     0     0           1
+#> 4: 4057.711    15      15     0     0           1
 ```
 
 `maturity_args` 는
@@ -118,8 +183,32 @@ cl_mat$maturity
 ``` r
 
 summary(cl_mack)
-#>    cv_nm     cohort   latest  ultimate  reserve  proc_se param_se       se      cv
-#> 1:   ...                                  ...      ...      ...     ...      ...
+#>       cv_nm     cohort     latest   ultimate    reserve     proc_se   param_se
+#>      <char>     <Date>      <num>      <num>      <num>       <num>      <num>
+#>   1:    2CI 2023-04-01 1769961365 1769961365          0           0          0
+#>   2:    2CI 2023-05-01 2177258013 2408047363  230789349    81021770   94495076
+#>   3:    2CI 2023-06-01 2004054588 2522359218  518304630   111885319  114904860
+#>   4:    2CI 2023-07-01 1740086803 2284297217  544210414   115767968  107391009
+#>   5:    2CI 2023-08-01 1020729631 1487357605  466627974   209491141  103506080
+#>  ---                                                                          
+#> 116:    SUR 2025-05-01   79474575 2873248566 2793773992  4722987523  809706186
+#> 117:    SUR 2025-06-01   44351381 2365070816 2320719436  7190998494 1055891775
+#> 118:    SUR 2025-07-01   12461511 2312527756 2300066245 20431127319 2852680795
+#> 119:    SUR 2025-08-01          0          0          0           0          0
+#> 120:    SUR 2025-09-01          0          0          0           0          0
+#>               se         cv
+#>            <num>      <num>
+#>   1:           0 0.00000000
+#>   2:   124474280 0.05169096
+#>   3:   160379087 0.06358297
+#>   4:   157908363 0.06912777
+#>   5:   233666529 0.15710178
+#>  ---                       
+#> 116:  4791892659 1.66776126
+#> 117:  7268106134 3.07310296
+#> 118: 20629317760 8.92067899
+#> 119:           0         NA
+#> 120:           0         NA
 ```
 
 ## 준비금 플롯
@@ -132,6 +221,8 @@ summary(cl_mack)
 plot(cl_mack, type = "reserve", conf_level = 0.95)
 ```
 
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-7-1.png)
+
 ## Triangle 시각화
 
 [`plot_triangle()`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.md)
@@ -141,9 +232,23 @@ plot(cl_mack, type = "reserve", conf_level = 0.95)
 ``` r
 
 plot_triangle(cl_mack, what = "full")    # 관측 + 추정
+```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-8-1.png)
+
+``` r
+
 plot_triangle(cl_mack, what = "pred")    # 추정만
+```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-8-2.png)
+
+``` r
+
 plot_triangle(cl_mack, what = "data")    # 관측만
 ```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-8-3.png)
 
 `label_style = "cv"` 모드는 셀별 변동계수를 표시하며, 신뢰성이 낮은 셀을
 식별하는 데 유용하다.
@@ -151,9 +256,23 @@ plot_triangle(cl_mack, what = "data")    # 관측만
 ``` r
 
 plot_triangle(cl_mack, label_style = "cv")
+```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-9-1.png)
+
+``` r
+
 plot_triangle(cl_mack, label_style = "se")
+```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-9-2.png)
+
+``` r
+
 plot_triangle(cl_mack, label_style = "ci")
 ```
+
+![](chain-ladder-ko_files/figure-html/unnamed-chunk-9-3.png)
 
 ## Sigma 외삽 방법
 
@@ -170,6 +289,17 @@ Mack 분산은 모든 발달 링크에서 $`\sigma_k`$ 가 필요한데, 마지�
 ``` r
 
 fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
+#> <cl_fit>
+#> method      : mack 
+#> value_var   : closs 
+#> weight_var  : none 
+#> alpha       : 1 
+#> sigma_method: loglinear 
+#> recent      : all 
+#> use_maturity: FALSE 
+#> tail_factor : 1 
+#> groups      : cv_nm 
+#> periods     : 120
 ```
 
 ## 함께 보기

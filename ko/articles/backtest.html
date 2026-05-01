@@ -103,7 +103,7 @@ under-projection.</p>
 <span><span class="co">#&gt;   value_var   : closs</span></span>
 <span><span class="co">#&gt;   holdout     : 6 calendar diagonals</span></span>
 <span><span class="co">#&gt;   held-out    : 123 cells</span></span>
-<span><span class="co">#&gt;   AEG         : mean -4.83% / median -3.18%</span></span></code></pre></div>
+<span><span class="co">#&gt;   AEG         : mean 19.81% / median 2.47%</span></span></code></pre></div>
 <p>The returned object is a <code>"backtest"</code> list with these key
 slots:</p>
 <ul>
@@ -150,16 +150,16 @@ positive values usually reflect inflated link factors; late-dev values
 flag tail miscalibration.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">bt</span><span class="op">$</span><span class="va">col_summary</span>, <span class="fl">8</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     cv_nm   dev     n    aeg_mean     aeg_med      aeg_wt</span></span>
-<span><span class="co">#&gt;    &lt;char&gt; &lt;int&gt; &lt;int&gt;       &lt;num&gt;       &lt;num&gt;       &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:    SUR     2     1 -0.11488229 -0.11488229 -0.11488229</span></span>
-<span><span class="co">#&gt; 2:    SUR     3     2 -0.17378788 -0.17378788 -0.16554030</span></span>
-<span><span class="co">#&gt; 3:    SUR     4     3 -0.18399647 -0.15933734 -0.18050859</span></span>
-<span><span class="co">#&gt; 4:    SUR     5     4 -0.16150752 -0.11530589 -0.16266930</span></span>
-<span><span class="co">#&gt; 5:    SUR     6     5 -0.19016375 -0.15462651 -0.19760934</span></span>
-<span><span class="co">#&gt; 6:    SUR     7     6 -0.14870028 -0.13445660 -0.16641959</span></span>
-<span><span class="co">#&gt; 7:    SUR     8     6 -0.08020426 -0.09494260 -0.10197503</span></span>
-<span><span class="co">#&gt; 8:    SUR     9     6 -0.04067095 -0.02736744 -0.05393216</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm   dev     n   aeg_mean    aeg_med     aeg_wt</span></span>
+<span><span class="co">#&gt;    &lt;char&gt; &lt;int&gt; &lt;int&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR     2     1 -0.3228967 -0.3228967 -0.3228967</span></span>
+<span><span class="co">#&gt; 2:    SUR     3     2  0.2760710  0.2760710  0.5380116</span></span>
+<span><span class="co">#&gt; 3:    SUR     4     3  3.0666760  2.9082082  3.3631170</span></span>
+<span><span class="co">#&gt; 4:    SUR     5     4  1.4738566  1.2395963  1.2478607</span></span>
+<span><span class="co">#&gt; 5:    SUR     6     5  1.6680813  0.3429063  1.3252178</span></span>
+<span><span class="co">#&gt; 6:    SUR     7     6  0.9780860  0.6530255  0.8186990</span></span>
+<span><span class="co">#&gt; 7:    SUR     8     6  0.5077618  0.4315486  0.6924133</span></span>
+<span><span class="co">#&gt; 8:    SUR     9     6  0.2276918  0.1570609  0.2440447</span></span></code></pre></div>
 <p><code>aeg_mean</code> averages cell-level AEG, <code>aeg_med</code>
 is the median, and
 <code>aeg_wt = sum(pred - actual) / sum(actual)</code> is
@@ -172,14 +172,14 @@ event (a rate change, claim handling shift, or one-off shock) that a
 static chain ladder cannot see by construction.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">bt</span><span class="op">$</span><span class="va">diag_summary</span></span>
-<span><span class="co">#&gt;    cv_nm calendar_idx     n    aeg_mean      aeg_med       aeg_wt</span></span>
-<span><span class="co">#&gt;   &lt;char&gt;        &lt;int&gt; &lt;int&gt;       &lt;num&gt;        &lt;num&gt;        &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:    SUR           25    23 -0.02011293 -0.009084399 -0.006192479</span></span>
-<span><span class="co">#&gt; 2:    SUR           26    22 -0.03568871 -0.008713930 -0.008347687</span></span>
-<span><span class="co">#&gt; 3:    SUR           27    21 -0.04637435 -0.042064135 -0.008510125</span></span>
-<span><span class="co">#&gt; 4:    SUR           28    20 -0.05910256 -0.046086304 -0.011261448</span></span>
-<span><span class="co">#&gt; 5:    SUR           29    19 -0.07068129 -0.052651446 -0.018207062</span></span>
-<span><span class="co">#&gt; 6:    SUR           30    18 -0.06628320 -0.059431402 -0.010639543</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm calendar_idx     n   aeg_mean      aeg_med      aeg_wt</span></span>
+<span><span class="co">#&gt;    &lt;char&gt;        &lt;int&gt; &lt;int&gt;      &lt;num&gt;        &lt;num&gt;       &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR           25    23 0.13326079  0.070162079  0.03862954</span></span>
+<span><span class="co">#&gt; 2:    SUR           26    22 0.33811631  0.079737970  0.01255411</span></span>
+<span><span class="co">#&gt; 3:    SUR           27    21 0.36867941  0.015893924  0.03207125</span></span>
+<span><span class="co">#&gt; 4:    SUR           28    20 0.07217789 -0.002690612 -0.04810613</span></span>
+<span><span class="co">#&gt; 5:    SUR           29    19 0.14188721  0.024717168 -0.06295772</span></span>
+<span><span class="co">#&gt; 6:    SUR           30    18 0.11032715 -0.037993393 -0.01415728</span></span></code></pre></div>
 <p>A monotone drift across calendar diagonals (as in the SUR example
 above, where AEG becomes increasingly negative across
 <code>25, ..., 30</code>) typically indicates that the latest period is
@@ -189,23 +189,30 @@ diagnosing specific cohort × dev cells, inspect <code>bt$aeg</code>
 directly:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">bt</span><span class="op">$</span><span class="va">aeg</span>, <span class="fl">5</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    cv_nm     cohort   dev value_actual value_pred          aeg calendar_idx</span></span>
-<span><span class="co">#&gt;   &lt;char&gt;     &lt;Date&gt; &lt;int&gt;        &lt;num&gt;      &lt;num&gt;        &lt;num&gt;        &lt;int&gt;</span></span>
-<span><span class="co">#&gt; 1:    SUR 2023-05-01    24   1821096431 1806036987 -0.008269438           25</span></span>
-<span><span class="co">#&gt; 2:    SUR 2023-06-01    23   4244002134 4270861775  0.006328847           25</span></span>
-<span><span class="co">#&gt; 3:    SUR 2023-06-01    24   4447577338 4471592279  0.005399555           26</span></span>
-<span><span class="co">#&gt; 4:    SUR 2023-07-01    22   3732332311 3736485202  0.001112680           25</span></span>
-<span><span class="co">#&gt; 5:    SUR 2023-07-01    23   3929781412 3986829711  0.014516910           26</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm     cohort   dev value_actual value_pred        aeg calendar_idx</span></span>
+<span><span class="co">#&gt;    &lt;char&gt;     &lt;Date&gt; &lt;int&gt;        &lt;num&gt;      &lt;num&gt;      &lt;num&gt;        &lt;int&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR 2023-05-01    24   3069749801 3857304372 0.25655334           25</span></span>
+<span><span class="co">#&gt; 2:    SUR 2023-06-01    23   3335147200 3569148061 0.07016208           25</span></span>
+<span><span class="co">#&gt; 3:    SUR 2023-06-01    24   3825555480 4507834001 0.17834757           26</span></span>
+<span><span class="co">#&gt; 4:    SUR 2023-07-01    22   3899617297 4250600192 0.09000445           25</span></span>
+<span><span class="co">#&gt; 5:    SUR 2023-07-01    23   4309830408 5032710628 0.16772823           26</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="plot-demos">Plot demos<a class="anchor" aria-label="anchor" href="#plot-demos"></a>
 </h2>
 <p>Four plot views are registered on <code>"backtest"</code>:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bt</span>, type <span class="op">=</span> <span class="st">"col"</span><span class="op">)</span>    <span class="co"># AEG by dev (point + dashed zero line)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bt</span>, type <span class="op">=</span> <span class="st">"diag"</span><span class="op">)</span>   <span class="co"># AEG by calendar diagonal</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bt</span>, type <span class="op">=</span> <span class="st">"cell"</span><span class="op">)</span>   <span class="co"># per-cohort AEG trajectories over dev</span></span>
-<span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">bt</span><span class="op">)</span>         <span class="co"># diverging-color heatmap on the held-out wedge</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bt</span>, type <span class="op">=</span> <span class="st">"col"</span><span class="op">)</span>    <span class="co"># AEG by dev (point + dashed zero line)</span></span></code></pre></div>
+<p><img src="backtest_files/figure-html/unnamed-chunk-5-1.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bt</span>, type <span class="op">=</span> <span class="st">"diag"</span><span class="op">)</span>   <span class="co"># AEG by calendar diagonal</span></span></code></pre></div>
+<p><img src="backtest_files/figure-html/unnamed-chunk-5-2.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bt</span>, type <span class="op">=</span> <span class="st">"cell"</span><span class="op">)</span>   <span class="co"># per-cohort AEG trajectories over dev</span></span></code></pre></div>
+<p><img src="backtest_files/figure-html/unnamed-chunk-5-3.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">bt</span><span class="op">)</span>         <span class="co"># diverging-color heatmap on the held-out wedge</span></span></code></pre></div>
+<p><img src="backtest_files/figure-html/unnamed-chunk-5-4.png" class="r-plt" alt="" width="768"></p>
 <p><code>type = "col"</code> is the right place to look for systematic
 dev-period bias; <code>type = "diag"</code> reveals calendar-year drift;
 <code>type = "cell"</code> exposes which cohorts contribute the bias;
@@ -263,7 +270,7 @@ with the mapping:</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">bt_cl</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/backtest.html">backtest</a></span><span class="op">(</span><span class="va">tri_sur</span>, holdout <span class="op">=</span> <span class="fl">6L</span>, fit_fn <span class="op">=</span> <span class="va">fit_cl</span>,</span>
 <span>                   value_var <span class="op">=</span> <span class="st">"closs"</span>, method <span class="op">=</span> <span class="st">"mack"</span><span class="op">)</span></span>
 <span><span class="va">bt_lr</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/backtest.html">backtest</a></span><span class="op">(</span><span class="va">tri_sur</span>, holdout <span class="op">=</span> <span class="fl">6L</span>, fit_fn <span class="op">=</span> <span class="va">fit_lr</span>,</span>
@@ -277,7 +284,7 @@ with the mapping:</p>
 <span><span class="co">#&gt;   value_var   : clr</span></span>
 <span><span class="co">#&gt;   holdout     : 6 calendar diagonals</span></span>
 <span><span class="co">#&gt;   held-out    : 123 cells</span></span>
-<span><span class="co">#&gt;   AEG         : mean 1.25% / median -0.22%</span></span></code></pre></div>
+<span><span class="co">#&gt;   AEG         : mean 149.45% / median 7.66%</span></span></code></pre></div>
 <p>Backtesting <code>clr</code> is often the more informative
 diagnostic: the loss ratio is unitless and dimension-free across cohorts
 of very different volume, so <code>aeg_mean</code> and

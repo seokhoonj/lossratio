@@ -141,15 +141,38 @@ aggregation frameworks</a></p>
 <span></span>
 <span><span class="va">tri</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    cv_nm n_obs     cohort dev   loss     rp  closs    crp ...</span></span>
-<span><span class="co">#&gt; 1:   SUR    30 2023-04-01       1      0  ...       0  ...</span></span>
-<span><span class="co">#&gt; 2:   2CI    30 2023-04-01       1      0  ...       0  ...</span></span>
-<span><span class="co">#&gt; ...</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm n_obs     cohort   dev     loss       rp    closs      crp   margin</span></span>
+<span><span class="co">#&gt;    &lt;char&gt; &lt;int&gt;     &lt;Date&gt; &lt;int&gt;    &lt;num&gt;    &lt;num&gt;    &lt;num&gt;    &lt;num&gt;    &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR    30 2023-04-01     1      0.0 11191625      0.0 11191625 11191625</span></span>
+<span><span class="co">#&gt; 2:    CAN    30 2023-04-01     1 368972.2 12879189 368972.2 12879189 12510217</span></span>
+<span><span class="co">#&gt; 3:    2CI    30 2023-04-01     1 384652.4  7567722 384652.4  7567722  7183069</span></span>
+<span><span class="co">#&gt; 4:    HOS    30 2023-04-01     1      0.0 15273270      0.0 15273270 15273270</span></span>
+<span><span class="co">#&gt; 5:    SUR    29 2023-04-01     2      0.0 14025887      0.0 25217512 14025887</span></span>
+<span><span class="co">#&gt; 6:    CAN    29 2023-04-01     2      0.0 30821343 368972.2 43700532 30821343</span></span>
+<span><span class="co">#&gt;     cmargin profit cprofit         lr         clr loss_prop   rp_prop</span></span>
+<span><span class="co">#&gt;       &lt;num&gt; &lt;fctr&gt;  &lt;fctr&gt;      &lt;num&gt;       &lt;num&gt;     &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1: 11191625    pos     pos 0.00000000 0.000000000 0.0000000 0.2385673</span></span>
+<span><span class="co">#&gt; 2: 12510217    pos     pos 0.02864872 0.028648717 0.4895968 0.2745405</span></span>
+<span><span class="co">#&gt; 3:  7183069    pos     pos 0.05082803 0.050828031 0.5104032 0.1613181</span></span>
+<span><span class="co">#&gt; 4: 15273270    pos     pos 0.00000000 0.000000000 0.0000000 0.3255741</span></span>
+<span><span class="co">#&gt; 5: 25217512    pos     pos 0.00000000 0.000000000 0.0000000 0.1890296</span></span>
+<span><span class="co">#&gt; 6: 43331560    pos     pos 0.00000000 0.008443198 0.0000000 0.4153853</span></span>
+<span><span class="co">#&gt;    closs_prop  crp_prop</span></span>
+<span><span class="co">#&gt;         &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:  0.0000000 0.2385673</span></span>
+<span><span class="co">#&gt; 2:  0.4895968 0.2745405</span></span>
+<span><span class="co">#&gt; 3:  0.5104032 0.1613181</span></span>
+<span><span class="co">#&gt; 4:  0.0000000 0.3255741</span></span>
+<span><span class="co">#&gt; 5:  0.0000000 0.2082178</span></span>
+<span><span class="co">#&gt; 6:  0.4654308 0.3608298</span></span></code></pre></div>
 <p>각 행은 (코호트, dev) 셀 하나이며 누적 손해 / 누적 위험보험료 값을
 갖는다. 라인 플롯이나 히트맵으로 시각화할 수 있다.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># 코호트별 궤적, 그룹별 facet</span></span>
-<span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>     <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># 코호트별 궤적, 그룹별 facet</span></span></code></pre></div>
+<p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>     <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
+<p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="768"></p>
 <p><code>triangle</code> 은 다음 함수의 입력으로 사용된다.</p>
 <ul>
 <li>
@@ -163,13 +186,33 @@ aggregation frameworks</a></p>
 <div class="section level2">
 <h2 id="calendar-달력-기간만">Calendar (달력 기간만)<a class="anchor" aria-label="anchor" href="#calendar-%EB%8B%AC%EB%A0%A5-%EA%B8%B0%EA%B0%84%EB%A7%8C"></a>
 </h2>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cal</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_calendar.html">build_calendar</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>, calendar_var <span class="op">=</span> <span class="st">"cym"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">cal</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    cv_nm   calendar dev   loss     rp  closs    crp ...</span></span>
-<span><span class="co">#&gt; 1:   SUR 2023-04-01       1      0  ...       0  ...</span></span>
-<span><span class="co">#&gt; 2:   SUR 2023-05-01       2      0  ...       0  ...</span></span>
-<span><span class="co">#&gt; ...</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm   calendar   dev       loss        rp       closs       crp   margin</span></span>
+<span><span class="co">#&gt;    &lt;char&gt;     &lt;Date&gt; &lt;int&gt;      &lt;num&gt;     &lt;num&gt;       &lt;num&gt;     &lt;num&gt;    &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    2CI 2023-04-01     1   384652.4   7567722    384652.4   7567722  7183069</span></span>
+<span><span class="co">#&gt; 2:    2CI 2023-05-01     2  5758812.3  27286691   6143464.7  34854413 21527879</span></span>
+<span><span class="co">#&gt; 3:    2CI 2023-06-01     3  3470593.2  42665531   9614057.9  77519944 39194938</span></span>
+<span><span class="co">#&gt; 4:    2CI 2023-07-01     4 42238012.7  68265635  51852070.6 145785580 26027623</span></span>
+<span><span class="co">#&gt; 5:    2CI 2023-08-01     5 16233022.1 110351069  68085092.7 256136649 94118047</span></span>
+<span><span class="co">#&gt; 6:    2CI 2023-09-01     6 61916179.4 135154730 130001272.1 391291379 73238550</span></span>
+<span><span class="co">#&gt;      cmargin profit cprofit         lr        clr  loss_prop   rp_prop</span></span>
+<span><span class="co">#&gt;        &lt;num&gt; &lt;fctr&gt;  &lt;fctr&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:   7183069    pos     pos 0.05082803 0.05082803 0.51040316 0.1613181</span></span>
+<span><span class="co">#&gt; 2:  28710948    pos     pos 0.21104839 0.17626074 0.99829282 0.2248381</span></span>
+<span><span class="co">#&gt; 3:  67905887    pos     pos 0.08134419 0.12402044 0.04523554 0.1688936</span></span>
+<span><span class="co">#&gt; 4:  93933509    pos     pos 0.61873024 0.35567352 0.22192582 0.2060648</span></span>
+<span><span class="co">#&gt; 5: 188051557    pos     pos 0.14710344 0.26581550 0.16270303 0.2219566</span></span>
+<span><span class="co">#&gt; 6: 261290107    pos     pos 0.45811330 0.33223648 0.19591344 0.2113124</span></span>
+<span><span class="co">#&gt;    closs_prop  crp_prop</span></span>
+<span><span class="co">#&gt;         &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:  0.5104032 0.1613181</span></span>
+<span><span class="co">#&gt; 2:  0.9419191 0.2071298</span></span>
+<span><span class="co">#&gt; 3:  0.1154911 0.1841805</span></span>
+<span><span class="co">#&gt; 4:  0.1895387 0.1938191</span></span>
+<span><span class="co">#&gt; 5:  0.1823672 0.2050163</span></span>
+<span><span class="co">#&gt; 6:  0.1885773 0.2071482</span></span></code></pre></div>
 <p>각 행은 그룹별 달력 기간 하나이다. 여기서 <code>dev</code> 컬럼은
 그룹 내부의 순차 인덱스 (1, 2, 3, …) 이며, “코호트 시작 이후의 경과
 기간(development period)” 이 아니다.</p>
@@ -183,14 +226,17 @@ aggregation frameworks</a></p>
 on-leveling 이벤트)</li>
 <li>포트폴리오 모니터링 대시보드</li>
 </ul>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cal</span><span class="op">)</span>                       <span class="co"># x = calendar</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cal</span>, x_by <span class="op">=</span> <span class="st">"dev"</span><span class="op">)</span>         <span class="co"># x = 순차 인덱스</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cal</span><span class="op">)</span>                       <span class="co"># x = calendar</span></span></code></pre></div>
+<p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-4-1.png" class="r-plt" alt="" width="768"></p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cal</span>, x_by <span class="op">=</span> <span class="st">"dev"</span><span class="op">)</span>         <span class="co"># x = 순차 인덱스</span></span></code></pre></div>
+<p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-4-2.png" class="r-plt" alt="" width="768"></p>
 </div>
 <div class="section level2">
 <h2 id="total-포트폴리오-요약">Total (포트폴리오 요약)<a class="anchor" aria-label="anchor" href="#total-%ED%8F%AC%ED%8A%B8%ED%8F%B4%EB%A6%AC%EC%98%A4-%EC%9A%94%EC%95%BD"></a>
 </h2>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tot</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_total.html">build_total</a></span><span class="op">(</span></span>
 <span>  <span class="va">exp</span>,</span>
 <span>  group_var <span class="op">=</span> <span class="va">cv_nm</span>,</span>
@@ -199,8 +245,18 @@ on-leveling 이벤트)</li>
 <span>  period_to   <span class="op">=</span> <span class="st">"2024-03-01"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">tot</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    cv_nm n_obs sales_start sales_end       loss          rp        lr ...</span></span>
-<span><span class="co">#&gt; 1:   SUR    12  2023-04-01 2024-03-01  ...        ...       ...</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm n_obs sales_start  sales_end        loss          rp        lr</span></span>
+<span><span class="co">#&gt;    &lt;char&gt; &lt;int&gt;      &lt;Date&gt;     &lt;Date&gt;       &lt;num&gt;       &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR    30  2023-04-01 2024-03-01 43837071345 23817090349 1.8405721</span></span>
+<span><span class="co">#&gt; 2:    CAN    30  2023-04-01 2024-03-01 14274936766 24008537115 0.5945775</span></span>
+<span><span class="co">#&gt; 3:    2CI    30  2023-04-01 2024-03-01 17114890156 18720199622 0.9142472</span></span>
+<span><span class="co">#&gt; 4:    HOS    30  2023-04-01 2024-03-01 11000687149 25111393761 0.4380755</span></span>
+<span><span class="co">#&gt;    loss_prop   rp_prop</span></span>
+<span><span class="co">#&gt;        &lt;num&gt;     &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1: 0.5083880 0.2598496</span></span>
+<span><span class="co">#&gt; 2: 0.1655495 0.2619383</span></span>
+<span><span class="co">#&gt; 3: 0.1984851 0.2042414</span></span>
+<span><span class="co">#&gt; 4: 0.1275774 0.2739707</span></span></code></pre></div>
 <p>그룹당 한 행이며 해당 윈도우의 손해 / 위험보험료 / 손해율을 요약한다.
 <code>period_from</code> / <code>period_to</code> 인자로 고정 윈도우를
 지정해 그룹 간 비교 가능성을 확보한다.</p>
@@ -232,14 +288,20 @@ on-leveling 이벤트)</li>
 </h2>
 <p>집계 후 각 객체는 원본 컬럼 메타데이터를 속성으로 저장한다 (플롯
 라벨과 단위(granularity) 인지 날짜 형식 지정에 사용된다).</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">tri</span>, <span class="st">"cohort_var"</span><span class="op">)</span>      <span class="co"># "uym"</span></span>
+<span><span class="co">#&gt; [1] "uym"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">tri</span>, <span class="st">"cohort_type"</span><span class="op">)</span>     <span class="co"># "month"</span></span>
+<span><span class="co">#&gt; [1] "month"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">tri</span>, <span class="st">"dev_var"</span><span class="op">)</span>         <span class="co"># "elap_m"</span></span>
+<span><span class="co">#&gt; [1] "elap_m"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">tri</span>, <span class="st">"dev_type"</span><span class="op">)</span>        <span class="co"># "month"</span></span>
+<span><span class="co">#&gt; [1] NA</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">cal</span>, <span class="st">"calendar_var"</span><span class="op">)</span>    <span class="co"># "cym"</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">cal</span>, <span class="st">"calendar_type"</span><span class="op">)</span>   <span class="co"># "month"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "cym"</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">cal</span>, <span class="st">"calendar_type"</span><span class="op">)</span>   <span class="co"># "month"</span></span>
+<span><span class="co">#&gt; [1] "month"</span></span></code></pre></div>
 <p>데이터 컬럼 자체는 <code>cohort</code> / <code>dev</code> /
 <code>calendar</code> 로 표준화되어 있으므로, 하위 코드는 단위
 비의존적으로 동작한다.</p>

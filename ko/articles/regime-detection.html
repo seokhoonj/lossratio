@@ -116,9 +116,9 @@ regimes from the data:</p>
 <span><span class="co">#&gt;   value_var   : clr</span></span>
 <span><span class="co">#&gt;   window (K)  : elap_m 1, ..., 12</span></span>
 <span><span class="co">#&gt;   cohorts     : 19 analysed (11 dropped)</span></span>
-<span><span class="co">#&gt;   regimes     : 2</span></span>
-<span><span class="co">#&gt;   breakpoints : 24.04</span></span>
-<span><span class="co">#&gt;   PC1 / PC2   : 79.8% / 13.2%</span></span></code></pre></div>
+<span><span class="co">#&gt;   regimes     : 1</span></span>
+<span><span class="co">#&gt;   breakpoints : (none)</span></span>
+<span><span class="co">#&gt;   PC1 / PC2   : 58.2% / 16.5%</span></span></code></pre></div>
 <p>The window <code>K</code> controls how many development periods
 define the cohort feature vector. Only cohorts observed for at least
 <code>K</code> periods are analysed; cohorts with shorter windows are
@@ -135,21 +135,32 @@ drops more recent cohorts.</p>
 <span><span class="co">#&gt;   value_var : clr</span></span>
 <span><span class="co">#&gt;   window    : elap_m 1, ..., 12</span></span>
 <span><span class="co">#&gt;   cohorts   : 19 analysed (11 dropped)</span></span>
-<span><span class="co">#&gt;</span></span>
-<span><span class="co">#&gt; Regimes (2):</span></span>
-<span><span class="co">#&gt;   1: 23.04, ..., 24.03 (12 cohorts)</span></span>
-<span><span class="co">#&gt;   2: 24.04, ..., 24.10 (7 cohorts)</span></span>
-<span><span class="co">#&gt;</span></span>
-<span><span class="co">#&gt; Breakpoints: 24.04</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Regimes (1):</span></span>
+<span><span class="co">#&gt;   1: 23.04, ..., 24.10 (19 cohorts)</span></span>
 <span></span>
 <span><span class="va">r</span><span class="op">$</span><span class="va">labels</span></span>
-<span><span class="co">#&gt;         cohort                regime regime_id</span></span>
-<span><span class="co">#&gt;         &lt;Date&gt;                &lt;fctr&gt;     &lt;int&gt;</span></span>
-<span><span class="co">#&gt;  1: 2023-04-01  23.04, ..., 24.03         1</span></span>
-<span><span class="co">#&gt;  2: 2023-05-01  23.04, ..., 24.03         1</span></span>
-<span><span class="co">#&gt;  ...</span></span>
-<span><span class="co">#&gt; 13: 2024-04-01  24.04, ..., 24.10         2</span></span>
-<span><span class="co">#&gt;  ...</span></span></code></pre></div>
+<span><span class="co">#&gt;         cohort            regime regime_id</span></span>
+<span><span class="co">#&gt;         &lt;Date&gt;            &lt;fctr&gt;     &lt;int&gt;</span></span>
+<span><span class="co">#&gt;  1: 2023-04-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  2: 2023-05-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  3: 2023-06-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  4: 2023-07-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  5: 2023-08-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  6: 2023-09-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  7: 2023-10-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  8: 2023-11-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  9: 2023-12-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 10: 2024-01-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 11: 2024-02-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 12: 2024-03-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 13: 2024-04-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 14: 2024-05-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 15: 2024-06-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 16: 2024-07-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 17: 2024-08-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 18: 2024-09-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 19: 2024-10-01 23.04, ..., 24.10         1</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="visualisation">Visualisation<a class="anchor" aria-label="anchor" href="#visualisation"></a>
@@ -159,6 +170,7 @@ coloured by detected regime. If the regimes are well-separated in PCA
 space, the structural shift is visually confirmed:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span></span></code></pre></div>
+<p><img src="regime-detection_files/figure-html/unnamed-chunk-4-1.png" class="r-plt" alt="" width="768"></p>
 <p>Arrows indicate the loadings of each development-period feature on
 the PC axes — useful for reading <em>how</em> the regimes differ
 (e.g. whether the shift primarily affects early or late
@@ -199,7 +211,19 @@ boundary — is strong evidence of a real underwriting/rate shift.</p>
 two-vs-three regime hypotheses — pass <code>n_regimes</code>:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">r2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_cohort_regime.html">detect_cohort_regime</a></span><span class="op">(</span><span class="va">tri_sur</span>, K <span class="op">=</span> <span class="fl">12</span>, method <span class="op">=</span> <span class="st">"ecp"</span>, n_regimes <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">r2</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">r2</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Cohort regime detection summary</span></span>
+<span><span class="co">#&gt;   method    : ecp</span></span>
+<span><span class="co">#&gt;   value_var : clr</span></span>
+<span><span class="co">#&gt;   window    : elap_m 1, ..., 12</span></span>
+<span><span class="co">#&gt;   cohorts   : 19 analysed (11 dropped)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Regimes (3):</span></span>
+<span><span class="co">#&gt;   1: 23.04, ..., 24.02 (11 cohorts)</span></span>
+<span><span class="co">#&gt;   2: 24.03, ..., 24.07 (5 cohorts)</span></span>
+<span><span class="co">#&gt;   3: 24.08, ..., 24.10 (3 cohorts)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Breakpoints: 24.03, 24.08</span></span></code></pre></div>
 <p>For <code>"ecp"</code> and <code>"pelt"</code>,
 <code>n_regimes</code> is a request (the algorithm will return up to
 that many regimes if supported by the data). For <code>"hclust"</code>,

@@ -40,7 +40,7 @@
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
-<li class="nav-item"><a class="nav-link" href=".././ko/">KR</a></li>
+<li class="nav-item"><a class="nav-link" href=".././ko/">KO</a></li>
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json">
 </form></li>
@@ -111,9 +111,9 @@ shifts across underwriting cohorts</a></p>
 <span><span class="co">#&gt;   value_var   : clr</span></span>
 <span><span class="co">#&gt;   window (K)  : elap_m 1, ..., 12</span></span>
 <span><span class="co">#&gt;   cohorts     : 19 analysed (11 dropped)</span></span>
-<span><span class="co">#&gt;   regimes     : 2</span></span>
-<span><span class="co">#&gt;   breakpoints : 24.04</span></span>
-<span><span class="co">#&gt;   PC1 / PC2   : 79.8% / 13.2%</span></span></code></pre></div>
+<span><span class="co">#&gt;   regimes     : 1</span></span>
+<span><span class="co">#&gt;   breakpoints : (none)</span></span>
+<span><span class="co">#&gt;   PC1 / PC2   : 58.2% / 16.5%</span></span></code></pre></div>
 <p>창 <code>K</code> 는 코호트 특징 벡터를 정의하는 경과 기간 수를
 조절한다. 최소 <code>K</code> 기간 이상 관측된 코호트만 분석되며, 창이
 짧은 코호트는 제외된다. <code>K</code> 를 늘리면 궤적을 더 많이 담을 수
@@ -129,21 +129,32 @@ shifts across underwriting cohorts</a></p>
 <span><span class="co">#&gt;   value_var : clr</span></span>
 <span><span class="co">#&gt;   window    : elap_m 1, ..., 12</span></span>
 <span><span class="co">#&gt;   cohorts   : 19 analysed (11 dropped)</span></span>
-<span><span class="co">#&gt;</span></span>
-<span><span class="co">#&gt; Regimes (2):</span></span>
-<span><span class="co">#&gt;   1: 23.04, ..., 24.03 (12 cohorts)</span></span>
-<span><span class="co">#&gt;   2: 24.04, ..., 24.10 (7 cohorts)</span></span>
-<span><span class="co">#&gt;</span></span>
-<span><span class="co">#&gt; Breakpoints: 24.04</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Regimes (1):</span></span>
+<span><span class="co">#&gt;   1: 23.04, ..., 24.10 (19 cohorts)</span></span>
 <span></span>
 <span><span class="va">r</span><span class="op">$</span><span class="va">labels</span></span>
-<span><span class="co">#&gt;         cohort                regime regime_id</span></span>
-<span><span class="co">#&gt;         &lt;Date&gt;                &lt;fctr&gt;     &lt;int&gt;</span></span>
-<span><span class="co">#&gt;  1: 2023-04-01  23.04, ..., 24.03         1</span></span>
-<span><span class="co">#&gt;  2: 2023-05-01  23.04, ..., 24.03         1</span></span>
-<span><span class="co">#&gt;  ...</span></span>
-<span><span class="co">#&gt; 13: 2024-04-01  24.04, ..., 24.10         2</span></span>
-<span><span class="co">#&gt;  ...</span></span></code></pre></div>
+<span><span class="co">#&gt;         cohort            regime regime_id</span></span>
+<span><span class="co">#&gt;         &lt;Date&gt;            &lt;fctr&gt;     &lt;int&gt;</span></span>
+<span><span class="co">#&gt;  1: 2023-04-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  2: 2023-05-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  3: 2023-06-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  4: 2023-07-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  5: 2023-08-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  6: 2023-09-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  7: 2023-10-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  8: 2023-11-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt;  9: 2023-12-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 10: 2024-01-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 11: 2024-02-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 12: 2024-03-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 13: 2024-04-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 14: 2024-05-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 15: 2024-06-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 16: 2024-07-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 17: 2024-08-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 18: 2024-09-01 23.04, ..., 24.10         1</span></span>
+<span><span class="co">#&gt; 19: 2024-10-01 23.04, ..., 24.10         1</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="시각화">시각화<a class="anchor" aria-label="anchor" href="#%EC%8B%9C%EA%B0%81%ED%99%94"></a>
@@ -153,6 +164,7 @@ regime 으로 색칠해 보여 준다. PCA 공간에서 regime 들이 잘 분리
 구조적 변화가 시각적으로 확인된 것이다.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">r</span><span class="op">)</span></span></code></pre></div>
+<p><img src="regime-detection-ko_files/figure-html/unnamed-chunk-4-1.png" class="r-plt" alt="" width="768"></p>
 <p>화살표는 각 경과 기간 특징이 PC 축에 기여하는 적재량을 나타낸다 —
 regime 들이 <em>어떻게</em> 다른지 (예: 변화가 주로 초기 경과에 영향을
 주는지, 후기 경과에 영향을 주는지) 읽어내는 데 유용하다.</p>
@@ -191,7 +203,19 @@ Ward 계층 클러스터링을 적용하고 <code>n_regimes</code> 개 (기본
 3-regime 가설을 비교할 때 — <code>n_regimes</code> 를 넘긴다.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">r2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/detect_cohort_regime.html">detect_cohort_regime</a></span><span class="op">(</span><span class="va">tri_sur</span>, K <span class="op">=</span> <span class="fl">12</span>, method <span class="op">=</span> <span class="st">"ecp"</span>, n_regimes <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">r2</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">r2</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Cohort regime detection summary</span></span>
+<span><span class="co">#&gt;   method    : ecp</span></span>
+<span><span class="co">#&gt;   value_var : clr</span></span>
+<span><span class="co">#&gt;   window    : elap_m 1, ..., 12</span></span>
+<span><span class="co">#&gt;   cohorts   : 19 analysed (11 dropped)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Regimes (3):</span></span>
+<span><span class="co">#&gt;   1: 23.04, ..., 24.02 (11 cohorts)</span></span>
+<span><span class="co">#&gt;   2: 24.03, ..., 24.07 (5 cohorts)</span></span>
+<span><span class="co">#&gt;   3: 24.08, ..., 24.10 (3 cohorts)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Breakpoints: 24.03, 24.08</span></span></code></pre></div>
 <p><code>"ecp"</code> 와 <code>"pelt"</code> 의 경우
 <code>n_regimes</code> 는 요청값이다 (데이터가 허용하면 알고리즘이 그
 수까지 regime 을 반환한다). <code>"hclust"</code> 의 경우에는 강제

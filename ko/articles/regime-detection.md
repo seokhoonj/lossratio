@@ -47,9 +47,9 @@ r
 #>   value_var   : clr
 #>   window (K)  : elap_m 1, ..., 12
 #>   cohorts     : 19 analysed (11 dropped)
-#>   regimes     : 2
-#>   breakpoints : 24.04
-#>   PC1 / PC2   : 79.8% / 13.2%
+#>   regimes     : 1
+#>   breakpoints : (none)
+#>   PC1 / PC2   : 58.2% / 16.5%
 ```
 
 The window `K` controls how many development periods define the cohort
@@ -67,21 +67,32 @@ summary(r)
 #>   value_var : clr
 #>   window    : elap_m 1, ..., 12
 #>   cohorts   : 19 analysed (11 dropped)
-#>
-#> Regimes (2):
-#>   1: 23.04, ..., 24.03 (12 cohorts)
-#>   2: 24.04, ..., 24.10 (7 cohorts)
-#>
-#> Breakpoints: 24.04
+#> 
+#> Regimes (1):
+#>   1: 23.04, ..., 24.10 (19 cohorts)
 
 r$labels
-#>         cohort                regime regime_id
-#>         <Date>                <fctr>     <int>
-#>  1: 2023-04-01  23.04, ..., 24.03         1
-#>  2: 2023-05-01  23.04, ..., 24.03         1
-#>  ...
-#> 13: 2024-04-01  24.04, ..., 24.10         2
-#>  ...
+#>         cohort            regime regime_id
+#>         <Date>            <fctr>     <int>
+#>  1: 2023-04-01 23.04, ..., 24.10         1
+#>  2: 2023-05-01 23.04, ..., 24.10         1
+#>  3: 2023-06-01 23.04, ..., 24.10         1
+#>  4: 2023-07-01 23.04, ..., 24.10         1
+#>  5: 2023-08-01 23.04, ..., 24.10         1
+#>  6: 2023-09-01 23.04, ..., 24.10         1
+#>  7: 2023-10-01 23.04, ..., 24.10         1
+#>  8: 2023-11-01 23.04, ..., 24.10         1
+#>  9: 2023-12-01 23.04, ..., 24.10         1
+#> 10: 2024-01-01 23.04, ..., 24.10         1
+#> 11: 2024-02-01 23.04, ..., 24.10         1
+#> 12: 2024-03-01 23.04, ..., 24.10         1
+#> 13: 2024-04-01 23.04, ..., 24.10         1
+#> 14: 2024-05-01 23.04, ..., 24.10         1
+#> 15: 2024-06-01 23.04, ..., 24.10         1
+#> 16: 2024-07-01 23.04, ..., 24.10         1
+#> 17: 2024-08-01 23.04, ..., 24.10         1
+#> 18: 2024-09-01 23.04, ..., 24.10         1
+#> 19: 2024-10-01 23.04, ..., 24.10         1
 ```
 
 ## Visualisation
@@ -94,6 +105,8 @@ structural shift is visually confirmed:
 
 plot(r)
 ```
+
+![](regime-detection_files/figure-html/unnamed-chunk-4-1.png)
 
 Arrows indicate the loadings of each development-period feature on the
 PC axes — useful for reading *how* the regimes differ (e.g. whether the
@@ -133,6 +146,18 @@ two-vs-three regime hypotheses — pass `n_regimes`:
 
 r2 <- detect_cohort_regime(tri_sur, K = 12, method = "ecp", n_regimes = 3)
 summary(r2)
+#> Cohort regime detection summary
+#>   method    : ecp
+#>   value_var : clr
+#>   window    : elap_m 1, ..., 12
+#>   cohorts   : 19 analysed (11 dropped)
+#> 
+#> Regimes (3):
+#>   1: 23.04, ..., 24.02 (11 cohorts)
+#>   2: 24.03, ..., 24.07 (5 cohorts)
+#>   3: 24.08, ..., 24.10 (3 cohorts)
+#> 
+#> Breakpoints: 24.03, 24.08
 ```
 
 For `"ecp"` and `"pelt"`, `n_regimes` is a request (the algorithm will

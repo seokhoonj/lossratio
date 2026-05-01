@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var toggle = null;
   for (var i = 0; i < links.length; i++) {
     var t = links[i].textContent.trim();
-    if (t === 'EN' || t === 'KR') {
+    if (t === 'EN' || t === 'KO') {
       toggle = links[i];
       break;
     }

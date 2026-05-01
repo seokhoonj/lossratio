@@ -32,7 +32,7 @@ print(bt)
 #>   value_var   : closs
 #>   holdout     : 6 calendar diagonals
 #>   held-out    : 123 cells
-#>   AEG         : mean -4.83% / median -3.18%
+#>   AEG         : mean 19.81% / median 2.47%
 ```
 
 The returned object is a `"backtest"` list with these key slots:
@@ -70,16 +70,16 @@ reflect inflated link factors; late-dev values flag tail miscalibration.
 ``` r
 
 head(bt$col_summary, 8)
-#>     cv_nm   dev     n    aeg_mean     aeg_med      aeg_wt
-#>    <char> <int> <int>       <num>       <num>       <num>
-#> 1:    SUR     2     1 -0.11488229 -0.11488229 -0.11488229
-#> 2:    SUR     3     2 -0.17378788 -0.17378788 -0.16554030
-#> 3:    SUR     4     3 -0.18399647 -0.15933734 -0.18050859
-#> 4:    SUR     5     4 -0.16150752 -0.11530589 -0.16266930
-#> 5:    SUR     6     5 -0.19016375 -0.15462651 -0.19760934
-#> 6:    SUR     7     6 -0.14870028 -0.13445660 -0.16641959
-#> 7:    SUR     8     6 -0.08020426 -0.09494260 -0.10197503
-#> 8:    SUR     9     6 -0.04067095 -0.02736744 -0.05393216
+#>     cv_nm   dev     n   aeg_mean    aeg_med     aeg_wt
+#>    <char> <int> <int>      <num>      <num>      <num>
+#> 1:    SUR     2     1 -0.3228967 -0.3228967 -0.3228967
+#> 2:    SUR     3     2  0.2760710  0.2760710  0.5380116
+#> 3:    SUR     4     3  3.0666760  2.9082082  3.3631170
+#> 4:    SUR     5     4  1.4738566  1.2395963  1.2478607
+#> 5:    SUR     6     5  1.6680813  0.3429063  1.3252178
+#> 6:    SUR     7     6  0.9780860  0.6530255  0.8186990
+#> 7:    SUR     8     6  0.5077618  0.4315486  0.6924133
+#> 8:    SUR     9     6  0.2276918  0.1570609  0.2440447
 ```
 
 `aeg_mean` averages cell-level AEG, `aeg_med` is the median, and
@@ -95,14 +95,14 @@ cannot see by construction.
 ``` r
 
 bt$diag_summary
-#>    cv_nm calendar_idx     n    aeg_mean      aeg_med       aeg_wt
-#>   <char>        <int> <int>       <num>        <num>        <num>
-#> 1:    SUR           25    23 -0.02011293 -0.009084399 -0.006192479
-#> 2:    SUR           26    22 -0.03568871 -0.008713930 -0.008347687
-#> 3:    SUR           27    21 -0.04637435 -0.042064135 -0.008510125
-#> 4:    SUR           28    20 -0.05910256 -0.046086304 -0.011261448
-#> 5:    SUR           29    19 -0.07068129 -0.052651446 -0.018207062
-#> 6:    SUR           30    18 -0.06628320 -0.059431402 -0.010639543
+#>     cv_nm calendar_idx     n   aeg_mean      aeg_med      aeg_wt
+#>    <char>        <int> <int>      <num>        <num>       <num>
+#> 1:    SUR           25    23 0.13326079  0.070162079  0.03862954
+#> 2:    SUR           26    22 0.33811631  0.079737970  0.01255411
+#> 3:    SUR           27    21 0.36867941  0.015893924  0.03207125
+#> 4:    SUR           28    20 0.07217789 -0.002690612 -0.04810613
+#> 5:    SUR           29    19 0.14188721  0.024717168 -0.06295772
+#> 6:    SUR           30    18 0.11032715 -0.037993393 -0.01415728
 ```
 
 A monotone drift across calendar diagonals (as in the SUR example above,
@@ -116,13 +116,13 @@ cells, inspect `bt$aeg` directly:
 ``` r
 
 head(bt$aeg, 5)
-#>    cv_nm     cohort   dev value_actual value_pred          aeg calendar_idx
-#>   <char>     <Date> <int>        <num>      <num>        <num>        <int>
-#> 1:    SUR 2023-05-01    24   1821096431 1806036987 -0.008269438           25
-#> 2:    SUR 2023-06-01    23   4244002134 4270861775  0.006328847           25
-#> 3:    SUR 2023-06-01    24   4447577338 4471592279  0.005399555           26
-#> 4:    SUR 2023-07-01    22   3732332311 3736485202  0.001112680           25
-#> 5:    SUR 2023-07-01    23   3929781412 3986829711  0.014516910           26
+#>     cv_nm     cohort   dev value_actual value_pred        aeg calendar_idx
+#>    <char>     <Date> <int>        <num>      <num>      <num>        <int>
+#> 1:    SUR 2023-05-01    24   3069749801 3857304372 0.25655334           25
+#> 2:    SUR 2023-06-01    23   3335147200 3569148061 0.07016208           25
+#> 3:    SUR 2023-06-01    24   3825555480 4507834001 0.17834757           26
+#> 4:    SUR 2023-07-01    22   3899617297 4250600192 0.09000445           25
+#> 5:    SUR 2023-07-01    23   4309830408 5032710628 0.16772823           26
 ```
 
 ## Plot demos
@@ -132,10 +132,30 @@ Four plot views are registered on `"backtest"`:
 ``` r
 
 plot(bt, type = "col")    # AEG by dev (point + dashed zero line)
+```
+
+![](backtest_files/figure-html/unnamed-chunk-5-1.png)
+
+``` r
+
 plot(bt, type = "diag")   # AEG by calendar diagonal
+```
+
+![](backtest_files/figure-html/unnamed-chunk-5-2.png)
+
+``` r
+
 plot(bt, type = "cell")   # per-cohort AEG trajectories over dev
+```
+
+![](backtest_files/figure-html/unnamed-chunk-5-3.png)
+
+``` r
+
 plot_triangle(bt)         # diverging-color heatmap on the held-out wedge
 ```
+
+![](backtest_files/figure-html/unnamed-chunk-5-4.png)
 
 `type = "col"` is the right place to look for systematic dev-period
 bias; `type = "diag"` reveals calendar-year drift; `type = "cell"`
@@ -191,7 +211,7 @@ print(bt_clr)
 #>   value_var   : clr
 #>   holdout     : 6 calendar diagonals
 #>   held-out    : 123 cells
-#>   AEG         : mean 1.25% / median -0.22%
+#>   AEG         : mean 149.45% / median 7.66%
 ```
 
 Backtesting `clr` is often the more informative diagnostic: the loss
