@@ -147,3 +147,7 @@ See `vignette("regime-detection")` for the dedicated walkthrough.
   tail factor).
 - `vignette("triangle-diagnostics")` — `summary_ata()`,
   `find_ata_maturity()`, and triangle-style visualisations.
+- `vignette("regime-detection")` — `detect_cohort_regime()` for
+  structural-change diagnosis across cohorts.
+- `vignette("backtest")` — calendar-diagonal hold-out validation with
+  `fit_cl` or `fit_lr`.
