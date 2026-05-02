@@ -148,3 +148,24 @@ An object of class `"LRFit"`.
 [`build_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ed.md),
 [`fit_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_ed.md),
 [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/ko/reference/find_ata_maturity.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+
+# Stage-adaptive (default): ED before maturity, CL after
+lr_sa <- fit_lr(tri, method = "sa")
+summary(lr_sa)
+plot(lr_sa)
+
+# Pure exposure-driven for all development periods
+lr_ed <- fit_lr(tri, method = "ed")
+
+# Pure chain ladder (Mack-style) for all development periods
+lr_cl <- fit_lr(tri, method = "cl")
+} # }
+```

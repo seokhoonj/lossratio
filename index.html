@@ -80,8 +80,8 @@
 <p><code>lossratio</code> is a toolkit for <strong>long-term health insurance</strong> loss ratio analysis from long-format experience data — one row per (cohort × dev × demographic) cell with loss and risk premium columns. Multi-year health policies emit loss slowly: age-to-age factors are unstable in early development, exposure (≈ risk premium) is the most reliable anchor for projection, and structural shifts from product redesigns, underwriting changes, or regulatory reforms accumulate across cohorts. The package’s defaults — stage-adaptive projection, exposure-driven early development, cohort regime detection — are tuned for this setting. The same tools apply to any cumulative loss / exposure framework (mortality, morbidity, general claims).</p>
 <p>It provides:</p>
 <ul>
-<li>Three aggregation frameworks of the experience data: cohort × dev (<code>triangle</code>), calendar period (<code>calendar</code>), and portfolio total (<code>total</code>)</li>
-<li>Age-to-age (<code>ata</code>) and exposure-driven (<code>ed</code>) development modeling</li>
+<li>Three aggregation frameworks of the experience data: cohort × dev (<code>Triangle</code>), calendar period (<code>Calendar</code>), and portfolio total (<code>Total</code>)</li>
+<li>Age-to-age (<code>ATA</code>) and exposure-driven (<code>ED</code>) development modeling</li>
 <li>Chain ladder projection (<code>fit_cl</code>) and loss ratio projection (<code>fit_lr</code>) with three methods:
 <ul>
 <li>
@@ -210,19 +210,19 @@
 <tbody>
 <tr>
 <td><code><a href="reference/build_triangle.html">build_triangle()</a></code></td>
-<td><code>triangle</code></td>
+<td><code>Triangle</code></td>
 <td>cohort × dev (2D)</td>
 <td>Chain ladder, ED, SA projection</td>
 </tr>
 <tr>
 <td><code><a href="reference/build_calendar.html">build_calendar()</a></code></td>
-<td><code>calendar</code></td>
+<td><code>Calendar</code></td>
 <td>calendar period (1D)</td>
 <td>Calendar-year trend / diagonal effect</td>
 </tr>
 <tr>
 <td><code><a href="reference/build_total.html">build_total()</a></code></td>
-<td><code>total</code></td>
+<td><code>Total</code></td>
 <td>portfolio total (0D, per group)</td>
 <td>High-level comparison across groups</td>
 </tr>
@@ -260,7 +260,7 @@
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>              <span class="co"># base plot generic — line / panel diagnostics</span></span>
 <span><span class="fu"><a href="reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>     <span class="co"># lossratio generic — cell heatmap layout</span></span></code></pre></div>
-<p><code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> and <code><a href="reference/plot_triangle.html">plot_triangle()</a></code> work uniformly across <code>triangle</code>, <code>calendar</code>, <code>ata</code>, <code>ata_fit</code>, <code>ed</code>, <code>ed_fit</code>, <code>cl_fit</code>, <code>lr_fit</code>, and <code>cohort_regime</code> objects.</p>
+<p><code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> and <code><a href="reference/plot_triangle.html">plot_triangle()</a></code> work uniformly across <code>Triangle</code>, <code>Calendar</code>, <code>ATA</code>, <code>ATAFit</code>, <code>ED</code>, <code>EDFit</code>, <code>CLFit</code>, <code>LRFit</code>, and <code>CohortRegime</code> objects.</p>
 </div>
 <div class="section level2">
 <h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>

@@ -112,11 +112,23 @@ passed through <code>...</code>.</p></dd>
 
 
 <dt id="arg-value-var">value_var<a class="anchor" aria-label="anchor" href="#arg-value-var"></a></dt>
-<dd><p>Character scalar. Column to project and compare. For
-<code>fit_lr</code> (default), must be one of <code>"closs"</code>, <code>"crp"</code>, or <code>"clr"</code>
-(default), which map to <code>loss_proj</code>, <code>exposure_proj</code>, and <code>clr_proj</code>
-respectively on <code>fit_lr$full</code>. For <code>fit_cl</code>, any column present in
-<code>x</code>.</p></dd>
+<dd><p>Character scalar. The <strong>score column</strong> for the
+backtest — the column whose held-out actual values are compared
+against the corresponding model projection cell-by-cell. This is a
+scoring choice for <code>backtest()</code> and is not, in general, the same
+thing as the <code>value_var</code> argument of the underlying fitter.</p>
+<p>With <code>fit_fn = fit_cl</code>, <code>backtest()</code> forwards <code>value_var</code> to
+<code><a href="fit_cl.html">fit_cl()</a></code> (because <code>fit_cl</code> has its own <code>value_var</code> formal that
+selects which triangle column to accumulate), so the score column
+and the chain-ladder accumulation column coincide; any column
+present in <code>x</code> is admissible.</p>
+<p>With <code>fit_fn = fit_lr</code> (default), <code><a href="fit_lr.html">fit_lr()</a></code> does not take a
+<code>value_var</code> argument — it always projects <code>closs</code>, <code>crp</code>, and
+<code>clr</code> jointly. Here <code>value_var</code> is used purely to pick which
+projection column on <code>fit_lr$full</code> is treated as the prediction
+for scoring. It must be one of <code>"closs"</code>, <code>"crp"</code>, or <code>"clr"</code>
+(default), which map to <code>loss_proj</code>, <code>exposure_proj</code>, and
+<code>clr_proj</code> respectively.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -163,6 +175,24 @@ from <code>x</code>.</p></dd>
 
 
 </dl></div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>The <code>value_var</code> argument plays two slightly different roles
+depending on the fitter, summarised below. In every case <code>value_var</code>
+is the column that drives the AEG comparison; the difference is
+whether the fitter consumes the same name as input or whether the
+name is only resolved against the fit's projection table.</p>
+<table class="table table"><tr><td><strong><code>fit_fn</code></strong></td><td><strong>Valid <code>value_var</code></strong></td><td><strong>Forwarded to fitter?</strong></td><td><strong>Compared column on <code>fit$full</code></strong></td><td><strong>Notes</strong></td></tr><tr><td><code>fit_cl</code></td><td>any numeric column in <code>x</code></td><td>yes (as <code>value_var</code>)</td><td><code>value_proj</code></td><td>Score column equals the column being
+accumulated by chain ladder.</td></tr><tr><td><code>fit_lr</code></td><td><code>"closs"</code>, <code>"crp"</code>, <code>"clr"</code></td><td>no (fit_lr ignores
+<code>value_var</code>)</td><td><code>loss_proj</code>, <code>exposure_proj</code>, <code>clr_proj</code>
+respectively</td><td>Fitter projects all three jointly; <code>value_var</code>
+only selects the scoring lane.</td></tr></table><p>This means that <code>backtest(..., value_var = "closs")</code> paired with
+<code>fit_lr</code> is <em>not</em> the same operation as <code>fit_cl(value_var = "closs")</code>
+under the hood, even though both use the string <code>"closs"</code>. The
+former scores the loss projection that came out of a stage-adaptive
+loss-ratio fit; the latter scores a chain ladder applied directly
+to cumulative loss.</p>
+    </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="fit_lr.html">fit_lr()</a></code>, <code><a href="fit_cl.html">fit_cl()</a></code>, <code><a href="plot.Backtest.html">plot.Backtest()</a></code></p></div>

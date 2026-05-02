@@ -26,8 +26,8 @@ Validation, coercion, and helpers for raw experience data.
 ## Aggregation builders
 
 Three frameworks for viewing the same long-format experience data —
-cohort × dev (`triangle`), calendar period (`calendar`), or portfolio
-total (`total`).
+cohort × dev (`Triangle`), calendar period (`Calendar`), or portfolio
+total (`Total`).
 
 - [`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md)
   : Build a development structure from experience data
@@ -108,40 +108,63 @@ and
 
 - [`plot_triangle()`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.md)
   : Triangle plot generic
+
 - [`plot(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ATA.md)
   : Plot age-to-age factor diagnostics
+
 - [`plot(`*`<ATAFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ATAFit.md)
   : Plot an ata fit
+
 - [`plot(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Backtest.md)
   : Plot a backtest object
+
 - [`plot(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.CLFit.md)
   : Plot a chain ladder fit
+
 - [`plot(`*`<Calendar>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Calendar.md)
   : Plot calendar-based development statistics
+
 - [`plot(`*`<CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.CohortRegime.md)
   : Plot a cohort regime detection result
+
 - [`plot(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ED.md)
   : Plot ED intensity diagnostics
+
 - [`plot(`*`<EDFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.EDFit.md)
   : Plot an ED fit
+
 - [`plot(`*`<LRFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.LRFit.md)
   : Plot a loss ratio fit
+
+- [`plot(`*`<Total>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Total.md)
+  :
+
+  Plot a `Total` object as a per-group bar chart
+
 - [`plot(`*`<Triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Triangle.md)
   : Plot development trajectories with optional summary overlay
+
 - [`plot_triangle(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ATA.md)
   : Plot ata factors as a triangle heatmap table
+
 - [`plot_triangle(`*`<ATAFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ATAFit.md)
   : Triangle heatmap for an ata fit
+
 - [`plot_triangle(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.Backtest.md)
   : Triangle heatmap of backtest AEG
+
 - [`plot_triangle(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.CLFit.md)
   : Plot chain ladder results as a triangle table
+
 - [`plot_triangle(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ED.md)
   : Plot ED intensities as a triangle heatmap table
+
 - [`plot_triangle(`*`<EDFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.EDFit.md)
   : Triangle heatmap for an ED fit
+
 - [`plot_triangle(`*`<LRFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.LRFit.md)
   : Plot loss ratio projection as a triangle heatmap
+
 - [`plot_triangle(`*`<Triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.Triangle.md)
   : Plot development values as a triangle table
 
@@ -184,10 +207,18 @@ print / summary / longer methods registered on package classes.
 - [`summary(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md)
   : Summarise age-to-age factor statistics
 
+- [`summary(`*`<ATAFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ATAFit.md)
+  :
+
+  Summary method for `ATAFit`
+
 - [`summary(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.CLFit.md)
   :
 
   Summary method for `CLFit`
+
+- [`summary(`*`<Calendar>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.Calendar.md)
+  : Summarise calendar-development statistics (Mean, Median, Weighted)
 
 - [`summary(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ED.md)
   : Summarise ED intensity statistics
@@ -201,6 +232,11 @@ print / summary / longer methods registered on package classes.
   :
 
   Summary method for `LRFit`
+
+- [`summary(`*`<Total>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.Total.md)
+  :
+
+  Summarise a `Total` object
 
 - [`summary(`*`<Triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.Triangle.md)
   : Summarise development statistics (Mean, Median, Weighted)

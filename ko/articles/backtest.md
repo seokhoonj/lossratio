@@ -188,10 +188,21 @@ has at least 24–30 diagonals of history.
 The default fitter is `fit_lr` with `method = "sa"` and
 `value_var = "clr"`. The loss ratio is unitless and dimension-free
 across cohorts of very different volume, so `aeg_mean` and `aeg_med`
-carry a consistent meaning across the triangle. `value_var` selects
-which projection column on `fit$full` is compared against the held-out
-actuals; for `fit_lr` — which projects loss and exposure jointly — the
-mapping is:
+carry a consistent meaning across the triangle.
+
+> **A note on `value_var`.** `backtest(value_var = ...)` is the **score
+> column** — the column on which actual vs. predicted are compared
+> cell-by-cell. It is *not*, in general, the same thing as the
+> `value_var` argument to a chain-ladder fitter (which selects which
+> column of the triangle to accumulate). With `fit_fn = fit_cl`, the two
+> coincide because
+> [`backtest()`](https://seokhoonj.github.io/lossratio/ko/reference/backtest.md)
+> forwards `value_var` straight through to
+> [`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md).
+> With `fit_fn = fit_lr`, the fitter does not take a `value_var` at all
+> — it always projects `closs`, `crp`, and `clr` jointly — and
+> `value_var` here only chooses which of those three projection columns
+> on `fit_lr$full` is compared against the held-out actuals:
 
 | `value_var` | Compared column on `fit_lr$full` |
 |-------------|----------------------------------|

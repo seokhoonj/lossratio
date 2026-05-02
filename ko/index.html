@@ -17,8 +17,8 @@
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><link href="extra.css" rel="stylesheet">
 <script src="extra.js"></script><meta property="og:title" content="lossratio">
-<meta name="description" content="보험 경험 데이터를 위한 손해율 분석 및 추정 R 패키지.">
-<meta property="og:description" content="보험 경험 데이터를 위한 손해율 분석 및 추정 R 패키지.">
+<meta name="description" content="보험 경험 데이터를 위한 손해율 분석 및 추정 도구.">
+<meta property="og:description" content="보험 경험 데이터를 위한 손해율 분석 및 추정 도구.">
 <meta property="og:image" content="https://seokhoonj.github.io/lossratio/ko/logo.png">
 </head>
 <body>
@@ -85,8 +85,8 @@
 <p><code>lossratio</code>는 long-format 경험 데이터로부터 <strong>장기 건강보험</strong> 손해율을 분석하기 위한 도구 모음이다 — 한 행이 (코호트 × 경과 기간 × 인구통계) 셀 하나에 대응하며, 손해액과 위험보험료 컬럼을 가진다. 다년 보장 건강보험은 손해가 천천히 누적된다. 초기 경과 기간에서 연속 발달비(age-to-age)는 불안정하며, 익스포저(≈ 위험보험료)가 추정의 가장 신뢰할 만한 기준이 된다. 또한 상품 개정, 인수 기준 변경, 규제 개혁에서 비롯된 구조적 변화(structural break)가 코호트에 걸쳐 누적된다. 이 패키지의 기본값 — 단계 적응적(stage-adaptive, SA) 추정, 초기 경과 기간의 노출 기반(exposure-driven, ED) 모형, 코호트 regime(체제) 탐지 — 은 이러한 환경에 맞게 조정되어 있다. 동일한 도구는 누적 손해 / 익스포저 구조라면 어떤 영역에도 적용 가능하다 (사망률, 발병률, 일반 손해).</p>
 <p>제공 기능:</p>
 <ul>
-<li>경험 데이터의 세 가지 집계 프레임: 코호트 × 경과 기간 (<code>triangle</code>), 달력 기간 (<code>calendar</code>), 포트폴리오 전체 (<code>total</code>)</li>
-<li>age-to-age (<code>ata</code>) 와 노출 기반 (<code>ed</code>) 의 경과 기간 모형화</li>
+<li>경험 데이터의 세 가지 집계 프레임: 코호트 × 경과 기간 (<code>Triangle</code>), 달력 기간 (<code>Calendar</code>), 포트폴리오 전체 (<code>Total</code>)</li>
+<li>age-to-age (<code>ATA</code>) 와 노출 기반 (<code>ED</code>) 의 경과 기간 모형화</li>
 <li>chain ladder 추정 (<code>fit_cl</code>) 과 손해율 추정 (<code>fit_lr</code>), 세 가지 method 지원:
 <ul>
 <li>
@@ -215,19 +215,19 @@
 <tbody>
 <tr>
 <td><code><a href="reference/build_triangle.html">build_triangle()</a></code></td>
-<td><code>triangle</code></td>
+<td><code>Triangle</code></td>
 <td>코호트 × 경과 기간 (2D)</td>
 <td>Chain ladder, ED, SA 추정</td>
 </tr>
 <tr>
 <td><code><a href="reference/build_calendar.html">build_calendar()</a></code></td>
-<td><code>calendar</code></td>
+<td><code>Calendar</code></td>
 <td>달력 기간 (1D)</td>
 <td>달력연도 추세 / 대각선 효과</td>
 </tr>
 <tr>
 <td><code><a href="reference/build_total.html">build_total()</a></code></td>
-<td><code>total</code></td>
+<td><code>Total</code></td>
 <td>포트폴리오 전체 (0D, 그룹별)</td>
 <td>그룹 간 고수준 비교</td>
 </tr>
@@ -265,7 +265,7 @@
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>              <span class="co"># base plot generic — line / panel diagnostics</span></span>
 <span><span class="fu"><a href="reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>     <span class="co"># lossratio generic — cell heatmap layout</span></span></code></pre></div>
-<p><code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> 과 <code><a href="reference/plot_triangle.html">plot_triangle()</a></code> 은 <code>triangle</code>, <code>calendar</code>, <code>ata</code>, <code>ata_fit</code>, <code>ed</code>, <code>ed_fit</code>, <code>cl_fit</code>, <code>lr_fit</code>, <code>cohort_regime</code> 객체 전반에 일관되게 작동한다.</p>
+<p><code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> 과 <code><a href="reference/plot_triangle.html">plot_triangle()</a></code> 은 <code>Triangle</code>, <code>Calendar</code>, <code>ATA</code>, <code>ATAFit</code>, <code>ED</code>, <code>EDFit</code>, <code>CLFit</code>, <code>LRFit</code>, <code>CohortRegime</code> 객체 전반에 일관되게 작동한다.</p>
 </div>
 <div class="section level2">
 <h2 id="문서">문서<a class="anchor" aria-label="anchor" href="#%EB%AC%B8%EC%84%9C"></a>

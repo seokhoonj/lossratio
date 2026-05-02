@@ -48,10 +48,27 @@ print(x, ...)
 
 - value_var:
 
-  Character scalar. Column to project and compare. For `fit_lr`
-  (default), must be one of `"closs"`, `"crp"`, or `"clr"` (default),
-  which map to `loss_proj`, `exposure_proj`, and `clr_proj` respectively
-  on `fit_lr$full`. For `fit_cl`, any column present in `x`.
+  Character scalar. The **score column** for the backtest — the column
+  whose held-out actual values are compared against the corresponding
+  model projection cell-by-cell. This is a scoring choice for
+  `backtest()` and is not, in general, the same thing as the `value_var`
+  argument of the underlying fitter.
+
+  With `fit_fn = fit_cl`, `backtest()` forwards `value_var` to
+  [`fit_cl()`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md)
+  (because `fit_cl` has its own `value_var` formal that selects which
+  triangle column to accumulate), so the score column and the
+  chain-ladder accumulation column coincide; any column present in `x`
+  is admissible.
+
+  With `fit_fn = fit_lr` (default),
+  [`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
+  does not take a `value_var` argument — it always projects `closs`,
+  `crp`, and `clr` jointly. Here `value_var` is used purely to pick
+  which projection column on `fit_lr$full` is treated as the prediction
+  for scoring. It must be one of `"closs"`, `"crp"`, or `"clr"`
+  (default), which map to `loss_proj`, `exposure_proj`, and `clr_proj`
+  respectively.
 
 - ...:
 
@@ -103,6 +120,27 @@ An object of class `"Backtest"` with components:
 - `group_var`, `cohort_var`, `dev_var`:
 
   Variable name relays from `x`.
+
+## Details
+
+The `value_var` argument plays two slightly different roles depending on
+the fitter, summarised below. In every case `value_var` is the column
+that drives the AEG comparison; the difference is whether the fitter
+consumes the same name as input or whether the name is only resolved
+against the fit's projection table.
+
+|  |  |  |  |  |
+|----|----|----|----|----|
+| **`fit_fn`** | **Valid `value_var`** | **Forwarded to fitter?** | **Compared column on `fit$full`** | **Notes** |
+| `fit_cl` | any numeric column in `x` | yes (as `value_var`) | `value_proj` | Score column equals the column being accumulated by chain ladder. |
+| `fit_lr` | `"closs"`, `"crp"`, `"clr"` | no (fit_lr ignores `value_var`) | `loss_proj`, `exposure_proj`, `clr_proj` respectively | Fitter projects all three jointly; `value_var` only selects the scoring lane. |
+
+This means that `backtest(..., value_var = "closs")` paired with
+`fit_lr` is *not* the same operation as `fit_cl(value_var = "closs")`
+under the hood, even though both use the string `"closs"`. The former
+scores the loss projection that came out of a stage-adaptive loss-ratio
+fit; the latter scores a chain ladder applied directly to cumulative
+loss.
 
 ## See also
 

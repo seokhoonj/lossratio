@@ -260,10 +260,23 @@ history.</p>
 <code>method = "sa"</code> and <code>value_var = "clr"</code>. The loss
 ratio is unitless and dimension-free across cohorts of very different
 volume, so <code>aeg_mean</code> and <code>aeg_med</code> carry a
-consistent meaning across the triangle. <code>value_var</code> selects
-which projection column on <code>fit$full</code> is compared against the
-held-out actuals; for <code>fit_lr</code> — which projects loss and
-exposure jointly — the mapping is:</p>
+consistent meaning across the triangle.</p>
+<blockquote>
+<p><strong>A note on <code>value_var</code>.</strong>
+<code>backtest(value_var = ...)</code> is the <strong>score
+column</strong> — the column on which actual vs. predicted are compared
+cell-by-cell. It is <em>not</em>, in general, the same thing as the
+<code>value_var</code> argument to a chain-ladder fitter (which selects
+which column of the triangle to accumulate). With
+<code>fit_fn = fit_cl</code>, the two coincide because
+<code><a href="../reference/backtest.html">backtest()</a></code> forwards <code>value_var</code> straight through
+to <code><a href="../reference/fit_cl.html">fit_cl()</a></code>. With <code>fit_fn = fit_lr</code>, the fitter
+does not take a <code>value_var</code> at all — it always projects
+<code>closs</code>, <code>crp</code>, and <code>clr</code> jointly — and
+<code>value_var</code> here only chooses which of those three projection
+columns on <code>fit_lr$full</code> is compared against the held-out
+actuals:</p>
+</blockquote>
 <table class="table">
 <thead><tr class="header">
 <th><code>value_var</code></th>

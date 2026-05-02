@@ -22,12 +22,14 @@ long-term health insurance loss-ratio analysis.
 - Age-to-age:
   [`build_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ata.md),
   [`fit_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_ata.md),
-  `summary_ata()`,
+  S3 [`summary()`](https://rdrr.io/r/base/summary.html) on `ATA` /
+  `ATAFit`,
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/ko/reference/find_ata_maturity.md).
 - Exposure-driven:
   [`build_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ed.md),
   [`fit_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_ed.md),
-  `summary_ed()`.
+  S3 [`summary()`](https://rdrr.io/r/base/summary.html) on `ED` /
+  `EDFit`.
 - Projection:
   [`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md)
   (chain ladder, `basic` / `mack`),

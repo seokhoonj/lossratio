@@ -201,3 +201,25 @@ An object of class `"CLFit"` containing:
 
 [`fit_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_ata.md),
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+
+# Basic chain ladder (point projection only)
+cl <- fit_cl(tri, value_var = "closs", method = "basic")
+print(cl)
+
+# Mack chain ladder with process / parameter standard errors
+cl_mack <- fit_cl(tri, value_var = "closs", method = "mack")
+summary(cl_mack)
+plot(cl_mack)
+
+# WLS factors for clr (loss ratio) using crp as the weight
+cl_clr <- fit_cl(tri, value_var = "clr", weight_var = "crp")
+} # }
+```

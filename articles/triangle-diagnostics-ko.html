@@ -90,10 +90,12 @@ ata diagnostics</a></p>
 <div class="section level2">
 <h2 id="triangle-수준-진단">Triangle 수준 진단<a class="anchor" aria-label="anchor" href="#triangle-%EC%88%98%EC%A4%80-%EC%A7%84%EB%8B%A8"></a>
 </h2>
+<p>이 vignette 은 간결성을 위해 <code>SUR</code> 그룹만 사용한다 — 모든
+절차는 다중 그룹 입력에도 그대로 일반화된다.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://seokhoonj.github.io/lossratio">lossratio</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
-<span><span class="va">exp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as_experience.html">as_experience</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
+<span><span class="va">exp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as_experience.html">as_experience</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span><span class="op">[</span><span class="va">cv_nm</span> <span class="op">==</span> <span class="st">"SUR"</span><span class="op">]</span></span>
 <span><span class="va">tri</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span></code></pre></div>
 <div class="section level3">
 <h3 id="코호트-궤적">코호트 궤적<a class="anchor" aria-label="anchor" href="#%EC%BD%94%ED%98%B8%ED%8A%B8-%EA%B6%A4%EC%A0%81"></a>
@@ -131,22 +133,22 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 <code class="sourceCode R"><span><span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm, dev&gt;</span></span>
-<span><span class="co">#&gt;     cv_nm   dev n_obs    lr_mean  lr_median      lr_wt   clr_mean clr_median</span></span>
-<span><span class="co">#&gt;    &lt;char&gt; &lt;int&gt; &lt;int&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:    2CI     1    30 0.01682339 0.00184005 0.01644478 0.01682339 0.00184005</span></span>
-<span><span class="co">#&gt; 2:    2CI     2    29 0.25741347 0.01811353 0.27088773 0.15773318 0.03301080</span></span>
-<span><span class="co">#&gt; 3:    2CI     3    28 0.62369370 0.42156041 0.61629298 0.35691535 0.24171186</span></span>
-<span><span class="co">#&gt; 4:    2CI     4    27 0.77462795 0.71944584 0.75991294 0.50358374 0.47161170</span></span>
-<span><span class="co">#&gt; 5:    2CI     5    26 0.53125865 0.31309431 0.51708799 0.51125195 0.49812486</span></span>
-<span><span class="co">#&gt; 6:    2CI     6    25 0.59424632 0.61509818 0.57229192 0.53105955 0.52356666</span></span>
+<span><span class="co">#&gt;     cv_nm   dev n_obs   lr_mean  lr_median      lr_wt  clr_mean clr_median</span></span>
+<span><span class="co">#&gt;    &lt;char&gt; &lt;int&gt; &lt;int&gt;     &lt;num&gt;      &lt;num&gt;      &lt;num&gt;     &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR     1    30 0.0738546 0.00000000 0.07343113 0.0738546  0.0000000</span></span>
+<span><span class="co">#&gt; 2:    SUR     2    29 0.5365888 0.09928479 0.54126364 0.3512535  0.1120446</span></span>
+<span><span class="co">#&gt; 3:    SUR     3    28 0.6201189 0.24720698 0.56590121 0.4521326  0.2618097</span></span>
+<span><span class="co">#&gt; 4:    SUR     4    27 0.8852658 0.63871641 0.92060613 0.6327243  0.4798531</span></span>
+<span><span class="co">#&gt; 5:    SUR     5    26 0.5767557 0.48288984 0.59880667 0.6369308  0.5641166</span></span>
+<span><span class="co">#&gt; 6:    SUR     6    25 0.9314593 0.54313974 0.95085712 0.7264308  0.6191132</span></span>
 <span><span class="co">#&gt;        clr_wt</span></span>
 <span><span class="co">#&gt;         &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1: 0.01644478</span></span>
-<span><span class="co">#&gt; 2: 0.15551405</span></span>
-<span><span class="co">#&gt; 3: 0.36029953</span></span>
-<span><span class="co">#&gt; 4: 0.49175016</span></span>
-<span><span class="co">#&gt; 5: 0.49843641</span></span>
-<span><span class="co">#&gt; 6: 0.52060534</span></span></code></pre></div>
+<span><span class="co">#&gt; 1: 0.07343113</span></span>
+<span><span class="co">#&gt; 2: 0.35150130</span></span>
+<span><span class="co">#&gt; 3: 0.44744111</span></span>
+<span><span class="co">#&gt; 4: 0.63467050</span></span>
+<span><span class="co">#&gt; 5: 0.63999293</span></span>
+<span><span class="co">#&gt; 6: 0.72781357</span></span></code></pre></div>
 <p>(group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은
 <code>TriangleSummary</code> 객체를 반환한다.</p>
 </div>
@@ -159,22 +161,22 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 <span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
-<span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link    mean median     wt    cv      f   f_se</span></span>
-<span><span class="co">#&gt;    &lt;char&gt;    &lt;num&gt;  &lt;num&gt;   &lt;fctr&gt;   &lt;num&gt;  &lt;num&gt;  &lt;num&gt; &lt;num&gt;  &lt;num&gt;  &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:    2CI        1      2      1-2 144.524  1.909 20.117 2.779 11.642 20.904</span></span>
-<span><span class="co">#&gt; 2:    2CI        2      3      2-3  60.420  3.604  3.920 3.643  3.649  4.689</span></span>
-<span><span class="co">#&gt; 3:    2CI        3      4      3-4  10.596  1.773  2.061 2.816  1.996  0.897</span></span>
-<span><span class="co">#&gt; 4:    2CI        4      5      4-5   2.183  1.520  1.450 1.058  1.450  0.185</span></span>
-<span><span class="co">#&gt; 5:    2CI        5      6      5-6   1.585  1.384  1.414 0.372  1.414  0.096</span></span>
-<span><span class="co">#&gt; 6:    2CI        6      7      6-7   1.458  1.306  1.352 0.349  1.352  0.075</span></span>
-<span><span class="co">#&gt;      rse     sigma n_obs n_valid n_inf n_nan valid_ratio</span></span>
-<span><span class="co">#&gt;    &lt;num&gt;     &lt;num&gt; &lt;num&gt;   &lt;num&gt; &lt;num&gt; &lt;num&gt;       &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1: 1.796 51673.677    29      16     0     0       0.552</span></span>
-<span><span class="co">#&gt; 2: 1.285 51990.699    28      22     0     0       0.786</span></span>
-<span><span class="co">#&gt; 3: 0.449 19350.742    27      26     0     0       0.963</span></span>
-<span><span class="co">#&gt; 4: 0.128  5616.591    26      26     0     0       1.000</span></span>
-<span><span class="co">#&gt; 5: 0.068  3445.872    25      25     0     0       1.000</span></span>
-<span><span class="co">#&gt; 6: 0.056  3158.200    24      24     0     0       1.000</span></span></code></pre></div>
+<span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link   mean median     wt    cv     f  f_se   rse</span></span>
+<span><span class="co">#&gt;    &lt;char&gt;    &lt;num&gt;  &lt;num&gt;   &lt;fctr&gt;  &lt;num&gt;  &lt;num&gt;  &lt;num&gt; &lt;num&gt; &lt;num&gt; &lt;num&gt; &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1:    SUR        1      2      1-2 60.962  4.062 11.320 3.111 6.768 4.767 0.704</span></span>
+<span><span class="co">#&gt; 2:    SUR        2      3      2-3 15.316  2.005  2.083 2.955 1.939 1.284 0.663</span></span>
+<span><span class="co">#&gt; 3:    SUR        3      4      3-4 36.459  2.167  2.167 4.493 2.167 2.434 1.123</span></span>
+<span><span class="co">#&gt; 4:    SUR        4      5      4-5  1.641  1.282  1.291 0.854 1.291 0.115 0.089</span></span>
+<span><span class="co">#&gt; 5:    SUR        5      6      5-6  1.607  1.334  1.461 0.455 1.461 0.113 0.078</span></span>
+<span><span class="co">#&gt; 6:    SUR        6      7      6-7  1.348  1.208  1.282 0.256 1.282 0.058 0.046</span></span>
+<span><span class="co">#&gt;        sigma n_obs n_valid n_inf n_nan valid_ratio</span></span>
+<span><span class="co">#&gt;        &lt;num&gt; &lt;num&gt;   &lt;num&gt; &lt;num&gt; &lt;num&gt;       &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1: 27971.882    29      14     0     0       0.483</span></span>
+<span><span class="co">#&gt; 2: 25358.311    28      24     0     0       0.857</span></span>
+<span><span class="co">#&gt; 3: 69089.940    27      27     0     0       1.000</span></span>
+<span><span class="co">#&gt; 4:  4787.737    26      26     0     0       1.000</span></span>
+<span><span class="co">#&gt; 5:  5301.573    25      25     0     0       1.000</span></span>
+<span><span class="co">#&gt; 6:  3279.239    24      24     0     0       1.000</span></span></code></pre></div>
 <p><code>ATA</code> 객체의 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> 메소드는 성숙점 탐지를
 구동하는 링크별 통계를 계산한다.</p>
 <ul>
@@ -261,16 +263,10 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
 <span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link  mean median    wt    cv     f  f_se   rse</span></span>
 <span><span class="co">#&gt;    &lt;char&gt;    &lt;num&gt;  &lt;num&gt;   &lt;char&gt; &lt;num&gt;  &lt;num&gt; &lt;num&gt; &lt;num&gt; &lt;num&gt; &lt;num&gt; &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:    2CI       11     12    11-12 1.184  1.174 1.182 0.070 1.182 0.019 0.016</span></span>
-<span><span class="co">#&gt; 2:    CAN       12     13    12-13 1.168  1.128 1.154 0.097 1.154 0.025 0.022</span></span>
-<span><span class="co">#&gt; 3:    HOS       11     12    11-12 1.154  1.148 1.153 0.087 1.153 0.023 0.020</span></span>
-<span><span class="co">#&gt; 4:    SUR        9     10     9-10 1.188  1.172 1.165 0.097 1.165 0.022 0.019</span></span>
+<span><span class="co">#&gt; 1:    SUR        9     10     9-10 1.188  1.172 1.165 0.097 1.165 0.022 0.019</span></span>
 <span><span class="co">#&gt;       sigma n_obs n_valid n_inf n_nan valid_ratio</span></span>
 <span><span class="co">#&gt;       &lt;num&gt; &lt;num&gt;   &lt;num&gt; &lt;num&gt; &lt;num&gt;       &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1: 1226.842    19      19     0     0           1</span></span>
-<span><span class="co">#&gt; 2: 1751.230    18      18     0     0           1</span></span>
-<span><span class="co">#&gt; 3: 1286.484    19      19     0     0           1</span></span>
-<span><span class="co">#&gt; 4: 1774.277    21      21     0     0           1</span></span></code></pre></div>
+<span><span class="co">#&gt; 1: 1774.277    21      21     0     0           1</span></span></code></pre></div>
 <p>그룹별로 모든 임계값을 만족하는 첫 경과 기간 링크 한 행이 출력되며,
 해당 링크의 전체 통계가 같이 실린다. 임계값 인자들은 반환 객체의
 attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> 는
@@ -291,20 +287,20 @@ attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.htm
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
 <span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link    mean  median      wt      cv       g</span></span>
 <span><span class="co">#&gt;    &lt;char&gt;    &lt;num&gt;  &lt;num&gt;   &lt;fctr&gt;   &lt;num&gt;   &lt;num&gt;   &lt;num&gt;   &lt;num&gt;   &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1:    2CI        1      2      1-2 0.39727 0.03232 0.32519 1.59348 0.32519</span></span>
-<span><span class="co">#&gt; 2:    2CI        2      3      2-3 0.47485 0.30772 0.47545 1.32737 0.47545</span></span>
-<span><span class="co">#&gt; 3:    2CI        3      4      3-4 0.41184 0.29551 0.37962 1.06244 0.37962</span></span>
-<span><span class="co">#&gt; 4:    2CI        4      5      4-5 0.23862 0.13582 0.22054 1.14338 0.22054</span></span>
-<span><span class="co">#&gt; 5:    2CI        5      6      5-6 0.20460 0.14878 0.20793 0.75605 0.20793</span></span>
-<span><span class="co">#&gt; 6:    2CI        6      7      6-7 0.18152 0.16867 0.18172 0.71140 0.18172</span></span>
+<span><span class="co">#&gt; 1:    SUR        1      2      1-2 0.83638 0.11124 0.78549 1.64664 0.78549</span></span>
+<span><span class="co">#&gt; 2:    SUR        2      3      2-3 0.42921 0.19355 0.39517 1.28530 0.39517</span></span>
+<span><span class="co">#&gt; 3:    SUR        3      4      3-4 0.57740 0.28022 0.54349 1.36754 0.54349</span></span>
+<span><span class="co">#&gt; 4:    SUR        4      5      4-5 0.18873 0.13962 0.18976 0.90510 0.18976</span></span>
+<span><span class="co">#&gt; 5:    SUR        5      6      5-6 0.29944 0.16294 0.30277 1.01004 0.30277</span></span>
+<span><span class="co">#&gt; 6:    SUR        6      7      6-7 0.21583 0.18880 0.20988 0.85987 0.20988</span></span>
 <span><span class="co">#&gt;       g_se     rse    sigma n_obs n_valid n_inf n_nan valid_ratio</span></span>
 <span><span class="co">#&gt;      &lt;num&gt;   &lt;num&gt;    &lt;num&gt; &lt;num&gt;   &lt;num&gt; &lt;num&gt; &lt;num&gt;       &lt;num&gt;</span></span>
-<span><span class="co">#&gt; 1: 0.10625 0.32673 2013.727    29      29     0     0           1</span></span>
-<span><span class="co">#&gt; 2: 0.10999 0.23134 3022.150    28      28     0     0           1</span></span>
-<span><span class="co">#&gt; 3: 0.08056 0.21222 2907.043    27      27     0     0           1</span></span>
-<span><span class="co">#&gt; 4: 0.05169 0.23440 2241.822    26      26     0     0           1</span></span>
-<span><span class="co">#&gt; 5: 0.03124 0.15025 1590.279    25      25     0     0           1</span></span>
-<span><span class="co">#&gt; 6: 0.02633 0.14490 1535.385    24      24     0     0           1</span></span>
+<span><span class="co">#&gt; 1: 0.24877 0.31671 5291.085    29      29     0     0           1</span></span>
+<span><span class="co">#&gt; 2: 0.09984 0.25264 3263.750    28      28     0     0           1</span></span>
+<span><span class="co">#&gt; 3: 0.14933 0.27477 6210.872    27      27     0     0           1</span></span>
+<span><span class="co">#&gt; 4: 0.03343 0.17615 1720.934    26      26     0     0           1</span></span>
+<span><span class="co">#&gt; 5: 0.06037 0.19939 3487.836    25      25     0     0           1</span></span>
+<span><span class="co">#&gt; 6: 0.03771 0.17970 2450.547    24      24     0     0           1</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ed</span>, type <span class="op">=</span> <span class="st">"summary"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-1.png" class="r-plt" alt="" width="100%"></p>
@@ -356,8 +352,8 @@ triangle 이 깨끗하다는 뜻이다.</p>
 <span><span class="co">#&gt; recent      : 12 </span></span>
 <span><span class="co">#&gt; use_maturity: FALSE </span></span>
 <span><span class="co">#&gt; groups      : cv_nm </span></span>
-<span><span class="co">#&gt; n_groups    : 4 </span></span>
-<span><span class="co">#&gt; ata links   : 116</span></span>
+<span><span class="co">#&gt; n_groups    : 1 </span></span>
+<span><span class="co">#&gt; ata links   : 29</span></span>
 <span><span class="fu"><a href="../reference/fit_cl.html">fit_cl</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;CLFit&gt;</span></span>
 <span><span class="co">#&gt; method      : basic </span></span>
@@ -381,12 +377,9 @@ triangle 이 깨끗하다는 뜻이다.</p>
 <span><span class="co">#&gt; ci_type       : analytical  </span></span>
 <span><span class="co">#&gt; sigma_method  : min_last2 </span></span>
 <span><span class="co">#&gt; recent        : 12 </span></span>
-<span><span class="co">#&gt; maturity[2CI] : 18</span></span>
-<span><span class="co">#&gt; maturity[CAN] : 18</span></span>
-<span><span class="co">#&gt; maturity[HOS] : 18</span></span>
 <span><span class="co">#&gt; maturity[SUR] : 18</span></span>
 <span><span class="co">#&gt; groups        : cv_nm </span></span>
-<span><span class="co">#&gt; periods       : 120</span></span></code></pre></div>
+<span><span class="co">#&gt; periods       : 30</span></span></code></pre></div>
 <p><code>recent = K</code> 는 calendar 위치
 (<code>rank(cohort) + dev - 1</code>) 가 그룹 내 최근 <code>K</code>
 개에 속하는 행만 남긴다.</p>
