@@ -151,13 +151,19 @@ plot_triangle.backtest <- function(x,
   grp_var <- x$group_var
   dt <- data.table::copy(x$aeg)
 
-  dt[, .label := sprintf("%.1f%%", aeg * 100)]
+  dt[, .label := sprintf("%.1f", aeg * 100)]
   lim <- max(abs(dt$aeg), na.rm = TRUE)
   if (!is.finite(lim) || lim == 0) lim <- 1
 
+  # Encode cohort as a factor with levels in reverse-chronological order
+  # so the oldest cohort sits at the top (matches plot_triangle.<other>).
+  dt[, .y_lab := format(cohort, "%y.%m")]
+  cohort_levels <- sort(unique(dt$.y_lab), decreasing = TRUE)
+  dt[, .y_lab := factor(.y_lab, levels = cohort_levels)]
+
   p <- ggplot2::ggplot(
     dt,
-    ggplot2::aes(x = .data[["dev"]], y = .data[["cohort"]],
+    ggplot2::aes(x = .data[["dev"]], y = .data[[".y_lab"]],
                  fill = .data[["aeg"]])
   ) +
     ggplot2::geom_tile(color = "white") +
@@ -172,10 +178,10 @@ plot_triangle.backtest <- function(x,
       labels   = function(v) paste0(round(v * 100), "%"),
       name     = "AEG"
     ) +
-    ggplot2::scale_y_date(date_labels = "%y.%m") +
     ggplot2::labs(title = "Backtest AEG (held-out cells)",
                   x = .pretty_var_label(x$dev_var),
-                  y = .pretty_var_label(x$cohort_var))
+                  y = .pretty_var_label(x$cohort_var),
+                  caption = "Unit: %")
 
   if (length(grp_var))
     p <- p + ggplot2::facet_wrap(grp_var, scales = "free_y")
