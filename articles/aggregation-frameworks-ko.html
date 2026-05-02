@@ -180,9 +180,10 @@ aggregation frameworks</a></p>
 <p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="768"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span></span>
-<span><span class="co"># 4 그룹이 한 줄에 나란히 표시될 때 셀 라벨 가독성을 위해 분기</span></span>
-<span><span class="co"># 단위 triangle 로 히트맵을 그린다.</span></span>
-<span><span class="va">tri_q</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
+<span><span class="co"># 4 그룹이 한 줄에 나란히 표시될 때 셀 라벨 가독성을 위해 코호트·dev</span></span>
+<span><span class="co"># 모두 분기 단위 triangle 로 히트맵을 그린다.</span></span>
+<span><span class="va">tri_q</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>,</span>
+<span>                        cohort_var <span class="op">=</span> <span class="st">"uyq"</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
 <p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="768"></p>
 <p><code>triangle</code> 은 다음 함수의 입력으로 사용된다.</p>
@@ -308,7 +309,7 @@ on-leveling 이벤트)</li>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">tri</span>, <span class="st">"dev_var"</span><span class="op">)</span>         <span class="co"># "elap_m"</span></span>
 <span><span class="co">#&gt; [1] "elap_m"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">tri</span>, <span class="st">"dev_type"</span><span class="op">)</span>        <span class="co"># "month"</span></span>
-<span><span class="co">#&gt; [1] NA</span></span>
+<span><span class="co">#&gt; [1] "month"</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">cal</span>, <span class="st">"calendar_var"</span><span class="op">)</span>    <span class="co"># "cym"</span></span>
 <span><span class="co">#&gt; [1] "cym"</span></span>

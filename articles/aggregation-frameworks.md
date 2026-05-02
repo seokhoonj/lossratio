@@ -73,9 +73,10 @@ plot(tri)              # one trajectory per cohort, faceted by group
 ``` r
 
 
-# Quarterly granularity for the multi-group heatmap so strip labels
-# stay readable when 4 panels share a row.
-tri_q <- build_triangle(exp, group_var = cv_nm, dev_var = "elap_q")
+# Quarterly cohort and dev for the multi-group heatmap so each panel's
+# 10 x 10 cells stay readable when 4 panels share a row.
+tri_q <- build_triangle(exp, group_var = cv_nm,
+                        cohort_var = "uyq", dev_var = "elap_q")
 plot_triangle(tri_q)   # cohort × dev heatmap of clr
 ```
 
@@ -212,7 +213,7 @@ attr(tri, "cohort_type")     # "month"
 attr(tri, "dev_var")     # "elap_m"
 #> [1] "elap_m"
 attr(tri, "dev_type")    # "month"
-#> [1] NA
+#> [1] "month"
 
 attr(cal, "calendar_var")    # "cym"
 #> [1] "cym"
