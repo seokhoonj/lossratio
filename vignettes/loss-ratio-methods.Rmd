@@ -67,7 +67,7 @@ When to use:
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
-tri <- build_triangle(exp, group_var = cv_nm)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 
 lr_sa <- fit_lr(tri, method = "sa")        # default
 plot(lr_sa, type = "clr")
