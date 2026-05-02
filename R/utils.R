@@ -69,10 +69,10 @@
 .get_period_type <- function(var) {
   switch(
     var,
-    uym = , cym = "month",
-    uyq = , cyq = "quarter",
-    uyh = , cyh = "half",
-    uy  = , cy  = "year",
+    uym = , cym = , elap_m = "month",
+    uyq = , cyq = , elap_q = "quarter",
+    uyh = , cyh = , elap_h = "half",
+    uy  = , cy  = , elap_y = "year",
     NA_character_
   )
 }
