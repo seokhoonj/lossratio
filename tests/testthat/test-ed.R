@@ -68,7 +68,7 @@ test_that("print.EDFit doesn't error", {
   expect_no_error(capture.output(print(ef)))
 })
 
-# summary.ed -------------------------------------------------------------
+# summary.ED -------------------------------------------------------------
 
 test_that("summary.ED returns EDSummary with expected columns", {
   sm <- summary(ed, alpha = 1)

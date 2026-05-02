@@ -90,7 +90,7 @@ test_that("print.ATAFit doesn't error", {
   expect_no_error(capture.output(print(af)))
 })
 
-# summary.ata ------------------------------------------------------------
+# summary.ATA ------------------------------------------------------------
 
 test_that("summary.ATA returns ATASummary with expected columns", {
   sm <- summary(ata, alpha = 1)

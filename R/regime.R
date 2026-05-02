@@ -70,11 +70,19 @@
 #'
 #' @examples
 #' \dontrun{
-#' tri_sur <- build_triangle(dt[cv_nm == "SUR"], cv_nm)
-#' r <- detect_cohort_regime(tri_sur, K = 12, method = "ecp")
+#' data(experience)
+#' exp <- as_experience(experience)
+#' tri_sur <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+#'
+#' # Hierarchical clustering (no extra package dependency)
+#' r <- detect_cohort_regime(tri_sur, K = 12, method = "hclust",
+#'                           n_regimes = 2L)
 #' print(r)
 #' summary(r)
 #' plot(r)
+#'
+#' # ecp divisive change-point detection (requires the ecp package)
+#' r_ecp <- detect_cohort_regime(tri_sur, K = 12, method = "ecp")
 #' }
 #'
 #' @export
@@ -184,7 +192,7 @@ detect_cohort_regime <- function(x,
     pca         = pca,
     dropped     = dropped
   )
-  class(out) <- c("CohortRegime", "list")
+  class(out) <- "CohortRegime"
   out
 }
 
@@ -315,7 +323,7 @@ summary.CohortRegime <- function(object, ...) {
     breakpoints = object$breakpoints,
     regimes     = tbl
   )
-  class(out) <- c("summary.CohortRegime", "list")
+  class(out) <- "summary.CohortRegime"
   out
 }
 

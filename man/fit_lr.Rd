@@ -107,6 +107,25 @@ Equivalent to classical Mack model.}
 In all cases, exposure is projected forward using chain ladder:
 \deqn{\hat{C}^P_{i,k+1} = f^P_k \cdot \hat{C}^P_{i,k}}
 }
+\examples{
+\dontrun{
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+
+# Stage-adaptive (default): ED before maturity, CL after
+lr_sa <- fit_lr(tri, method = "sa")
+summary(lr_sa)
+plot(lr_sa)
+
+# Pure exposure-driven for all development periods
+lr_ed <- fit_lr(tri, method = "ed")
+
+# Pure chain ladder (Mack-style) for all development periods
+lr_cl <- fit_lr(tri, method = "cl")
+}
+
+}
 \seealso{
 \code{\link[=build_triangle]{build_triangle()}}, \code{\link[=build_ata]{build_ata()}}, \code{\link[=fit_ata]{fit_ata()}},
 \code{\link[=build_ed]{build_ed()}}, \code{\link[=fit_ed]{fit_ed()}}, \code{\link[=find_ata_maturity]{find_ata_maturity()}}

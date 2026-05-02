@@ -30,7 +30,7 @@ knitr::opts_chunk$set(
 
 `lossratio` 는 long-format experience 데이터를 입력으로 사용한다 — 한 행은
 (코호트 × 경과 기간 × 인구통계) 셀 하나에 대응한다. 내장 데이터셋
-`experience` 는 33,381 행 테이블로, 여러 단위의 calendar / underwriting 기간
+`experience` 는 33,480 행 테이블로, 여러 단위의 calendar / underwriting 기간
 컬럼, 인구통계 차원 (`cv_nm`, `age_band`, `gender`), 금액 컬럼
 (`loss`, `rp`) 을 포함한다.
 

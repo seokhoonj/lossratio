@@ -28,7 +28,7 @@ loss-ratio projection.
 
 `lossratio` consumes long-format experience data — one row per
 (cohort × dev × demographic) cell. The bundled dataset
-`experience` is a 33,381-row table with calendar / underwriting
+`experience` is a 33,480-row table with calendar / underwriting
 period columns at multiple granularities, demographic dimensions
 (`cv_nm`, `age_band`, `gender`), and amounts (`loss`, `rp`).
 

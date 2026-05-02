@@ -100,6 +100,26 @@ process variance and parameter variance.}
 When \code{weight_var} is supplied (e.g. \code{"crp"}), age-to-age factors and
 their variance are estimated using the supplied WLS weights.
 }
+\examples{
+\dontrun{
+data(experience)
+exp <- as_experience(experience)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+
+# Basic chain ladder (point projection only)
+cl <- fit_cl(tri, value_var = "closs", method = "basic")
+print(cl)
+
+# Mack chain ladder with process / parameter standard errors
+cl_mack <- fit_cl(tri, value_var = "closs", method = "mack")
+summary(cl_mack)
+plot(cl_mack)
+
+# WLS factors for clr (loss ratio) using crp as the weight
+cl_clr <- fit_cl(tri, value_var = "clr", weight_var = "crp")
+}
+
+}
 \seealso{
 \code{\link[=fit_ata]{fit_ata()}}, \code{\link[=fit_lr]{fit_lr()}}
 }

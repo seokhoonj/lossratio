@@ -382,7 +382,7 @@ fit_ed <- function(x,
     recent       = recent
   )
 
-  class(out) <- c("EDFit", "list")
+  class(out) <- "EDFit"
 
   # 7) mack: add factor variance
   if (method == "mack") {

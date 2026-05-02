@@ -76,6 +76,25 @@
 #'
 #' @seealso [fit_ata()], [fit_lr()]
 #'
+#' @examples
+#' \dontrun{
+#' data(experience)
+#' exp <- as_experience(experience)
+#' tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+#'
+#' # Basic chain ladder (point projection only)
+#' cl <- fit_cl(tri, value_var = "closs", method = "basic")
+#' print(cl)
+#'
+#' # Mack chain ladder with process / parameter standard errors
+#' cl_mack <- fit_cl(tri, value_var = "closs", method = "mack")
+#' summary(cl_mack)
+#' plot(cl_mack)
+#'
+#' # WLS factors for clr (loss ratio) using crp as the weight
+#' cl_clr <- fit_cl(tri, value_var = "clr", weight_var = "crp")
+#' }
+#'
 #' @export
 fit_cl <- function(x,
                    method        = c("basic", "mack"),
@@ -293,7 +312,7 @@ fit_cl <- function(x,
     tail_factor   = tail_factor
   )
 
-  class(out) <- c("CLFit", "list")
+  class(out) <- "CLFit"
 
   # 15) apply tail factor for mack (scales SE columns) -------------------
   if (method == "mack" && is.finite(tail_factor) && tail_factor > 1) {

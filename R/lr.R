@@ -72,6 +72,24 @@
 #' @seealso [build_triangle()], [build_ata()], [fit_ata()],
 #'   [build_ed()], [fit_ed()], [find_ata_maturity()]
 #'
+#' @examples
+#' \dontrun{
+#' data(experience)
+#' exp <- as_experience(experience)
+#' tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
+#'
+#' # Stage-adaptive (default): ED before maturity, CL after
+#' lr_sa <- fit_lr(tri, method = "sa")
+#' summary(lr_sa)
+#' plot(lr_sa)
+#'
+#' # Pure exposure-driven for all development periods
+#' lr_ed <- fit_lr(tri, method = "ed")
+#'
+#' # Pure chain ladder (Mack-style) for all development periods
+#' lr_cl <- fit_lr(tri, method = "cl")
+#' }
+#'
 #' @export
 fit_lr <- function(x,
                    method         = c("sa", "ed", "cl"),
@@ -470,7 +488,7 @@ fit_lr <- function(x,
     maturity_args    = maturity_args
   )
 
-  class(out) <- c("LRFit", "list")
+  class(out) <- "LRFit"
 
   # 20) cohort summary ------------------------------------------------------
   out <- .lr_summary(out)

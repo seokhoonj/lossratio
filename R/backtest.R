@@ -260,7 +260,7 @@ backtest <- function(x,
     cohort_var   = coh_var,
     dev_var      = dev_var
   )
-  class(out) <- c("Backtest", "list")
+  class(out) <- "Backtest"
   out
 }
 
@@ -300,7 +300,7 @@ summary.Backtest <- function(object, ...) {
     col_summary  = object$col_summary,
     diag_summary = object$diag_summary
   )
-  class(out) <- c("summary.Backtest", "list")
+  class(out) <- "summary.Backtest"
   out
 }
 

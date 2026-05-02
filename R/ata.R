@@ -700,7 +700,7 @@ fit_ata <- function(x,
     maturity_args = maturity_args
   )
 
-  class(out) <- c("ATAFit", "list")
+  class(out) <- "ATAFit"
   out
 }
 
