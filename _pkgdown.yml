@@ -122,7 +122,6 @@ articles:
 - title: Workflow
   navbar: ~
   contents:
-  - getting-started
   - aggregation-frameworks
 - title: Methods
   navbar: ~
@@ -135,6 +134,7 @@ articles:
 - title: internal
   navbar: ~
   contents:
+  - getting-started
   - "articles/getting-started-ko"
   - "articles/aggregation-frameworks-ko"
   - "articles/loss-ratio-methods-ko"

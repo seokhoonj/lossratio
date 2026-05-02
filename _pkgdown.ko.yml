@@ -131,7 +131,6 @@ articles:
 - title: 한국어
   navbar: ~
   contents:
-  - "articles/getting-started-ko"
   - "articles/aggregation-frameworks-ko"
   - "articles/loss-ratio-methods-ko"
   - "articles/chain-ladder-ko"
@@ -140,6 +139,7 @@ articles:
   - "articles/backtest-ko"
 - title: internal
   contents:
+  - "articles/getting-started-ko"
   - getting-started
   - aggregation-frameworks
   - loss-ratio-methods
