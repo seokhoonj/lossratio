@@ -284,6 +284,8 @@
   type <- .get_period_type(var)
   if (!is.na(type)) {
     .format_period(as.Date(x), type = type, abb = TRUE)
+  } else if (inherits(x, "Date")) {
+    .format_period(x, type = "month", abb = TRUE)
   } else {
     as.character(x)
   }

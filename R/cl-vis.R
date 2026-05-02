@@ -202,9 +202,10 @@ plot.cl_fit <- function(x,
     if (length(c(grp_var, "cohort"))) {
       p <- p + ggplot2::facet_wrap(
         ggplot2::vars(!!!rlang::syms(c(grp_var, "cohort"))),
-        scales = scales,
-        nrow   = nrow,
-        ncol   = ncol
+        scales   = scales,
+        nrow     = nrow,
+        ncol     = ncol,
+        labeller = .combined_facet_labeller(c(grp_var, "cohort"))
       )
     }
 
