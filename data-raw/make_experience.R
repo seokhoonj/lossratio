@@ -74,18 +74,44 @@ dt[, rp := rp * ifelse(rbinom(.N, 1L, 0.999) == 1L, 1, -1)]
 
 # ---- loss: cumulative loss --------------------------------------------------
 # loss = (Bernoulli has-loss) * Gamma anchored to rp * conditional-LR scale.
-# Targets ~65% zeros overall and per-cv mean LR matching the documented
-# experience-study magnitudes.
-# Maturity curve rises 0 -> ~1 by elap_m 12, mild tail decay after 18.
+# Targets ~65% zeros overall.
+#
+# Per-cv development LR curves are calibrated to the broad shape of a real
+# long-term insurance portfolio's marginal LR-by-development pattern for the
+# four coverage types. Only the smoothed first-10-month curve is taken from
+# real aggregates; the elap_m 11-30 plateau is synthetic; cohort patterns,
+# demographic mixes, cell-level loss / rp values are all randomly drawn.
 
-mat_curve <- pmin(1, 0.05 + 1.10 * (dt$elap_m / 8)) *
-  (1 - 0.12 * pmax(0, dt$elap_m - 18L) / 12)
-target_lr_by_cv <- c(SUR = 1.85, CAN = 0.65, `2CI` = 1.00, HOS = 0.45)
-target_lr <- target_lr_by_cv[dt$cv_nm] * mat_curve
+dev_lr_by_cv <- list(
+  SUR  = c(0.20, 0.80, 0.95, 1.05, 1.15, 1.20, 1.15, 1.20, 1.15, 1.10,
+           rep(1.10, 20)),
+  CAN  = c(0.01, 0.02, 0.05, 0.08, 0.15, 0.30, 0.40, 0.65, 0.70, 0.70,
+           rep(0.70, 20)),
+  `2CI` = c(0.05, 0.25, 0.55, 0.60, 0.70, 0.70, 0.80, 0.65, 0.75, 0.75,
+            rep(0.70, 20)),
+  HOS  = c(0.05, 0.15, 0.30, 0.40, 0.45, 0.40, 0.40, 0.40, 0.50, 0.40,
+           rep(0.40, 20))
+)
+dev_lr_mat <- vapply(c("SUR", "CAN", "2CI", "HOS"),
+                     function(cv) dev_lr_by_cv[[cv]],
+                     numeric(30))
+target_lr <- dev_lr_mat[cbind(dt$elap_m,
+                              match(dt$cv_nm, c("SUR", "CAN", "2CI", "HOS")))]
+
+# SUR cohort regime break at 2024-04: a synthetic scenario representing one
+# of the four typical regime triggers in long-term insurance underwriting:
+#   (1) drastic premium adjustment (up or down)
+#   (2) product coverage content change
+#   (3) sum insured limit change
+#   (4) underwriting guideline change
+# Post-2024-04 SUR cohorts get a 50% LR reduction. Strong enough that
+# all of ecp / pelt / hclust detect the break in `detect_cohort_regime()`.
+sur_post_break <- dt$cv_nm == "SUR" & dt$uym >= as.Date("2024-04-01")
+target_lr[sur_post_break] <- target_lr[sur_post_break] * 0.50
 
 p_has_loss <- pmin(0.55, dt$elap_m / 32)
 has_loss   <- rbinom(N, 1L, p_has_loss)
-shape_loss <- 0.5
+shape_loss <- 5.0   # tight Gamma → cleaner cohort signal for regime demo
 cond_scale <- pmax(abs(dt$rp), 1) * target_lr /
   pmax(p_has_loss, 0.05) / shape_loss
 loss_raw <- has_loss * rgamma(N, shape = shape_loss, scale = cond_scale)

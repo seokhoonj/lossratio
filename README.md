@@ -66,8 +66,9 @@ The package depends on `seokhoonj/instead` and `seokhoonj/ggshort`
 ``` r
 library(lossratio)
 
-# Built-in synthetic experience data (loss / rp uniformly rescaled to
-# obscure original portfolio amounts; ratios preserved)
+# Built-in calibrated synthetic experience data
+# (per-coverage dev curve calibrated to a real portfolio's broad shape;
+# cell-level values and cohort patterns are randomly generated)
 data(experience)
 exp <- as_experience(experience)
 

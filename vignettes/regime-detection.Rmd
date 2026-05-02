@@ -27,6 +27,20 @@ practitioner often asks two questions:
    cohorts?
 2. If so, *when* did the change happen?
 
+In long-term insurance, the cohort patterns most commonly break under
+one of four triggers:
+
+1. **Drastic premium adjustment** — large up- or down-revision of rates
+2. **Product coverage content change** — restructuring of benefits,
+   exclusions, or term
+3. **Sum insured limit change** — adjustment of per-policy maximum
+4. **Underwriting guideline change** — eligibility, declarations, or
+   loading rule revisions
+
+The bundled `experience` dataset's SUR coverage carries a synthetic
+2024-04 break representing one of these triggers, so the demonstration
+below has a clear shift for `detect_cohort_regime()` to find.
+
 A visual inspection of `plot(tri_sur)` can suggest that recent cohorts
 have lower early loss ratios than older ones, but eye-balling a bundle
 of trajectories is an unreliable way to locate a structural shift —
