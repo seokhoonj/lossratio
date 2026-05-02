@@ -179,7 +179,11 @@ aggregation frameworks</a></p>
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># 코호트별 궤적, 그룹별 facet</span></span></code></pre></div>
 <p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="768"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>     <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
+<code class="sourceCode R"><span></span>
+<span><span class="co"># 4 그룹이 한 줄에 나란히 표시될 때 셀 라벨 가독성을 위해 분기</span></span>
+<span><span class="co"># 단위 triangle 로 히트맵을 그린다.</span></span>
+<span><span class="va">tri_q</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
 <p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="768"></p>
 <p><code>triangle</code> 은 다음 함수의 입력으로 사용된다.</p>
 <ul>

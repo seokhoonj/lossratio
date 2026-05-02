@@ -74,7 +74,11 @@ plot(tri)              # 코호트별 궤적, 그룹별 facet
 
 ``` r
 
-plot_triangle(tri)     # 코호트 × dev clr 히트맵
+
+# 4 그룹이 한 줄에 나란히 표시될 때 셀 라벨 가독성을 위해 분기
+# 단위 triangle 로 히트맵을 그린다.
+tri_q <- build_triangle(exp, group_var = cv_nm, dev_var = "elap_q")
+plot_triangle(tri_q)   # 코호트 × dev clr 히트맵
 ```
 
 ![](aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-2.png)

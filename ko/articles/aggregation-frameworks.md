@@ -72,7 +72,11 @@ plot(tri)              # one trajectory per cohort, faceted by group
 
 ``` r
 
-plot_triangle(tri)     # cohort × dev heatmap of clr
+
+# Quarterly granularity for the multi-group heatmap so strip labels
+# stay readable when 4 panels share a row.
+tri_q <- build_triangle(exp, group_var = cv_nm, dev_var = "elap_q")
+plot_triangle(tri_q)   # cohort × dev heatmap of clr
 ```
 
 ![](aggregation-frameworks_files/figure-html/unnamed-chunk-2-2.png)

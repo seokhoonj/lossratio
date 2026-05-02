@@ -176,7 +176,11 @@ premium. Visualise as line plot or heatmap:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># one trajectory per cohort, faceted by group</span></span></code></pre></div>
 <p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="768"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>     <span class="co"># cohort × dev heatmap of clr</span></span></code></pre></div>
+<code class="sourceCode R"><span></span>
+<span><span class="co"># Quarterly granularity for the multi-group heatmap so strip labels</span></span>
+<span><span class="co"># stay readable when 4 panels share a row.</span></span>
+<span><span class="va">tri_q</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># cohort × dev heatmap of clr</span></span></code></pre></div>
 <p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="768"></p>
 <p>Use <code>triangle</code> as input to: - <code><a href="../reference/build_ata.html">build_ata()</a></code>,
 <code><a href="../reference/build_ed.html">build_ed()</a></code> — development factors - <code><a href="../reference/fit_cl.html">fit_cl()</a></code>,
