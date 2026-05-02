@@ -4,7 +4,7 @@
 #'
 #' @description
 #' Visualise diagnostic summaries from an `"ed"` object. Internally
-#' calls [summary_ed()].
+#' calls the `summary()` method on an `ed` object.
 #'
 #' @param x An object of class `"ed"`.
 #' @param type One of `"summary"`, `"box"`, or `"point"`.
@@ -37,7 +37,7 @@ plot.ed <- function(x,
   if (is.null(grp_var)) grp_var <- character(0)
 
   # 1) compute summary
-  sm <- summary_ed(x, alpha = alpha)
+  sm <- summary(x, alpha = alpha)
 
   sm[, ata_link_chr := sprintf("%s-%s", ata_from, ata_to)]
 

@@ -36,7 +36,7 @@ not supplied falls back to the \code{\link[ggshort:ggheatmap]{ggshort::ggheatmap
 draw a vertical reference line and label. Default is \code{FALSE}.}
 
 \item{alpha}{Numeric scalar controlling the variance structure in the
-WLS fit. Default is \code{1}. Passed to \code{\link[=summary_ata]{summary_ata()}}.}
+WLS fit. Default is \code{1}. Passed to \code{\link[=summary.ata]{summary.ata()}}.}
 
 \item{cv_threshold}{Maximum allowed coefficient of variation. Used when
 \code{show_maturity = TRUE}. Default is \code{0.10}.}
@@ -72,5 +72,5 @@ arranged by period and ata link, and fill colours are based on
 deviations column-wise.
 }
 \seealso{
-\code{\link[=build_ata]{build_ata()}}, \code{\link[=summary_ata]{summary_ata()}}, \code{\link[=find_ata_maturity]{find_ata_maturity()}}
+\code{\link[=build_ata]{build_ata()}}, \code{\link[=summary.ata]{summary.ata()}}, \code{\link[=find_ata_maturity]{find_ata_maturity()}}
 }

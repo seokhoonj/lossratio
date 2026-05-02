@@ -68,11 +68,11 @@ head(sm)
 
 ```{r}
 ata <- build_ata(tri, value_var = "closs")
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 head(sm)
 ```
 
-`summary_ata()` 는 성숙점 탐지를 구동하는 링크별 통계를 계산한다.
+`ata` 객체의 `summary()` 메소드는 성숙점 탐지를 구동하는 링크별 통계를 계산한다.
 
 - `mean`, `median`, `wt` — 각 링크에서 관측된 ata 인자의 기술 평균
   (해당 링크가 관측되지 않은 코호트는 제외).
@@ -110,11 +110,11 @@ plot_triangle(ata, show_maturity = TRUE)          # 성숙점 라인 overlay
 안정화되는 경과 기간 링크이다. `fit_lr(method = "sa")` 가 ED 에서 CL 로
 전환할 때 내부적으로 사용한다.
 
-`find_ata_maturity()` 는 `summary_ata()` 객체를 입력으로 받는다 — 먼저
-기술/WLS 요약을 만들고, 거기서 첫 성숙 링크를 탐색한다.
+`find_ata_maturity()` 는 `ata` 객체의 `summary()` 결과를 입력으로 받는다 —
+먼저 `summary()` 로 기술/WLS 요약을 만들고, 거기서 첫 성숙 링크를 탐색한다.
 
 ```{r}
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 mat <- find_ata_maturity(
   sm,
   cv_threshold    = 0.10,    # CV 가 이 값보다 작아야 함
@@ -130,7 +130,7 @@ print(mat)
 그룹별로 모든 임계값을 만족하는 첫 경과 기간 링크 한 행이 출력되며, 해당 링크의
 전체 통계가 같이 실린다. 임계값 인자들은 반환 객체의 attribute 로도 저장된다.
 `find_ata_maturity()` 는 `maturity_args` 가 주어진 경우 `fit_ata()` 와
-`fit_cl()` 내부에서도 호출된다 (내부 `summary_ata()` 단계의 `alpha` 는 호출자의
+`fit_cl()` 내부에서도 호출된다 (내부 `summary()` 단계의 `alpha` 는 호출자의
 값을 그대로 받는다).
 
 임계값은 포트폴리오의 변동성 프로파일에 맞춰 조정한다. 임계값을 빡빡하게
@@ -141,7 +141,7 @@ print(mat)
 
 ```{r}
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
-sm <- summary_ed(ed, alpha = 1)
+sm <- summary(ed, alpha = 1)
 head(sm)
 
 plot(ed, type = "summary")
@@ -149,8 +149,9 @@ plot(ed, type = "box")
 plot_triangle(ed)
 ```
 
-`summary_ed()` 는 `summary_ata()` 의 ED 측 대응물로, 강도
-$g_k = \Delta C^L_k / C^P_k$ 에 대해 링크별 통계를 계산한다.
+`ed` 객체의 `summary()` 메소드는 `ata` 객체의 `summary()` 에 대응하는
+ED 측 분석으로, 강도 $g_k = \Delta C^L_k / C^P_k$ 에 대해 링크별 통계를
+계산한다.
 
 ## 빌드 전 검증
 

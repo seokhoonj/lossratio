@@ -7,7 +7,7 @@
 #' `dev_var` sequence within its observed range. Non-consecutive
 #' cohorts produce non-consecutive age-to-age links downstream (e.g.,
 #' `14 -> 17` instead of `14 -> 15`), which breaks
-#' [summary_ata()] / [summary_ed()] key uniqueness and causes cartesian
+#' [summary.ata()] / [summary.ed()] key uniqueness and causes cartesian
 #' joins in [fit_lr()].
 #'
 #' This function inspects the raw data without modifying it. Use it

@@ -35,5 +35,5 @@ A \code{ggplot} object.
 }
 \description{
 Visualise diagnostic summaries from an \code{"ed"} object. Internally
-calls \code{\link[=summary_ed]{summary_ed()}}.
+calls the \code{summary()} method on an \code{ed} object.
 }

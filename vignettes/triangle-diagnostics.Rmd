@@ -68,12 +68,12 @@ loss ratios per (group, dev) cell.
 
 ```{r}
 ata <- build_ata(tri, value_var = "closs")
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 head(sm)
 ```
 
-`summary_ata()` computes per-link statistics that drive maturity
-detection:
+The `summary()` method on an `ata` object computes per-link statistics
+that drive maturity detection:
 
 - `mean`, `median`, `wt` — descriptive averages of observed ata
   factors at each link (excluding cohorts where the link is not
@@ -114,12 +114,12 @@ The maturity point is the development link beyond which age-to-age
 factors are stable enough to trust for chain-ladder projection. Used
 internally by `fit_lr(method = "sa")` to switch from ED to CL.
 
-`find_ata_maturity()` operates on a `summary_ata()` object — first
-build the descriptive / WLS summary, then probe it for the first
-mature link:
+`find_ata_maturity()` operates on a summary of an `ata` object — first
+build the descriptive / WLS summary via `summary()`, then probe it for
+the first mature link:
 
 ```{r}
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 mat <- find_ata_maturity(
   sm,
   cv_threshold    = 0.10,    # CV must be below this
@@ -137,7 +137,7 @@ thresholds, carrying the link's full statistics. The threshold
 arguments are also stored as attributes on the returned object.
 `find_ata_maturity()` is also called internally by `fit_ata()` and
 `fit_cl()` when `maturity_args` is supplied (the `alpha` of the
-internal `summary_ata()` step is taken from those callers).
+internal `summary()` step is taken from those callers).
 
 Tune the thresholds to your portfolio's volatility profile. Tight
 thresholds (e.g. `cv_threshold = 0.05`) push maturity later; loose
@@ -147,7 +147,7 @@ thresholds push it earlier.
 
 ```{r}
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
-sm <- summary_ed(ed, alpha = 1)
+sm <- summary(ed, alpha = 1)
 head(sm)
 
 plot(ed, type = "summary")
@@ -155,8 +155,9 @@ plot(ed, type = "box")
 plot_triangle(ed)
 ```
 
-`summary_ed()` is the ED-side analogue of `summary_ata()`, computing
-per-link statistics for the intensity $g_k = \Delta C^L_k / C^P_k$.
+The `summary()` method on an `ed` object is the ED-side analogue of
+`summary()` on an `ata` object, computing per-link statistics for the
+intensity $g_k = \Delta C^L_k / C^P_k$.
 
 ## Validation before building
 

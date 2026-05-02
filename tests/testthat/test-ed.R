@@ -68,10 +68,10 @@ test_that("print.ed_fit doesn't error", {
   expect_no_error(capture.output(print(ef)))
 })
 
-# summary_ed -------------------------------------------------------------
+# summary.ed -------------------------------------------------------------
 
-test_that("summary_ed returns ed_summary with expected columns", {
-  sm <- summary_ed(ed, alpha = 1)
+test_that("summary.ed returns ed_summary with expected columns", {
+  sm <- summary(ed, alpha = 1)
   expect_s3_class(sm, "ed_summary")
   for (nm in c("ata_from", "ata_to", "mean", "median", "wt", "g")) {
     expect_true(nm %in% names(sm), info = paste("missing", nm))

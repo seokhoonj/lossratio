@@ -4,13 +4,14 @@
 #'
 #' @description
 #' Visualise diagnostic summaries from an `"ata"` object. Internally calls
-#' [summary_ata()] to compute descriptive statistics and WLS estimates, and
-#' optionally [find_ata_maturity()] to identify the maturity point.
+#' the `summary()` method on an `ata` object to compute descriptive
+#' statistics and WLS estimates, and optionally [find_ata_maturity()] to
+#' identify the maturity point.
 #'
 #' @param x An object of class `"ata"`.
 #' @param type One of `"cv"`, `"rse"`, `"summary"`, `"box"`, or `"point"`.
 #' @param alpha Numeric scalar controlling the variance structure in the
-#'   WLS fit. Default is `1`. Passed to [summary_ata()].
+#'   WLS fit. Default is `1`. Passed to [summary.ata()].
 #' @param show_maturity Logical; if `TRUE`, draw a vertical reference line
 #'   and shade the mature region. Default is `TRUE`.
 #' @param cv_threshold Numeric threshold for `cv`. Used when
@@ -58,7 +59,7 @@ plot.ata <- function(x,
   meta    <- .get_plot_meta(val_var)
 
   # 1) compute summary --------------------------------------------------
-  sm <- summary_ata(x, alpha = alpha)
+  sm <- summary(x, alpha = alpha)
 
   # 2) build ata_link label lookup (numeric x axis) ---------------------
   sm[, ata_link_chr := sprintf("%s-%s", ata_from, ata_to)]
@@ -401,7 +402,7 @@ plot.ata <- function(x,
 #' @param show_maturity Logical; if `TRUE`, compute the maturity point and
 #'   draw a vertical reference line and label. Default is `FALSE`.
 #' @param alpha Numeric scalar controlling the variance structure in the
-#'   WLS fit. Default is `1`. Passed to [summary_ata()].
+#'   WLS fit. Default is `1`. Passed to [summary.ata()].
 #' @param cv_threshold Maximum allowed coefficient of variation. Used when
 #'   `show_maturity = TRUE`. Default is `0.10`.
 #' @param rse_threshold Maximum allowed relative standard error. Used when
@@ -420,7 +421,7 @@ plot.ata <- function(x,
 #'
 #' @return A ggplot object.
 #'
-#' @seealso [build_ata()], [summary_ata()], [find_ata_maturity()]
+#' @seealso [build_ata()], [summary.ata()], [find_ata_maturity()]
 #'
 #' @method plot_triangle ata
 #' @export
@@ -503,7 +504,7 @@ plot_triangle.ata <- function(x,
   mat <- NULL
 
   if (show_maturity) {
-    sm     <- summary_ata(x, alpha = alpha)
+    sm     <- summary(x, alpha = alpha)
     mat <- find_ata_maturity(
       x               = sm,
       cv_threshold    = cv_threshold,

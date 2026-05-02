@@ -73,5 +73,5 @@ attr(ed, "exposure_var")
 
 }
 \seealso{
-\code{\link[=build_triangle]{build_triangle()}}, \code{\link[=summary_ed]{summary_ed()}}, \code{\link[=fit_ed]{fit_ed()}}
+\code{\link[=build_triangle]{build_triangle()}}, \code{\link[=summary.ed]{summary.ed()}}, \code{\link[=fit_ed]{fit_ed()}}
 }

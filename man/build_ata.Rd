@@ -19,7 +19,7 @@ build_ata(
 Must be one of \code{"closs"}, \code{"crp"}, or \code{"clr"}.}
 
 \item{weight_var}{An optional single cumulative metric used as weights
-in WLS estimation via \code{\link[=summary_ata]{summary_ata()}}. Must be one of \code{"closs"},
+in WLS estimation via \code{\link[=summary.ata]{summary.ata()}}. Must be one of \code{"closs"},
 \code{"crp"}, or \code{"clr"}, and must differ from \code{value_var}. Typical use
 is \code{weight_var = "crp"} when \code{value_var = "clr"}, since \code{clr} values
 are ratios and carry no exposure information. When \code{NULL} (default),
@@ -33,7 +33,7 @@ when early development periods contain structural zeros
 
 \item{drop_invalid}{Logical; if \code{TRUE}, rows with invalid (non-finite)
 age-to-age factors are dropped. Useful for clean output when passing
-to \code{\link[=summary_ata]{summary_ata()}} or \code{\link[=find_ata_maturity]{find_ata_maturity()}}. When \code{FALSE} (default),
+to \code{\link[=summary.ata]{summary.ata()}} or \code{\link[=find_ata_maturity]{find_ata_maturity()}}. When \code{FALSE} (default),
 all rows are retained, preserving the full triangle structure for
 diagnostic visualisation via \code{\link[=plot_triangle.ata]{plot_triangle.ata()}}.}
 }
@@ -79,5 +79,5 @@ attr(ata1, "weight_var")
 
 }
 \seealso{
-\code{\link[=build_triangle]{build_triangle()}}, \code{\link[=summary_ata]{summary_ata()}}, \code{\link[=fit_ata]{fit_ata()}}
+\code{\link[=build_triangle]{build_triangle()}}, \code{\link[=summary.ata]{summary.ata()}}, \code{\link[=fit_ata]{fit_ata()}}
 }

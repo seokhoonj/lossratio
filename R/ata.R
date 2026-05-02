@@ -16,7 +16,7 @@
 #' @param value_var A single cumulative metric used to compute age-to-age.
 #'   Must be one of `"closs"`, `"crp"`, or `"clr"`.
 #' @param weight_var An optional single cumulative metric used as weights
-#'   in WLS estimation via [summary_ata()]. Must be one of `"closs"`,
+#'   in WLS estimation via [summary.ata()]. Must be one of `"closs"`,
 #'   `"crp"`, or `"clr"`, and must differ from `value_var`. Typical use
 #'   is `weight_var = "crp"` when `value_var = "clr"`, since `clr` values
 #'   are ratios and carry no exposure information. When `NULL` (default),
@@ -28,7 +28,7 @@
 #'   (for example, waiting periods in life insurance).
 #' @param drop_invalid Logical; if `TRUE`, rows with invalid (non-finite)
 #'   age-to-age factors are dropped. Useful for clean output when passing
-#'   to [summary_ata()] or [find_ata_maturity()]. When `FALSE` (default),
+#'   to [summary.ata()] or [find_ata_maturity()]. When `FALSE` (default),
 #'   all rows are retained, preserving the full triangle structure for
 #'   diagnostic visualisation via [plot_triangle.ata()].
 #'
@@ -48,7 +48,7 @@
 #' `group_var`, `cohort_var`, `dev_var`, `value_var`, and
 #' `weight_var`.
 #'
-#' @seealso [build_triangle()], [summary_ata()], [fit_ata()]
+#' @seealso [build_triangle()], [summary.ata()], [fit_ata()]
 #'
 #' @examples
 #' \dontrun{
@@ -245,10 +245,8 @@ build_ata <- function(x,
 #' (2) exposures are large, and (3) the observed ata values are
 #' consistent across cohorts.
 #'
-#' @param x An object of class `"ata"`, typically produced by
+#' @param object An object of class `"ata"`, typically produced by
 #'   [build_ata()].
-#' @param object An object of class `"ata"`. Used by the S3 [summary()]
-#'   method, which is equivalent to `summary_ata(object, ...)`.
 #' @param alpha Numeric scalar controlling the variance structure in the
 #'   WLS fit. Default is `1`.
 #' @param digits Number of decimal places to round numeric columns.
@@ -283,18 +281,19 @@ build_ata <- function(x,
 #'
 #' @seealso [build_ata()], [find_ata_maturity()], [fit_ata()]
 #'
+#' @method summary ata
 #' @export
-summary_ata <- function(x,
+summary.ata <- function(object,
                         alpha  = 1,
                         digits = 3,
                         ...) {
 
-  .assert_class(x, "ata")
+  .assert_class(object, "ata")
 
-  grp_var <- attr(x, "group_var")
+  grp_var <- attr(object, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
 
-  dt <- .ensure_dt(x)
+  dt <- .ensure_dt(object)
 
   grp_link_var <- c(grp_var, "ata_from", "ata_to", "ata_link")
 
@@ -323,7 +322,7 @@ summary_ata <- function(x,
   # use weight column if present (added by build_ata(weight_var = ...))
   # otherwise fall back to value_from (standard volume-weighted chain ladder)
   wt_col    <- if ("weight" %in% names(dt)) "weight" else 1
-  link_factors <- .lm_ata(x, weights = wt_col, alpha = alpha, ...)
+  link_factors <- .lm_ata(object, weights = wt_col, alpha = alpha, ...)
 
   # 3) join WLS results onto descriptive statistics ---------------------
   join_cols <- c(grp_var, "ata_from", "ata_to", "ata_link")
@@ -356,20 +355,12 @@ summary_ata <- function(x,
   }
 
   data.table::setattr(ds, "group_var",   grp_var)
-  data.table::setattr(ds, "cohort_var",  attr(x, "cohort_var"))
-  data.table::setattr(ds, "dev_var", attr(x, "dev_var"))
-  data.table::setattr(ds, "value_var",   attr(x, "value_var"))
-  data.table::setattr(ds, "weight_var",  attr(x, "weight_var"))
+  data.table::setattr(ds, "cohort_var",  attr(object, "cohort_var"))
+  data.table::setattr(ds, "dev_var", attr(object, "dev_var"))
+  data.table::setattr(ds, "value_var",   attr(object, "value_var"))
+  data.table::setattr(ds, "weight_var",  attr(object, "weight_var"))
 
   .prepend_class(ds, "ata_summary")
-}
-
-
-#' @rdname summary_ata
-#' @method summary ata
-#' @export
-summary.ata <- function(object, digits = 3, ...) {
-  summary_ata(x = object, digits = digits, ...)
 }
 
 
@@ -379,7 +370,7 @@ summary.ata <- function(object, digits = 3, ...) {
 #'
 #' @description
 #' Identify the first mature age-to-age (ata) link from an object of class
-#' `"ata_summary"`, typically produced by [summary_ata()].
+#' `"ata_summary"`, typically produced by [summary.ata()].
 #'
 #' Maturity is determined using a combination of:
 #' \itemize{
@@ -396,7 +387,7 @@ summary.ata <- function(object, digits = 3, ...) {
 #' together provides a more robust maturity assessment than either alone.
 #'
 #' @param x An object of class `"ata_summary"`, typically produced by
-#'   [summary_ata()].
+#'   [summary.ata()].
 #' @param cv_threshold Maximum allowed coefficient of variation.
 #'   Default is `0.10`.
 #' @param rse_threshold Maximum allowed relative standard error.
@@ -563,7 +554,7 @@ find_ata_maturity <- function(x,
 #'
 #' \itemize{
 #'   \item Summary statistics and WLS estimates (`summary`) from
-#'     [summary_ata()].
+#'     [summary.ata()].
 #'   \item Selected factors (`selected`) ready for chain ladder projection,
 #'     after optional maturity filtering and LOCF fill.
 #'   \item Maturity diagnostics (`maturity`) from [find_ata_maturity()].
@@ -593,13 +584,13 @@ find_ata_maturity <- function(x,
 #'     \item{`min_run`}{Default `1L`.}
 #'   }
 #'   Pass `list()` to use all defaults with maturity filtering enabled.
-#' @param ... Additional arguments passed to [summary_ata()].
+#' @param ... Additional arguments passed to [summary.ata()].
 #'
 #' @return An object of class `"ata_fit"` (a named list) containing:
 #'   \describe{
 #'     \item{`call`}{The matched call.}
 #'     \item{`ata`}{The input `"ata"` object.}
-#'     \item{`summary`}{`"ata_summary"` object from [summary_ata()].}
+#'     \item{`summary`}{`"ata_summary"` object from [summary.ata()].}
 #'     \item{`selected`}{`data.table` of factors ready for projection,
 #'       including `f_selected` and `sigma2`.}
 #'     \item{`maturity`}{Maturity diagnostics from [find_ata_maturity()],
@@ -612,7 +603,7 @@ find_ata_maturity <- function(x,
 #'     \item{`maturity_args`}{Resolved maturity arguments, or `NULL`.}
 #'   }
 #'
-#' @seealso [build_ata()], [summary_ata()], [find_ata_maturity()],
+#' @seealso [build_ata()], [summary.ata()], [find_ata_maturity()],
 #'   [fit_cl()]
 #'
 #' @export
@@ -666,7 +657,7 @@ fit_ata <- function(x,
   if (is.null(grp_var)) grp_var <- character(0)
 
   # 3) compute summary statistics and WLS estimates ---------------------
-  ata_summary <- summary_ata(x, alpha = alpha, ...)
+  ata_summary <- summary(x, alpha = alpha, ...)
 
   # 4) find maturity point ----------------------------------------------
   maturity <- if (use_maturity) {
@@ -904,7 +895,7 @@ print.ata_fit <- function(x, ...) {
 #'    so that every link used in projection has a finite factor.
 #'
 #' @param ata_summary A `data.table` of class `"ata_summary"` from
-#'   [summary_ata()].
+#'   [summary.ata()].
 #' @param maturity A `data.table` from [find_ata_maturity()], or `NULL`
 #'   when `use_maturity = FALSE`.
 #' @param grp_var Character vector of grouping variable names.

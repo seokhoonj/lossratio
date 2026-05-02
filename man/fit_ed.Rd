@@ -33,7 +33,7 @@ or \code{"locf"} or \code{"none"}.}
 \item{recent}{Optional positive integer. When supplied, only the most
 recent \code{recent} periods are used for estimation. Default is \code{NULL}.}
 
-\item{...}{Additional arguments passed to \code{\link[=summary_ed]{summary_ed()}}.}
+\item{...}{Additional arguments passed to \code{\link[=summary.ed]{summary.ed()}}.}
 }
 \value{
 An object of class \code{"ed_fit"} (a named list).
@@ -52,5 +52,5 @@ added as \code{g_var} column in \verb{$selected}.}
 }
 }
 \seealso{
-\code{\link[=build_ed]{build_ed()}}, \code{\link[=summary_ed]{summary_ed()}}, \code{\link[=fit_lr]{fit_lr()}}
+\code{\link[=build_ed]{build_ed()}}, \code{\link[=summary.ed]{summary.ed()}}, \code{\link[=fit_lr]{fit_lr()}}
 }

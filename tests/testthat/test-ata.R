@@ -90,10 +90,10 @@ test_that("print.ata_fit doesn't error", {
   expect_no_error(capture.output(print(af)))
 })
 
-# summary_ata ------------------------------------------------------------
+# summary.ata ------------------------------------------------------------
 
-test_that("summary_ata returns ata_summary with expected columns", {
-  sm <- summary_ata(ata, alpha = 1)
+test_that("summary.ata returns ata_summary with expected columns", {
+  sm <- summary(ata, alpha = 1)
   expect_s3_class(sm, "ata_summary")
   for (nm in c("ata_from", "ata_to", "mean", "median", "wt", "cv",
                "f", "f_se", "rse", "sigma")) {
@@ -101,22 +101,22 @@ test_that("summary_ata returns ata_summary with expected columns", {
   }
 })
 
-test_that("summary_ata accepts alpha = 0 / 2", {
-  expect_no_error(summary_ata(ata, alpha = 0))
-  expect_no_error(summary_ata(ata, alpha = 2))
+test_that("summary.ata accepts alpha = 0 / 2", {
+  expect_no_error(summary(ata, alpha = 0))
+  expect_no_error(summary(ata, alpha = 2))
 })
 
 # find_ata_maturity ------------------------------------------------------
 
 test_that("find_ata_maturity returns one row per group with loose thresholds", {
-  sm  <- summary_ata(ata)
+  sm  <- summary(ata)
   mat <- find_ata_maturity(sm, cv_threshold = 0.5, rse_threshold = 0.5)
   groups <- unique(sm$cv_nm)
   expect_true(nrow(mat) <= length(groups))
 })
 
 test_that("tight thresholds yield fewer or NA mature rows", {
-  sm <- summary_ata(ata)
+  sm <- summary(ata)
   mat_loose <- find_ata_maturity(sm, cv_threshold = 0.5, rse_threshold = 0.5)
   mat_tight <- find_ata_maturity(sm, cv_threshold = 0.001, rse_threshold = 0.001)
   finite_loose <- sum(is.finite(mat_loose$ata_from))

@@ -45,14 +45,14 @@ defaults via \code{\link[utils:modifyList]{utils::modifyList()}}:
 }
 Pass \code{list()} to use all defaults with maturity filtering enabled.}
 
-\item{...}{Additional arguments passed to \code{\link[=summary_ata]{summary_ata()}}.}
+\item{...}{Additional arguments passed to \code{\link[=summary.ata]{summary.ata()}}.}
 }
 \value{
 An object of class \code{"ata_fit"} (a named list) containing:
 \describe{
 \item{\code{call}}{The matched call.}
 \item{\code{ata}}{The input \code{"ata"} object.}
-\item{\code{summary}}{\code{"ata_summary"} object from \code{\link[=summary_ata]{summary_ata()}}.}
+\item{\code{summary}}{\code{"ata_summary"} object from \code{\link[=summary.ata]{summary.ata()}}.}
 \item{\code{selected}}{\code{data.table} of factors ready for projection,
 including \code{f_selected} and \code{sigma2}.}
 \item{\code{maturity}}{Maturity diagnostics from \code{\link[=find_ata_maturity]{find_ata_maturity()}},
@@ -71,13 +71,13 @@ Estimate age-to-age (ata) development factors from an object of class
 
 \itemize{
 \item Summary statistics and WLS estimates (\code{summary}) from
-\code{\link[=summary_ata]{summary_ata()}}.
+\code{\link[=summary.ata]{summary.ata()}}.
 \item Selected factors (\code{selected}) ready for chain ladder projection,
 after optional maturity filtering and LOCF fill.
 \item Maturity diagnostics (\code{maturity}) from \code{\link[=find_ata_maturity]{find_ata_maturity()}}.
 }
 }
 \seealso{
-\code{\link[=build_ata]{build_ata()}}, \code{\link[=summary_ata]{summary_ata()}}, \code{\link[=find_ata_maturity]{find_ata_maturity()}},
+\code{\link[=build_ata]{build_ata()}}, \code{\link[=summary.ata]{summary.ata()}}, \code{\link[=find_ata_maturity]{find_ata_maturity()}},
 \code{\link[=fit_cl]{fit_cl()}}
 }

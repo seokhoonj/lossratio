@@ -44,7 +44,7 @@
 #' `group_var`, `cohort_var`, `dev_var`, `loss_var`, and
 #' `exposure_var`.
 #'
-#' @seealso [build_triangle()], [summary_ed()], [fit_ed()]
+#' @seealso [build_triangle()], [summary.ed()], [fit_ed()]
 #'
 #' @examples
 #' \dontrun{
@@ -196,10 +196,8 @@ build_ed <- function(x,
 #'     are numerically equivalent.}
 #' }
 #'
-#' @param x An object of class `"ed"`, typically produced by
+#' @param object An object of class `"ed"`, typically produced by
 #'   [build_ed()].
-#' @param object An object of class `"ed"`. Used by the S3 [summary()]
-#'   method, which is equivalent to `summary_ed(object, ...)`.
 #' @param alpha Numeric scalar controlling the variance structure in the
 #'   WLS fit. Default is `1`.
 #' @param digits Number of decimal places to round numeric columns.
@@ -211,18 +209,19 @@ build_ed <- function(x,
 #'
 #' @seealso [build_ed()], [fit_ed()]
 #'
+#' @method summary ed
 #' @export
-summary_ed <- function(x,
+summary.ed <- function(object,
                        alpha  = 1,
                        digits = 5,
                        ...) {
 
-  .assert_class(x, "ed")
+  .assert_class(object, "ed")
 
-  grp_var <- attr(x, "group_var")
+  grp_var <- attr(object, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
 
-  dt <- .ensure_dt(x)
+  dt <- .ensure_dt(object)
 
   grp_link_var <- c(grp_var, "ata_from", "ata_to", "ata_link")
 
@@ -248,7 +247,7 @@ summary_ed <- function(x,
   ds[, valid_ratio := n_valid / n_obs]
 
   # 2) WLS estimation
-  link_factors <- .lm_ed(x, alpha = alpha, ...)
+  link_factors <- .lm_ed(object, alpha = alpha, ...)
 
   # 3) join WLS results onto descriptive statistics
   join_cols <- c(grp_var, "ata_from", "ata_to", "ata_link")
@@ -281,20 +280,12 @@ summary_ed <- function(x,
   }
 
   data.table::setattr(ds, "group_var"   , grp_var)
-  data.table::setattr(ds, "cohort_var"  , attr(x, "cohort_var"))
-  data.table::setattr(ds, "dev_var" , attr(x, "dev_var"))
-  data.table::setattr(ds, "loss_var"    , attr(x, "loss_var"))
-  data.table::setattr(ds, "exposure_var", attr(x, "exposure_var"))
+  data.table::setattr(ds, "cohort_var"  , attr(object, "cohort_var"))
+  data.table::setattr(ds, "dev_var" , attr(object, "dev_var"))
+  data.table::setattr(ds, "loss_var"    , attr(object, "loss_var"))
+  data.table::setattr(ds, "exposure_var", attr(object, "exposure_var"))
 
   .prepend_class(ds, "ed_summary")
-}
-
-
-#' @rdname summary_ed
-#' @method summary ed
-#' @export
-summary.ed <- function(object, digits = 5, ...) {
-  summary_ed(x = object, digits = digits, ...)
 }
 
 
@@ -327,11 +318,11 @@ summary.ed <- function(object, digits = 5, ...) {
 #'   `"min_last2"` (default), `"locf"`, or `"loglinear"`.
 #' @param recent Optional positive integer. When supplied, only the most
 #'   recent `recent` periods are used for estimation. Default is `NULL`.
-#' @param ... Additional arguments passed to [summary_ed()].
+#' @param ... Additional arguments passed to [summary.ed()].
 #'
 #' @return An object of class `"ed_fit"` (a named list).
 #'
-#' @seealso [build_ed()], [summary_ed()], [fit_lr()]
+#' @seealso [build_ed()], [summary.ed()], [fit_lr()]
 #'
 #' @export
 fit_ed <- function(x,
@@ -366,7 +357,7 @@ fit_ed <- function(x,
   if (is.null(grp_var)) grp_var <- character(0)
 
   # 2) compute summary statistics and WLS estimates
-  ed_summary <- summary_ed(ed, alpha = alpha, ...)
+  ed_summary <- summary(ed, alpha = alpha, ...)
 
   # 3) fill NA gaps in g_selected
   selected <- .filter_ed(

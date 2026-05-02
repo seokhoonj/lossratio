@@ -168,6 +168,6 @@ fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
 ## 함께 보기
 
 - `vignette("loss-ratio-methods")` — `fit_lr()` 을 사용해야 할 때.
-- `vignette("triangle-diagnostics")` — `summary_ata()`,
+- `vignette("triangle-diagnostics")` — `summary()`,
   `find_ata_maturity()`, ata 진단 플롯.
 - `?fit_cl`, `?find_ata_maturity`, `?fit_ata`.

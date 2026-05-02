@@ -27,7 +27,7 @@
 \item{type}{One of \code{"cv"}, \code{"rse"}, \code{"summary"}, \code{"box"}, or \code{"point"}.}
 
 \item{alpha}{Numeric scalar controlling the variance structure in the
-WLS fit. Default is \code{1}. Passed to \code{\link[=summary_ata]{summary_ata()}}.}
+WLS fit. Default is \code{1}. Passed to \code{\link[=summary.ata]{summary.ata()}}.}
 
 \item{show_maturity}{Logical; if \code{TRUE}, draw a vertical reference line
 and shade the mature region. Default is \code{TRUE}.}
@@ -58,6 +58,7 @@ A \code{ggplot} object.
 }
 \description{
 Visualise diagnostic summaries from an \code{"ata"} object. Internally calls
-\code{\link[=summary_ata]{summary_ata()}} to compute descriptive statistics and WLS estimates, and
-optionally \code{\link[=find_ata_maturity]{find_ata_maturity()}} to identify the maturity point.
+the \code{summary()} method on an \code{ata} object to compute descriptive
+statistics and WLS estimates, and optionally \code{\link[=find_ata_maturity]{find_ata_maturity()}} to
+identify the maturity point.
 }

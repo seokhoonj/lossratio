@@ -32,7 +32,7 @@ Check that each \verb{(group_var, cohort_var)} cohort has a consecutive
 \code{dev_var} sequence within its observed range. Non-consecutive
 cohorts produce non-consecutive age-to-age links downstream (e.g.,
 \code{14 -> 17} instead of \code{14 -> 15}), which breaks
-\code{\link[=summary_ata]{summary_ata()}} / \code{\link[=summary_ed]{summary_ed()}} key uniqueness and causes cartesian
+\code{\link[=summary.ata]{summary.ata()}} / \code{\link[=summary.ed]{summary.ed()}} key uniqueness and causes cartesian
 joins in \code{\link[=fit_lr]{fit_lr()}}.
 
 This function inspects the raw data without modifying it. Use it
