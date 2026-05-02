@@ -20,9 +20,9 @@
 제공 기능:
 
 -   경험 데이터의 세 가지 집계 프레임: 코호트 × 경과 기간
-    (`triangle`), 달력 기간 (`calendar`), 포트폴리오 전체
-    (`total`)
--   age-to-age (`ata`) 와 노출 기반 (`ed`) 의 경과 기간 모형화
+    (`Triangle`), 달력 기간 (`Calendar`), 포트폴리오 전체
+    (`Total`)
+-   age-to-age (`ATA`) 와 노출 기반 (`ED`) 의 경과 기간 모형화
 -   chain ladder 추정 (`fit_cl`) 과 손해율 추정 (`fit_lr`),
     세 가지 method 지원:
     -   `"sa"` — **단계 적응적** (기본값): 성숙점 이전은 노출 기반,
@@ -102,9 +102,9 @@ detect_cohort_regime(tri[cv_nm == "SUR"], K = 12, method = "ecp")
 
 | Builder            | 출력 객체     | 차원                                   | 활용                                       |
 |--------------------|---------------|----------------------------------------|--------------------------------------------|
-| `build_triangle()` | `triangle`    | 코호트 × 경과 기간 (2D)                | Chain ladder, ED, SA 추정                  |
-| `build_calendar()` | `calendar`    | 달력 기간 (1D)                         | 달력연도 추세 / 대각선 효과                |
-| `build_total()`    | `total`       | 포트폴리오 전체 (0D, 그룹별)           | 그룹 간 고수준 비교                        |
+| `build_triangle()` | `Triangle`    | 코호트 × 경과 기간 (2D)                | Chain ladder, ED, SA 추정                  |
+| `build_calendar()` | `Calendar`    | 달력 기간 (1D)                         | 달력연도 추세 / 대각선 효과                |
+| `build_total()`    | `Total`       | 포트폴리오 전체 (0D, 그룹별)           | 그룹 간 고수준 비교                        |
 
 `build_triangle` 이후의 하위 컬럼은 입력 granularity (`uym` / `uyq`
 / `uy` 등) 와 무관하게 `cohort` 와 `dev` 로 표준화된다. 원본
@@ -145,8 +145,8 @@ plot(x)              # base plot generic — line / panel diagnostics
 plot_triangle(x)     # lossratio generic — cell heatmap layout
 ```
 
-`plot()` 과 `plot_triangle()` 은 `triangle`, `calendar`, `ata`,
-`ata_fit`, `ed`, `ed_fit`, `cl_fit`, `lr_fit`, `cohort_regime`
+`plot()` 과 `plot_triangle()` 은 `Triangle`, `Calendar`, `ATA`,
+`ATAFit`, `ED`, `EDFit`, `CLFit`, `LRFit`, `CohortRegime`
 객체 전반에 일관되게 작동한다.
 
 ## 문서

@@ -19,9 +19,9 @@ framework (mortality, morbidity, general claims).
 It provides:
 
 -   Three aggregation frameworks of the experience data: cohort ×
-    dev (`triangle`), calendar period (`calendar`), and portfolio
-    total (`total`)
--   Age-to-age (`ata`) and exposure-driven (`ed`) development modeling
+    dev (`Triangle`), calendar period (`Calendar`), and portfolio
+    total (`Total`)
+-   Age-to-age (`ATA`) and exposure-driven (`ED`) development modeling
 -   Chain ladder projection (`fit_cl`) and loss ratio projection
     (`fit_lr`) with three methods:
     -   `"sa"` — **stage-adaptive** (default): exposure-driven before
@@ -101,9 +101,9 @@ The same long-format experience data can be viewed three ways:
 
 | Builder            | Output object | Dimension                       | Use case                              |
 |--------------------|---------------|---------------------------------|---------------------------------------|
-| `build_triangle()` | `triangle`    | cohort × dev (2D)          | Chain ladder, ED, SA projection   |
-| `build_calendar()` | `calendar`    | calendar period (1D)            | Calendar-year trend / diagonal effect |
-| `build_total()`    | `total`       | portfolio total (0D, per group) | High-level comparison across groups   |
+| `build_triangle()` | `Triangle`    | cohort × dev (2D)          | Chain ladder, ED, SA projection   |
+| `build_calendar()` | `Calendar`    | calendar period (1D)            | Calendar-year trend / diagonal effect |
+| `build_total()`    | `Total`       | portfolio total (0D, per group) | High-level comparison across groups   |
 
 After `build_triangle`, downstream columns are standardized to `cohort`
 and `dev` regardless of input granularity (`uym` / `uyq` / `uy`,
@@ -145,9 +145,9 @@ plot(x)              # base plot generic — line / panel diagnostics
 plot_triangle(x)     # lossratio generic — cell heatmap layout
 ```
 
-`plot()` and `plot_triangle()` work uniformly across `triangle`,
-`calendar`, `ata`, `ata_fit`, `ed`, `ed_fit`, `cl_fit`, `lr_fit`, and
-`cohort_regime` objects.
+`plot()` and `plot_triangle()` work uniformly across `Triangle`,
+`Calendar`, `ATA`, `ATAFit`, `ED`, `EDFit`, `CLFit`, `LRFit`, and
+`CohortRegime` objects.
 
 ## Documentation
 

@@ -51,8 +51,8 @@ reference:
 - title: Aggregation builders
   desc: >
     Three frameworks for viewing the same long-format experience data —
-    cohort × dev (`triangle`), calendar period (`calendar`), or
-    portfolio total (`total`).
+    cohort × dev (`Triangle`), calendar period (`Calendar`), or
+    portfolio total (`Total`).
   contents:
   - build_triangle
   - build_calendar

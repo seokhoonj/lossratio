@@ -6,7 +6,7 @@ template:
 
 home:
   title: lossratio
-  description: 보험 경험 데이터를 위한 손해율 분석 및 추정 R 패키지.
+  description: 보험 경험 데이터를 위한 손해율 분석 및 추정 도구.
 
 navbar:
   structure:
@@ -60,8 +60,8 @@ reference:
 - title: 집계 빌더
   desc: >
     같은 long-format experience 데이터를 보는 세 가지 프레임워크 —
-    cohort × dev (`triangle`), 달력 기간 (`calendar`),
-    포트폴리오 전체 (`total`).
+    cohort × dev (`Triangle`), 달력 기간 (`Calendar`),
+    포트폴리오 전체 (`Total`).
   contents:
   - build_triangle
   - build_calendar

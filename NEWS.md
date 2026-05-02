@@ -7,8 +7,8 @@ long-term health insurance loss-ratio analysis.
 
 * Experience class: `as_experience()`, `is_experience()`, `check_experience()`, `add_experience_period()`.
 * Aggregation: `build_triangle()` (cohort × dev), `build_calendar()` (calendar period), `build_total()` (portfolio total).
-* Age-to-age: `build_ata()`, `fit_ata()`, `summary_ata()`, `find_ata_maturity()`.
-* Exposure-driven: `build_ed()`, `fit_ed()`, `summary_ed()`.
+* Age-to-age: `build_ata()`, `fit_ata()`, S3 `summary()` on `ATA` / `ATAFit`, `find_ata_maturity()`.
+* Exposure-driven: `build_ed()`, `fit_ed()`, S3 `summary()` on `ED` / `EDFit`.
 * Projection: `fit_cl()` (chain ladder, `basic` / `mack`), `fit_lr()` (loss-ratio with `sa` / `ed` / `cl` methods).
 * Diagnostics: `detect_cohort_regime()` (regime detection across underwriting cohorts), `backtest()` (calendar-diagonal hold-out, supports both `fit_cl` and `fit_lr`).
 * Visualisation: S3 `plot()` and `plot_triangle()` methods on every fit class.
