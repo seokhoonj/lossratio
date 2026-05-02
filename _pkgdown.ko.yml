@@ -18,7 +18,22 @@ navbar:
       href: articles/getting-started-ko.html
     articles:
       text: 글
-      href: articles/index.html
+      menu:
+      - text: 전체 글
+        href: articles/index.html
+      - text: -------
+      - text: 집계 프레임워크
+        href: articles/aggregation-frameworks-ko.html
+      - text: 손해율 추정 방법론
+        href: articles/loss-ratio-methods-ko.html
+      - text: Chain ladder
+        href: articles/chain-ladder-ko.html
+      - text: Triangle 및 ata 진단
+        href: articles/triangle-diagnostics-ko.html
+      - text: Regime 탐지
+        href: articles/regime-detection-ko.html
+      - text: Backtest
+        href: articles/backtest-ko.html
     reference:
       text: 참조
       href: reference/index.html

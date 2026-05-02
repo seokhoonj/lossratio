@@ -17,7 +17,22 @@ navbar:
       href: articles/getting-started.html
     articles:
       text: Articles
-      href: articles/index.html
+      menu:
+      - text: All articles
+        href: articles/index.html
+      - text: -------
+      - text: Aggregation frameworks
+        href: articles/aggregation-frameworks.html
+      - text: Loss-ratio projection methods
+        href: articles/loss-ratio-methods.html
+      - text: Chain ladder
+        href: articles/chain-ladder.html
+      - text: Triangle and ata diagnostics
+        href: articles/triangle-diagnostics.html
+      - text: Regime detection
+        href: articles/regime-detection.html
+      - text: Backtest
+        href: articles/backtest.html
     language:
       text: KO
       href: ./ko/
