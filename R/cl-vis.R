@@ -109,6 +109,8 @@ plot.cl_fit <- function(x,
       c("x_end", "y_end")
     )
     bridge <- first_pred2[bridge, on = c(grp_var, "cohort")]
+    bridge <- bridge[is.finite(x_start) & is.finite(y_start) &
+                     is.finite(x_end)   & is.finite(y_end)]
 
     if (show_interval && nrow(pred)) {
       pred[, `:=`(

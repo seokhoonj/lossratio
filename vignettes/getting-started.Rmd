@@ -11,6 +11,8 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
+  warning  = FALSE,
+  message  = FALSE,
   fig.width  = 8,
   fig.height = 5
 )
@@ -49,7 +51,7 @@ class(exp)
 ## Step 2 — Build the cohort × dev structure
 
 ```{r}
-tri <- build_triangle(exp, group_var = cv_nm)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 class(tri)
 names(tri)
 ```

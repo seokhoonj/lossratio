@@ -118,6 +118,8 @@ plot.lr_fit <- function(x,
   ]
   data.table::setnames(first_pred2, c("dev", ".y"), c("x_end", "y_end"))
   bridge <- first_pred2[bridge, on = c(grp_var, "cohort")]
+  bridge <- bridge[is.finite(x_start) & is.finite(y_start) &
+                   is.finite(x_end)   & is.finite(y_end)]
 
   p <- ggplot2::ggplot()
 
