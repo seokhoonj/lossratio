@@ -19,7 +19,7 @@
   ), call. = FALSE)
 }
 
-#' Backtest a chain ladder / loss ratio fit on existing data
+#' Backtest a loss-ratio / chain ladder fit on existing data
 #'
 #' @description
 #' Hold out the latest `holdout` calendar diagonals from the input
@@ -37,17 +37,18 @@
 #' @param object A `"backtest"` object. Used by the S3 `summary()` method.
 #' @param holdout Integer. Number of latest calendar diagonals to mask
 #'   before refitting. Default `6L`.
-#' @param fit_fn Fitting function. Supported: `fit_cl` (default) and
-#'   `fit_lr`. If `fit_fn` does not have a `value_var` formal (as is the
-#'   case for `fit_lr`), `value_var` is used only to select the
+#' @param fit_fn Fitting function. Default `fit_lr` (stage-adaptive
+#'   loss-ratio projection); also supports `fit_cl` for single-column
+#'   chain ladder. If `fit_fn` does not have a `value_var` formal (as is
+#'   the case for `fit_lr`), `value_var` is used only to select the
 #'   comparison column on the fit's `$full` table; arguments for the
 #'   fitter itself (e.g., `loss_var`, `exposure_var`, `method`) are
 #'   passed through `...`.
-#' @param value_var Character scalar. Column to project and compare.
-#'   For `fit_cl`, any column present in `x` (default `"closs"`). For
-#'   `fit_lr`, must be one of `"closs"`, `"crp"`, or `"clr"`, which map
-#'   to `loss_proj`, `exposure_proj`, and `clr_proj` respectively on
-#'   `fit_lr$full`.
+#' @param value_var Character scalar. Column to project and compare. For
+#'   `fit_lr` (default), must be one of `"closs"`, `"crp"`, or `"clr"`
+#'   (default), which map to `loss_proj`, `exposure_proj`, and `clr_proj`
+#'   respectively on `fit_lr$full`. For `fit_cl`, any column present in
+#'   `x`.
 #' @param ... Additional arguments passed to `fit_fn` (e.g., `method`,
 #'   `alpha`, `recent`, `tail`).
 #'
@@ -69,14 +70,14 @@
 #'       from `x`.}
 #'   }
 #'
-#' @seealso [fit_cl()], [fit_lr()], [plot.backtest()]
+#' @seealso [fit_lr()], [fit_cl()], [plot.backtest()]
 #'
 #' @examples
 #' \dontrun{
 #' data(experience)
 #' exp <- as_experience(experience)
 #' tri <- build_triangle(exp, group_var = cv_nm)
-#' bt <- backtest(tri, holdout = 6L, value_var = "closs", method = "mack")
+#' bt <- backtest(tri, holdout = 6L)
 #' print(bt)
 #' summary(bt)
 #' plot(bt)
@@ -85,8 +86,8 @@
 #' @export
 backtest <- function(x,
                      holdout    = 6L,
-                     fit_fn     = fit_cl,
-                     value_var  = "closs",
+                     fit_fn     = fit_lr,
+                     value_var  = "clr",
                      ...) {
 
   .assert_class(x, "triangle")

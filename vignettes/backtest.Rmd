@@ -42,7 +42,7 @@ data(experience)
 exp     <- as_experience(experience)
 tri_sur <- build_triangle(exp[cv_nm == "SUR"], cv_nm)
 
-bt <- backtest(tri_sur, holdout = 6L, value_var = "closs", method = "mack")
+bt <- backtest(tri_sur, holdout = 6L)
 print(bt)
 ```
 
@@ -52,22 +52,24 @@ The returned object is a `"backtest"` list with these key slots:
 - `col_summary` — AEG aggregated by `dev`.
 - `diag_summary` — AEG aggregated by calendar diagonal.
 - `masked` — the triangle the fit was trained on (latest diagonals removed).
-- `fit` — the fit object returned by `fit_fn` (a `cl_fit` or `lr_fit`).
+- `fit` — the fit object returned by `fit_fn` (an `lr_fit` or `cl_fit`).
 
 `summary(bt)` prints the two summary tables alongside the call metadata.
 
-## Calendar-diagonal masking limitation
+## Validation coverage after masking
 
-Removing the latest `holdout` diagonals shortens the lower-right edge
-of the triangle. A chain ladder fit on the masked triangle can only
-project as far as its longest cohort × dev support; cells beyond that
-support, which would belong to the very oldest cohorts at the largest
-development periods, simply have no projection to compare against. The
-function silently filters those unreachable cells, so `bt$aeg` always
+Masking the latest `holdout` diagonals shortens the triangle's
+lower-right edge. Chain ladder can only project as far as the largest
+dev still observed in the masked data, so cells beyond that range — the
+oldest cohorts at their latest dev — have no projection to compare
+against. These unreachable cells are silently dropped, so `bt$aeg`
 contains only cells where both an actual and a finite projection exist.
-The practical takeaway: `holdout` larger than a few diagonals reduces
-the validation set fastest in the oldest cohorts, where the chain
-ladder would otherwise rely on its own extrapolated tail.
+
+Practical takeaway: as `holdout` grows, the validation set shrinks
+fastest in the oldest cohorts' late-dev region — exactly where chain
+ladder relies on extrapolation (projection beyond the observed dev
+range), so it is the area most in need of validation yet the first to
+disappear.
 
 ## Output interpretation
 
@@ -87,8 +89,8 @@ Comparing the three columns flags whether a few large cells dominate
 
 **`diag_summary` — calendar-year effect.** A single bad diagonal in
 otherwise unbiased output points at a calendar event (a rate change,
-claim handling shift, or one-off shock) that a static chain ladder
-cannot see by construction.
+claim handling shift, or one-off shock) that a static fitter cannot
+see by construction.
 
 ```{r}
 bt$diag_summary
@@ -141,12 +143,13 @@ triangle has at least 24–30 diagonals of history.
 
 ## Choosing the fit function
 
-`backtest()` supports both `fit_cl` and `fit_lr`. The fitter is passed
-through `fit_fn`, and `value_var` selects which projection column on
-`fit$full` to compare against the held-out actuals. For `fit_cl`,
-`value_var` is also forwarded to the fit itself. For `fit_lr` —
-which projects loss and exposure jointly — `value_var` only chooses
-the comparison column, with the mapping:
+The default fitter is `fit_lr` with `method = "sa"` and
+`value_var = "clr"`. The loss ratio is unitless and dimension-free
+across cohorts of very different volume, so `aeg_mean` and `aeg_med`
+carry a consistent meaning across the triangle. `value_var` selects
+which projection column on `fit$full` is compared against the held-out
+actuals; for `fit_lr` — which projects loss and exposure jointly —
+the mapping is:
 
 | `value_var` | Compared column on `fit_lr$full` |
 |-------------|----------------------------------|
@@ -154,22 +157,30 @@ the comparison column, with the mapping:
 | `"crp"`     | `exposure_proj`                  |
 | `"clr"`     | `clr_proj`                       |
 
-```{r}
-bt_cl  <- backtest(tri_sur, holdout = 6L, fit_fn = fit_cl,
-                   value_var = "closs", method = "mack")
-bt_lr  <- backtest(tri_sur, holdout = 6L, fit_fn = fit_lr,
-                   method = "sa", value_var = "closs")
-bt_clr <- backtest(tri_sur, holdout = 6L, fit_fn = fit_lr,
-                   method = "sa", value_var = "clr")
+The `method` argument selects the underlying loss-ratio projection
+strategy: `"sa"` (stage-adaptive, the default) blends exposure-driven
+projections before the maturity point with chain ladder afterwards;
+`"ed"` is purely exposure-driven; `"cl"` is the classical chain
+ladder applied to `clr`.
 
-print(bt_clr)
+```{r}
+bt_sa  <- backtest(tri_sur, holdout = 6L, method = "sa")   # default
+bt_ed  <- backtest(tri_sur, holdout = 6L, method = "ed")
+bt_cl  <- backtest(tri_sur, holdout = 6L, method = "cl")
+
+bt_loss <- backtest(tri_sur, holdout = 6L, value_var = "closs")
+bt_rp   <- backtest(tri_sur, holdout = 6L, value_var = "crp")
+
+print(bt_sa)
 ```
 
-Backtesting `clr` is often the more informative diagnostic: the loss
-ratio is unitless and dimension-free across cohorts of very different
-volume, so `aeg_mean` and `aeg_med` carry a consistent meaning across
-the triangle. Backtesting `closs` weights the result toward whichever
-cohorts happen to be the largest at the held-out diagonals.
+Backtesting `closs` weights the result toward whichever cohorts
+happen to be the largest at the held-out diagonals, which is useful
+when monetary impact matters more than a normalized comparison.
+
+If you only need to project a single triangle column (e.g., raw
+cumulative loss without forming a ratio), `fit_fn = fit_cl` is also
+supported.
 
 ## See also
 

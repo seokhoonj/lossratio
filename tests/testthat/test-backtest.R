@@ -5,12 +5,14 @@ tri <- build_triangle(exp, group_var = cv_nm)
 sub <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 
 test_that("backtest returns class 'backtest'", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   expect_s3_class(bt, "backtest")
 })
 
 test_that("backtest has expected list elements", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   for (nm in c("call", "data", "masked", "fit",
                "aeg", "col_summary", "diag_summary",
                "value_var", "holdout", "fit_fn_name",
@@ -20,7 +22,8 @@ test_that("backtest has expected list elements", {
 })
 
 test_that("aeg has expected columns", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   for (nm in c("cv_nm", "cohort", "dev", "value_actual", "value_pred",
                "aeg", "calendar_idx")) {
     expect_true(nm %in% names(bt$aeg), info = paste("missing", nm))
@@ -28,7 +31,8 @@ test_that("aeg has expected columns", {
 })
 
 test_that("aeg = pred / actual - 1 (cell-wise)", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   ok <- with(bt$aeg, is.finite(value_actual) & value_actual != 0 &
                      is.finite(value_pred))
   expect_equal(bt$aeg$aeg[ok],
@@ -37,7 +41,8 @@ test_that("aeg = pred / actual - 1 (cell-wise)", {
 })
 
 test_that("col_summary and diag_summary keyed correctly", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   expect_true(all(c("cv_nm", "dev", "n", "aeg_mean",
                     "aeg_med", "aeg_wt") %in% names(bt$col_summary)))
   expect_true(all(c("cv_nm", "calendar_idx", "n", "aeg_mean",
@@ -45,18 +50,21 @@ test_that("col_summary and diag_summary keyed correctly", {
 })
 
 test_that("masked triangle has fewer rows than original", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   expect_lt(nrow(bt$masked), nrow(sub))
   expect_s3_class(bt$masked, "triangle")
 })
 
 test_that("backtest works with method = 'basic'", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "basic")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "basic")
   expect_s3_class(bt, "backtest")
 })
 
 test_that("backtest preserves multi-group structure", {
-  bt <- backtest(tri, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(tri, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   expect_true("cv_nm" %in% names(bt$aeg))
   expect_gt(length(unique(bt$aeg$cv_nm)), 1L)
 })
@@ -72,13 +80,15 @@ test_that("backtest errors on missing value_var", {
 })
 
 test_that("summary.backtest returns class 'summary.backtest'", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   s <- summary(bt)
   expect_s3_class(s, "summary.backtest")
 })
 
 test_that("print methods don't error", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   expect_no_error(capture.output(print(bt)))
   expect_no_error(capture.output(print(summary(bt))))
 })
@@ -88,7 +98,8 @@ test_that("print methods don't error", {
 is_plot <- function(x) inherits(x, "ggplot") || inherits(x, "gtable")
 
 test_that("plot.backtest dispatches across types", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   for (tp in c("col", "diag", "cell")) {
     p <- suppressWarnings(plot(bt, type = tp))
     expect_true(is_plot(p), info = paste("type =", tp))
@@ -96,7 +107,8 @@ test_that("plot.backtest dispatches across types", {
 })
 
 test_that("plot_triangle.backtest dispatches", {
-  bt <- backtest(sub, holdout = 6L, value_var = "closs", method = "mack")
+  bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
+                 value_var = "closs", method = "mack")
   expect_true(is_plot(suppressWarnings(plot_triangle(bt))))
 })
 

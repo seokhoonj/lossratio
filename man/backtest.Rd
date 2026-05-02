@@ -5,9 +5,9 @@
 \alias{print.backtest}
 \alias{summary.backtest}
 \alias{print.summary.backtest}
-\title{Backtest a chain ladder / loss ratio fit on existing data}
+\title{Backtest a loss-ratio / chain ladder fit on existing data}
 \usage{
-backtest(x, holdout = 6L, fit_fn = fit_cl, value_var = "closs", ...)
+backtest(x, holdout = 6L, fit_fn = fit_lr, value_var = "clr", ...)
 
 \method{print}{backtest}(x, ...)
 
@@ -22,18 +22,19 @@ backtest(x, holdout = 6L, fit_fn = fit_cl, value_var = "closs", ...)
 \item{holdout}{Integer. Number of latest calendar diagonals to mask
 before refitting. Default \code{6L}.}
 
-\item{fit_fn}{Fitting function. Supported: \code{fit_cl} (default) and
-\code{fit_lr}. If \code{fit_fn} does not have a \code{value_var} formal (as is the
-case for \code{fit_lr}), \code{value_var} is used only to select the
+\item{fit_fn}{Fitting function. Default \code{fit_lr} (stage-adaptive
+loss-ratio projection); also supports \code{fit_cl} for single-column
+chain ladder. If \code{fit_fn} does not have a \code{value_var} formal (as is
+the case for \code{fit_lr}), \code{value_var} is used only to select the
 comparison column on the fit's \verb{$full} table; arguments for the
 fitter itself (e.g., \code{loss_var}, \code{exposure_var}, \code{method}) are
 passed through \code{...}.}
 
-\item{value_var}{Character scalar. Column to project and compare.
-For \code{fit_cl}, any column present in \code{x} (default \code{"closs"}). For
-\code{fit_lr}, must be one of \code{"closs"}, \code{"crp"}, or \code{"clr"}, which map
-to \code{loss_proj}, \code{exposure_proj}, and \code{clr_proj} respectively on
-\code{fit_lr$full}.}
+\item{value_var}{Character scalar. Column to project and compare. For
+\code{fit_lr} (default), must be one of \code{"closs"}, \code{"crp"}, or \code{"clr"}
+(default), which map to \code{loss_proj}, \code{exposure_proj}, and \code{clr_proj}
+respectively on \code{fit_lr$full}. For \code{fit_cl}, any column present in
+\code{x}.}
 
 \item{...}{Additional arguments passed to \code{fit_fn} (e.g., \code{method},
 \code{alpha}, \code{recent}, \code{tail}).}
@@ -74,7 +75,7 @@ calendar diagonal (\code{diag_summary}).
 data(experience)
 exp <- as_experience(experience)
 tri <- build_triangle(exp, group_var = cv_nm)
-bt <- backtest(tri, holdout = 6L, value_var = "closs", method = "mack")
+bt <- backtest(tri, holdout = 6L)
 print(bt)
 summary(bt)
 plot(bt)
@@ -82,5 +83,5 @@ plot(bt)
 
 }
 \seealso{
-\code{\link[=fit_cl]{fit_cl()}}, \code{\link[=fit_lr]{fit_lr()}}, \code{\link[=plot.backtest]{plot.backtest()}}
+\code{\link[=fit_lr]{fit_lr()}}, \code{\link[=fit_cl]{fit_cl()}}, \code{\link[=plot.backtest]{plot.backtest()}}
 }
