@@ -42,9 +42,9 @@
 | `rp`   | 셀 내 증가분 위험보험료 (기대손해액) | numeric            |
 | group  | 선택 — 보장, 상품, 연령대, 성별 등   | character / factor |
 
-[`as_experience()`](https://seokhoonj.github.io/lossratio/ko/reference/as_experience.md)
+[`as_experience()`](https://seokhoonj.github.io/lossratio/reference/as_experience.md)
 는 스키마를 검증하고 날짜 컬럼을 코어션한다. 이어서
-[`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md)
+[`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md)
 은 표준 코호트 × 경과 기간 구조로 집계하며, 누적 컬럼과 파생 비율을 함께
 산출한다.
 
@@ -102,9 +102,9 @@ detect_cohort_regime(tri[cv_nm == "SUR"], K = 12, method = "ecp")
 
 | Builder | 출력 객체 | 차원 | 활용 |
 |----|----|----|----|
-| [`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md) | `triangle` | 코호트 × 경과 기간 (2D) | Chain ladder, ED, SA 추정 |
-| [`build_calendar()`](https://seokhoonj.github.io/lossratio/ko/reference/build_calendar.md) | `calendar` | 달력 기간 (1D) | 달력연도 추세 / 대각선 효과 |
-| [`build_total()`](https://seokhoonj.github.io/lossratio/ko/reference/build_total.md) | `total` | 포트폴리오 전체 (0D, 그룹별) | 그룹 간 고수준 비교 |
+| [`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md) | `triangle` | 코호트 × 경과 기간 (2D) | Chain ladder, ED, SA 추정 |
+| [`build_calendar()`](https://seokhoonj.github.io/lossratio/reference/build_calendar.md) | `calendar` | 달력 기간 (1D) | 달력연도 추세 / 대각선 효과 |
+| [`build_total()`](https://seokhoonj.github.io/lossratio/reference/build_total.md) | `total` | 포트폴리오 전체 (0D, 그룹별) | 그룹 간 고수준 비교 |
 
 `build_triangle` 이후의 하위 컬럼은 입력 granularity (`uym` / `uyq` /
 `uy` 등) 와 무관하게 `cohort` 와 `dev` 로 표준화된다. 원본 컬럼명과
@@ -143,7 +143,7 @@ plot_triangle(x)     # lossratio generic — cell heatmap layout
 ```
 
 [`plot()`](https://rdrr.io/r/graphics/plot.default.html) 과
-[`plot_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/plot_triangle.md)
+[`plot_triangle()`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.md)
 은 `triangle`, `calendar`, `ata`, `ata_fit`, `ed`, `ed_fit`, `cl_fit`,
 `lr_fit`, `cohort_regime` 객체 전반에 일관되게 작동한다.
 
@@ -160,7 +160,7 @@ vignette("regime-detection", package = "lossratio")
 ## 라이선스
 
 GPL (\>= 2).
-[LICENSE.md](https://seokhoonj.github.io/lossratio/ko/LICENSE.md) 참조.
+[LICENSE.md](https://seokhoonj.github.io/lossratio/LICENSE.md) 참조.
 
 ## Author
 
