@@ -68,8 +68,9 @@ remotes::install_github("seokhoonj/lossratio")
 
 library(lossratio)
 
-# Built-in synthetic experience data (loss / rp uniformly rescaled to
-# obscure original portfolio amounts; ratios preserved)
+# 번들 calibrated 합성 experience data
+# (종목별 dev curve 형상은 실 포트폴리오의 broad shape 에 calibrate;
+# cell-level 값과 cohort 패턴은 무작위 생성)
 data(experience)
 exp <- as_experience(experience)
 

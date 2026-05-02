@@ -9,6 +9,22 @@ practitioner often asks two questions:
     cohorts?
 2.  If so, *when* did the change happen?
 
+In long-term insurance, the cohort patterns most commonly break under
+one of four triggers:
+
+1.  **Drastic premium adjustment** — large up- or down-revision of rates
+2.  **Product coverage content change** — restructuring of benefits,
+    exclusions, or term
+3.  **Sum insured limit change** — adjustment of per-policy maximum
+4.  **Underwriting guideline change** — eligibility, declarations, or
+    loading rule revisions
+
+The bundled `experience` dataset’s SUR coverage carries a synthetic
+2024-04 break representing one of these triggers, so the demonstration
+below has a clear shift for
+[`detect_cohort_regime()`](https://seokhoonj.github.io/lossratio/ko/reference/detect_cohort_regime.md)
+to find.
+
 A visual inspection of `plot(tri_sur)` can suggest that recent cohorts
 have lower early loss ratios than older ones, but eye-balling a bundle
 of trajectories is an unreliable way to locate a structural shift —
@@ -47,9 +63,9 @@ r
 #>   value_var   : clr
 #>   window (K)  : elap_m 1, ..., 12
 #>   cohorts     : 19 analysed (11 dropped)
-#>   regimes     : 1
-#>   breakpoints : (none)
-#>   PC1 / PC2   : 58.2% / 16.5%
+#>   regimes     : 2
+#>   breakpoints : 24.03
+#>   PC1 / PC2   : 63.6% / 15.1%
 ```
 
 The window `K` controls how many development periods define the cohort
@@ -68,31 +84,34 @@ summary(r)
 #>   window    : elap_m 1, ..., 12
 #>   cohorts   : 19 analysed (11 dropped)
 #> 
-#> Regimes (1):
-#>   1: 23.04, ..., 24.10 (19 cohorts)
+#> Regimes (2):
+#>   1: 23.04, ..., 24.02 (11 cohorts)
+#>   2: 24.03, ..., 24.10 (8 cohorts)
+#> 
+#> Breakpoints: 24.03
 
 r$labels
 #>         cohort            regime regime_id
 #>         <Date>            <fctr>     <int>
-#>  1: 2023-04-01 23.04, ..., 24.10         1
-#>  2: 2023-05-01 23.04, ..., 24.10         1
-#>  3: 2023-06-01 23.04, ..., 24.10         1
-#>  4: 2023-07-01 23.04, ..., 24.10         1
-#>  5: 2023-08-01 23.04, ..., 24.10         1
-#>  6: 2023-09-01 23.04, ..., 24.10         1
-#>  7: 2023-10-01 23.04, ..., 24.10         1
-#>  8: 2023-11-01 23.04, ..., 24.10         1
-#>  9: 2023-12-01 23.04, ..., 24.10         1
-#> 10: 2024-01-01 23.04, ..., 24.10         1
-#> 11: 2024-02-01 23.04, ..., 24.10         1
-#> 12: 2024-03-01 23.04, ..., 24.10         1
-#> 13: 2024-04-01 23.04, ..., 24.10         1
-#> 14: 2024-05-01 23.04, ..., 24.10         1
-#> 15: 2024-06-01 23.04, ..., 24.10         1
-#> 16: 2024-07-01 23.04, ..., 24.10         1
-#> 17: 2024-08-01 23.04, ..., 24.10         1
-#> 18: 2024-09-01 23.04, ..., 24.10         1
-#> 19: 2024-10-01 23.04, ..., 24.10         1
+#>  1: 2023-04-01 23.04, ..., 24.02         1
+#>  2: 2023-05-01 23.04, ..., 24.02         1
+#>  3: 2023-06-01 23.04, ..., 24.02         1
+#>  4: 2023-07-01 23.04, ..., 24.02         1
+#>  5: 2023-08-01 23.04, ..., 24.02         1
+#>  6: 2023-09-01 23.04, ..., 24.02         1
+#>  7: 2023-10-01 23.04, ..., 24.02         1
+#>  8: 2023-11-01 23.04, ..., 24.02         1
+#>  9: 2023-12-01 23.04, ..., 24.02         1
+#> 10: 2024-01-01 23.04, ..., 24.02         1
+#> 11: 2024-02-01 23.04, ..., 24.02         1
+#> 12: 2024-03-01 24.03, ..., 24.10         2
+#> 13: 2024-04-01 24.03, ..., 24.10         2
+#> 14: 2024-05-01 24.03, ..., 24.10         2
+#> 15: 2024-06-01 24.03, ..., 24.10         2
+#> 16: 2024-07-01 24.03, ..., 24.10         2
+#> 17: 2024-08-01 24.03, ..., 24.10         2
+#> 18: 2024-09-01 24.03, ..., 24.10         2
+#> 19: 2024-10-01 24.03, ..., 24.10         2
 ```
 
 ## Visualisation
@@ -153,11 +172,11 @@ summary(r2)
 #>   cohorts   : 19 analysed (11 dropped)
 #> 
 #> Regimes (3):
-#>   1: 23.04, ..., 24.02 (11 cohorts)
-#>   2: 24.03, ..., 24.07 (5 cohorts)
-#>   3: 24.08, ..., 24.10 (3 cohorts)
+#>   1: 23.04, ..., 23.06 (3 cohorts)
+#>   2: 23.07, ..., 24.02 (8 cohorts)
+#>   3: 24.03, ..., 24.10 (8 cohorts)
 #> 
-#> Breakpoints: 24.03, 24.08
+#> Breakpoints: 23.07, 24.03
 ```
 
 For `"ecp"` and `"pelt"`, `n_regimes` is a request (the algorithm will

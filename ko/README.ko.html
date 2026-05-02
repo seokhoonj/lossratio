@@ -109,8 +109,9 @@
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://seokhoonj.github.io/lossratio" class="external-link">lossratio</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Built-in synthetic experience data (loss / rp uniformly rescaled to</span></span>
-<span><span class="co"># obscure original portfolio amounts; ratios preserved)</span></span>
+<span><span class="co"># 번들 calibrated 합성 experience data</span></span>
+<span><span class="co"># (종목별 dev curve 형상은 실 포트폴리오의 broad shape 에 calibrate;</span></span>
+<span><span class="co"># cell-level 값과 cohort 패턴은 무작위 생성)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
 <span><span class="va">exp</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/as_experience.html">as_experience</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
 <span></span>

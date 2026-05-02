@@ -32,7 +32,7 @@ print(bt)
 #>   value_var   : closs
 #>   holdout     : 6 calendar diagonals
 #>   held-out    : 123 cells
-#>   AEG         : mean 19.81% / median 2.47%
+#>   AEG         : mean 3.67% / median 2.37%
 ```
 
 The returned object is a `"backtest"` list with these key slots:
@@ -70,16 +70,16 @@ reflect inflated link factors; late-dev values flag tail miscalibration.
 ``` r
 
 head(bt$col_summary, 8)
-#>     cv_nm   dev     n   aeg_mean    aeg_med     aeg_wt
-#>    <char> <int> <int>      <num>      <num>      <num>
-#> 1:    SUR     2     1 -0.3228967 -0.3228967 -0.3228967
-#> 2:    SUR     3     2  0.2760710  0.2760710  0.5380116
-#> 3:    SUR     4     3  3.0666760  2.9082082  3.3631170
-#> 4:    SUR     5     4  1.4738566  1.2395963  1.2478607
-#> 5:    SUR     6     5  1.6680813  0.3429063  1.3252178
-#> 6:    SUR     7     6  0.9780860  0.6530255  0.8186990
-#> 7:    SUR     8     6  0.5077618  0.4315486  0.6924133
-#> 8:    SUR     9     6  0.2276918  0.1570609  0.2440447
+#>     cv_nm   dev     n    aeg_mean      aeg_med       aeg_wt
+#>    <char> <int> <int>       <num>        <num>        <num>
+#> 1:    SUR     2     1  0.35265816  0.352658163  0.352658163
+#> 2:    SUR     3     2  1.09194930  1.091949300  1.238708134
+#> 3:    SUR     4     3  0.26297174  0.149141399  0.002701091
+#> 4:    SUR     5     4 -0.03488373 -0.005683932 -0.003633722
+#> 5:    SUR     6     5  0.11717321  0.170952712  0.158239539
+#> 6:    SUR     7     6  0.02372767  0.088320648 -0.064009176
+#> 7:    SUR     8     6 -0.12194303 -0.209316200 -0.173876247
+#> 8:    SUR     9     6 -0.05656802 -0.153320463 -0.120480803
 ```
 
 `aeg_mean` averages cell-level AEG, `aeg_med` is the median, and
@@ -95,14 +95,14 @@ cannot see by construction.
 ``` r
 
 bt$diag_summary
-#>     cv_nm calendar_idx     n   aeg_mean      aeg_med      aeg_wt
-#>    <char>        <int> <int>      <num>        <num>       <num>
-#> 1:    SUR           25    23 0.13326079  0.070162079  0.03862954
-#> 2:    SUR           26    22 0.33811631  0.079737970  0.01255411
-#> 3:    SUR           27    21 0.36867941  0.015893924  0.03207125
-#> 4:    SUR           28    20 0.07217789 -0.002690612 -0.04810613
-#> 5:    SUR           29    19 0.14188721  0.024717168 -0.06295772
-#> 6:    SUR           30    18 0.11032715 -0.037993393 -0.01415728
+#>     cv_nm calendar_idx     n     aeg_mean    aeg_med     aeg_wt
+#>    <char>        <int> <int>        <num>      <num>      <num>
+#> 1:    SUR           25    23  0.057628989 0.02040208 0.03453846
+#> 2:    SUR           26    22  0.138882688 0.04596682 0.02951810
+#> 3:    SUR           27    21 -0.001821114 0.01078351 0.03417155
+#> 4:    SUR           28    20 -0.006580479 0.01864699 0.02640584
+#> 5:    SUR           29    19  0.025964844 0.02624162 0.05352598
+#> 6:    SUR           30    18 -0.010504749 0.03836698 0.06807051
 ```
 
 A monotone drift across calendar diagonals (as in the SUR example above,
@@ -116,13 +116,13 @@ cells, inspect `bt$aeg` directly:
 ``` r
 
 head(bt$aeg, 5)
-#>     cv_nm     cohort   dev value_actual value_pred        aeg calendar_idx
-#>    <char>     <Date> <int>        <num>      <num>      <num>        <int>
-#> 1:    SUR 2023-05-01    24   3069749801 3857304372 0.25655334           25
-#> 2:    SUR 2023-06-01    23   3335147200 3569148061 0.07016208           25
-#> 3:    SUR 2023-06-01    24   3825555480 4507834001 0.17834757           26
-#> 4:    SUR 2023-07-01    22   3899617297 4250600192 0.09000445           25
-#> 5:    SUR 2023-07-01    23   4309830408 5032710628 0.16772823           26
+#>     cv_nm     cohort   dev value_actual value_pred          aeg calendar_idx
+#>    <char>     <Date> <int>        <num>      <num>        <num>        <int>
+#> 1:    SUR 2023-05-01    24   1751200630 2101185808  0.199854415           25
+#> 2:    SUR 2023-06-01    23   2137306940 2180912455  0.020402084           25
+#> 3:    SUR 2023-06-01    24   2353384510 2684703232  0.140783931           26
+#> 4:    SUR 2023-07-01    22   1892578390 1885245251 -0.003874681           25
+#> 5:    SUR 2023-07-01    23   2021258324 2064343550  0.021316042           26
 ```
 
 ## Plot demos
@@ -211,7 +211,7 @@ print(bt_clr)
 #>   value_var   : clr
 #>   holdout     : 6 calendar diagonals
 #>   held-out    : 123 cells
-#>   AEG         : mean 149.45% / median 7.66%
+#>   AEG         : mean 31.28% / median 7.85%
 ```
 
 Backtesting `clr` is often the more informative diagnostic: the loss

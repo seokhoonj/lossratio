@@ -92,6 +92,24 @@ shifts across underwriting cohorts</a></p>
 <li>최근 인수 코호트가 이전 코호트와 다르게 거동하는가?</li>
 <li>그렇다면 변화는 <em>언제</em> 일어났는가?</li>
 </ol>
+<p>장기 보험에서 코호트 패턴이 깨지는 트리거는 보통 다음 4가지다.</p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>급격한 보험료 조정</strong> — 인상 또는 인하</li>
+<li>
+<strong>상품 보장 내용 변경</strong> — 보장 항목·기간·면책 등의 구조
+조정</li>
+<li>
+<strong>가입금액 한도 변경</strong> — 1인당 최대 가입금액 상·하한
+조정</li>
+<li>
+<strong>Underwriting 가이드라인 변경</strong> — 인수 자격·고지
+항목·할증 기준의 개정</li>
+</ol>
+<p>번들로 제공되는 <code>experience</code> 데이터셋의 SUR 종목에는 위
+트리거 중 하나가 2024-04 시점에 발생했다고 가정한 합성 break 가 심어져
+있다. 따라서 아래 시연에서 <code><a href="../reference/detect_cohort_regime.html">detect_cohort_regime()</a></code> 이 잡아낼
+명확한 변화점이 존재한다.</p>
 <p><code>plot(tri_sur)</code> 의 시각적 점검만으로도 최근 코호트의 초기
 손해율이 과거보다 낮아 보일 수 있지만, 코호트별로 관측 창의 길이가 다른
 상황에서 궤적 다발을 눈대중으로 살피는 것은 구조적 변화의 위치를
@@ -124,9 +142,9 @@ shifts across underwriting cohorts</a></p>
 <span><span class="co">#&gt;   value_var   : clr</span></span>
 <span><span class="co">#&gt;   window (K)  : elap_m 1, ..., 12</span></span>
 <span><span class="co">#&gt;   cohorts     : 19 analysed (11 dropped)</span></span>
-<span><span class="co">#&gt;   regimes     : 1</span></span>
-<span><span class="co">#&gt;   breakpoints : (none)</span></span>
-<span><span class="co">#&gt;   PC1 / PC2   : 58.2% / 16.5%</span></span></code></pre></div>
+<span><span class="co">#&gt;   regimes     : 2</span></span>
+<span><span class="co">#&gt;   breakpoints : 24.03</span></span>
+<span><span class="co">#&gt;   PC1 / PC2   : 63.6% / 15.1%</span></span></code></pre></div>
 <p>창 <code>K</code> 는 코호트 특징 벡터를 정의하는 경과 기간 수를
 조절한다. 최소 <code>K</code> 기간 이상 관측된 코호트만 분석되며, 창이
 짧은 코호트는 제외된다. <code>K</code> 를 늘리면 궤적을 더 많이 담을 수
@@ -143,31 +161,34 @@ shifts across underwriting cohorts</a></p>
 <span><span class="co">#&gt;   window    : elap_m 1, ..., 12</span></span>
 <span><span class="co">#&gt;   cohorts   : 19 analysed (11 dropped)</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Regimes (1):</span></span>
-<span><span class="co">#&gt;   1: 23.04, ..., 24.10 (19 cohorts)</span></span>
+<span><span class="co">#&gt; Regimes (2):</span></span>
+<span><span class="co">#&gt;   1: 23.04, ..., 24.02 (11 cohorts)</span></span>
+<span><span class="co">#&gt;   2: 24.03, ..., 24.10 (8 cohorts)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Breakpoints: 24.03</span></span>
 <span></span>
 <span><span class="va">r</span><span class="op">$</span><span class="va">labels</span></span>
 <span><span class="co">#&gt;         cohort            regime regime_id</span></span>
 <span><span class="co">#&gt;         &lt;Date&gt;            &lt;fctr&gt;     &lt;int&gt;</span></span>
-<span><span class="co">#&gt;  1: 2023-04-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  2: 2023-05-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  3: 2023-06-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  4: 2023-07-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  5: 2023-08-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  6: 2023-09-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  7: 2023-10-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  8: 2023-11-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt;  9: 2023-12-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 10: 2024-01-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 11: 2024-02-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 12: 2024-03-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 13: 2024-04-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 14: 2024-05-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 15: 2024-06-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 16: 2024-07-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 17: 2024-08-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 18: 2024-09-01 23.04, ..., 24.10         1</span></span>
-<span><span class="co">#&gt; 19: 2024-10-01 23.04, ..., 24.10         1</span></span></code></pre></div>
+<span><span class="co">#&gt;  1: 2023-04-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  2: 2023-05-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  3: 2023-06-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  4: 2023-07-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  5: 2023-08-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  6: 2023-09-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  7: 2023-10-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  8: 2023-11-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt;  9: 2023-12-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt; 10: 2024-01-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt; 11: 2024-02-01 23.04, ..., 24.02         1</span></span>
+<span><span class="co">#&gt; 12: 2024-03-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 13: 2024-04-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 14: 2024-05-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 15: 2024-06-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 16: 2024-07-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 17: 2024-08-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 18: 2024-09-01 24.03, ..., 24.10         2</span></span>
+<span><span class="co">#&gt; 19: 2024-10-01 24.03, ..., 24.10         2</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="시각화">시각화<a class="anchor" aria-label="anchor" href="#%EC%8B%9C%EA%B0%81%ED%99%94"></a>
@@ -224,11 +245,11 @@ Ward 계층 클러스터링을 적용하고 <code>n_regimes</code> 개 (기본
 <span><span class="co">#&gt;   cohorts   : 19 analysed (11 dropped)</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Regimes (3):</span></span>
-<span><span class="co">#&gt;   1: 23.04, ..., 24.02 (11 cohorts)</span></span>
-<span><span class="co">#&gt;   2: 24.03, ..., 24.07 (5 cohorts)</span></span>
-<span><span class="co">#&gt;   3: 24.08, ..., 24.10 (3 cohorts)</span></span>
+<span><span class="co">#&gt;   1: 23.04, ..., 23.06 (3 cohorts)</span></span>
+<span><span class="co">#&gt;   2: 23.07, ..., 24.02 (8 cohorts)</span></span>
+<span><span class="co">#&gt;   3: 24.03, ..., 24.10 (8 cohorts)</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Breakpoints: 24.03, 24.08</span></span></code></pre></div>
+<span><span class="co">#&gt; Breakpoints: 23.07, 24.03</span></span></code></pre></div>
 <p><code>"ecp"</code> 와 <code>"pelt"</code> 의 경우
 <code>n_regimes</code> 는 요청값이다 (데이터가 허용하면 알고리즘이 그
 수까지 regime 을 반환한다). <code>"hclust"</code> 의 경우에는 강제
