@@ -158,6 +158,9 @@
 #'   `"vik"`, `"cividis"`, `"berlin"`, `"rainbow"`), or an explicit
 #'   vector of colors.
 #' @param n Integer. Number of color steps.
+#' @param begin,end Numeric in `[0, 1]`. Trim the generated palette to
+#'   the `[begin, end]` slice (defaults `0` / `1` = no trim). Useful
+#'   when a palette's light end is hard to read on white backgrounds.
 #' @param include_endpoints Logical; if `TRUE`, add the lower and upper
 #'   limit dates as extra breaks.
 #' @param ... Additional arguments passed to
@@ -169,8 +172,14 @@
 .scale_color_by_month_gradientn <- function(by_month = 6,
                                             palette = "ylgnbu",
                                             n = 256,
+                                            begin = 0,
+                                            end = 1,
                                             include_endpoints = FALSE,
                                             ...) {
+  if (!is.numeric(begin) || !is.numeric(end) ||
+      begin < 0 || end > 1 || begin >= end)
+    stop("`begin` and `end` must satisfy 0 <= begin < end <= 1.",
+         call. = FALSE)
   # Palette preset handler
   get_palette <- function(p, n) {
     if (is.function(p)) return(p(n))
@@ -201,6 +210,11 @@
   }
 
   cols <- get_palette(palette, n)
+  if (begin > 0 || end < 1) {
+    lo   <- max(1L, as.integer(round(begin * n)) + 1L)
+    hi   <- min(length(cols), as.integer(round(end * n)))
+    cols <- cols[lo:hi]
+  }
 
   # Compute colorbar breaks from numeric limits (ggplot passes Dates as numbers)
   breaks_from_numeric_date <- function(lims) {

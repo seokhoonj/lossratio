@@ -8,6 +8,8 @@
   by_month = 6,
   palette = "ylgnbu",
   n = 256,
+  begin = 0,
+  end = 1,
   include_endpoints = FALSE,
   ...
 )
@@ -21,6 +23,10 @@
 vector of colors.}
 
 \item{n}{Integer. Number of color steps.}
+
+\item{begin, end}{Numeric in \verb{[0, 1]}. Trim the generated palette to
+the \verb{[begin, end]} slice (defaults \code{0} / \code{1} = no trim). Useful
+when a palette's light end is hard to read on white backgrounds.}
 
 \item{include_endpoints}{Logical; if \code{TRUE}, add the lower and upper
 limit dates as extra breaks.}

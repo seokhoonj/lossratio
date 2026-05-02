@@ -114,7 +114,7 @@ plot.backtest <- function(x,
                           color = "grey50") +
       ggplot2::geom_line(alpha = 0.6) +
       ggplot2::geom_point(alpha = 0.6, size = 1.2) +
-      .scale_color_by_month_gradientn() +
+      .scale_color_by_month_gradientn(begin = 0.25) +
       ggplot2::scale_y_continuous(labels = function(v) paste0(round(v * 100), "%")) +
       ggplot2::labs(title = "Backtest AEG per held-out cell",
                     x = .pretty_var_label(x$dev_var),
