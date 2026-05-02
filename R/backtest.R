@@ -44,13 +44,54 @@
 #'   comparison column on the fit's `$full` table; arguments for the
 #'   fitter itself (e.g., `loss_var`, `exposure_var`, `method`) are
 #'   passed through `...`.
-#' @param value_var Character scalar. Column to project and compare. For
-#'   `fit_lr` (default), must be one of `"closs"`, `"crp"`, or `"clr"`
-#'   (default), which map to `loss_proj`, `exposure_proj`, and `clr_proj`
-#'   respectively on `fit_lr$full`. For `fit_cl`, any column present in
-#'   `x`.
+#' @param value_var Character scalar. The **score column** for the
+#'   backtest — the column whose held-out actual values are compared
+#'   against the corresponding model projection cell-by-cell. This is a
+#'   scoring choice for `backtest()` and is not, in general, the same
+#'   thing as the `value_var` argument of the underlying fitter.
+#'
+#'   With `fit_fn = fit_cl`, `backtest()` forwards `value_var` to
+#'   `fit_cl()` (because `fit_cl` has its own `value_var` formal that
+#'   selects which triangle column to accumulate), so the score column
+#'   and the chain-ladder accumulation column coincide; any column
+#'   present in `x` is admissible.
+#'
+#'   With `fit_fn = fit_lr` (default), `fit_lr()` does not take a
+#'   `value_var` argument — it always projects `closs`, `crp`, and
+#'   `clr` jointly. Here `value_var` is used purely to pick which
+#'   projection column on `fit_lr$full` is treated as the prediction
+#'   for scoring. It must be one of `"closs"`, `"crp"`, or `"clr"`
+#'   (default), which map to `loss_proj`, `exposure_proj`, and
+#'   `clr_proj` respectively.
 #' @param ... Additional arguments passed to `fit_fn` (e.g., `method`,
 #'   `alpha`, `recent`, `tail`).
+#'
+#' @details
+#' The `value_var` argument plays two slightly different roles
+#' depending on the fitter, summarised below. In every case `value_var`
+#' is the column that drives the AEG comparison; the difference is
+#' whether the fitter consumes the same name as input or whether the
+#' name is only resolved against the fit's projection table.
+#'
+#' \tabular{lllll}{
+#'   \strong{`fit_fn`} \tab \strong{Valid `value_var`} \tab
+#'     \strong{Forwarded to fitter?} \tab
+#'     \strong{Compared column on `fit$full`} \tab \strong{Notes} \cr
+#'   `fit_cl` \tab any numeric column in `x` \tab yes (as `value_var`)
+#'     \tab `value_proj` \tab Score column equals the column being
+#'     accumulated by chain ladder. \cr
+#'   `fit_lr` \tab `"closs"`, `"crp"`, `"clr"` \tab no (fit_lr ignores
+#'     `value_var`) \tab `loss_proj`, `exposure_proj`, `clr_proj`
+#'     respectively \tab Fitter projects all three jointly; `value_var`
+#'     only selects the scoring lane.
+#' }
+#'
+#' This means that `backtest(..., value_var = "closs")` paired with
+#' `fit_lr` is *not* the same operation as `fit_cl(value_var = "closs")`
+#' under the hood, even though both use the string `"closs"`. The
+#' former scores the loss projection that came out of a stage-adaptive
+#' loss-ratio fit; the latter scores a chain ladder applied directly
+#' to cumulative loss.
 #'
 #' @return An object of class `"Backtest"` with components:
 #'   \describe{
@@ -109,25 +150,25 @@ backtest <- function(x,
          call. = FALSE)
 
   # 1) Tag held-out cells on the original (long-format) triangle ----------
-  full_dt <- .ensure_dt(x)
-  full_dt[, .coh_rank := data.table::frank(cohort, ties.method = "dense"),
-          by = grp_var]
-  full_dt[, .cal_idx := .coh_rank + dev - 1L]
-  full_dt[, .max_cal := max(.cal_idx, na.rm = TRUE), by = grp_var]
-  full_dt[, .is_held_out := .cal_idx > .max_cal - holdout]
+  full <- .ensure_dt(x)
+  full[, .coh_rank := data.table::frank(cohort, ties.method = "dense"),
+       by = grp_var]
+  full[, .cal_idx := .coh_rank + dev - 1L]
+  full[, .max_cal := max(.cal_idx, na.rm = TRUE), by = grp_var]
+  full[, .is_held_out := .cal_idx > .max_cal - holdout]
 
-  if (!any(full_dt$.is_held_out))
+  if (!any(full$.is_held_out))
     stop("`holdout` exceeds available calendar diagonals.", call. = FALSE)
 
   # 2) Build masked triangle -------------------------------------------
-  masked_dt <- full_dt[.is_held_out == FALSE]
-  masked_dt[, c(".coh_rank", ".cal_idx", ".max_cal", ".is_held_out") := NULL]
+  dm <- full[.is_held_out == FALSE]
+  dm[, c(".coh_rank", ".cal_idx", ".max_cal", ".is_held_out") := NULL]
 
-  if (!nrow(masked_dt))
+  if (!nrow(dm))
     stop("After masking, no observations remain. Reduce `holdout`.",
          call. = FALSE)
 
-  masked <- masked_dt
+  masked <- dm
   data.table::setattr(masked, "class", class(x))
   for (a in c("group_var", "cohort_var", "cohort_type",
               "dev_var", "dev_type", "longer")) {
@@ -154,18 +195,18 @@ backtest <- function(x,
     ), call. = FALSE)
 
   # 4) Compare predicted (from fit) to actual (from original x) -------
-  pred_dt <- fit_obj$full[, .SD,
+  pred <- fit_obj$full[, .SD,
     .SDcols = c(grp_var, "cohort", "dev", proj_col)]
 
-  actual_dt <- full_dt[.is_held_out == TRUE,
+  obs <- full[.is_held_out == TRUE,
     .SD,
     .SDcols = c(grp_var, "cohort", "dev", value_var, ".cal_idx")]
-  data.table::setnames(actual_dt, value_var, "value_actual")
-  data.table::setnames(actual_dt, ".cal_idx", "calendar_idx")
+  data.table::setnames(obs, value_var, "value_actual")
+  data.table::setnames(obs, ".cal_idx", "calendar_idx")
 
-  aeg <- pred_dt[actual_dt,
-                 on = c(grp_var, "cohort", "dev"),
-                 nomatch = NULL]
+  aeg <- pred[obs,
+              on = c(grp_var, "cohort", "dev"),
+              nomatch = NULL]
   data.table::setnames(aeg, proj_col, "value_pred")
 
   # Drop cells the masked fit cannot reach (no projection produced)

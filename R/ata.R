@@ -114,7 +114,7 @@ build_ata <- function(x,
 
   grp_coh_var <- c(grp_var, "cohort")
 
-  z <- data.table::copy(dt)
+  z <- .ensure_dt(x)
   data.table::setorderv(z, c(grp_coh_var, "dev"))
 
   # 2) compute ata_from, ata_to, value_from, value_to -------------------
@@ -702,6 +702,25 @@ fit_ata <- function(x,
 
   class(out) <- c("ATAFit", "list")
   out
+}
+
+
+#' Summary method for `ATAFit`
+#'
+#' @description
+#' Returns the link-level `ATASummary` carried by the fit, i.e. one row
+#' per age-to-age link with the WLS-estimated factor `f`, standard
+#' error, sigma, and diagnostic statistics. Mirrors [summary.EDFit()].
+#'
+#' @param object An object of class `"ATAFit"`.
+#' @param ... Unused.
+#'
+#' @return A `data.table` of class `"ATASummary"`.
+#'
+#' @method summary ATAFit
+#' @export
+summary.ATAFit <- function(object, ...) {
+  object$factor
 }
 
 

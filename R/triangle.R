@@ -281,9 +281,7 @@ build_triangle <- function(df,
                                        max(dev, na.rm = TRUE))),
                  by = grp_coh_var]
       ds <- ds[grid, on = c(grp_coh_var, "dev")]
-      for (v in val_var) {
-        data.table::set(ds, i = which(is.na(ds[[v]])), j = v, value = 0)
-      }
+      data.table::setnafill(ds, type = "const", fill = 0, cols = val_var)
       data.table::setorderv(ds, c(grp_coh_var, "dev"))
     } else {
       stop(
@@ -528,9 +526,7 @@ build_calendar <- function(df,
         )
       }
       ds <- ds[grid, on = grp_cal_var]
-      for (v in val_var) {
-        data.table::set(ds, i = which(is.na(ds[[v]])), j = v, value = 0)
-      }
+      data.table::setnafill(ds, type = "const", fill = 0, cols = val_var)
     } else {
       stop(
         sprintf(
@@ -736,9 +732,7 @@ build_total <- function(df,
                   by = c(grp_var, coh_var), .SDcols = dev_var]
       data.table::setnames(grid, ".e", dev_var)
       dt <- agg[grid, on = grp_coh_dev]
-      for (v in val_var) {
-        data.table::set(dt, i = which(is.na(dt[[v]])), j = v, value = 0)
-      }
+      data.table::setnafill(dt, type = "const", fill = 0, cols = val_var)
     } else {
       stop(
         sprintf(
@@ -766,6 +760,8 @@ build_total <- function(df,
   data.table::set(ds, j = "lr"       , value = ds[["loss"]] / ds[["rp"]])
   data.table::set(ds, j = "loss_prop", value = ds[["loss"]] / sum(ds[["loss"]]))
   data.table::set(ds, j = "rp_prop"  , value = ds[["rp"]]   / sum(ds[["rp"]]))
+
+  data.table::setattr(ds, "group_var", grp_var)
 
   .prepend_class(ds, "Total")
 }
@@ -882,4 +878,130 @@ longer.Triangle <- function(x, ...) {
 longer.TriangleSummary <- function(x, ...) {
   .assert_class(x, "TriangleSummary")
   attr(x, "longer")
+}
+
+# Calendar Summary --------------------------------------------------------
+
+#' Summarise calendar-development statistics (Mean, Median, Weighted)
+#'
+#' @description
+#' S3 method for `summary()` on `Calendar` objects. Computes
+#' calendar-period summary statistics for loss ratios (`lr`) and
+#' cumulative loss ratios (`clr`).
+#'
+#' Where [summary.Triangle()] aggregates by `(group_var, dev)` (cohort
+#' × development), this method aggregates by `(group_var, calendar)`
+#' (calendar period) so the resulting table is indexed by calendar
+#' diagonals rather than development periods.
+#'
+#' @param object An object of class `Calendar`.
+#' @param ... Unused; included for S3 compatibility.
+#'
+#' @return
+#' A `data.table` of class `"CalendarSummary"` with one row per
+#' `(group_var, calendar)` combination, containing:
+#' \describe{
+#'   \item{n_obs}{Number of observations in the cell.}
+#'   \item{lr_mean}{Mean of loss ratios.}
+#'   \item{lr_median}{Median of loss ratios.}
+#'   \item{lr_wt}{Weighted loss ratio (`sum(loss) / sum(rp)`).}
+#'   \item{clr_mean}{Mean of cumulative loss ratios.}
+#'   \item{clr_median}{Median of cumulative loss ratios.}
+#'   \item{clr_wt}{Weighted cumulative loss ratio (`sum(closs) / sum(crp)`).}
+#' }
+#'
+#' The returned object preserves the attributes `group_var`,
+#' `calendar_var`, and `calendar_type`.
+#'
+#' @examples
+#' \dontrun{
+#' cal <- build_calendar(df, group_var = cv_nm)
+#' sm  <- summary(cal)
+#' head(sm)
+#' }
+#'
+#' @method summary Calendar
+#' @export
+summary.Calendar <- function(object, ...) {
+  .assert_class(object, "Calendar")
+
+  dt <- .ensure_dt(object)
+
+  grp_var       <- attr(dt, "group_var")
+  cal_var       <- attr(dt, "calendar_var")
+  cal_type      <- attr(dt, "calendar_type")
+  grp_cal_var   <- c(grp_var, "calendar")
+
+  ds <- dt[, .(
+    n_obs      = .N,
+    lr_mean    = mean(lr),
+    lr_median  = stats::median(lr),
+    lr_wt      = sum(loss)  / sum(rp),
+    clr_mean   = mean(clr),
+    clr_median = stats::median(clr),
+    clr_wt     = sum(closs) / sum(crp)
+  ), keyby = grp_cal_var]
+
+  data.table::setattr(ds, "group_var"    , grp_var)
+  data.table::setattr(ds, "calendar_var" , cal_var)
+  data.table::setattr(ds, "calendar_type", cal_type)
+
+  .update_class(ds, "Calendar", "CalendarSummary")
+}
+
+# Total Summary -----------------------------------------------------------
+
+#' Summarise a `Total` object
+#'
+#' @description
+#' S3 method for `summary()` on `Total` objects. `Total` already carries
+#' one row per group (no time dimension), so this method produces a
+#' compact view that orders rows by descending loss ratio and rounds
+#' numeric columns for display.
+#'
+#' @param object An object of class `Total`.
+#' @param digits Integer; number of digits passed to [round()] for
+#'   numeric columns. Default `4L`. Pass `NULL` to skip rounding.
+#' @param ... Unused; included for S3 compatibility.
+#'
+#' @return A `data.table` of class `"TotalSummary"` with the same rows
+#'   as the input `Total` (one per group), ordered by descending `lr`.
+#'   Preserves the `group_var` attribute.
+#'
+#' @examples
+#' \dontrun{
+#' tot <- build_total(df, group_var = cv_nm)
+#' summary(tot)
+#' }
+#'
+#' @method summary Total
+#' @export
+summary.Total <- function(object, digits = 4L, ...) {
+  .assert_class(object, "Total")
+
+  dt <- .ensure_dt(object)
+
+  grp_var <- attr(dt, "group_var")
+
+  if ("lr" %in% names(dt)) {
+    data.table::setorderv(dt, "lr", order = -1L)
+  }
+
+  if (!is.null(digits)) {
+    digits <- suppressWarnings(as.integer(digits[1L]))
+    if (length(digits) == 0L || is.na(digits))
+      stop("`digits` must be a single integer or `NULL`.", call. = FALSE)
+
+    skip_cols <- c(grp_var, "n_obs", "sales_start", "sales_end")
+    num_cols  <- setdiff(names(dt), skip_cols)
+    for (nm in num_cols) {
+      if (is.numeric(dt[[nm]])) {
+        data.table::set(dt, j = nm, value = round(dt[[nm]], digits))
+      }
+    }
+  }
+
+  data.table::setattr(dt, "group_var", grp_var)
+
+  .update_class(dt, "Total", "TotalSummary")
 }

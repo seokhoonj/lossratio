@@ -104,7 +104,7 @@ build_ed <- function(x,
 
   grp_coh_var <- c(grp_var, "cohort")
 
-  z <- data.table::copy(dt)
+  z <- .ensure_dt(x)
   data.table::setorderv(z, c(grp_coh_var, "dev"))
 
   # 1) compute ata_from, ata_to, ata_link

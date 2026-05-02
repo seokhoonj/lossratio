@@ -6,11 +6,13 @@ test_that("check_experience accepts valid input", {
 
 test_that("as_experience errors when required columns are missing", {
   broken <- as.data.frame(experience)[, setdiff(names(experience), "cym")]
-  expect_error(as_experience(broken))
+  expect_error(as_experience(broken),
+               regexp = "Missing columns.*'cym'")
 
   broken2 <- as.data.frame(experience)[, setdiff(names(experience),
                                                  c("uym", "loss", "rp"))]
-  expect_error(as_experience(broken2))
+  expect_error(as_experience(broken2),
+               regexp = "Missing columns.*'uym'.*'loss'.*'rp'")
 })
 
 test_that("as_experience returns an object inheriting class 'Experience'", {

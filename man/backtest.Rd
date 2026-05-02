@@ -30,11 +30,25 @@ comparison column on the fit's \verb{$full} table; arguments for the
 fitter itself (e.g., \code{loss_var}, \code{exposure_var}, \code{method}) are
 passed through \code{...}.}
 
-\item{value_var}{Character scalar. Column to project and compare. For
-\code{fit_lr} (default), must be one of \code{"closs"}, \code{"crp"}, or \code{"clr"}
-(default), which map to \code{loss_proj}, \code{exposure_proj}, and \code{clr_proj}
-respectively on \code{fit_lr$full}. For \code{fit_cl}, any column present in
-\code{x}.}
+\item{value_var}{Character scalar. The \strong{score column} for the
+backtest — the column whose held-out actual values are compared
+against the corresponding model projection cell-by-cell. This is a
+scoring choice for \code{backtest()} and is not, in general, the same
+thing as the \code{value_var} argument of the underlying fitter.
+
+With \code{fit_fn = fit_cl}, \code{backtest()} forwards \code{value_var} to
+\code{fit_cl()} (because \code{fit_cl} has its own \code{value_var} formal that
+selects which triangle column to accumulate), so the score column
+and the chain-ladder accumulation column coincide; any column
+present in \code{x} is admissible.
+
+With \code{fit_fn = fit_lr} (default), \code{fit_lr()} does not take a
+\code{value_var} argument — it always projects \code{closs}, \code{crp}, and
+\code{clr} jointly. Here \code{value_var} is used purely to pick which
+projection column on \code{fit_lr$full} is treated as the prediction
+for scoring. It must be one of \code{"closs"}, \code{"crp"}, or \code{"clr"}
+(default), which map to \code{loss_proj}, \code{exposure_proj}, and
+\code{clr_proj} respectively.}
 
 \item{...}{Additional arguments passed to \code{fit_fn} (e.g., \code{method},
 \code{alpha}, \code{recent}, \code{tail}).}
@@ -69,6 +83,33 @@ The Actual-Expected Gap (AEG) is computed cell-wise as
 \deqn{aeg = \frac{value_{proj}}{value_{actual}} - 1}
 and aggregated by development period (\code{col_summary}) and by
 calendar diagonal (\code{diag_summary}).
+}
+\details{
+The \code{value_var} argument plays two slightly different roles
+depending on the fitter, summarised below. In every case \code{value_var}
+is the column that drives the AEG comparison; the difference is
+whether the fitter consumes the same name as input or whether the
+name is only resolved against the fit's projection table.
+
+\tabular{lllll}{
+\strong{\code{fit_fn}} \tab \strong{Valid \code{value_var}} \tab
+\strong{Forwarded to fitter?} \tab
+\strong{Compared column on \code{fit$full}} \tab \strong{Notes} \cr
+\code{fit_cl} \tab any numeric column in \code{x} \tab yes (as \code{value_var})
+\tab \code{value_proj} \tab Score column equals the column being
+accumulated by chain ladder. \cr
+\code{fit_lr} \tab \code{"closs"}, \code{"crp"}, \code{"clr"} \tab no (fit_lr ignores
+\code{value_var}) \tab \code{loss_proj}, \code{exposure_proj}, \code{clr_proj}
+respectively \tab Fitter projects all three jointly; \code{value_var}
+only selects the scoring lane.
+}
+
+This means that \code{backtest(..., value_var = "closs")} paired with
+\code{fit_lr} is \emph{not} the same operation as \code{fit_cl(value_var = "closs")}
+under the hood, even though both use the string \code{"closs"}. The
+former scores the loss projection that came out of a stage-adaptive
+loss-ratio fit; the latter scores a chain ladder applied directly
+to cumulative loss.
 }
 \examples{
 \dontrun{

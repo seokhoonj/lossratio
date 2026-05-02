@@ -810,3 +810,122 @@ plot_triangle.Triangle <- function(x,
 #     caption = "Unit: %, 100 million KRW"
 #   )
 # }
+
+# Total Plot --------------------------------------------------------------
+
+#' Plot a `Total` object as a per-group bar chart
+#'
+#' @description
+#' Visualise an object of class `Total` as a horizontal bar chart, with
+#' one bar per group. Because `Total` has no time dimension, this is a
+#' simple group-level comparison of the chosen metric (loss ratio, total
+#' loss, etc.) rather than a trajectory.
+#'
+#' @param x An object of class `Total`.
+#' @param value_var A single metric to plot. Must be one of the columns
+#'   carried by a `Total`: `"lr"`, `"loss"`, `"rp"`, `"loss_prop"`, or
+#'   `"rp_prop"`. Default `"lr"`.
+#' @param amount_divisor Numeric scaling factor used only for y-axis
+#'   labels of amount variables. Default `1e8`.
+#' @param theme A string passed to [.switch_theme()]
+#'   (`"view"`, `"save"`, `"shiny"`).
+#' @param ... Additional arguments passed to [.switch_theme()].
+#'
+#' @details
+#' Bars are ordered by the value of `value_var` (descending). When more
+#' than one grouping variable is present, an interaction is used as the
+#' bar identifier.
+#'
+#' Ratio and proportion metrics are plotted on the original scale and
+#' labelled as percentages. Amount metrics are plotted on the original
+#' scale and labelled using `amount_divisor`.
+#'
+#' @return A `ggplot` object.
+#'
+#' @examples
+#' \dontrun{
+#' tot <- build_total(df, group_var = cv_nm)
+#' plot(tot)
+#' plot(tot, value_var = "loss")
+#' }
+#'
+#' @method plot Total
+#' @export
+#' @import ggplot2
+plot.Total <- function(x,
+                       value_var      = "lr",
+                       amount_divisor = 1e8,
+                       theme          = c("view", "save", "shiny"),
+                       ...) {
+
+  .assert_class(x, "Total")
+
+  theme <- match.arg(theme)
+
+  grp_var <- attr(x, "group_var")
+  val_var <- .capture_names(x, !!rlang::enquo(value_var))
+
+  valid_vars <- c("lr", "loss", "rp", "loss_prop", "rp_prop")
+
+  if (length(val_var) != 1L || !(val_var %in% valid_vars)) {
+    stop(
+      paste0(
+        "`value_var` must be one of ",
+        "'lr', 'loss', 'rp', 'loss_prop', or 'rp_prop'."
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (!length(grp_var)) {
+    stop("`Total` has no `group_var`; nothing to plot.", call. = FALSE)
+  }
+
+  dt <- .ensure_dt(x)
+
+  if (length(grp_var) == 1L) {
+    dt[, .group := as.character(.SD[[1L]]), .SDcols = grp_var]
+  } else {
+    dt[, .group := as.character(interaction(.SD, drop = TRUE, sep = " | ")),
+       .SDcols = grp_var]
+  }
+
+  # order bars by value (ascending so largest is at the top after coord_flip)
+  data.table::setorderv(dt, val_var)
+  dt[, .group := factor(.group, levels = .group)]
+
+  meta <- .get_plot_meta(val_var, amount_divisor = amount_divisor)
+
+  p <- ggplot2::ggplot(
+    dt,
+    ggplot2::aes(
+      x = .data$.group,
+      y = .data[[val_var]]
+    )
+  ) +
+    ggplot2::geom_col(fill = "#4C78A8")
+
+  if (!is.null(meta$hline)) {
+    p <- p + ggplot2::geom_hline(
+      yintercept = meta$hline,
+      linetype   = "dashed",
+      color      = "red"
+    )
+  }
+
+  p <- p + .resolve_y_scale(
+    meta = meta,
+    amount_divisor = amount_divisor
+  )
+
+  p <- p +
+    ggplot2::coord_flip() +
+    ggplot2::labs(
+      title   = meta$title,
+      x       = paste(grp_var, collapse = " | "),
+      y       = val_var,
+      caption = meta$caption
+    )
+
+  p + .switch_theme(theme = theme, ...)
+}

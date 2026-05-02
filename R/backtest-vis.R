@@ -38,7 +38,7 @@ plot.Backtest <- function(x,
   grp_var <- x$group_var
 
   if (type == "col") {
-    sm <- data.table::copy(x$col_summary)
+    sm <- .ensure_dt(x$col_summary)
     long <- data.table::melt(
       sm,
       id.vars       = c(grp_var, "dev", "n"),
@@ -71,7 +71,7 @@ plot.Backtest <- function(x,
       p <- p + ggplot2::facet_wrap(grp_var, scales = scales)
 
   } else if (type == "diag") {
-    sm <- data.table::copy(x$diag_summary)
+    sm <- .ensure_dt(x$diag_summary)
     long <- data.table::melt(
       sm,
       id.vars       = c(grp_var, "calendar_idx", "n"),
@@ -104,7 +104,7 @@ plot.Backtest <- function(x,
       p <- p + ggplot2::facet_wrap(grp_var, scales = scales)
 
   } else { # cell
-    dt <- data.table::copy(x$aeg)
+    dt <- .ensure_dt(x$aeg)
     p <- ggplot2::ggplot(
       dt,
       ggplot2::aes(x = .data[["dev"]], y = .data[["aeg"]],
@@ -149,7 +149,7 @@ plot_triangle.Backtest <- function(x,
   theme <- match.arg(theme)
 
   grp_var <- x$group_var
-  dt <- data.table::copy(x$aeg)
+  dt <- .ensure_dt(x$aeg)
 
   dt[, .label := sprintf("%.1f", aeg * 100)]
   lim <- max(abs(dt$aeg), na.rm = TRUE)

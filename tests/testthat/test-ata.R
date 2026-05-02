@@ -123,3 +123,15 @@ test_that("tight thresholds yield fewer or NA mature rows", {
   finite_tight <- sum(is.finite(mat_tight$ata_from))
   expect_true(finite_tight <= finite_loose)
 })
+
+# summary.ATAFit ---------------------------------------------------------
+
+test_that("summary.ATAFit returns the link-level ATASummary", {
+  fit <- fit_ata(ata)
+  s   <- summary(fit)
+  expect_s3_class(s, "ATASummary")
+  expect_identical(s, fit$factor)
+  for (nm in c("ata_from", "ata_to", "ata_link", "f", "f_se", "rse", "sigma")) {
+    expect_true(nm %in% names(s), info = paste("missing", nm))
+  }
+})

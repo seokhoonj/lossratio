@@ -70,13 +70,17 @@ test_that("backtest preserves multi-group structure", {
 })
 
 test_that("backtest errors on invalid holdout", {
-  expect_error(backtest(sub, holdout = 0))
-  expect_error(backtest(sub, holdout = -3))
-  expect_error(backtest(sub, holdout = 9999))  # exceeds available diagonals
+  expect_error(backtest(sub, holdout = 0),
+               regexp = "holdout.*positive integer")
+  expect_error(backtest(sub, holdout = -3),
+               regexp = "holdout.*positive integer")
+  expect_error(backtest(sub, holdout = 9999),
+               regexp = "no observations remain")
 })
 
 test_that("backtest errors on missing value_var", {
-  expect_error(backtest(sub, holdout = 6L, value_var = "nonexistent"))
+  expect_error(backtest(sub, holdout = 6L, value_var = "nonexistent"),
+               regexp = "value_var.*nonexistent.*not found")
 })
 
 test_that("summary.Backtest returns class 'summary.Backtest'", {

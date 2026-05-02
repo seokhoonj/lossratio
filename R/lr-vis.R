@@ -256,7 +256,7 @@ plot_triangle.LRFit <- function(x,
   if (is.null(grp_var)) grp_var <- character(0)
 
   # 1) select data source
-  dt <- data.table::copy(
+  dt <- .ensure_dt(
     if (what == "full") x$full else x$pred
   )
 

@@ -75,5 +75,55 @@ test_that("validate_triangle returns class 'TriangleValidation' with no gaps", {
 })
 
 test_that("build_triangle errors when group_var is invalid", {
-  expect_error(build_triangle(exp, group_var = nonexistent_col))
+  expect_error(build_triangle(exp, group_var = nonexistent_col),
+               regexp = "Unknown column")
+})
+
+test_that("summary.Calendar returns CalendarSummary with expected columns", {
+  cal <- build_calendar(exp, group_var = cv_nm)
+  s   <- summary(cal)
+  expect_s3_class(s, "CalendarSummary")
+  expected <- c("calendar", "n_obs",
+                "lr_mean", "lr_median", "lr_wt",
+                "clr_mean", "clr_median", "clr_wt")
+  expect_true(all(expected %in% names(s)))
+  expect_equal(attr(s, "group_var"),    "cv_nm")
+  expect_equal(attr(s, "calendar_var"), "cym")
+  expect_false(inherits(s, "Calendar"))
+})
+
+test_that("summary.Calendar row count matches (group, calendar) cells", {
+  cal <- build_calendar(exp, group_var = cv_nm)
+  s   <- summary(cal)
+  expect_equal(nrow(s), nrow(unique(cal[, .(cv_nm, calendar)])))
+})
+
+test_that("summary.Total returns TotalSummary ordered by descending lr", {
+  tot <- build_total(exp, group_var = cv_nm)
+  s   <- summary(tot)
+  expect_s3_class(s, "TotalSummary")
+  expect_false(inherits(s, "Total"))
+  expect_equal(nrow(s), nrow(tot))
+  expect_true(all(diff(s$lr) <= 0))
+  expect_equal(attr(s, "group_var"), "cv_nm")
+})
+
+test_that("summary.Total honors digits = NULL (no rounding)", {
+  tot <- build_total(exp, group_var = cv_nm)
+  s_round <- summary(tot, digits = 2L)
+  s_raw   <- summary(tot, digits = NULL)
+  expect_true(all(s_round$lr == round(s_round$lr, 2L)))
+  expect_true(any(s_raw$lr != round(s_raw$lr, 2L)) ||
+              all(s_raw$lr == round(s_raw$lr, 6L)))
+})
+
+test_that("plot.Total returns a ggplot for default value_var = 'lr'", {
+  tot <- build_total(exp, group_var = cv_nm)
+  expect_no_error(p <- plot(tot))
+  expect_s3_class(p, "ggplot")
+})
+
+test_that("plot.Total errors on unknown value_var", {
+  tot <- build_total(exp, group_var = cv_nm)
+  expect_error(plot(tot, value_var = "nope"))
 })
