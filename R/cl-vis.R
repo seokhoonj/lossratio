@@ -1,7 +1,7 @@
 #' Plot a chain ladder fit
 #'
 #' @description
-#' Visualise an object of class `"cl_fit"`.
+#' Visualise an object of class `"CLFit"`.
 #'
 #' Two plot types are supported:
 #' \itemize{
@@ -12,7 +12,7 @@
 #'     Only available when `method = "mack"`.
 #' }
 #'
-#' @param x An object of class `"cl_fit"`.
+#' @param x An object of class `"CLFit"`.
 #' @param type Plot type. One of `"projection"` or `"reserve"`.
 #' @param conf_level Confidence level for interval display. Default is
 #'   `0.95`. Only used when `method = "mack"`.
@@ -29,9 +29,9 @@
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot cl_fit
+#' @method plot CLFit
 #' @export
-plot.cl_fit <- function(x,
+plot.CLFit <- function(x,
                         type           = c("projection", "reserve"),
                         conf_level     = 0.95,
                         show_interval  = TRUE,
@@ -42,7 +42,7 @@ plot.cl_fit <- function(x,
                         ncol           = NULL,
                         ...) {
 
-  .assert_class(x, "cl_fit")
+  .assert_class(x, "CLFit")
 
   type   <- match.arg(type)
   scales <- match.arg(scales)
@@ -300,7 +300,7 @@ plot.cl_fit <- function(x,
 #' Plot chain ladder results as a triangle table
 #'
 #' @description
-#' Visualise a `"cl_fit"` object as a triangle-style heatmap table.
+#' Visualise a `"CLFit"` object as a triangle-style heatmap table.
 #'
 #' The `what` argument controls which values are shown:
 #' \describe{
@@ -318,7 +318,7 @@ plot.cl_fit <- function(x,
 #'   \item{`"ci"`}{Confidence interval for projected cells.}
 #' }
 #'
-#' @param x An object of class `"cl_fit"`.
+#' @param x An object of class `"CLFit"`.
 #' @param what One of `"pred"`, `"full"`, or `"data"`.
 #' @param label_style One of `"value"` (default), `"cv"`, `"se"`, or
 #'   `"ci"`. The uncertainty styles require `method = "mack"`.
@@ -332,9 +332,9 @@ plot.cl_fit <- function(x,
 #'
 #' @return A ggplot object.
 #'
-#' @method plot_triangle cl_fit
+#' @method plot_triangle CLFit
 #' @export
-plot_triangle.cl_fit <- function(x,
+plot_triangle.CLFit <- function(x,
                                  what           = c("pred", "full", "data"),
                                  label_style    = c("value", "cv", "se", "ci"),
                                  conf_level     = 0.95,
@@ -344,7 +344,7 @@ plot_triangle.cl_fit <- function(x,
                                  ncol           = NULL,
                                  ...) {
 
-  .assert_class(x, "cl_fit")
+  .assert_class(x, "CLFit")
 
   what        <- match.arg(what)
   label_style <- match.arg(label_style)

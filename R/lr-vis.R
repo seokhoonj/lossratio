@@ -5,7 +5,7 @@
 #' Plot a loss ratio fit
 #'
 #' @description
-#' Visualise an object of class `"lr_fit"`.
+#' Visualise an object of class `"LRFit"`.
 #'
 #' Two plot types are supported:
 #' \itemize{
@@ -15,7 +15,7 @@
 #'     cohort with optional confidence bands.
 #' }
 #'
-#' @param x An object of class `"lr_fit"`.
+#' @param x An object of class `"LRFit"`.
 #' @param type One of `"clr"` or `"closs"`.
 #' @param conf_level Confidence level. Default is `0.95`.
 #' @param show_interval Logical. Default is `TRUE`.
@@ -27,9 +27,9 @@
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot lr_fit
+#' @method plot LRFit
 #' @export
-plot.lr_fit <- function(x,
+plot.LRFit <- function(x,
                         type           = c("clr", "closs"),
                         conf_level     = 0.95,
                         show_interval  = TRUE,
@@ -41,7 +41,7 @@ plot.lr_fit <- function(x,
                         ncol           = NULL,
                         ...) {
 
-  .assert_class(x, "lr_fit")
+  .assert_class(x, "LRFit")
 
   type   <- match.arg(type)
   scales <- match.arg(scales)
@@ -207,11 +207,11 @@ plot.lr_fit <- function(x,
 #' Plot loss ratio projection as a triangle heatmap
 #'
 #' @description
-#' Visualise an `"lr_fit"` object as a triangle-style heatmap of
+#' Visualise an `"LRFit"` object as a triangle-style heatmap of
 #' cumulative loss ratios. Observed and projected cells are
 #' distinguished by border style.
 #'
-#' @param x An object of class `"lr_fit"`.
+#' @param x An object of class `"LRFit"`.
 #' @param what One of `"full"` (observed + projected) or `"pred"`
 #'   (projected cells only). Default is `"full"`.
 #' @param label_style One of `"value"` (clr only) or `"detail"`
@@ -229,9 +229,9 @@ plot.lr_fit <- function(x,
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot_triangle lr_fit
+#' @method plot_triangle LRFit
 #' @export
-plot_triangle.lr_fit <- function(x,
+plot_triangle.LRFit <- function(x,
                                  what           = c("full", "pred"),
                                  label_style    = c("value", "detail"),
                                  label_args     = list(),
@@ -243,7 +243,7 @@ plot_triangle.lr_fit <- function(x,
                                  ncol           = NULL,
                                  ...) {
 
-  .assert_class(x, "lr_fit")
+  .assert_class(x, "LRFit")
 
   what        <- match.arg(what)
   label_style <- match.arg(label_style)

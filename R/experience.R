@@ -243,16 +243,16 @@ add_experience_period <- function(df) {
   cache[match(key, ukey)]
 }
 
-#' Coerce a dataset to an `experience` object
+#' Coerce a dataset to an `Experience` object
 #'
 #' @description
-#' Coerce a data.frame to a minimal `experience` object for loss ratio
+#' Coerce a data.frame to a minimal `Experience` object for loss ratio
 #' analysis.
 #'
 #' This function checks that the input contains the minimum required
 #' columns, attempts to coerce them to the expected classes, optionally
 #' derives standard period variables via [add_experience_period()], and
-#' prepends class `"experience"`.
+#' prepends class `"Experience"`.
 #'
 #' The function intentionally performs only minimal coercion. Other
 #' columns such as grouping variables or presentation variables are left
@@ -275,7 +275,7 @@ add_experience_period <- function(df) {
 #' `uyh`, `uyq`, `cy`, `cyh`, `cyq`, `elap_y`, `elap_h`, and `elap_q` may be
 #' added, depending on the available source columns.
 #'
-#' @return A data.frame with class `"experience"` prepended.
+#' @return A data.frame with class `"Experience"` prepended.
 #'
 #' @seealso [check_experience()], [add_experience_period()]
 #'
@@ -348,10 +348,10 @@ as_experience <- function(df, add_period = TRUE) {
     dt <- data.table::as.data.table(add_experience_period(dt))
   }
 
-  .prepend_class(dt, "experience")
+  .prepend_class(dt, "Experience")
 }
 
-#' Check whether an object is an `experience`
+#' Check whether an object is an `Experience`
 #'
 #' @param x An object.
 #'
@@ -359,6 +359,6 @@ as_experience <- function(df, add_period = TRUE) {
 #'
 #' @export
 is_experience <- function(x) {
-  inherits(x, "experience")
+  inherits(x, "Experience")
 }
 

@@ -1,9 +1,9 @@
 # Age-to-age --------------------------------------------------------------
 
-#' Build age-to-age (ata) factors from `triangle` data
+#' Build age-to-age (ata) factors from `Triangle` data
 #'
 #' @description
-#' Construct age-to-age development factors from an object of class `triangle`,
+#' Construct age-to-age development factors from an object of class `Triangle`,
 #' typically produced by [build_triangle()]. Age-to-age factors are calculated
 #' from cumulative values such as `closs` or `crp`.
 #'
@@ -12,11 +12,11 @@
 #'
 #' where `value_k` is the selected cumulative metric at development period `k`.
 #'
-#' @param x An object of class `triangle`.
+#' @param x An object of class `Triangle`.
 #' @param value_var A single cumulative metric used to compute age-to-age.
 #'   Must be one of `"closs"`, `"crp"`, or `"clr"`.
 #' @param weight_var An optional single cumulative metric used as weights
-#'   in WLS estimation via [summary.ata()]. Must be one of `"closs"`,
+#'   in WLS estimation via [summary.ATA()]. Must be one of `"closs"`,
 #'   `"crp"`, or `"clr"`, and must differ from `value_var`. Typical use
 #'   is `weight_var = "crp"` when `value_var = "clr"`, since `clr` values
 #'   are ratios and carry no exposure information. When `NULL` (default),
@@ -28,11 +28,11 @@
 #'   (for example, waiting periods in life insurance).
 #' @param drop_invalid Logical; if `TRUE`, rows with invalid (non-finite)
 #'   age-to-age factors are dropped. Useful for clean output when passing
-#'   to [summary.ata()] or [find_ata_maturity()]. When `FALSE` (default),
+#'   to [summary.ATA()] or [find_ata_maturity()]. When `FALSE` (default),
 #'   all rows are retained, preserving the full triangle structure for
-#'   diagnostic visualisation via [plot_triangle.ata()].
+#'   diagnostic visualisation via [plot_triangle.ATA()].
 #'
-#' @return A data.frame with class `"ata"` containing:
+#' @return A data.frame with class `"ATA"` containing:
 #'   \describe{
 #'     \item{`ata_from`}{Current development period.}
 #'     \item{`ata_to`}{Next development period.}
@@ -48,7 +48,7 @@
 #' `group_var`, `cohort_var`, `dev_var`, `value_var`, and
 #' `weight_var`.
 #'
-#' @seealso [build_triangle()], [summary.ata()], [fit_ata()]
+#' @seealso [build_triangle()], [summary.ATA()], [fit_ata()]
 #'
 #' @examples
 #' \dontrun{
@@ -70,7 +70,7 @@ build_ata <- function(x,
                       min_denom    = 0,
                       drop_invalid = FALSE) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
 
   if (!is.numeric(min_denom) || length(min_denom) != 1L || is.na(min_denom))
     stop("`min_denom` must be a single non-missing numeric value.",
@@ -163,7 +163,7 @@ build_ata <- function(x,
   data.table::setattr(z, "value_var"  , val_var)
   data.table::setattr(z, "weight_var" , if (use_weight) wt_var else NULL)
 
-  .prepend_class(z, "ata")
+  .prepend_class(z, "ATA")
 }
 
 
@@ -173,7 +173,7 @@ build_ata <- function(x,
 #'
 #' @description
 #' Compute group-wise summary statistics for age-to-age factors from an
-#' object of class `"ata"`. This function serves two purposes:
+#' object of class `"ATA"`. This function serves two purposes:
 #'
 #' \enumerate{
 #'   \item \strong{Diagnostics}: provides descriptive statistics
@@ -217,7 +217,7 @@ build_ata <- function(x,
 #' }
 #'
 #' @section Weights:
-#' When the input `"ata"` object contains a `weight` column (added by
+#' When the input `"ATA"` object contains a `weight` column (added by
 #' [build_ata()] when `weight_var` is supplied), that column is
 #' automatically used as the WLS weight in place of `value_from`. This
 #' is useful when `value_var = "clr"`, where `value_from` carries no
@@ -245,7 +245,7 @@ build_ata <- function(x,
 #' (2) exposures are large, and (3) the observed ata values are
 #' consistent across cohorts.
 #'
-#' @param object An object of class `"ata"`, typically produced by
+#' @param object An object of class `"ATA"`, typically produced by
 #'   [build_ata()].
 #' @param alpha Numeric scalar controlling the variance structure in the
 #'   WLS fit. Default is `1`.
@@ -253,7 +253,7 @@ build_ata <- function(x,
 #'   Default is `3`. Pass `NULL` to skip rounding.
 #' @param ... Additional arguments passed to the internal WLS estimation.
 #'
-#' @return A `data.table` with class `"ata_summary"` containing one row
+#' @return A `data.table` with class `"ATASummary"` containing one row
 #'   per ata link:
 #'   \describe{
 #'     \item{`ata_from`, `ata_to`, `ata_link`}{Link identifiers.}
@@ -281,14 +281,14 @@ build_ata <- function(x,
 #'
 #' @seealso [build_ata()], [find_ata_maturity()], [fit_ata()]
 #'
-#' @method summary ata
+#' @method summary ATA
 #' @export
-summary.ata <- function(object,
+summary.ATA <- function(object,
                         alpha  = 1,
                         digits = 3,
                         ...) {
 
-  .assert_class(object, "ata")
+  .assert_class(object, "ATA")
 
   grp_var <- attr(object, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
@@ -360,7 +360,7 @@ summary.ata <- function(object,
   data.table::setattr(ds, "value_var",   attr(object, "value_var"))
   data.table::setattr(ds, "weight_var",  attr(object, "weight_var"))
 
-  .prepend_class(ds, "ata_summary")
+  .prepend_class(ds, "ATASummary")
 }
 
 
@@ -370,7 +370,7 @@ summary.ata <- function(object,
 #'
 #' @description
 #' Identify the first mature age-to-age (ata) link from an object of class
-#' `"ata_summary"`, typically produced by [summary.ata()].
+#' `"ATASummary"`, typically produced by [summary.ATA()].
 #'
 #' Maturity is determined using a combination of:
 #' \itemize{
@@ -386,8 +386,8 @@ summary.ata <- function(object,
 #' reflects the precision of the WLS-estimated factor. Using both criteria
 #' together provides a more robust maturity assessment than either alone.
 #'
-#' @param x An object of class `"ata_summary"`, typically produced by
-#'   [summary.ata()].
+#' @param x An object of class `"ATASummary"`, typically produced by
+#'   [summary.ATA()].
 #' @param cv_threshold Maximum allowed coefficient of variation.
 #'   Default is `0.10`.
 #' @param rse_threshold Maximum allowed relative standard error.
@@ -399,7 +399,7 @@ summary.ata <- function(object,
 #' @param min_run Minimum number of consecutive ata links satisfying the
 #'   maturity criteria. Default is `1L`.
 #'
-#' @return A `data.table` with class `"ata_maturity"` containing one row
+#' @return A `data.table` with class `"ATAMaturity"` containing one row
 #'   per group. If no mature link is found, all values for that group are
 #'   `NA`.
 #'
@@ -411,7 +411,7 @@ find_ata_maturity <- function(x,
                               min_n_valid     = 3L,
                               min_run         = 1L) {
 
-  .assert_class(x, "ata_summary")
+  .assert_class(x, "ATASummary")
 
   if (!is.numeric(cv_threshold) || length(cv_threshold) != 1L ||
       is.na(cv_threshold))
@@ -540,7 +540,7 @@ find_ata_maturity <- function(x,
   data.table::setattr(z, "value_var",       attr(x, "value_var"))
   data.table::setattr(z, "weight_var",      attr(x, "weight_var"))
 
-  .prepend_class(z, "ata_maturity")
+  .prepend_class(z, "ATAMaturity")
 }
 
 
@@ -550,17 +550,17 @@ find_ata_maturity <- function(x,
 #'
 #' @description
 #' Estimate age-to-age (ata) development factors from an object of class
-#' `"ata"` and return a unified `"ata_fit"` object that bundles:
+#' `"ATA"` and return a unified `"ATAFit"` object that bundles:
 #'
 #' \itemize{
 #'   \item Summary statistics and WLS estimates (`summary`) from
-#'     [summary.ata()].
+#'     [summary.ATA()].
 #'   \item Selected factors (`selected`) ready for chain ladder projection,
 #'     after optional maturity filtering and LOCF fill.
 #'   \item Maturity diagnostics (`maturity`) from [find_ata_maturity()].
 #' }
 #'
-#' @param x An object of class `"ata"`, typically produced by [build_ata()].
+#' @param x An object of class `"ATA"`, typically produced by [build_ata()].
 #' @param alpha Numeric scalar controlling the variance structure. Default
 #'   is `1`.
 #' @param na_method Method used to fill `NA` values in `f_selected`. One of
@@ -584,13 +584,13 @@ find_ata_maturity <- function(x,
 #'     \item{`min_run`}{Default `1L`.}
 #'   }
 #'   Pass `list()` to use all defaults with maturity filtering enabled.
-#' @param ... Additional arguments passed to [summary.ata()].
+#' @param ... Additional arguments passed to [summary.ATA()].
 #'
-#' @return An object of class `"ata_fit"` (a named list) containing:
+#' @return An object of class `"ATAFit"` (a named list) containing:
 #'   \describe{
 #'     \item{`call`}{The matched call.}
-#'     \item{`ata`}{The input `"ata"` object.}
-#'     \item{`summary`}{`"ata_summary"` object from [summary.ata()].}
+#'     \item{`ata`}{The input `"ATA"` object.}
+#'     \item{`summary`}{`"ATASummary"` object from [summary.ATA()].}
 #'     \item{`selected`}{`data.table` of factors ready for projection,
 #'       including `f_selected` and `sigma2`.}
 #'     \item{`maturity`}{Maturity diagnostics from [find_ata_maturity()],
@@ -603,7 +603,7 @@ find_ata_maturity <- function(x,
 #'     \item{`maturity_args`}{Resolved maturity arguments, or `NULL`.}
 #'   }
 #'
-#' @seealso [build_ata()], [summary.ata()], [find_ata_maturity()],
+#' @seealso [build_ata()], [summary.ATA()], [find_ata_maturity()],
 #'   [fit_cl()]
 #'
 #' @export
@@ -615,7 +615,7 @@ fit_ata <- function(x,
                     maturity_args = NULL,
                     ...) {
 
-  .assert_class(x, "ata")
+  .assert_class(x, "ATA")
 
   na_method    <- match.arg(na_method)
   sigma_method <- match.arg(sigma_method)
@@ -700,24 +700,24 @@ fit_ata <- function(x,
     maturity_args = maturity_args
   )
 
-  class(out) <- c("ata_fit", "list")
+  class(out) <- c("ATAFit", "list")
   out
 }
 
 
-#' Print an `ata_fit` object
+#' Print an `ATAFit` object
 #'
-#' @param x An object of class `"ata_fit"`.
+#' @param x An object of class `"ATAFit"`.
 #' @param ... Unused.
 #'
-#' @method print ata_fit
+#' @method print ATAFit
 #' @export
-print.ata_fit <- function(x, ...) {
+print.ATAFit <- function(x, ...) {
 
   grp_var <- attr(x$ata, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
 
-  cat("<ata_fit>\n")
+  cat("<ATAFit>\n")
   cat("alpha       :", x$alpha,  "\n")
   cat("sigma_method:", x$sigma_method, "\n")
   cat("recent      :",
@@ -759,7 +759,7 @@ print.ata_fit <- function(x, ...) {
 #' Near-zero values of `f_se` and `sigma` (below `tol`) are set to zero to
 #' avoid numerical noise from essentially perfect fits.
 #'
-#' @param x An object of class `"ata"`.
+#' @param x An object of class `"ATA"`.
 #' @param weights Either a length-one numeric scalar (default `1`) or a
 #'   single column name present in the `ata` data that provides per-row
 #'   weights.
@@ -785,7 +785,7 @@ print.ata_fit <- function(x, ...) {
                     na_rm   = TRUE,
                     tol     = 1e-12) {
 
-  .assert_class(x, "ata")
+  .assert_class(x, "ATA")
 
   if (!is.numeric(alpha) || length(alpha) != 1L || is.na(alpha))
     stop("`alpha` must be a single non-missing numeric value.", call. = FALSE)
@@ -894,8 +894,8 @@ print.ata_fit <- function(x, ...) {
 #' 2. **Fill** — `NA` values in `f_selected` are forward-filled using LOCF,
 #'    so that every link used in projection has a finite factor.
 #'
-#' @param ata_summary A `data.table` of class `"ata_summary"` from
-#'   [summary.ata()].
+#' @param ata_summary A `data.table` of class `"ATASummary"` from
+#'   [summary.ATA()].
 #' @param maturity A `data.table` from [find_ata_maturity()], or `NULL`
 #'   when `use_maturity = FALSE`.
 #' @param grp_var Character vector of grouping variable names.

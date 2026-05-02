@@ -23,7 +23,7 @@ fit_lr(
 )
 }
 \arguments{
-\item{x}{An object of class \code{"triangle"}.}
+\item{x}{An object of class \code{"Triangle"}.}
 
 \item{method}{One of \code{"sa"}, \code{"ed"}, or \code{"cl"}.
 Default is \code{"sa"}.}
@@ -79,10 +79,10 @@ delta method. Default is \code{FALSE}.}
 Default is \code{NULL}.}
 }
 \value{
-An object of class \code{"lr_fit"}.
+An object of class \code{"LRFit"}.
 }
 \description{
-Unified interface for loss ratio projection from a \code{"triangle"} object.
+Unified interface for loss ratio projection from a \code{"Triangle"} object.
 Three projection methods are available:
 
 \describe{

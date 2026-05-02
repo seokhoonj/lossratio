@@ -3,15 +3,15 @@
 #' Plot age-to-age factor diagnostics
 #'
 #' @description
-#' Visualise diagnostic summaries from an `"ata"` object. Internally calls
-#' the `summary()` method on an `ata` object to compute descriptive
+#' Visualise diagnostic summaries from an `"ATA"` object. Internally calls
+#' the `summary()` method on an `ATA` object to compute descriptive
 #' statistics and WLS estimates, and optionally [find_ata_maturity()] to
 #' identify the maturity point.
 #'
-#' @param x An object of class `"ata"`.
+#' @param x An object of class `"ATA"`.
 #' @param type One of `"cv"`, `"rse"`, `"summary"`, `"box"`, or `"point"`.
 #' @param alpha Numeric scalar controlling the variance structure in the
-#'   WLS fit. Default is `1`. Passed to [summary.ata()].
+#'   WLS fit. Default is `1`. Passed to [summary.ATA()].
 #' @param show_maturity Logical; if `TRUE`, draw a vertical reference line
 #'   and shade the mature region. Default is `TRUE`.
 #' @param cv_threshold Numeric threshold for `cv`. Used when
@@ -29,9 +29,9 @@
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot ata
+#' @method plot ATA
 #' @export
-plot.ata <- function(x,
+plot.ATA <- function(x,
                      type            = c("cv", "rse", "summary", "box", "point"),
                      alpha           = 1,
                      show_maturity   = TRUE,
@@ -46,7 +46,7 @@ plot.ata <- function(x,
                      theme           = c("view", "save", "shiny"),
                      ...) {
 
-  .assert_class(x, "ata")
+  .assert_class(x, "ATA")
 
   type   <- match.arg(type)
   scales <- match.arg(scales)
@@ -388,12 +388,12 @@ plot.ata <- function(x,
 #' Plot ata factors as a triangle heatmap table
 #'
 #' @description
-#' Visualise an `"ata"` object as a triangle-style heatmap. Cells are
+#' Visualise an `"ATA"` object as a triangle-style heatmap. Cells are
 #' arranged by period and ata link, and fill colours are based on
 #' `log(ata / median(ata))` within each link, highlighting relative
 #' deviations column-wise.
 #'
-#' @param x An object of class `"ata"`.
+#' @param x An object of class `"ATA"`.
 #' @param label_style Label display style. One of `"value"` or `"detail"`.
 #' @param label_args A named list of arguments controlling cell label
 #'   appearance, passed to [ggshort::ggheatmap()]. Recognised elements are
@@ -402,7 +402,7 @@ plot.ata <- function(x,
 #' @param show_maturity Logical; if `TRUE`, compute the maturity point and
 #'   draw a vertical reference line and label. Default is `FALSE`.
 #' @param alpha Numeric scalar controlling the variance structure in the
-#'   WLS fit. Default is `1`. Passed to [summary.ata()].
+#'   WLS fit. Default is `1`. Passed to [summary.ATA()].
 #' @param cv_threshold Maximum allowed coefficient of variation. Used when
 #'   `show_maturity = TRUE`. Default is `0.10`.
 #' @param rse_threshold Maximum allowed relative standard error. Used when
@@ -421,11 +421,11 @@ plot.ata <- function(x,
 #'
 #' @return A ggplot object.
 #'
-#' @seealso [build_ata()], [summary.ata()], [find_ata_maturity()]
+#' @seealso [build_ata()], [summary.ATA()], [find_ata_maturity()]
 #'
-#' @method plot_triangle ata
+#' @method plot_triangle ATA
 #' @export
-plot_triangle.ata <- function(x,
+plot_triangle.ATA <- function(x,
                               label_style     = c("value", "detail"),
                               label_args      = list(),
                               show_maturity   = FALSE,
@@ -441,7 +441,7 @@ plot_triangle.ata <- function(x,
                               ncol            = NULL,
                               ...) {
 
-  .assert_class(x, "ata")
+  .assert_class(x, "ATA")
 
   label_style <- match.arg(label_style)
   theme       <- match.arg(theme)
@@ -609,25 +609,25 @@ plot_triangle.ata <- function(x,
 }
 
 
-# ata_fit plot wrappers ----------------------------------------------------
+# ATAFit plot wrappers ----------------------------------------------------
 
 #' Plot an ata fit
 #'
 #' @description
-#' Visualise an object of class `"ata_fit"` by delegating to [plot.ata()]
-#' on the underlying `ata` data stored in `x$ata`.
+#' Visualise an object of class `"ATAFit"` by delegating to [plot.ATA()]
+#' on the underlying `ATA` data stored in `x$ata`.
 #'
-#' @param x An object of class `"ata_fit"`.
-#' @param ... Arguments passed to [plot.ata()].
+#' @param x An object of class `"ATAFit"`.
+#' @param ... Arguments passed to [plot.ATA()].
 #'
 #' @return A `ggplot` object.
 #'
-#' @seealso [plot.ata()], [fit_ata()]
+#' @seealso [plot.ATA()], [fit_ata()]
 #'
-#' @method plot ata_fit
+#' @method plot ATAFit
 #' @export
-plot.ata_fit <- function(x, ...) {
-  .assert_class(x, "ata_fit")
+plot.ATAFit <- function(x, ...) {
+  .assert_class(x, "ATAFit")
   plot(x$ata, ...)
 }
 
@@ -635,20 +635,20 @@ plot.ata_fit <- function(x, ...) {
 #' Triangle heatmap for an ata fit
 #'
 #' @description
-#' Visualise an object of class `"ata_fit"` as a triangle-style heatmap
-#' by delegating to [plot_triangle()] on the underlying `ata` data
+#' Visualise an object of class `"ATAFit"` as a triangle-style heatmap
+#' by delegating to [plot_triangle()] on the underlying `ATA` data
 #' stored in `x$ata`.
 #'
-#' @param x An object of class `"ata_fit"`.
-#' @param ... Arguments passed to [plot_triangle.ata()].
+#' @param x An object of class `"ATAFit"`.
+#' @param ... Arguments passed to [plot_triangle.ATA()].
 #'
 #' @return A `ggplot` object.
 #'
-#' @seealso [plot_triangle.ata()], [fit_ata()]
+#' @seealso [plot_triangle.ATA()], [fit_ata()]
 #'
-#' @method plot_triangle ata_fit
+#' @method plot_triangle ATAFit
 #' @export
-plot_triangle.ata_fit <- function(x, ...) {
-  .assert_class(x, "ata_fit")
+plot_triangle.ATAFit <- function(x, ...) {
+  .assert_class(x, "ATAFit")
   plot_triangle(x$ata, ...)
 }

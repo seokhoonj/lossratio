@@ -17,7 +17,7 @@ is returned unchanged.}
 \item{coh_var}{Single column name for the cohort variable (e.g. \code{cohort}).}
 
 \item{dev_var}{Single column name for the development variable (e.g. \code{dev}
-for \code{triangle} objects, or \code{ata_from} for \code{ata}/\code{ed} objects).}
+for \code{Triangle} objects, or \code{ata_from} for \code{ATA}/\code{ED} objects).}
 }
 \value{
 A filtered copy of \code{dt} (class preserved), keeping only rows

@@ -22,7 +22,7 @@ knitr::opts_chunk$set(
 
 > 영어 원본 보기: [Loss-ratio projection methods: SA, ED, CL](../loss-ratio-methods.html)
 
-`fit_lr()` 은 `triangle` 객체로부터 코호트별 누적 손해율을
+`fit_lr()` 은 `Triangle` 객체로부터 코호트별 누적 손해율을
 추정한다. 세 가지 방법이 제공되며, 본 vignette 은 각 방법의
 trade-off 를 설명한다.
 

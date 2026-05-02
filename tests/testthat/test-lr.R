@@ -3,13 +3,13 @@ data(experience)
 exp <- as_experience(experience)
 tri <- build_triangle(exp, group_var = cv_nm)
 
-test_that("fit_lr default (method = 'sa') returns class 'lr_fit'", {
+test_that("fit_lr default (method = 'sa') returns class 'LRFit'", {
   lr <- fit_lr(tri)
-  expect_s3_class(lr, "lr_fit")
+  expect_s3_class(lr, "LRFit")
   expect_equal(lr$method, "sa")
 })
 
-test_that("lr_fit has expected list elements", {
+test_that("LRFit has expected list elements", {
   lr <- fit_lr(tri, method = "sa")
   for (nm in c("data", "method", "group_var", "cohort_var", "dev_var",
                "loss_var", "exposure_var", "full", "pred", "summary",
@@ -37,19 +37,19 @@ test_that("$summary has cohort-level entries with expected columns", {
 test_that("methods 'sa', 'ed', 'cl' all run", {
   for (m in c("sa", "ed", "cl")) {
     lr <- fit_lr(tri, method = m)
-    expect_s3_class(lr, "lr_fit")
+    expect_s3_class(lr, "LRFit")
     expect_equal(lr$method, m)
   }
 })
 
 test_that("delta_method 'simple' and 'full' both run", {
-  expect_s3_class(fit_lr(tri, delta_method = "simple"), "lr_fit")
-  expect_s3_class(fit_lr(tri, delta_method = "full", rho = 0.3), "lr_fit")
+  expect_s3_class(fit_lr(tri, delta_method = "simple"), "LRFit")
+  expect_s3_class(fit_lr(tri, delta_method = "full", rho = 0.3), "LRFit")
 })
 
-test_that("bootstrap = TRUE runs and returns class 'lr_fit'", {
+test_that("bootstrap = TRUE runs and returns class 'LRFit'", {
   lr_b <- fit_lr(tri, method = "sa", bootstrap = TRUE, B = 25, seed = 1)
-  expect_s3_class(lr_b, "lr_fit")
+  expect_s3_class(lr_b, "LRFit")
   expect_false(is.null(lr_b$bootstrap))
 })
 
@@ -59,12 +59,12 @@ test_that("bootstrap reproducibility via seed", {
   expect_equal(lr_a$summary$ci_lower, lr_b$summary$ci_lower)
 })
 
-test_that("summary(lr_fit) returns the $summary table", {
+test_that("summary(LRFit) returns the $summary table", {
   lr <- fit_lr(tri, method = "sa")
   expect_identical(summary(lr), lr$summary)
 })
 
-test_that("print.lr_fit doesn't error", {
+test_that("print.LRFit doesn't error", {
   lr <- fit_lr(tri, method = "sa")
   expect_no_error(capture.output(print(lr)))
 })

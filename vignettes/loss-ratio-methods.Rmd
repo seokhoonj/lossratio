@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 ```
 
 `fit_lr()` projects cumulative loss ratio per cohort from a
-`triangle` object. Three methods are available; this vignette
+`Triangle` object. Three methods are available; this vignette
 explains the trade-offs.
 
 ## Notation

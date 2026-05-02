@@ -16,7 +16,7 @@ validate_triangle(df, group_var, cohort_var = "uym", dev_var = "elap_m")
 \item{dev_var}{A single development variable. Default \code{"elap_m"}.}
 }
 \value{
-A \code{data.table} of class \code{"triangle_validation"} with one row
+A \code{data.table} of class \code{"TriangleValidation"} with one row
 per cohort containing gaps. Columns:
 \describe{
 \item{group_var(s), cohort_var}{Cohort identifier.}
@@ -32,7 +32,7 @@ Check that each \verb{(group_var, cohort_var)} cohort has a consecutive
 \code{dev_var} sequence within its observed range. Non-consecutive
 cohorts produce non-consecutive age-to-age links downstream (e.g.,
 \code{14 -> 17} instead of \code{14 -> 15}), which breaks
-\code{\link[=summary.ata]{summary.ata()}} / \code{\link[=summary.ed]{summary.ed()}} key uniqueness and causes cartesian
+\code{\link[=summary.ATA]{summary.ATA()}} / \code{\link[=summary.ED]{summary.ED()}} key uniqueness and causes cartesian
 joins in \code{\link[=fit_lr]{fit_lr()}}.
 
 This function inspects the raw data without modifying it. Use it

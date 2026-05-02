@@ -13,8 +13,8 @@
 )
 }
 \arguments{
-\item{ata_summary}{A \code{data.table} of class \code{"ata_summary"} from
-\code{\link[=summary.ata]{summary.ata()}}.}
+\item{ata_summary}{A \code{data.table} of class \code{"ATASummary"} from
+\code{\link[=summary.ATA]{summary.ATA()}}.}
 
 \item{maturity}{A \code{data.table} from \code{\link[=find_ata_maturity]{find_ata_maturity()}}, or \code{NULL}
 when \code{use_maturity = FALSE}.}

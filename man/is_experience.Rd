@@ -2,7 +2,7 @@
 % Please edit documentation in R/experience.R
 \name{is_experience}
 \alias{is_experience}
-\title{Check whether an object is an \code{experience}}
+\title{Check whether an object is an \code{Experience}}
 \usage{
 is_experience(x)
 }
@@ -13,5 +13,5 @@ is_experience(x)
 Logical scalar.
 }
 \description{
-Check whether an object is an \code{experience}
+Check whether an object is an \code{Experience}
 }

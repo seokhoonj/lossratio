@@ -2,7 +2,7 @@
 % Please edit documentation in R/cl.R
 \name{fit_cl}
 \alias{fit_cl}
-\title{Fit chain ladder projection from a \code{triangle} object}
+\title{Fit chain ladder projection from a \code{Triangle} object}
 \usage{
 fit_cl(
   x,
@@ -17,7 +17,7 @@ fit_cl(
 )
 }
 \arguments{
-\item{x}{An object of class \code{"triangle"}.}
+\item{x}{An object of class \code{"Triangle"}.}
 
 \item{method}{One of \code{"basic"} or \code{"mack"}. Default is \code{"basic"}.}
 
@@ -49,10 +49,10 @@ If \code{TRUE}, a log-linear tail factor is estimated from selected factors.
 If numeric, the supplied value is used as the tail factor.}
 }
 \value{
-An object of class \code{"cl_fit"} containing:
+An object of class \code{"CLFit"} containing:
 \describe{
 \item{\code{call}}{The matched call.}
-\item{\code{data}}{The input \code{"triangle"} object.}
+\item{\code{data}}{The input \code{"Triangle"} object.}
 \item{\code{method}}{The method used (\code{"basic"} or \code{"mack"}).}
 \item{\code{group_var}}{Character vector of grouping variable names.}
 \item{\code{cohort_var}}{Character scalar of period variable name.}
@@ -62,7 +62,7 @@ An object of class \code{"cl_fit"} containing:
 \code{"mack"}, also includes process/parameter SE and CV columns.}
 \item{\code{pred}}{\code{data.table} identical to \code{full} with observed cells
 set to \code{NA}.}
-\item{\code{ata}}{The \code{"ata"} object produced by \code{\link[=build_ata]{build_ata()}}.}
+\item{\code{ata}}{The \code{"ATA"} object produced by \code{\link[=build_ata]{build_ata()}}.}
 \item{\code{summary}}{For \code{"basic"}: \code{data.table} of fitted factors from
 \code{\link[=fit_ata]{fit_ata()}}. For \code{"mack"}: cohort-level summary with latest,
 ultimate, reserve, and Mack standard errors.}
@@ -83,7 +83,7 @@ or \code{NULL} when maturity filtering was not applied.}
 }
 }
 \description{
-Fit a chain ladder projection from an object of class \code{"triangle"}.
+Fit a chain ladder projection from an object of class \code{"Triangle"}.
 The function works on long-form cumulative data and does not require
 a complete triangle.
 

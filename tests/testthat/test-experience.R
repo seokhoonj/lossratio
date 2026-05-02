@@ -13,9 +13,9 @@ test_that("as_experience errors when required columns are missing", {
   expect_error(as_experience(broken2))
 })
 
-test_that("as_experience returns an object inheriting class 'experience'", {
+test_that("as_experience returns an object inheriting class 'Experience'", {
   exp <- as_experience(experience)
-  expect_s3_class(exp, "experience")
+  expect_s3_class(exp, "Experience")
 })
 
 test_that("is_experience distinguishes coerced from raw input", {

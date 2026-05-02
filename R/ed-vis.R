@@ -3,10 +3,10 @@
 #' Plot ED intensity diagnostics
 #'
 #' @description
-#' Visualise diagnostic summaries from an `"ed"` object. Internally
-#' calls the `summary()` method on an `ed` object.
+#' Visualise diagnostic summaries from an `"ED"` object. Internally
+#' calls the `summary()` method on an `ED` object.
 #'
-#' @param x An object of class `"ed"`.
+#' @param x An object of class `"ED"`.
 #' @param type One of `"summary"`, `"box"`, or `"point"`.
 #' @param alpha Numeric scalar. Default is `1`.
 #' @param scales Facet scale argument.
@@ -16,9 +16,9 @@
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot ed
+#' @method plot ED
 #' @export
-plot.ed <- function(x,
+plot.ED <- function(x,
                     type   = c("summary", "box", "point"),
                     alpha  = 1,
                     scales = c("fixed", "free", "free_x", "free_y"),
@@ -27,7 +27,7 @@ plot.ed <- function(x,
                     theme  = c("view", "save", "shiny"),
                     ...) {
 
-  .assert_class(x, "ed")
+  .assert_class(x, "ED")
 
   type   <- match.arg(type)
   scales <- match.arg(scales)
@@ -187,9 +187,9 @@ plot.ed <- function(x,
 #' Plot ED intensities as a triangle heatmap table
 #'
 #' @description
-#' Visualise an `"ed"` object as a triangle-style heatmap.
+#' Visualise an `"ED"` object as a triangle-style heatmap.
 #'
-#' @param x An object of class `"ed"`.
+#' @param x An object of class `"ED"`.
 #' @param label_style One of `"value"` or `"detail"`.
 #' @param label_args Named list of label appearance arguments.
 #' @param amount_divisor Numeric. Default is `1e8`.
@@ -199,9 +199,9 @@ plot.ed <- function(x,
 #'
 #' @return A ggplot object.
 #'
-#' @method plot_triangle ed
+#' @method plot_triangle ED
 #' @export
-plot_triangle.ed <- function(x,
+plot_triangle.ED <- function(x,
                              label_style    = c("value", "detail"),
                              label_args     = list(),
                              amount_divisor = 1e8,
@@ -210,7 +210,7 @@ plot_triangle.ed <- function(x,
                              ncol           = NULL,
                              ...) {
 
-  .assert_class(x, "ed")
+  .assert_class(x, "ED")
 
   label_style <- match.arg(label_style)
   theme       <- match.arg(theme)
@@ -296,25 +296,25 @@ plot_triangle.ed <- function(x,
 }
 
 
-# ed_fit plot wrappers -----------------------------------------------------
+# EDFit plot wrappers ------------------------------------------------------
 
 #' Plot an ED fit
 #'
 #' @description
-#' Visualise an object of class `"ed_fit"` by delegating to [plot.ed()]
-#' on the underlying `ed` data stored in `x$ed`.
+#' Visualise an object of class `"EDFit"` by delegating to [plot.ED()]
+#' on the underlying `ED` data stored in `x$ed`.
 #'
-#' @param x An object of class `"ed_fit"`.
-#' @param ... Arguments passed to [plot.ed()].
+#' @param x An object of class `"EDFit"`.
+#' @param ... Arguments passed to [plot.ED()].
 #'
 #' @return A `ggplot` object.
 #'
-#' @seealso [plot.ed()], [fit_ed()]
+#' @seealso [plot.ED()], [fit_ed()]
 #'
-#' @method plot ed_fit
+#' @method plot EDFit
 #' @export
-plot.ed_fit <- function(x, ...) {
-  .assert_class(x, "ed_fit")
+plot.EDFit <- function(x, ...) {
+  .assert_class(x, "EDFit")
   plot(x$ed, ...)
 }
 
@@ -322,20 +322,20 @@ plot.ed_fit <- function(x, ...) {
 #' Triangle heatmap for an ED fit
 #'
 #' @description
-#' Visualise an object of class `"ed_fit"` as a triangle-style heatmap
-#' by delegating to [plot_triangle.ed()] on the underlying `ed` data
+#' Visualise an object of class `"EDFit"` as a triangle-style heatmap
+#' by delegating to [plot_triangle.ED()] on the underlying `ED` data
 #' stored in `x$ed`.
 #'
-#' @param x An object of class `"ed_fit"`.
-#' @param ... Arguments passed to [plot_triangle.ed()].
+#' @param x An object of class `"EDFit"`.
+#' @param ... Arguments passed to [plot_triangle.ED()].
 #'
 #' @return A `ggplot` object.
 #'
-#' @seealso [plot_triangle.ed()], [fit_ed()]
+#' @seealso [plot_triangle.ED()], [fit_ed()]
 #'
-#' @method plot_triangle ed_fit
+#' @method plot_triangle EDFit
 #' @export
-plot_triangle.ed_fit <- function(x, ...) {
-  .assert_class(x, "ed_fit")
+plot_triangle.EDFit <- function(x, ...) {
+  .assert_class(x, "EDFit")
   plot_triangle(x$ed, ...)
 }

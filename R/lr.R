@@ -1,7 +1,7 @@
 #' Fit loss ratio projection model
 #'
 #' @description
-#' Unified interface for loss ratio projection from a `"triangle"` object.
+#' Unified interface for loss ratio projection from a `"Triangle"` object.
 #' Three projection methods are available:
 #'
 #' \describe{
@@ -26,7 +26,7 @@
 #' In all cases, exposure is projected forward using chain ladder:
 #' \deqn{\hat{C}^P_{i,k+1} = f^P_k \cdot \hat{C}^P_{i,k}}
 #'
-#' @param x An object of class `"triangle"`.
+#' @param x An object of class `"Triangle"`.
 #' @param method One of `"sa"`, `"ed"`, or `"cl"`.
 #'   Default is `"sa"`.
 #' @param loss_var Cumulative loss variable. Default is `"closs"`.
@@ -67,7 +67,7 @@
 #' @param seed Optional integer seed for reproducible bootstrap.
 #'   Default is `NULL`.
 #'
-#' @return An object of class `"lr_fit"`.
+#' @return An object of class `"LRFit"`.
 #'
 #' @seealso [build_triangle()], [build_ata()], [fit_ata()],
 #'   [build_ed()], [fit_ed()], [find_ata_maturity()]
@@ -89,7 +89,7 @@ fit_lr <- function(x,
                    B              = 1000,
                    seed           = NULL) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
   sigma_method <- match.arg(sigma_method)
   method       <- match.arg(method)
   delta_method <- match.arg(delta_method)
@@ -470,7 +470,7 @@ fit_lr <- function(x,
     maturity_args    = maturity_args
   )
 
-  class(out) <- c("lr_fit", "list")
+  class(out) <- c("LRFit", "list")
 
   # 20) cohort summary ------------------------------------------------------
   out <- .lr_summary(out)
@@ -479,19 +479,19 @@ fit_lr <- function(x,
 }
 
 
-#' Print an `lr_fit` object
+#' Print an `LRFit` object
 #'
-#' @param x An object of class `"lr_fit"`.
+#' @param x An object of class `"LRFit"`.
 #' @param ... Unused.
 #'
-#' @method print lr_fit
+#' @method print LRFit
 #' @export
-print.lr_fit <- function(x, ...) {
+print.LRFit <- function(x, ...) {
 
   grp_var <- x$group_var
   if (is.null(grp_var)) grp_var <- character(0)
 
-  cat("<lr_fit>\n")
+  cat("<LRFit>\n")
   cat("method        :", x$method,         "\n")
   cat("loss_var      :", x$loss_var,       "\n")
   cat("exposure_var  :", x$exposure_var,   "\n")
@@ -538,16 +538,16 @@ print.lr_fit <- function(x, ...) {
 }
 
 
-#' Summary method for `lr_fit`
+#' Summary method for `LRFit`
 #'
-#' @param object An object of class `"lr_fit"`.
+#' @param object An object of class `"LRFit"`.
 #' @param ... Unused.
 #'
 #' @return A `data.table` with one row per cohort.
 #'
-#' @method summary lr_fit
+#' @method summary LRFit
 #' @export
-summary.lr_fit <- function(object, ...) {
+summary.LRFit <- function(object, ...) {
   object$summary
 }
 
@@ -921,7 +921,7 @@ summary.lr_fit <- function(object, ...) {
 
 # Shared helpers ------------------------------------------------------------
 
-#' Expand a `triangle` object to a full projection grid
+#' Expand a `Triangle` object to a full projection grid
 #'
 #' @keywords internal
 .expand_grid <- function(triangle,
@@ -973,16 +973,16 @@ summary.lr_fit <- function(object, ...) {
 
 # Summary ------------------------------------------------------------------
 
-#' Summarise an `lr_fit` object by cohort
+#' Summarise an `LRFit` object by cohort
 #'
-#' @param x An object of class `"lr_fit"`.
+#' @param x An object of class `"LRFit"`.
 #'
 #' @return The input object with `$summary` set.
 #'
 #' @keywords internal
 .lr_summary <- function(x) {
 
-  .assert_class(x, "lr_fit")
+  .assert_class(x, "LRFit")
 
   grp_var      <- x$group_var
   coh_var      <- x$cohort_var

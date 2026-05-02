@@ -49,13 +49,13 @@ print(bt)
 
 기본 적합 함수는 단계 적응적(stage-adaptive, SA) 손해율 추정 (`fit_lr(method = "sa")`)
 이며, 기본 비교 컬럼은 `value_var = "clr"` 이다 (누적 손해율). 반환되는 객체는
-`"backtest"` 리스트이며, 주요 슬롯은 다음과 같다.
+`"Backtest"` 리스트이며, 주요 슬롯은 다음과 같다.
 
 - `aeg` — 셀 단위 `data.table` (cohort, dev, actual, pred, aeg, calendar_idx).
 - `col_summary` — `dev` 별로 집계된 AEG.
 - `diag_summary` — 대각선별로 집계된 AEG.
 - `masked` — 적합에 사용된 triangle (최근 대각선이 제거됨).
-- `fit` — `fit_fn` 이 반환한 적합 객체 (`lr_fit` 또는 `cl_fit`).
+- `fit` — `fit_fn` 이 반환한 적합 객체 (`LRFit` 또는 `CLFit`).
 
 `summary(bt)` 는 호출 메타데이터와 함께 두 요약 표를 출력한다.
 
@@ -111,7 +111,7 @@ head(bt$aeg, 5)
 
 ## 플롯 데모
 
-`"backtest"` 에는 네 가지 플롯 뷰가 등록되어 있다.
+`"Backtest"` 에는 네 가지 플롯 뷰가 등록되어 있다.
 
 ```{r}
 plot(bt, type = "col")    # dev 별 AEG (점 + 0 기준 점선)
@@ -177,4 +177,4 @@ print(bt_sa_clr)
 - `vignette("chain-ladder")` — `fit_cl()` 참고.
 - `vignette("loss-ratio-methods")` — `fit_lr()` 및 `"sa"`, `"ed"`, `"cl"`
   방법.
-- `?backtest`, `?plot.backtest`, `?plot_triangle.backtest`.
+- `?backtest`, `?plot.Backtest`, `?plot_triangle.Backtest`.

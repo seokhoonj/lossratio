@@ -2,9 +2,9 @@
 % Please edit documentation in R/regime.R
 \name{detect_cohort_regime}
 \alias{detect_cohort_regime}
-\alias{print.cohort_regime}
-\alias{summary.cohort_regime}
-\alias{print.summary.cohort_regime}
+\alias{print.CohortRegime}
+\alias{summary.CohortRegime}
+\alias{print.summary.CohortRegime}
 \title{Detect structural regime shifts across underwriting cohorts}
 \usage{
 detect_cohort_regime(
@@ -18,16 +18,16 @@ detect_cohort_regime(
   ...
 )
 
-\method{print}{cohort_regime}(x, ...)
+\method{print}{CohortRegime}(x, ...)
 
-\method{summary}{cohort_regime}(object, ...)
+\method{summary}{CohortRegime}(object, ...)
 
-\method{print}{summary.cohort_regime}(x, ...)
+\method{print}{summary.CohortRegime}(x, ...)
 }
 \arguments{
-\item{x}{An object of class \code{"triangle"}. Must correspond to a single
+\item{x}{An object of class \code{"Triangle"}. Must correspond to a single
 group (no \code{group_var} or a single-value \code{group_var} subset).
-Also used by S3 \code{print()} method on \code{cohort_regime} objects.}
+Also used by S3 \code{print()} method on \code{CohortRegime} objects.}
 
 \item{value_var}{Column name of the trajectory variable. Default
 is \code{"clr"} (cumulative loss ratio).}
@@ -48,11 +48,11 @@ the requested value) for \code{"hclust"}, where the default is \code{2}.}
 
 \item{...}{Reserved for future use.}
 
-\item{object}{An object of class \code{"cohort_regime"}. Used by the S3
+\item{object}{An object of class \code{"CohortRegime"}. Used by the S3
 \code{summary()} method.}
 }
 \value{
-An object of class \code{"cohort_regime"} with components:
+An object of class \code{"CohortRegime"} with components:
 \describe{
 \item{\code{call}}{Matched call.}
 \item{\code{method}}{Detection method used.}
@@ -74,7 +74,7 @@ constraint.}
 \description{
 Detect structural change points in the sequence of cohort-level
 development trajectories. Each underwriting cohort (indexed by the
-\code{cohort_var} of a \code{"triangle"} object) is treated as a feature vector
+\code{cohort_var} of a \code{"Triangle"} object) is treated as a feature vector
 whose entries are the selected \code{value_var} observed at development
 periods \verb{1, ..., K}. Cohorts are then ordered by underwriting
 period and tested for structural shifts in the multivariate
@@ -109,5 +109,5 @@ plot(r)
 
 }
 \seealso{
-\code{\link[=plot.cohort_regime]{plot.cohort_regime()}}, \code{\link[=build_triangle]{build_triangle()}}
+\code{\link[=plot.CohortRegime]{plot.CohortRegime()}}, \code{\link[=build_triangle]{build_triangle()}}
 }

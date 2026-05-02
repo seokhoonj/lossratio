@@ -14,8 +14,8 @@ find_ata_maturity(
 )
 }
 \arguments{
-\item{x}{An object of class \code{"ata_summary"}, typically produced by
-\code{\link[=summary.ata]{summary.ata()}}.}
+\item{x}{An object of class \code{"ATASummary"}, typically produced by
+\code{\link[=summary.ATA]{summary.ATA()}}.}
 
 \item{cv_threshold}{Maximum allowed coefficient of variation.
 Default is \code{0.10}.}
@@ -33,13 +33,13 @@ Default is \code{3L}.}
 maturity criteria. Default is \code{1L}.}
 }
 \value{
-A \code{data.table} with class \code{"ata_maturity"} containing one row
+A \code{data.table} with class \code{"ATAMaturity"} containing one row
 per group. If no mature link is found, all values for that group are
 \code{NA}.
 }
 \description{
 Identify the first mature age-to-age (ata) link from an object of class
-\code{"ata_summary"}, typically produced by \code{\link[=summary.ata]{summary.ata()}}.
+\code{"ATASummary"}, typically produced by \code{\link[=summary.ATA]{summary.ATA()}}.
 
 Maturity is determined using a combination of:
 \itemize{

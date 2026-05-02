@@ -13,7 +13,7 @@ build_ed(
 )
 }
 \arguments{
-\item{x}{An object of class \code{"triangle"}.}
+\item{x}{An object of class \code{"Triangle"}.}
 
 \item{loss_var}{A single cumulative loss variable. Default is
 \code{"closs"}.}
@@ -28,7 +28,7 @@ build_ed(
 \code{g} values are dropped. Default is \code{FALSE}.}
 }
 \value{
-A \code{data.table} with class \code{"ed"} containing:
+A \code{data.table} with class \code{"ED"} containing:
 \describe{
 \item{\code{ata_from}}{Current development period.}
 \item{\code{ata_to}}{Next development period.}
@@ -49,7 +49,7 @@ The returned object carries the following attributes:
 }
 \description{
 Construct exposure-driven incremental development data from an object
-of class \code{"triangle"}, typically produced by \code{\link[=build_triangle]{build_triangle()}}. This is the
+of class \code{"Triangle"}, typically produced by \code{\link[=build_triangle]{build_triangle()}}. This is the
 foundational data structure for the exposure-driven (ED) model,
 where incremental loss is modelled as a function of cumulative
 exposure (risk premium) rather than cumulative loss.
@@ -73,5 +73,5 @@ attr(ed, "exposure_var")
 
 }
 \seealso{
-\code{\link[=build_triangle]{build_triangle()}}, \code{\link[=summary.ed]{summary.ed()}}, \code{\link[=fit_ed]{fit_ed()}}
+\code{\link[=build_triangle]{build_triangle()}}, \code{\link[=summary.ED]{summary.ED()}}, \code{\link[=fit_ed]{fit_ed()}}
 }

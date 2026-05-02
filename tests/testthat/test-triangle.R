@@ -1,9 +1,9 @@
 data(experience, package = "lossratio")
 exp <- as_experience(experience)
 
-test_that("build_triangle returns object inheriting class 'triangle'", {
+test_that("build_triangle returns object inheriting class 'Triangle'", {
   tri <- build_triangle(exp, group_var = cv_nm)
-  expect_s3_class(tri, "triangle")
+  expect_s3_class(tri, "Triangle")
 })
 
 test_that("build_triangle output has expected columns", {
@@ -36,41 +36,41 @@ test_that("lr equals loss/rp within each row when rp > 0", {
   expect_equal(pos$lr, pos$loss / pos$rp)
 })
 
-test_that("summary.triangle returns a triangle_summary with expected columns", {
+test_that("summary.Triangle returns a TriangleSummary with expected columns", {
   tri <- build_triangle(exp, group_var = cv_nm)
   sm <- summary(tri)
-  expect_s3_class(sm, "triangle_summary")
+  expect_s3_class(sm, "TriangleSummary")
   expected <- c("lr_mean", "lr_median", "lr_wt",
                 "clr_mean", "clr_median", "clr_wt")
   expect_true(all(expected %in% names(sm)))
 })
 
-test_that("longer.triangle returns triangle_longer with variable/value", {
+test_that("longer.Triangle returns TriangleLonger with variable/value", {
   tri <- build_triangle(exp, group_var = cv_nm)
   lng <- longer(tri)
-  expect_s3_class(lng, "triangle_longer")
+  expect_s3_class(lng, "TriangleLonger")
   expect_true(all(c("variable", "value") %in% names(lng)))
 })
 
-test_that("build_calendar returns class 'calendar' with expected columns", {
+test_that("build_calendar returns class 'Calendar' with expected columns", {
   cal <- build_calendar(exp, group_var = cv_nm)
-  expect_s3_class(cal, "calendar")
+  expect_s3_class(cal, "Calendar")
   expect_true(all(c("calendar", "dev") %in% names(cal)))
   expect_equal(attr(cal, "calendar_var"), "cym")
 })
 
-test_that("build_total returns class 'total' with one row per group", {
+test_that("build_total returns class 'Total' with one row per group", {
   tot <- build_total(exp, group_var = cv_nm)
-  expect_s3_class(tot, "total")
+  expect_s3_class(tot, "Total")
   expected <- c("n_obs", "sales_start", "sales_end",
                 "loss", "rp", "lr", "loss_prop", "rp_prop")
   expect_true(all(expected %in% names(tot)))
   expect_equal(nrow(tot), data.table::uniqueN(exp$cv_nm))
 })
 
-test_that("validate_triangle returns class 'triangle_validation' with no gaps", {
+test_that("validate_triangle returns class 'TriangleValidation' with no gaps", {
   res <- validate_triangle(experience, group_var = cv_nm)
-  expect_s3_class(res, "triangle_validation")
+  expect_s3_class(res, "TriangleValidation")
   expect_equal(nrow(res), 0L)
 })
 

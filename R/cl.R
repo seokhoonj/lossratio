@@ -1,7 +1,7 @@
-#' Fit chain ladder projection from a `triangle` object
+#' Fit chain ladder projection from a `Triangle` object
 #'
 #' @description
-#' Fit a chain ladder projection from an object of class `"triangle"`.
+#' Fit a chain ladder projection from an object of class `"Triangle"`.
 #' The function works on long-form cumulative data and does not require
 #' a complete triangle.
 #'
@@ -18,7 +18,7 @@
 #' When `weight_var` is supplied (e.g. `"crp"`), age-to-age factors and
 #' their variance are estimated using the supplied WLS weights.
 #'
-#' @param x An object of class `"triangle"`.
+#' @param x An object of class `"Triangle"`.
 #' @param method One of `"basic"` or `"mack"`. Default is `"basic"`.
 #' @param value_var A single cumulative variable to project.
 #'   Typical choices are `"closs"`, `"crp"`, or `"clr"`.
@@ -41,10 +41,10 @@
 #'   If `TRUE`, a log-linear tail factor is estimated from selected factors.
 #'   If numeric, the supplied value is used as the tail factor.
 #'
-#' @return An object of class `"cl_fit"` containing:
+#' @return An object of class `"CLFit"` containing:
 #'   \describe{
 #'     \item{`call`}{The matched call.}
-#'     \item{`data`}{The input `"triangle"` object.}
+#'     \item{`data`}{The input `"Triangle"` object.}
 #'     \item{`method`}{The method used (`"basic"` or `"mack"`).}
 #'     \item{`group_var`}{Character vector of grouping variable names.}
 #'     \item{`cohort_var`}{Character scalar of period variable name.}
@@ -54,7 +54,7 @@
 #'       `"mack"`, also includes process/parameter SE and CV columns.}
 #'     \item{`pred`}{`data.table` identical to `full` with observed cells
 #'       set to `NA`.}
-#'     \item{`ata`}{The `"ata"` object produced by [build_ata()].}
+#'     \item{`ata`}{The `"ATA"` object produced by [build_ata()].}
 #'     \item{`summary`}{For `"basic"`: `data.table` of fitted factors from
 #'       [fit_ata()]. For `"mack"`: cohort-level summary with latest,
 #'       ultimate, reserve, and Mack standard errors.}
@@ -87,7 +87,7 @@ fit_cl <- function(x,
                    maturity_args = NULL,
                    tail          = FALSE) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
   method       <- match.arg(method)
   sigma_method <- match.arg(sigma_method)
 
@@ -293,7 +293,7 @@ fit_cl <- function(x,
     tail_factor   = tail_factor
   )
 
-  class(out) <- c("cl_fit", "list")
+  class(out) <- c("CLFit", "list")
 
   # 15) apply tail factor for mack (scales SE columns) -------------------
   if (method == "mack" && is.finite(tail_factor) && tail_factor > 1) {
@@ -307,19 +307,19 @@ fit_cl <- function(x,
 }
 
 
-#' Print a `cl_fit` object
+#' Print a `CLFit` object
 #'
-#' @param x An object of class `"cl_fit"`.
+#' @param x An object of class `"CLFit"`.
 #' @param ... Unused.
 #'
-#' @method print cl_fit
+#' @method print CLFit
 #' @export
-print.cl_fit <- function(x, ...) {
+print.CLFit <- function(x, ...) {
 
   grp_var <- x$group_var
   if (is.null(grp_var)) grp_var <- character(0)
 
-  cat("<cl_fit>\n")
+  cat("<CLFit>\n")
   cat("method      :", x$method, "\n")
   cat("value_var   :", x$value_var, "\n")
   cat("weight_var  :",
@@ -393,11 +393,11 @@ print.cl_fit <- function(x, ...) {
 }
 
 
-#' Expand a `triangle` object to a full development grid
+#' Expand a `Triangle` object to a full development grid
 #'
 #' @description
 #' Internal helper that constructs a complete cohort-by-development-period grid
-#' from an object of class `"triangle"`, analogous to [base::expand.grid()].
+#' from an object of class `"Triangle"`, analogous to [base::expand.grid()].
 #'
 #' @keywords internal
 .expand_triangle_grid <- function(triangle, ata_fit, value_var) {
@@ -478,7 +478,7 @@ print.cl_fit <- function(x, ...) {
 #' @keywords internal
 .mack_f_var <- function(ata_fit, alpha = 1) {
 
-  .assert_class(ata_fit, "ata_fit")
+  .assert_class(ata_fit, "ATAFit")
 
   grp_var <- attr(ata_fit$ata, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
@@ -615,7 +615,7 @@ print.cl_fit <- function(x, ...) {
 }
 
 
-#' Apply tail factor to a Mack-fitted `cl_fit` object
+#' Apply tail factor to a Mack-fitted `CLFit` object
 #'
 #' @description
 #' Internal helper scaling projected value and Mack variance components by
@@ -625,7 +625,7 @@ print.cl_fit <- function(x, ...) {
 #' @keywords internal
 .cl_tail_factor <- function(x) {
 
-  .assert_class(x, "cl_fit")
+  .assert_class(x, "CLFit")
 
   grp_var     <- x$group_var
   coh_var     <- x$cohort_var
@@ -669,7 +669,7 @@ print.cl_fit <- function(x, ...) {
 }
 
 
-#' Summarise a `cl_fit` object by cohort
+#' Summarise a `CLFit` object by cohort
 #'
 #' @description
 #' Internal helper producing a one-row-per-cohort summary from the full
@@ -680,7 +680,7 @@ print.cl_fit <- function(x, ...) {
 #' @keywords internal
 .cl_summary <- function(x) {
 
-  .assert_class(x, "cl_fit")
+  .assert_class(x, "CLFit")
 
   is_mack  <- identical(x$method, "mack")
   grp_var  <- x$group_var
@@ -722,15 +722,15 @@ print.cl_fit <- function(x, ...) {
 }
 
 
-#' Summary method for `cl_fit`
+#' Summary method for `CLFit`
 #'
-#' @param object An object of class `"cl_fit"`.
+#' @param object An object of class `"CLFit"`.
 #' @param ... Unused.
 #'
 #' @return A `data.table` with one row per cohort.
 #'
-#' @method summary cl_fit
+#' @method summary CLFit
 #' @export
-summary.cl_fit <- function(object, ...) {
+summary.CLFit <- function(object, ...) {
   object$summary
 }

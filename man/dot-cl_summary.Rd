@@ -2,7 +2,7 @@
 % Please edit documentation in R/cl.R
 \name{.cl_summary}
 \alias{.cl_summary}
-\title{Summarise a \code{cl_fit} object by cohort}
+\title{Summarise a \code{CLFit} object by cohort}
 \usage{
 .cl_summary(x)
 }

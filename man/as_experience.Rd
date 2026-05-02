@@ -2,7 +2,7 @@
 % Please edit documentation in R/experience.R
 \name{as_experience}
 \alias{as_experience}
-\title{Coerce a dataset to an \code{experience} object}
+\title{Coerce a dataset to an \code{Experience} object}
 \usage{
 as_experience(df, add_period = TRUE)
 }
@@ -13,16 +13,16 @@ as_experience(df, add_period = TRUE)
 variables using \code{\link[=add_experience_period]{add_experience_period()}}. Default is \code{TRUE}.}
 }
 \value{
-A data.frame with class \code{"experience"} prepended.
+A data.frame with class \code{"Experience"} prepended.
 }
 \description{
-Coerce a data.frame to a minimal \code{experience} object for loss ratio
+Coerce a data.frame to a minimal \code{Experience} object for loss ratio
 analysis.
 
 This function checks that the input contains the minimum required
 columns, attempts to coerce them to the expected classes, optionally
 derives standard period variables via \code{\link[=add_experience_period]{add_experience_period()}}, and
-prepends class \code{"experience"}.
+prepends class \code{"Experience"}.
 
 The function intentionally performs only minimal coercion. Other
 columns such as grouping variables or presentation variables are left

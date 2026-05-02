@@ -61,7 +61,7 @@ sm <- summary(tri)
 head(sm)
 ```
 
-(group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은 `triangle_summary` 객체를
+(group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은 `TriangleSummary` 객체를
 반환한다.
 
 ## Age-to-age 인자 진단
@@ -72,7 +72,7 @@ sm  <- summary(ata, alpha = 1)
 head(sm)
 ```
 
-`ata` 객체의 `summary()` 메소드는 성숙점 탐지를 구동하는 링크별 통계를 계산한다.
+`ATA` 객체의 `summary()` 메소드는 성숙점 탐지를 구동하는 링크별 통계를 계산한다.
 
 - `mean`, `median`, `wt` — 각 링크에서 관측된 ata 인자의 기술 평균
   (해당 링크가 관측되지 않은 코호트는 제외).
@@ -83,7 +83,7 @@ head(sm)
 - `n_obs`, `n_valid`, `n_inf`, `n_nan`, `valid_ratio` — 관측 수와 링크별
   유한 ata 인자의 비율.
 
-### `ata` 진단 플롯
+### `ATA` 진단 플롯
 
 ```{r}
 plot(ata, type = "cv")            # ata 링크별 CV (성숙점 overlay 포함)
@@ -110,7 +110,7 @@ plot_triangle(ata, show_maturity = TRUE)          # 성숙점 라인 overlay
 안정화되는 경과 기간 링크이다. `fit_lr(method = "sa")` 가 ED 에서 CL 로
 전환할 때 내부적으로 사용한다.
 
-`find_ata_maturity()` 는 `ata` 객체의 `summary()` 결과를 입력으로 받는다 —
+`find_ata_maturity()` 는 `ATA` 객체의 `summary()` 결과를 입력으로 받는다 —
 먼저 `summary()` 로 기술/WLS 요약을 만들고, 거기서 첫 성숙 링크를 탐색한다.
 
 ```{r}
@@ -149,7 +149,7 @@ plot(ed, type = "box")
 plot_triangle(ed)
 ```
 
-`ed` 객체의 `summary()` 메소드는 `ata` 객체의 `summary()` 에 대응하는
+`ED` 객체의 `summary()` 메소드는 `ATA` 객체의 `summary()` 에 대응하는
 ED 측 분석으로, 강도 $g_k = \Delta C^L_k / C^P_k$ 에 대해 링크별 통계를
 계산한다.
 
@@ -163,7 +163,7 @@ gaps <- validate_triangle(exp, group_var = cv_nm,
 head(gaps)
 ```
 
-경과 기간이 비연속인 코호트마다 한 행씩을 담은 `triangle_validation` 객체를
+경과 기간이 비연속인 코호트마다 한 행씩을 담은 `TriangleValidation` 객체를
 반환한다. 결과가 비어 있다면 triangle 이 깨끗하다는 뜻이다.
 
 결손이 있는 경우의 선택지는 다음과 같다.

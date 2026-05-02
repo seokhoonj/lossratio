@@ -5,7 +5,7 @@
 #' @description
 #' Detect structural change points in the sequence of cohort-level
 #' development trajectories. Each underwriting cohort (indexed by the
-#' `cohort_var` of a `"triangle"` object) is treated as a feature vector
+#' `cohort_var` of a `"Triangle"` object) is treated as a feature vector
 #' whose entries are the selected `value_var` observed at development
 #' periods `1, ..., K`. Cohorts are then ordered by underwriting
 #' period and tested for structural shifts in the multivariate
@@ -29,10 +29,10 @@
 #'     strictly chronological.}
 #' }
 #'
-#' @param x An object of class `"triangle"`. Must correspond to a single
+#' @param x An object of class `"Triangle"`. Must correspond to a single
 #'   group (no `group_var` or a single-value `group_var` subset).
-#'   Also used by S3 `print()` method on `cohort_regime` objects.
-#' @param object An object of class `"cohort_regime"`. Used by the S3
+#'   Also used by S3 `print()` method on `CohortRegime` objects.
+#' @param object An object of class `"CohortRegime"`. Used by the S3
 #'   `summary()` method.
 #' @param value_var Column name of the trajectory variable. Default
 #'   is `"clr"` (cumulative loss ratio).
@@ -47,7 +47,7 @@
 #' @param min_size Minimum segment size for `"ecp"`. Default `3`.
 #' @param ... Reserved for future use.
 #'
-#' @return An object of class `"cohort_regime"` with components:
+#' @return An object of class `"CohortRegime"` with components:
 #'   \describe{
 #'     \item{`call`}{Matched call.}
 #'     \item{`method`}{Detection method used.}
@@ -66,7 +66,7 @@
 #'       constraint.}
 #'   }
 #'
-#' @seealso [plot.cohort_regime()], [build_triangle()]
+#' @seealso [plot.CohortRegime()], [build_triangle()]
 #'
 #' @examples
 #' \dontrun{
@@ -87,7 +87,7 @@ detect_cohort_regime <- function(x,
                                  min_size  = 3L,
                                  ...) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
   method <- match.arg(method)
 
   coh_var <- attr(x, "cohort_var")
@@ -184,7 +184,7 @@ detect_cohort_regime <- function(x,
     pca         = pca,
     dropped     = dropped
   )
-  class(out) <- c("cohort_regime", "list")
+  class(out) <- c("CohortRegime", "list")
   out
 }
 
@@ -265,10 +265,10 @@ detect_cohort_regime <- function(x,
 # Print / summary ---------------------------------------------------------
 
 #' @rdname detect_cohort_regime
-#' @method print cohort_regime
+#' @method print CohortRegime
 #' @export
-print.cohort_regime <- function(x, ...) {
-  cat("<cohort_regime>\n")
+print.CohortRegime <- function(x, ...) {
+  cat("<CohortRegime>\n")
   cat(sprintf("  method      : %s\n", x$method))
   cat(sprintf("  value_var   : %s\n", x$value_var))
   cat(sprintf("  window (K)  : %s 1, ..., %d\n", x$dev_var, x$K))
@@ -292,9 +292,9 @@ print.cohort_regime <- function(x, ...) {
 
 
 #' @rdname detect_cohort_regime
-#' @method summary cohort_regime
+#' @method summary CohortRegime
 #' @export
-summary.cohort_regime <- function(object, ...) {
+summary.CohortRegime <- function(object, ...) {
   labels <- object$labels
 
   tbl <- labels[, .(
@@ -315,15 +315,15 @@ summary.cohort_regime <- function(object, ...) {
     breakpoints = object$breakpoints,
     regimes     = tbl
   )
-  class(out) <- c("summary.cohort_regime", "list")
+  class(out) <- c("summary.CohortRegime", "list")
   out
 }
 
 
 #' @rdname detect_cohort_regime
-#' @method print summary.cohort_regime
+#' @method print summary.CohortRegime
 #' @export
-print.summary.cohort_regime <- function(x, ...) {
+print.summary.CohortRegime <- function(x, ...) {
   cat("Cohort regime detection summary\n")
   cat(sprintf("  method    : %s\n", x$method))
   cat(sprintf("  value_var : %s\n", x$value_var))

@@ -7,7 +7,7 @@
 #' `dev_var` sequence within its observed range. Non-consecutive
 #' cohorts produce non-consecutive age-to-age links downstream (e.g.,
 #' `14 -> 17` instead of `14 -> 15`), which breaks
-#' [summary.ata()] / [summary.ed()] key uniqueness and causes cartesian
+#' [summary.ATA()] / [summary.ED()] key uniqueness and causes cartesian
 #' joins in [fit_lr()].
 #'
 #' This function inspects the raw data without modifying it. Use it
@@ -19,7 +19,7 @@
 #' @param cohort_var A single cohort variable. Default `"uym"`.
 #' @param dev_var A single development variable. Default `"elap_m"`.
 #'
-#' @return A `data.table` of class `"triangle_validation"` with one row
+#' @return A `data.table` of class `"TriangleValidation"` with one row
 #'   per cohort containing gaps. Columns:
 #'   \describe{
 #'     \item{group_var(s), cohort_var}{Cohort identifier.}
@@ -63,7 +63,7 @@ validate_triangle <- function(df,
 
   if (is.na(step)) {
     z <- data.table::data.table()
-    return(.prepend_class(z, "calendar_validation"))
+    return(.prepend_class(z, "CalendarValidation"))
   }
 
   .row <- function(p) {
@@ -97,7 +97,7 @@ validate_triangle <- function(df,
   data.table::setattr(gaps, "group_var" , grp_var)
   data.table::setattr(gaps, "cohort_var", cal_var)
 
-  .prepend_class(gaps, "calendar_validation")
+  .prepend_class(gaps, "CalendarValidation")
 }
 
 
@@ -126,7 +126,7 @@ validate_triangle <- function(df,
   data.table::setattr(gaps, "cohort_var" , coh_var)
   data.table::setattr(gaps, "dev_var", dev_var)
 
-  .prepend_class(gaps, "triangle_validation")
+  .prepend_class(gaps, "TriangleValidation")
 }
 
 
@@ -179,7 +179,7 @@ validate_triangle <- function(df,
 #'   raises an error when gaps are detected. Use
 #'   [validate_triangle()] to inspect gaps before deciding.
 #'
-#' @return A data.frame with class `"triangle"`, containing the following
+#' @return A data.frame with class `"Triangle"`, containing the following
 #'   derived columns:
 #'   \describe{
 #'     \item{n_obs}{Number of distinct periods observed}
@@ -193,7 +193,7 @@ validate_triangle <- function(df,
 #'   }
 #'
 #' The returned object also has an attribute `"longer"` containing
-#' a melted long-format version (`class = "triangle_longer"`).
+#' a melted long-format version (`class = "TriangleLonger"`).
 #'
 #' @examples
 #' \dontrun{
@@ -348,7 +348,7 @@ build_triangle <- function(df,
     id.vars      = grp_coh_dev_var,
     measure.vars = c("closs", "crp")
   )
-  dm <- .prepend_class(dm, "triangle_longer")
+  dm <- .prepend_class(dm, "TriangleLonger")
 
   data.table::setattr(ds, "group_var"   , grp_var)
   data.table::setattr(ds, "cohort_var"  , coh_var)
@@ -357,7 +357,7 @@ build_triangle <- function(df,
   data.table::setattr(ds, "dev_type", .get_period_type(dev_var))
   data.table::setattr(ds, "longer"      , dm)
 
-  .update_class(ds, "experience", "triangle")
+  .update_class(ds, "Experience", "Triangle")
 }
 
 #' Build a calendar-based development structure from experience data
@@ -420,7 +420,7 @@ build_triangle <- function(df,
 #'   calendar sequence (monthly, quarterly, etc. based on `calendar_var`).
 #'   Default `FALSE`, which raises an error when gaps are detected.
 #'
-#' @return A data.frame with class `"calendar"`, containing the following
+#' @return A data.frame with class `"Calendar"`, containing the following
 #'   derived columns:
 #'   \describe{
 #'     \item{index}{Calendar index within each group, defined as the sequential
@@ -438,7 +438,7 @@ build_triangle <- function(df,
 #'   }
 #'
 #' The returned object also has an attribute `"longer"` containing
-#' a melted long-format version (`class = "calendar_longer"`).
+#' a melted long-format version (`class = "CalendarLonger"`).
 #'
 #' @examples
 #' \dontrun{
@@ -603,14 +603,14 @@ build_calendar <- function(df,
     id.vars      = c(grp_cal_var, "dev"),
     measure.vars = c("closs", "crp")
   )
-  dm <- .prepend_class(dm, "calendar_longer")
+  dm <- .prepend_class(dm, "CalendarLonger")
 
   data.table::setattr(ds, "group_var"    , grp_var)
   data.table::setattr(ds, "calendar_var" , cal_var)
   data.table::setattr(ds, "calendar_type", cal_type)
   data.table::setattr(ds, "longer"       , dm)
 
-  .prepend_class(ds, "calendar")
+  .prepend_class(ds, "Calendar")
 }
 
 #' Build a total development summary from experience data
@@ -654,7 +654,7 @@ build_calendar <- function(df,
 #'   `FALSE`. Note that filling inflates `n_obs` (counts filled rows as
 #'   observed periods); use [validate_triangle()] to inspect first.
 #'
-#' @return A data.frame with class `"total"` containing:
+#' @return A data.frame with class `"Total"` containing:
 #'   \describe{
 #'     \item{n_obs}{Number of observed development periods}
 #'     \item{sales_start}{First observed period}
@@ -767,7 +767,7 @@ build_total <- function(df,
   data.table::set(ds, j = "loss_prop", value = ds[["loss"]] / sum(ds[["loss"]]))
   data.table::set(ds, j = "rp_prop"  , value = ds[["rp"]]   / sum(ds[["rp"]]))
 
-  .prepend_class(ds, "total")
+  .prepend_class(ds, "Total")
 }
 
 # Development Summary -----------------------------------------------------
@@ -775,7 +775,7 @@ build_total <- function(df,
 #' Summarise development statistics (Mean, Median, Weighted)
 #'
 #' @description
-#' S3 method for `summary()` on `triangle` objects. Computes group-wise summary
+#' S3 method for `summary()` on `Triangle` objects. Computes group-wise summary
 #' statistics for loss ratios (`lr`) and cumulative loss ratios (`clr`).
 #'
 #' The function aggregates data by the grouping variables stored in
@@ -787,7 +787,7 @@ build_total <- function(df,
 #' - median,
 #' - weighted mean (portfolio-level ratio based on sums).
 #'
-#' @param object An object of class `triangle`.
+#' @param object An object of class `Triangle`.
 #' @param ... Unused; included for S3 compatibility.
 #'
 #' @details
@@ -801,7 +801,7 @@ build_total <- function(df,
 #' are typically more stable than simple averages when exposure sizes differ
 #' across cohorts.
 #'
-#' It is assumed that the input `triangle` object does not contain missing values.
+#' It is assumed that the input `Triangle` object does not contain missing values.
 #'
 #' @return
 #' A `data.table` grouped by `group_var` and `dev_var`, containing:
@@ -816,7 +816,7 @@ build_total <- function(df,
 #' }
 #'
 #' The returned object keeps the attributes `group_var` and `dev_var`,
-#' and its class is updated to `"triangle_summary"`.
+#' and its class is updated to `"TriangleSummary"`.
 #'
 #' @examples
 #' \dontrun{
@@ -826,10 +826,10 @@ build_total <- function(df,
 #' attr(sm, "longer")
 #' }
 #'
-#' @method summary triangle
+#' @method summary Triangle
 #' @export
-summary.triangle <- function(object, ...) {
-  .assert_class(object, "triangle")
+summary.Triangle <- function(object, ...) {
+  .assert_class(object, "Triangle")
 
   dt <- .ensure_dt(object)
 
@@ -858,28 +858,28 @@ summary.triangle <- function(object, ...) {
     variable.name = "type",
     value.name    = "value"
   )
-  dm <- .prepend_class(dm, "triangle_summary_longer")
+  dm <- .prepend_class(dm, "TriangleSummaryLonger")
 
   data.table::setattr(ds, "group_var"   , grp_var)
   data.table::setattr(ds, "dev_var" , dev_var)
   data.table::setattr(ds, "dev_type", dev_type)
   data.table::setattr(ds, "longer"      , dm)
 
-  .update_class(ds, "triangle", "triangle_summary")
+  .update_class(ds, "Triangle", "TriangleSummary")
 }
 
 # Development Longer ------------------------------------------------------
 
-#' @method longer triangle
+#' @method longer Triangle
 #' @export
-longer.triangle <- function(x, ...) {
-  .assert_class(x, "triangle")
+longer.Triangle <- function(x, ...) {
+  .assert_class(x, "Triangle")
   attr(x, "longer")
 }
 
-#' @method longer triangle_summary
+#' @method longer TriangleSummary
 #' @export
-longer.triangle_summary <- function(x, ...) {
-  .assert_class(x, "triangle_summary")
+longer.TriangleSummary <- function(x, ...) {
+  .assert_class(x, "TriangleSummary")
   attr(x, "longer")
 }

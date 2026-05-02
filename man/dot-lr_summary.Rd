@@ -2,17 +2,17 @@
 % Please edit documentation in R/lr.R
 \name{.lr_summary}
 \alias{.lr_summary}
-\title{Summarise an \code{lr_fit} object by cohort}
+\title{Summarise an \code{LRFit} object by cohort}
 \usage{
 .lr_summary(x)
 }
 \arguments{
-\item{x}{An object of class \code{"lr_fit"}.}
+\item{x}{An object of class \code{"LRFit"}.}
 }
 \value{
 The input object with \verb{$summary} set.
 }
 \description{
-Summarise an \code{lr_fit} object by cohort
+Summarise an \code{LRFit} object by cohort
 }
 \keyword{internal}

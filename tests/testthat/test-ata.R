@@ -4,8 +4,8 @@ exp <- as_experience(experience)
 tri <- build_triangle(exp, group_var = cv_nm)
 ata <- build_ata(tri, value_var = "closs")
 
-test_that("build_ata returns class 'ata' with expected columns", {
-  expect_s3_class(ata, "ata")
+test_that("build_ata returns class 'ATA' with expected columns", {
+  expect_s3_class(ata, "ATA")
   for (nm in c("cv_nm", "cohort", "ata_from", "ata_to", "ata_link",
                "value_from", "value_to", "ata")) {
     expect_true(nm %in% names(ata), info = paste("missing", nm))
@@ -51,9 +51,9 @@ test_that("drop_invalid removes non-finite ata", {
 
 # fit_ata ----------------------------------------------------------------
 
-test_that("fit_ata returns class 'ata_fit' with expected components", {
+test_that("fit_ata returns class 'ATAFit' with expected components", {
   af <- fit_ata(ata)
-  expect_s3_class(af, "ata_fit")
+  expect_s3_class(af, "ATAFit")
   for (nm in c("factor", "selected")) {
     expect_true(nm %in% names(af), info = paste("missing", nm))
   }
@@ -85,23 +85,23 @@ test_that("maturity_args adds $maturity", {
   expect_false(is.null(af_mat$maturity))
 })
 
-test_that("print.ata_fit doesn't error", {
+test_that("print.ATAFit doesn't error", {
   af <- fit_ata(ata)
   expect_no_error(capture.output(print(af)))
 })
 
 # summary.ata ------------------------------------------------------------
 
-test_that("summary.ata returns ata_summary with expected columns", {
+test_that("summary.ATA returns ATASummary with expected columns", {
   sm <- summary(ata, alpha = 1)
-  expect_s3_class(sm, "ata_summary")
+  expect_s3_class(sm, "ATASummary")
   for (nm in c("ata_from", "ata_to", "mean", "median", "wt", "cv",
                "f", "f_se", "rse", "sigma")) {
     expect_true(nm %in% names(sm), info = paste("missing", nm))
   }
 })
 
-test_that("summary.ata accepts alpha = 0 / 2", {
+test_that("summary.ATA accepts alpha = 0 / 2", {
   expect_no_error(summary(ata, alpha = 0))
   expect_no_error(summary(ata, alpha = 2))
 })

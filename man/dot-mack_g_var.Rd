@@ -7,7 +7,7 @@
 .mack_g_var(ed_fit, alpha = 1)
 }
 \arguments{
-\item{ed_fit}{An object of class \code{"ed_fit"}.}
+\item{ed_fit}{An object of class \code{"EDFit"}.}
 
 \item{alpha}{Numeric scalar. Default is \code{1}.}
 }

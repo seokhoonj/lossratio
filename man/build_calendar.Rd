@@ -50,7 +50,7 @@ calendar sequence (monthly, quarterly, etc. based on \code{calendar_var}).
 Default \code{FALSE}, which raises an error when gaps are detected.}
 }
 \value{
-A data.frame with class \code{"calendar"}, containing the following
+A data.frame with class \code{"Calendar"}, containing the following
 derived columns:
 \describe{
 \item{index}{Calendar index within each group, defined as the sequential
@@ -68,7 +68,7 @@ different starting periods on a common index scale.}
 }
 
 The returned object also has an attribute \code{"longer"} containing
-a melted long-format version (\code{class = "calendar_longer"}).
+a melted long-format version (\code{class = "CalendarLonger"}).
 }
 \description{
 Aggregate experience data into a development structure along a single

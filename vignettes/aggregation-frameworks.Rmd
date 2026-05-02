@@ -28,19 +28,19 @@ builder per framework. This vignette compares them.
 
 | Builder              | Output object | Dimension                   | When to use                                |
 |----------------------|---------------|-----------------------------|--------------------------------------------|
-| `build_triangle()`   | `triangle`    | cohort × dev (2D)           | Chain ladder, ED, SA projection        |
-| `build_calendar()`   | `calendar`    | calendar period (1D)        | Calendar-year trend, diagonal effect       |
-| `build_total()`      | `total`       | portfolio total (per group) | High-level loss-ratio comparison           |
+| `build_triangle()`   | `Triangle`    | cohort × dev (2D)           | Chain ladder, ED, SA projection        |
+| `build_calendar()`   | `Calendar`    | calendar period (1D)        | Calendar-year trend, diagonal effect       |
+| `build_total()`      | `Total`       | portfolio total (per group) | High-level loss-ratio comparison           |
 
 Conceptually:
 
-- `triangle` preserves both the cohort axis (when policies were
+- `Triangle` preserves both the cohort axis (when policies were
   underwritten) and the development axis (how loss accrues over
   development time). This is the canonical chain-ladder data structure.
-- `calendar` collapses cohorts onto the diagonal — each row is one
+- `Calendar` collapses cohorts onto the diagonal — each row is one
   calendar period across all underwriting cohorts. Equivalent to the
   diagonal sum of the triangle.
-- `total` collapses both dimensions to one value per group. Useful
+- `Total` collapses both dimensions to one value per group. Useful
   for portfolio-level comparison (which product had the worst loss
   ratio over the window?).
 
@@ -70,7 +70,7 @@ tri_q <- build_triangle(exp, group_var = cv_nm,
 plot_triangle(tri_q)   # cohort × dev heatmap of clr
 ```
 
-Use `triangle` as input to:
+Use `Triangle` as input to:
 - `build_ata()`, `build_ed()` — development factors
 - `fit_cl()`, `fit_lr()` — projection
 - `detect_cohort_regime()` — structural change detection
@@ -134,7 +134,7 @@ Use cases:
    (cohort × dev)      (calendar series)     (portfolio total)
          │                    │                     │
          ▼                    ▼                     ▼
-     triangle             calendar               total
+     Triangle             Calendar               Total
    (2D, projection)     (1D, trend)         (0D, comparison)
 ```
 

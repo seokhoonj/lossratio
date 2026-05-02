@@ -425,7 +425,7 @@ get_recent_weights <- function(weights, recent) {
 #' @param grp_var Character vector of group columns (may be empty).
 #' @param coh_var Single column name for the cohort variable (e.g. `cohort`).
 #' @param dev_var Single column name for the development variable (e.g. `dev`
-#'   for `triangle` objects, or `ata_from` for `ata`/`ed` objects).
+#'   for `Triangle` objects, or `ata_from` for `ATA`/`ED` objects).
 #'
 #' @return A filtered copy of `dt` (class preserved), keeping only rows
 #'   within the recent-diagonal window.

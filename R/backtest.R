@@ -2,8 +2,8 @@
 
 # Map (fit_obj class, value_var) -> projection column on fit_obj$full.
 .backtest_proj_col <- function(fit_obj, value_var) {
-  if (inherits(fit_obj, "cl_fit")) return("value_proj")
-  if (inherits(fit_obj, "lr_fit")) {
+  if (inherits(fit_obj, "CLFit")) return("value_proj")
+  if (inherits(fit_obj, "LRFit")) {
     lr_map <- c(closs = "loss_proj", crp = "exposure_proj", clr = "clr_proj")
     if (!(value_var %in% names(lr_map)))
       stop(sprintf(
@@ -14,7 +14,7 @@
     return(unname(lr_map[value_var]))
   }
   stop(sprintf(
-    "Unsupported fit class: %s. Supported: 'cl_fit', 'lr_fit'.",
+    "Unsupported fit class: %s. Supported: 'CLFit', 'LRFit'.",
     paste(class(fit_obj), collapse = "/")
   ), call. = FALSE)
 }
@@ -23,7 +23,7 @@
 #'
 #' @description
 #' Hold out the latest `holdout` calendar diagonals from the input
-#' `triangle`, refit the model on the earlier portion, project the
+#' `Triangle`, refit the model on the earlier portion, project the
 #' held-out cells, and compare the projection to the actual values
 #' that were withheld.
 #'
@@ -32,9 +32,9 @@
 #' and aggregated by development period (`col_summary`) and by
 #' calendar diagonal (`diag_summary`).
 #'
-#' @param x A `"triangle"` object (or a `"backtest"` object for the S3
+#' @param x A `"Triangle"` object (or a `"Backtest"` object for the S3
 #'   `print()` method).
-#' @param object A `"backtest"` object. Used by the S3 `summary()` method.
+#' @param object A `"Backtest"` object. Used by the S3 `summary()` method.
 #' @param holdout Integer. Number of latest calendar diagonals to mask
 #'   before refitting. Default `6L`.
 #' @param fit_fn Fitting function. Default `fit_lr` (stage-adaptive
@@ -52,10 +52,10 @@
 #' @param ... Additional arguments passed to `fit_fn` (e.g., `method`,
 #'   `alpha`, `recent`, `tail`).
 #'
-#' @return An object of class `"backtest"` with components:
+#' @return An object of class `"Backtest"` with components:
 #'   \describe{
 #'     \item{`call`}{Matched call.}
-#'     \item{`data`}{Original `triangle`.}
+#'     \item{`data`}{Original `Triangle`.}
 #'     \item{`masked`}{Triangle used for fitting (with held-out cells
 #'       removed).}
 #'     \item{`fit`}{The fit object returned by `fit_fn`.}
@@ -70,7 +70,7 @@
 #'       from `x`.}
 #'   }
 #'
-#' @seealso [fit_lr()], [fit_cl()], [plot.backtest()]
+#' @seealso [fit_lr()], [fit_cl()], [plot.Backtest()]
 #'
 #' @examples
 #' \dontrun{
@@ -90,7 +90,7 @@ backtest <- function(x,
                      value_var  = "clr",
                      ...) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
 
   if (!is.numeric(holdout) || length(holdout) != 1L ||
       is.na(holdout) || holdout < 1L)
@@ -219,7 +219,7 @@ backtest <- function(x,
     cohort_var   = coh_var,
     dev_var      = dev_var
   )
-  class(out) <- c("backtest", "list")
+  class(out) <- c("Backtest", "list")
   out
 }
 
@@ -227,10 +227,10 @@ backtest <- function(x,
 # Print / summary ---------------------------------------------------------
 
 #' @rdname backtest
-#' @method print backtest
+#' @method print Backtest
 #' @export
-print.backtest <- function(x, ...) {
-  cat("<backtest>\n")
+print.Backtest <- function(x, ...) {
+  cat("<Backtest>\n")
   cat(sprintf("  fit_fn      : %s\n", x$fit_fn_name))
   cat(sprintf("  value_var   : %s\n", x$value_var))
   cat(sprintf("  holdout     : %d calendar diagonals\n", x$holdout))
@@ -248,9 +248,9 @@ print.backtest <- function(x, ...) {
 
 
 #' @rdname backtest
-#' @method summary backtest
+#' @method summary Backtest
 #' @export
-summary.backtest <- function(object, ...) {
+summary.Backtest <- function(object, ...) {
   out <- list(
     fit_fn_name  = object$fit_fn_name,
     value_var    = object$value_var,
@@ -259,15 +259,15 @@ summary.backtest <- function(object, ...) {
     col_summary  = object$col_summary,
     diag_summary = object$diag_summary
   )
-  class(out) <- c("summary.backtest", "list")
+  class(out) <- c("summary.Backtest", "list")
   out
 }
 
 
 #' @rdname backtest
-#' @method print summary.backtest
+#' @method print summary.Backtest
 #' @export
-print.summary.backtest <- function(x, ...) {
+print.summary.Backtest <- function(x, ...) {
   cat("Backtest summary\n")
   cat(sprintf("  fit_fn      : %s\n", x$fit_fn_name))
   cat(sprintf("  value_var   : %s\n", x$value_var))

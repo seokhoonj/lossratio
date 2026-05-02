@@ -3,9 +3,9 @@ data(experience)
 exp <- as_experience(experience)
 tri <- build_triangle(exp, group_var = cv_nm)
 
-test_that("fit_cl method = 'basic' returns class 'cl_fit' with expected structure", {
+test_that("fit_cl method = 'basic' returns class 'CLFit' with expected structure", {
   cl <- fit_cl(tri, value_var = "closs", method = "basic")
-  expect_s3_class(cl, "cl_fit")
+  expect_s3_class(cl, "CLFit")
   for (nm in c("data", "method", "group_var", "cohort_var", "dev_var",
                "value_var", "full", "pred", "ata", "summary",
                "factor", "selected")) {
@@ -67,13 +67,13 @@ test_that("maturity_args triggers maturity detection", {
   expect_false(is.null(cl$maturity))
 })
 
-test_that("summary(cl_fit) returns the $summary table", {
+test_that("summary(CLFit) returns the $summary table", {
   cl <- fit_cl(tri, value_var = "closs", method = "mack")
   s <- summary(cl)
   expect_identical(s, cl$summary)
 })
 
-test_that("print.cl_fit doesn't error", {
+test_that("print.CLFit doesn't error", {
   cl <- fit_cl(tri, value_var = "closs", method = "mack")
   expect_no_error(capture.output(print(cl)))
 })

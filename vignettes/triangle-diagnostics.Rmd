@@ -61,7 +61,7 @@ sm <- summary(tri)
 head(sm)
 ```
 
-Returns a `triangle_summary` object with mean / median / weighted
+Returns a `TriangleSummary` object with mean / median / weighted
 loss ratios per (group, dev) cell.
 
 ## Age-to-age factor diagnostics
@@ -72,7 +72,7 @@ sm  <- summary(ata, alpha = 1)
 head(sm)
 ```
 
-The `summary()` method on an `ata` object computes per-link statistics
+The `summary()` method on an `ATA` object computes per-link statistics
 that drive maturity detection:
 
 - `mean`, `median`, `wt` — descriptive averages of observed ata
@@ -86,7 +86,7 @@ that drive maturity detection:
 - `n_obs`, `n_valid`, `n_inf`, `n_nan`, `valid_ratio` — observation
   counts and the share of finite ata factors per link.
 
-### Diagnostic plots for `ata`
+### Diagnostic plots for `ATA`
 
 ```{r}
 plot(ata, type = "cv")            # CV vs ata link with maturity overlay
@@ -114,7 +114,7 @@ The maturity point is the development link beyond which age-to-age
 factors are stable enough to trust for chain-ladder projection. Used
 internally by `fit_lr(method = "sa")` to switch from ED to CL.
 
-`find_ata_maturity()` operates on a summary of an `ata` object — first
+`find_ata_maturity()` operates on a summary of an `ATA` object — first
 build the descriptive / WLS summary via `summary()`, then probe it for
 the first mature link:
 
@@ -155,8 +155,8 @@ plot(ed, type = "box")
 plot_triangle(ed)
 ```
 
-The `summary()` method on an `ed` object is the ED-side analogue of
-`summary()` on an `ata` object, computing per-link statistics for the
+The `summary()` method on an `ED` object is the ED-side analogue of
+`summary()` on an `ATA` object, computing per-link statistics for the
 intensity $g_k = \Delta C^L_k / C^P_k$.
 
 ## Validation before building
@@ -170,7 +170,7 @@ gaps <- validate_triangle(exp, group_var = cv_nm,
 head(gaps)
 ```
 
-Returns a `triangle_validation` object with one row per cohort that
+Returns a `TriangleValidation` object with one row per cohort that
 has non-consecutive development periods. An empty result means the
 triangle is clean.
 

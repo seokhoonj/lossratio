@@ -2,11 +2,11 @@
 % Please edit documentation in R/lr.R
 \name{.expand_grid}
 \alias{.expand_grid}
-\title{Expand a \code{triangle} object to a full projection grid}
+\title{Expand a \code{Triangle} object to a full projection grid}
 \usage{
 .expand_grid(triangle, ed_fit, exposure_ata_fit, loss_var, exposure_var)
 }
 \description{
-Expand a \code{triangle} object to a full projection grid
+Expand a \code{Triangle} object to a full projection grid
 }
 \keyword{internal}

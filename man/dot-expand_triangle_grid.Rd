@@ -2,12 +2,12 @@
 % Please edit documentation in R/cl.R
 \name{.expand_triangle_grid}
 \alias{.expand_triangle_grid}
-\title{Expand a \code{triangle} object to a full development grid}
+\title{Expand a \code{Triangle} object to a full development grid}
 \usage{
 .expand_triangle_grid(triangle, ata_fit, value_var)
 }
 \description{
 Internal helper that constructs a complete cohort-by-development-period grid
-from an object of class \code{"triangle"}, analogous to \code{\link[base:expand.grid]{base::expand.grid()}}.
+from an object of class \code{"Triangle"}, analogous to \code{\link[base:expand.grid]{base::expand.grid()}}.
 }
 \keyword{internal}

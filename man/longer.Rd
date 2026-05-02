@@ -16,7 +16,7 @@ A long-form object as defined by the dispatched method.
 }
 \description{
 Mirrors the S3 generic originally provided by the \code{instead} package.
-Concrete methods (\code{longer.triangle}, \code{longer.triangle_summary}) dispatch on
+Concrete methods (\code{longer.Triangle}, \code{longer.TriangleSummary}) dispatch on
 domain-specific classes and typically return the pre-computed long-form
 data stored in \code{attr(x, "longer")}.
 }

@@ -7,7 +7,7 @@
 .lm_ata(x, weights = 1, alpha = 1, na_rm = TRUE, tol = 1e-12)
 }
 \arguments{
-\item{x}{An object of class \code{"ata"}.}
+\item{x}{An object of class \code{"ATA"}.}
 
 \item{weights}{Either a length-one numeric scalar (default \code{1}) or a
 single column name present in the \code{ata} data that provides per-row

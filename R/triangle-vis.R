@@ -4,12 +4,12 @@
 #'
 #' @description
 #' Visualise loss ratio or related metric trajectories across development time
-#' from a `triangle` object.
+#' from a `Triangle` object.
 #'
 #' The function supports two display modes:
 #' \itemize{
 #'   \item \strong{Raw mode (`summary = FALSE`)}: plots cohort-level trajectories
-#'   coloured by the period variable stored in the `triangle` object.
+#'   coloured by the period variable stored in the `Triangle` object.
 #'   \item \strong{Summary mode (`summary = TRUE`)}: plots all cohort trajectories
 #'   in grey and overlays three summary statistics:
 #'   \itemize{
@@ -19,9 +19,9 @@
 #'   }
 #' }
 #'
-#' Summary statistics are computed from [summary.triangle()].
+#' Summary statistics are computed from [summary.Triangle()].
 #'
-#' @param x An object of class `triangle`.
+#' @param x An object of class `Triangle`.
 #' @param value_var A single metric to plot. Must be one of:
 #'   `"lr"`, `"clr"`,
 #'   `"loss"`, `"rp"`, `"margin"`, `"closs"`, `"crp"`, `"cmargin"`,
@@ -67,9 +67,9 @@
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot triangle
+#' @method plot Triangle
 #' @export
-plot.triangle <- function(x,
+plot.Triangle <- function(x,
                           value_var      = "clr",
                           summary        = FALSE,
                           summary_min_n  = 5L,
@@ -78,7 +78,7 @@ plot.triangle <- function(x,
                           theme          = c("view", "save", "shiny"),
                           ...) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
 
   scales <- match.arg(scales)
   theme  <- match.arg(theme)
@@ -258,7 +258,7 @@ plot.triangle <- function(x,
 #' Plot calendar-based development statistics
 #'
 #' @description
-#' Visualise an object of class `calendar` as a time-series plot.
+#' Visualise an object of class `Calendar` as a time-series plot.
 #' The selected metric is plotted over the calendar-style `calendar_var`,
 #' or over the calendar development variable stored in `attr(x, "dev_var")`.
 #'
@@ -271,7 +271,7 @@ plot.triangle <- function(x,
 #'
 #' If grouping variables are present, lines are drawn separately by group.
 #'
-#' @param x An object of class `calendar`.
+#' @param x An object of class `Calendar`.
 #' @param value_var A single metric to plot. Must be one of:
 #'   `"lr"`, `"clr"`,
 #'   `"loss"`, `"rp"`, `"margin"`, `"closs"`, `"crp"`, `"cmargin"`,
@@ -307,16 +307,16 @@ plot.triangle <- function(x,
 #' plot(x, x_by = "dev")
 #' }
 #'
-#' @method plot calendar
+#' @method plot Calendar
 #' @export
-plot.calendar <- function(x,
+plot.Calendar <- function(x,
                           value_var       = "clr",
                           x_by            = c("period", "dev"),
                           amount_divisor  = 1e8,
                           theme           = c("view", "save", "shiny"),
                           ...) {
 
-  .assert_class(x, "calendar")
+  .assert_class(x, "Calendar")
 
   theme <- match.arg(theme)
   x_by <- match.arg(x_by)
@@ -442,7 +442,7 @@ plot_triangle <- function(x, ...) {
 #' Plot development values as a triangle table
 #'
 #' @description
-#' Visualise a `triangle` object as a triangle-style table. Cells are arranged by
+#' Visualise a `Triangle` object as a triangle-style table. Cells are arranged by
 #' period and dev dimensions, and each cell displays the selected metric.
 #'
 #' For ratio metrics (`lr`, `clr`), labels can show either the ratio alone or
@@ -459,7 +459,7 @@ plot_triangle <- function(x, ...) {
 #'
 #' where `rp` denotes risk premium rather than written premium.
 #'
-#' @param x An object of class `triangle`.
+#' @param x An object of class `Triangle`.
 #' @param value_var A single metric to plot. Must be one of:
 #'   `"lr"`, `"clr"`,
 #'   `"loss"`, `"rp"`, `"margin"`, `"closs"`, `"crp"`, `"cmargin"`,
@@ -507,9 +507,9 @@ plot_triangle <- function(x, ...) {
 #' plot_triangle(d, label_style = "detail")
 #' }
 #'
-#' @method plot_triangle triangle
+#' @method plot_triangle Triangle
 #' @export
-plot_triangle.triangle <- function(x,
+plot_triangle.Triangle <- function(x,
                                    value_var = "clr",
                                    label_style = c("value", "detail"),
                                    amount_divisor = 1e8,
@@ -517,7 +517,7 @@ plot_triangle.triangle <- function(x,
                                    theme = c("view", "save", "shiny"),
                                    ...) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
 
   label_style <- match.arg(label_style)
   theme       <- match.arg(theme)

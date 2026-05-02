@@ -3,14 +3,14 @@
 #' Plot a cohort regime detection result
 #'
 #' @description
-#' Visualise an object of class `"cohort_regime"` as a PCA scatter of
+#' Visualise an object of class `"CohortRegime"` as a PCA scatter of
 #' cohort trajectories coloured by detected regime. Points are
 #' underwriting cohorts, axes are the first two principal components of
 #' the cohort feature matrix (development-period trajectories), and
 #' ellipses indicate the 90% contour per regime. Arrows show the
 #' loadings of the original development-period features on PC1/PC2.
 #'
-#' @param x An object of class `"cohort_regime"`.
+#' @param x An object of class `"CohortRegime"`.
 #' @param show_arrow Logical; draw loading arrows. Default `TRUE`.
 #' @param show_label Logical; label arrows with development-period index.
 #'   Default `TRUE`.
@@ -28,9 +28,9 @@
 #'
 #' @seealso [detect_cohort_regime()]
 #'
-#' @method plot cohort_regime
+#' @method plot CohortRegime
 #' @export
-plot.cohort_regime <- function(x,
+plot.CohortRegime <- function(x,
                                show_arrow   = TRUE,
                                show_label   = TRUE,
                                show_ellipse = TRUE,
@@ -41,7 +41,7 @@ plot.cohort_regime <- function(x,
                                theme        = c("view", "save", "shiny"),
                                ...) {
 
-  .assert_class(x, "cohort_regime")
+  .assert_class(x, "CohortRegime")
   theme <- match.arg(theme)
 
   mat <- x$trajectory

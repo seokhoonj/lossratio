@@ -46,13 +46,13 @@ bt <- backtest(tri_sur, holdout = 6L)
 print(bt)
 ```
 
-The returned object is a `"backtest"` list with these key slots:
+The returned object is a `"Backtest"` list with these key slots:
 
 - `aeg` — per-cell `data.table` (cohort, dev, actual, pred, aeg, calendar_idx).
 - `col_summary` — AEG aggregated by `dev`.
 - `diag_summary` — AEG aggregated by calendar diagonal.
 - `masked` — the triangle the fit was trained on (latest diagonals removed).
-- `fit` — the fit object returned by `fit_fn` (an `lr_fit` or `cl_fit`).
+- `fit` — the fit object returned by `fit_fn` (an `LRFit` or `CLFit`).
 
 `summary(bt)` prints the two summary tables alongside the call metadata.
 
@@ -110,7 +110,7 @@ head(bt$aeg, 5)
 
 ## Plot demos
 
-Four plot views are registered on `"backtest"`:
+Four plot views are registered on `"Backtest"`:
 
 ```{r}
 plot(bt, type = "col")    # AEG by dev (point + dashed zero line)
@@ -187,4 +187,4 @@ supported.
 - `vignette("chain-ladder")` — `fit_cl()` reference.
 - `vignette("loss-ratio-methods")` — `fit_lr()` and the `"sa"`,
   `"ed"`, `"cl"` methods.
-- `?backtest`, `?plot.backtest`, `?plot_triangle.backtest`.
+- `?backtest`, `?plot.Backtest`, `?plot_triangle.Backtest`.

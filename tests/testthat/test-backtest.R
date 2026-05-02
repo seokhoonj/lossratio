@@ -4,13 +4,13 @@ exp <- as_experience(experience)
 tri <- build_triangle(exp, group_var = cv_nm)
 sub <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 
-test_that("backtest returns class 'backtest'", {
+test_that("backtest returns class 'Backtest'", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "mack")
-  expect_s3_class(bt, "backtest")
+  expect_s3_class(bt, "Backtest")
 })
 
-test_that("backtest has expected list elements", {
+test_that("Backtest has expected list elements", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "mack")
   for (nm in c("call", "data", "masked", "fit",
@@ -53,13 +53,13 @@ test_that("masked triangle has fewer rows than original", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "mack")
   expect_lt(nrow(bt$masked), nrow(sub))
-  expect_s3_class(bt$masked, "triangle")
+  expect_s3_class(bt$masked, "Triangle")
 })
 
 test_that("backtest works with method = 'basic'", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "basic")
-  expect_s3_class(bt, "backtest")
+  expect_s3_class(bt, "Backtest")
 })
 
 test_that("backtest preserves multi-group structure", {
@@ -79,11 +79,11 @@ test_that("backtest errors on missing value_var", {
   expect_error(backtest(sub, holdout = 6L, value_var = "nonexistent"))
 })
 
-test_that("summary.backtest returns class 'summary.backtest'", {
+test_that("summary.Backtest returns class 'summary.Backtest'", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "mack")
   s <- summary(bt)
-  expect_s3_class(s, "summary.backtest")
+  expect_s3_class(s, "summary.Backtest")
 })
 
 test_that("print methods don't error", {
@@ -97,7 +97,7 @@ test_that("print methods don't error", {
 
 is_plot <- function(x) inherits(x, "ggplot") || inherits(x, "gtable")
 
-test_that("plot.backtest dispatches across types", {
+test_that("plot.Backtest dispatches across types", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "mack")
   for (tp in c("col", "diag", "cell")) {
@@ -106,7 +106,7 @@ test_that("plot.backtest dispatches across types", {
   }
 })
 
-test_that("plot_triangle.backtest dispatches", {
+test_that("plot_triangle.Backtest dispatches", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_cl,
                  value_var = "closs", method = "mack")
   expect_true(is_plot(suppressWarnings(plot_triangle(bt))))
@@ -117,8 +117,8 @@ test_that("plot_triangle.backtest dispatches", {
 test_that("backtest works with fit_lr method = 'sa'", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_lr,
                  method = "sa", value_var = "closs")
-  expect_s3_class(bt, "backtest")
-  expect_s3_class(bt$fit, "lr_fit")
+  expect_s3_class(bt, "Backtest")
+  expect_s3_class(bt$fit, "LRFit")
   expect_true("value_pred" %in% names(bt$aeg))
   expect_true(any(is.finite(bt$aeg$aeg)))
 })
@@ -126,16 +126,16 @@ test_that("backtest works with fit_lr method = 'sa'", {
 test_that("backtest works with fit_lr method = 'ed'", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_lr,
                  method = "ed", value_var = "closs")
-  expect_s3_class(bt, "backtest")
-  expect_s3_class(bt$fit, "lr_fit")
+  expect_s3_class(bt, "Backtest")
+  expect_s3_class(bt$fit, "LRFit")
   expect_true(any(is.finite(bt$aeg$aeg)))
 })
 
 test_that("backtest works with fit_lr method = 'cl'", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_lr,
                  method = "cl", value_var = "closs")
-  expect_s3_class(bt, "backtest")
-  expect_s3_class(bt$fit, "lr_fit")
+  expect_s3_class(bt, "Backtest")
+  expect_s3_class(bt$fit, "LRFit")
   expect_true(any(is.finite(bt$aeg$aeg)))
 })
 
@@ -170,7 +170,7 @@ test_that("backtest preserves multi-group structure with fit_lr", {
   expect_gt(length(unique(bt$aeg$cv_nm)), 1L)
 })
 
-test_that("plot.backtest dispatches for fit_lr backtests", {
+test_that("plot.Backtest dispatches for fit_lr backtests", {
   bt <- backtest(sub, holdout = 6L, fit_fn = fit_lr,
                  method = "sa", value_var = "closs")
   for (tp in c("col", "diag", "cell")) {

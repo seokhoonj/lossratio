@@ -2,7 +2,7 @@
 % Please edit documentation in R/cl.R
 \name{.cl_tail_factor}
 \alias{.cl_tail_factor}
-\title{Apply tail factor to a Mack-fitted \code{cl_fit} object}
+\title{Apply tail factor to a Mack-fitted \code{CLFit} object}
 \usage{
 .cl_tail_factor(x)
 }

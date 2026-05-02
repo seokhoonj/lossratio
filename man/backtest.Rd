@@ -2,21 +2,21 @@
 % Please edit documentation in R/backtest.R
 \name{backtest}
 \alias{backtest}
-\alias{print.backtest}
-\alias{summary.backtest}
-\alias{print.summary.backtest}
+\alias{print.Backtest}
+\alias{summary.Backtest}
+\alias{print.summary.Backtest}
 \title{Backtest a loss-ratio / chain ladder fit on existing data}
 \usage{
 backtest(x, holdout = 6L, fit_fn = fit_lr, value_var = "clr", ...)
 
-\method{print}{backtest}(x, ...)
+\method{print}{Backtest}(x, ...)
 
-\method{summary}{backtest}(object, ...)
+\method{summary}{Backtest}(object, ...)
 
-\method{print}{summary.backtest}(x, ...)
+\method{print}{summary.Backtest}(x, ...)
 }
 \arguments{
-\item{x}{A \code{"triangle"} object (or a \code{"backtest"} object for the S3
+\item{x}{A \code{"Triangle"} object (or a \code{"Backtest"} object for the S3
 \code{print()} method).}
 
 \item{holdout}{Integer. Number of latest calendar diagonals to mask
@@ -39,13 +39,13 @@ respectively on \code{fit_lr$full}. For \code{fit_cl}, any column present in
 \item{...}{Additional arguments passed to \code{fit_fn} (e.g., \code{method},
 \code{alpha}, \code{recent}, \code{tail}).}
 
-\item{object}{A \code{"backtest"} object. Used by the S3 \code{summary()} method.}
+\item{object}{A \code{"Backtest"} object. Used by the S3 \code{summary()} method.}
 }
 \value{
-An object of class \code{"backtest"} with components:
+An object of class \code{"Backtest"} with components:
 \describe{
 \item{\code{call}}{Matched call.}
-\item{\code{data}}{Original \code{triangle}.}
+\item{\code{data}}{Original \code{Triangle}.}
 \item{\code{masked}}{Triangle used for fitting (with held-out cells
 removed).}
 \item{\code{fit}}{The fit object returned by \code{fit_fn}.}
@@ -61,7 +61,7 @@ from \code{x}.}
 }
 \description{
 Hold out the latest \code{holdout} calendar diagonals from the input
-\code{triangle}, refit the model on the earlier portion, project the
+\code{Triangle}, refit the model on the earlier portion, project the
 held-out cells, and compare the projection to the actual values
 that were withheld.
 
@@ -83,5 +83,5 @@ plot(bt)
 
 }
 \seealso{
-\code{\link[=fit_lr]{fit_lr()}}, \code{\link[=fit_cl]{fit_cl()}}, \code{\link[=plot.backtest]{plot.backtest()}}
+\code{\link[=fit_lr]{fit_lr()}}, \code{\link[=fit_cl]{fit_cl()}}, \code{\link[=plot.Backtest]{plot.Backtest()}}
 }

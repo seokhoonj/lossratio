@@ -2,7 +2,7 @@
 #'
 #' @description
 #' Construct exposure-driven incremental development data from an object
-#' of class `"triangle"`, typically produced by [build_triangle()]. This is the
+#' of class `"Triangle"`, typically produced by [build_triangle()]. This is the
 #' foundational data structure for the exposure-driven (ED) model,
 #' where incremental loss is modelled as a function of cumulative
 #' exposure (risk premium) rather than cumulative loss.
@@ -15,7 +15,7 @@
 #' incremental loss and \eqn{C^P_{i,k}} is the cumulative exposure
 #' (risk premium) at development period \eqn{k}.
 #'
-#' @param x An object of class `"triangle"`.
+#' @param x An object of class `"Triangle"`.
 #' @param loss_var A single cumulative loss variable. Default is
 #'   `"closs"`.
 #' @param exposure_var A single cumulative exposure variable. Default is
@@ -25,7 +25,7 @@
 #' @param drop_invalid Logical; if `TRUE`, rows with invalid (non-finite)
 #'   `g` values are dropped. Default is `FALSE`.
 #'
-#' @return A `data.table` with class `"ed"` containing:
+#' @return A `data.table` with class `"ED"` containing:
 #'   \describe{
 #'     \item{`ata_from`}{Current development period.}
 #'     \item{`ata_to`}{Next development period.}
@@ -44,7 +44,7 @@
 #' `group_var`, `cohort_var`, `dev_var`, `loss_var`, and
 #' `exposure_var`.
 #'
-#' @seealso [build_triangle()], [summary.ed()], [fit_ed()]
+#' @seealso [build_triangle()], [summary.ED()], [fit_ed()]
 #'
 #' @examples
 #' \dontrun{
@@ -62,7 +62,7 @@ build_ed <- function(x,
                      min_exposure = 0,
                      drop_invalid = FALSE) {
 
-  .assert_class(x, "triangle")
+  .assert_class(x, "Triangle")
 
   if (!is.numeric(min_exposure) || length(min_exposure) != 1L ||
       is.na(min_exposure))
@@ -156,7 +156,7 @@ build_ed <- function(x,
   data.table::setattr(z, "loss_var"    , l_var)
   data.table::setattr(z, "exposure_var", e_var)
 
-  .prepend_class(z, "ed")
+  .prepend_class(z, "ED")
 }
 
 
@@ -166,7 +166,7 @@ build_ed <- function(x,
 #'
 #' @description
 #' Compute group-wise summary statistics for incremental loss intensity
-#' \eqn{g} from an object of class `"ed"`. This function serves two
+#' \eqn{g} from an object of class `"ED"`. This function serves two
 #' purposes:
 #'
 #' \enumerate{
@@ -196,7 +196,7 @@ build_ed <- function(x,
 #'     are numerically equivalent.}
 #' }
 #'
-#' @param object An object of class `"ed"`, typically produced by
+#' @param object An object of class `"ED"`, typically produced by
 #'   [build_ed()].
 #' @param alpha Numeric scalar controlling the variance structure in the
 #'   WLS fit. Default is `1`.
@@ -204,19 +204,19 @@ build_ed <- function(x,
 #'   Default is `5`. Pass `NULL` to skip rounding.
 #' @param ... Additional arguments passed to the internal WLS estimation.
 #'
-#' @return A `data.table` with class `"ed_summary"` containing one row
+#' @return A `data.table` with class `"EDSummary"` containing one row
 #'   per development link with descriptive statistics and WLS estimates.
 #'
 #' @seealso [build_ed()], [fit_ed()]
 #'
-#' @method summary ed
+#' @method summary ED
 #' @export
-summary.ed <- function(object,
+summary.ED <- function(object,
                        alpha  = 1,
                        digits = 5,
                        ...) {
 
-  .assert_class(object, "ed")
+  .assert_class(object, "ED")
 
   grp_var <- attr(object, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
@@ -285,7 +285,7 @@ summary.ed <- function(object,
   data.table::setattr(ds, "loss_var"    , attr(object, "loss_var"))
   data.table::setattr(ds, "exposure_var", attr(object, "exposure_var"))
 
-  .prepend_class(ds, "ed_summary")
+  .prepend_class(ds, "EDSummary")
 }
 
 
@@ -295,7 +295,7 @@ summary.ed <- function(object,
 #'
 #' @description
 #' Estimate incremental loss intensities \eqn{g_k} from an object of
-#' class `"ed"` and return an `"ed_fit"` object that bundles factor
+#' class `"ED"` and return an `"EDFit"` object that bundles factor
 #' summaries, selected intensities, and maturity diagnostics.
 #'
 #' Two methods are supported via the `method` argument:
@@ -306,7 +306,7 @@ summary.ed <- function(object,
 #'     added as `g_var` column in `$selected`.}
 #' }
 #'
-#' @param x An object of class `"ed"`, typically produced by
+#' @param x An object of class `"ED"`, typically produced by
 #'   [build_ed()].
 #' @param method One of `"basic"` or `"mack"`. Default is `"basic"`.
 #' @param alpha Numeric scalar controlling the variance structure. Default
@@ -318,11 +318,11 @@ summary.ed <- function(object,
 #'   `"min_last2"` (default), `"locf"`, or `"loglinear"`.
 #' @param recent Optional positive integer. When supplied, only the most
 #'   recent `recent` periods are used for estimation. Default is `NULL`.
-#' @param ... Additional arguments passed to [summary.ed()].
+#' @param ... Additional arguments passed to [summary.ED()].
 #'
-#' @return An object of class `"ed_fit"` (a named list).
+#' @return An object of class `"EDFit"` (a named list).
 #'
-#' @seealso [build_ed()], [summary.ed()], [fit_lr()]
+#' @seealso [build_ed()], [summary.ED()], [fit_lr()]
 #'
 #' @export
 fit_ed <- function(x,
@@ -333,7 +333,7 @@ fit_ed <- function(x,
                    recent        = NULL,
                    ...) {
 
-  .assert_class(x, "ed")
+  .assert_class(x, "ED")
 
   method       <- match.arg(method)
   na_method    <- match.arg(na_method)
@@ -382,7 +382,7 @@ fit_ed <- function(x,
     recent       = recent
   )
 
-  class(out) <- c("ed_fit", "list")
+  class(out) <- c("EDFit", "list")
 
   # 7) mack: add factor variance
   if (method == "mack") {
@@ -393,38 +393,38 @@ fit_ed <- function(x,
 }
 
 
-#' Summary method for `ed_fit`
+#' Summary method for `EDFit`
 #'
 #' @description
-#' Returns the factor-level `ed_summary` carried by the fit, i.e. one row
+#' Returns the factor-level `EDSummary` carried by the fit, i.e. one row
 #' per development link with fitted intensity `g`, standard error, and
 #' diagnostic statistics.
 #'
-#' @param object An object of class `"ed_fit"`.
+#' @param object An object of class `"EDFit"`.
 #' @param ... Unused.
 #'
-#' @return A `data.table` of class `"ed_summary"`.
+#' @return A `data.table` of class `"EDSummary"`.
 #'
-#' @method summary ed_fit
+#' @method summary EDFit
 #' @export
-summary.ed_fit <- function(object, ...) {
+summary.EDFit <- function(object, ...) {
   object$factor
 }
 
 
-#' Print an `ed_fit` object
+#' Print an `EDFit` object
 #'
-#' @param x An object of class `"ed_fit"`.
+#' @param x An object of class `"EDFit"`.
 #' @param ... Unused.
 #'
-#' @method print ed_fit
+#' @method print EDFit
 #' @export
-print.ed_fit <- function(x, ...) {
+print.EDFit <- function(x, ...) {
 
   grp_var <- attr(x$ed, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)
 
-  cat("<ed_fit>\n")
+  cat("<EDFit>\n")
   cat("method      :", x$method,                    "\n")
   cat("loss_var    :", attr(x$ed, "loss_var"),     "\n")
   cat("exposure_var:", attr(x$ed, "exposure_var"), "\n")
@@ -469,7 +469,7 @@ print.ed_fit <- function(x, ...) {
                    na_rm = TRUE,
                    tol   = 1e-12) {
 
-  .assert_class(x, "ed")
+  .assert_class(x, "ED")
 
   if (!is.numeric(alpha) || length(alpha) != 1L || is.na(alpha))
     stop("`alpha` must be a single non-missing numeric value.", call. = FALSE)
@@ -642,7 +642,7 @@ print.ed_fit <- function(x, ...) {
 #' Used by [fit_ed()] when `method = "mack"` and by [fit_lr()] for the
 #' ED component.
 #'
-#' @param ed_fit An object of class `"ed_fit"`.
+#' @param ed_fit An object of class `"EDFit"`.
 #' @param alpha Numeric scalar. Default is `1`.
 #'
 #' @return The `$selected` `data.table` with `g_var` column.
@@ -650,7 +650,7 @@ print.ed_fit <- function(x, ...) {
 #' @keywords internal
 .mack_g_var <- function(ed_fit, alpha = 1) {
 
-  .assert_class(ed_fit, "ed_fit")
+  .assert_class(ed_fit, "EDFit")
 
   grp_var <- attr(ed_fit$ed, "group_var")
   if (is.null(grp_var)) grp_var <- character(0)

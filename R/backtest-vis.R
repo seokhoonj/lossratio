@@ -3,7 +3,7 @@
 #' Plot a backtest object
 #'
 #' @description
-#' Visualise the Actual-Expected Gap (AEG) of a `"backtest"` object.
+#' Visualise the Actual-Expected Gap (AEG) of a `"Backtest"` object.
 #'
 #' Three plot types:
 #' \itemize{
@@ -13,7 +13,7 @@
 #'   \item `"cell"`: per-cell AEG as a scatter / line, faceted by group.
 #' }
 #'
-#' @param x An object of class `"backtest"`.
+#' @param x An object of class `"Backtest"`.
 #' @param type Plot type. One of `"col"`, `"diag"`, `"cell"`.
 #' @param scales Facet scale argument. One of `"fixed"`, `"free"`,
 #'   `"free_x"`, `"free_y"`.
@@ -22,15 +22,15 @@
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot backtest
+#' @method plot Backtest
 #' @export
-plot.backtest <- function(x,
+plot.Backtest <- function(x,
                           type   = c("col", "diag", "cell"),
                           scales = c("fixed", "free_y", "free_x", "free"),
                           theme  = c("view", "save", "shiny"),
                           ...) {
 
-  .assert_class(x, "backtest")
+  .assert_class(x, "Backtest")
   type   <- match.arg(type)
   scales <- match.arg(scales)
   theme  <- match.arg(theme)
@@ -133,19 +133,19 @@ plot.backtest <- function(x,
 #' Display the held-out cells as a `cohort x dev` heatmap coloured by
 #' AEG (red = under-predicted, blue = over-predicted, white at 0).
 #'
-#' @param x An object of class `"backtest"`.
+#' @param x An object of class `"Backtest"`.
 #' @param theme String passed to [.switch_theme()].
 #' @param ... Extra arguments passed to [.switch_theme()].
 #'
 #' @return A `ggplot` object.
 #'
-#' @method plot_triangle backtest
+#' @method plot_triangle Backtest
 #' @export
-plot_triangle.backtest <- function(x,
+plot_triangle.Backtest <- function(x,
                                    theme = c("view", "save", "shiny"),
                                    ...) {
 
-  .assert_class(x, "backtest")
+  .assert_class(x, "Backtest")
   theme <- match.arg(theme)
 
   grp_var <- x$group_var

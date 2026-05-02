@@ -45,7 +45,7 @@ that every cohort has a consecutive \code{dev_var} sequence. Default
 observed periods); use \code{\link[=validate_triangle]{validate_triangle()}} to inspect first.}
 }
 \value{
-A data.frame with class \code{"total"} containing:
+A data.frame with class \code{"Total"} containing:
 \describe{
 \item{n_obs}{Number of observed development periods}
 \item{sales_start}{First observed period}

@@ -39,7 +39,7 @@ raises an error when gaps are detected. Use
 \code{\link[=validate_triangle]{validate_triangle()}} to inspect gaps before deciding.}
 }
 \value{
-A data.frame with class \code{"triangle"}, containing the following
+A data.frame with class \code{"Triangle"}, containing the following
 derived columns:
 \describe{
 \item{n_obs}{Number of distinct periods observed}
@@ -53,7 +53,7 @@ derived columns:
 }
 
 The returned object also has an attribute \code{"longer"} containing
-a melted long-format version (\code{class = "triangle_longer"}).
+a melted long-format version (\code{class = "TriangleLonger"}).
 }
 \description{
 Aggregate experience data into a development structure by grouping,
