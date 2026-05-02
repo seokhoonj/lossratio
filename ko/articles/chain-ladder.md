@@ -19,7 +19,7 @@ tri <- build_triangle(exp, group_var = cv_nm)
 
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 print(cl)
-#> <cl_fit>
+#> <CLFit>
 #> method      : mack 
 #> value_var   : closs 
 #> weight_var  : none 
@@ -260,7 +260,7 @@ the extrapolation:
 ``` r
 
 fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
-#> <cl_fit>
+#> <CLFit>
 #> method      : mack 
 #> value_var   : closs 
 #> weight_var  : none 
@@ -280,8 +280,7 @@ fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
   [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md)
   instead.
 - [`vignette("triangle-diagnostics")`](https://seokhoonj.github.io/lossratio/ko/articles/triangle-diagnostics.md)
-  —
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md),
+  — [`summary()`](https://rdrr.io/r/base/summary.html),
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/ko/reference/find_ata_maturity.md),
   ata diagnostic plots.
 - [`?fit_cl`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md),

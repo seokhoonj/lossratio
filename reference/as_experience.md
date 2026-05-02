@@ -1,13 +1,13 @@
-# Coerce a dataset to an `experience` object
+# Coerce a dataset to an `Experience` object
 
-Coerce a data.frame to a minimal `experience` object for loss ratio
+Coerce a data.frame to a minimal `Experience` object for loss ratio
 analysis.
 
 This function checks that the input contains the minimum required
 columns, attempts to coerce them to the expected classes, optionally
 derives standard period variables via
 [`add_experience_period()`](https://seokhoonj.github.io/lossratio/reference/add_experience_period.md),
-and prepends class `"experience"`.
+and prepends class `"Experience"`.
 
 The function intentionally performs only minimal coercion. Other columns
 such as grouping variables or presentation variables are left unchanged
@@ -33,7 +33,7 @@ as_experience(df, add_period = TRUE)
 
 ## Value
 
-A data.frame with class `"experience"` prepended.
+A data.frame with class `"Experience"` prepended.
 
 ## Details
 

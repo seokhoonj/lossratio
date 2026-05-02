@@ -19,7 +19,7 @@ for the ED component.
 
 - ed_fit:
 
-  An object of class `"ed_fit"`.
+  An object of class `"EDFit"`.
 
 - alpha:
 

@@ -10,12 +10,12 @@ Validation, coercion, and helpers for raw experience data.
 - [`is_experience()`](https://seokhoonj.github.io/lossratio/reference/is_experience.md)
   :
 
-  Check whether an object is an `experience`
+  Check whether an object is an `Experience`
 
 - [`as_experience()`](https://seokhoonj.github.io/lossratio/reference/as_experience.md)
   :
 
-  Coerce a dataset to an `experience` object
+  Coerce a dataset to an `Experience` object
 
 - [`add_experience_period()`](https://seokhoonj.github.io/lossratio/reference/add_experience_period.md)
   : Add standard period variables to an experience dataset
@@ -43,13 +43,12 @@ Building blocks of the chain-ladder method.
 - [`build_ata()`](https://seokhoonj.github.io/lossratio/reference/build_ata.md)
   :
 
-  Build age-to-age (ata) factors from `triangle` data
+  Build age-to-age (ata) factors from `Triangle` data
 
 - [`fit_ata()`](https://seokhoonj.github.io/lossratio/reference/fit_ata.md)
   : Fit age-to-age development factors
 
-- [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
-  [`summary(`*`<ata>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
+- [`summary(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md)
   : Summarise age-to-age factor statistics
 
 - [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md)
@@ -63,8 +62,7 @@ Building blocks of the exposure-driven method.
   : Build exposure-driven development data
 - [`fit_ed()`](https://seokhoonj.github.io/lossratio/reference/fit_ed.md)
   : Fit ED intensity factors
-- [`summary_ed()`](https://seokhoonj.github.io/lossratio/reference/summary_ed.md)
-  [`summary(`*`<ed>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary_ed.md)
+- [`summary(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ED.md)
   : Summarise ED intensity statistics
 
 ## Projection
@@ -75,7 +73,7 @@ Chain ladder and loss-ratio projection. `fit_lr` supports three methods
 - [`fit_cl()`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md)
   :
 
-  Fit chain ladder projection from a `triangle` object
+  Fit chain ladder projection from a `Triangle` object
 
 - [`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
   : Fit loss ratio projection model
@@ -85,9 +83,9 @@ Chain ladder and loss-ratio projection. `fit_lr` supports three methods
 Structural change detection across underwriting cohorts.
 
 - [`detect_cohort_regime()`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
-  [`print(`*`<cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
-  [`summary(`*`<cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
-  [`print(`*`<summary.cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  [`print(`*`<CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  [`summary(`*`<CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  [`print(`*`<summary.CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
   : Detect structural regime shifts across underwriting cohorts
 
 ## Backtest
@@ -96,9 +94,9 @@ Hold out the latest calendar diagonals from a triangle, refit, and
 compare projections against the withheld actuals.
 
 - [`backtest()`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  [`print(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  [`summary(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  [`print(`*`<summary.backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
+  [`print(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
+  [`summary(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
+  [`print(`*`<summary.Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
   : Backtest a loss-ratio / chain ladder fit on existing data
 
 ## Visualisation
@@ -110,41 +108,41 @@ and
 
 - [`plot_triangle()`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.md)
   : Triangle plot generic
-- [`plot(`*`<ata>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ata.md)
+- [`plot(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ATA.md)
   : Plot age-to-age factor diagnostics
-- [`plot(`*`<ata_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ata_fit.md)
+- [`plot(`*`<ATAFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ATAFit.md)
   : Plot an ata fit
-- [`plot(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.backtest.md)
+- [`plot(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Backtest.md)
   : Plot a backtest object
-- [`plot(`*`<calendar>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.calendar.md)
-  : Plot calendar-based development statistics
-- [`plot(`*`<cl_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.cl_fit.md)
+- [`plot(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.CLFit.md)
   : Plot a chain ladder fit
-- [`plot(`*`<cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.cohort_regime.md)
+- [`plot(`*`<Calendar>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Calendar.md)
+  : Plot calendar-based development statistics
+- [`plot(`*`<CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.CohortRegime.md)
   : Plot a cohort regime detection result
-- [`plot(`*`<ed>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ed.md)
+- [`plot(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ED.md)
   : Plot ED intensity diagnostics
-- [`plot(`*`<ed_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.ed_fit.md)
+- [`plot(`*`<EDFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.EDFit.md)
   : Plot an ED fit
-- [`plot(`*`<lr_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.lr_fit.md)
+- [`plot(`*`<LRFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.LRFit.md)
   : Plot a loss ratio fit
-- [`plot(`*`<triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.triangle.md)
+- [`plot(`*`<Triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot.Triangle.md)
   : Plot development trajectories with optional summary overlay
-- [`plot_triangle(`*`<ata>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ata.md)
+- [`plot_triangle(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ATA.md)
   : Plot ata factors as a triangle heatmap table
-- [`plot_triangle(`*`<ata_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ata_fit.md)
+- [`plot_triangle(`*`<ATAFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ATAFit.md)
   : Triangle heatmap for an ata fit
-- [`plot_triangle(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.backtest.md)
+- [`plot_triangle(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.Backtest.md)
   : Triangle heatmap of backtest AEG
-- [`plot_triangle(`*`<cl_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.cl_fit.md)
+- [`plot_triangle(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.CLFit.md)
   : Plot chain ladder results as a triangle table
-- [`plot_triangle(`*`<ed>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ed.md)
+- [`plot_triangle(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ED.md)
   : Plot ED intensities as a triangle heatmap table
-- [`plot_triangle(`*`<ed_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ed_fit.md)
+- [`plot_triangle(`*`<EDFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.EDFit.md)
   : Triangle heatmap for an ED fit
-- [`plot_triangle(`*`<lr_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.lr_fit.md)
+- [`plot_triangle(`*`<LRFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.LRFit.md)
   : Plot loss ratio projection as a triangle heatmap
-- [`plot_triangle(`*`<triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.triangle.md)
+- [`plot_triangle(`*`<Triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.Triangle.md)
   : Plot development values as a triangle table
 
 ## Other S3 methods
@@ -152,62 +150,60 @@ and
 print / summary / longer methods registered on package classes.
 
 - [`backtest()`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  [`print(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  [`summary(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  [`print(`*`<summary.backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
+  [`print(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
+  [`summary(`*`<Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
+  [`print(`*`<summary.Backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
   : Backtest a loss-ratio / chain ladder fit on existing data
 
 - [`detect_cohort_regime()`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
-  [`print(`*`<cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
-  [`summary(`*`<cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
-  [`print(`*`<summary.cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  [`print(`*`<CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  [`summary(`*`<CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
+  [`print(`*`<summary.CohortRegime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
   : Detect structural regime shifts across underwriting cohorts
 
-- [`print(`*`<ata_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.ata_fit.md)
+- [`print(`*`<ATAFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.ATAFit.md)
   :
 
-  Print an `ata_fit` object
+  Print an `ATAFit` object
 
-- [`print(`*`<cl_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.cl_fit.md)
+- [`print(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.CLFit.md)
   :
 
-  Print a `cl_fit` object
+  Print a `CLFit` object
 
-- [`print(`*`<ed_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.ed_fit.md)
+- [`print(`*`<EDFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.EDFit.md)
   :
 
-  Print an `ed_fit` object
+  Print an `EDFit` object
 
-- [`print(`*`<lr_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.lr_fit.md)
+- [`print(`*`<LRFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/print.LRFit.md)
   :
 
-  Print an `lr_fit` object
+  Print an `LRFit` object
 
-- [`summary(`*`<cl_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.cl_fit.md)
-  :
-
-  Summary method for `cl_fit`
-
-- [`summary(`*`<ed_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ed_fit.md)
-  :
-
-  Summary method for `ed_fit`
-
-- [`summary(`*`<lr_fit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.lr_fit.md)
-  :
-
-  Summary method for `lr_fit`
-
-- [`summary(`*`<triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.triangle.md)
-  : Summarise development statistics (Mean, Median, Weighted)
-
-- [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
-  [`summary(`*`<ata>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
+- [`summary(`*`<ATA>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md)
   : Summarise age-to-age factor statistics
 
-- [`summary_ed()`](https://seokhoonj.github.io/lossratio/reference/summary_ed.md)
-  [`summary(`*`<ed>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary_ed.md)
+- [`summary(`*`<CLFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.CLFit.md)
+  :
+
+  Summary method for `CLFit`
+
+- [`summary(`*`<ED>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.ED.md)
   : Summarise ED intensity statistics
+
+- [`summary(`*`<EDFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.EDFit.md)
+  :
+
+  Summary method for `EDFit`
+
+- [`summary(`*`<LRFit>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.LRFit.md)
+  :
+
+  Summary method for `LRFit`
+
+- [`summary(`*`<Triangle>`*`)`](https://seokhoonj.github.io/lossratio/reference/summary.Triangle.md)
+  : Summarise development statistics (Mean, Median, Weighted)
 
 ## Helpers
 

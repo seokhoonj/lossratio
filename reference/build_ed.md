@@ -1,7 +1,7 @@
 # Build exposure-driven development data
 
 Construct exposure-driven incremental development data from an object of
-class `"triangle"`, typically produced by
+class `"Triangle"`, typically produced by
 [`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md).
 This is the foundational data structure for the exposure-driven (ED)
 model, where incremental loss is modelled as a function of cumulative
@@ -31,7 +31,7 @@ build_ed(
 
 - x:
 
-  An object of class `"triangle"`.
+  An object of class `"Triangle"`.
 
 - loss_var:
 
@@ -53,7 +53,7 @@ build_ed(
 
 ## Value
 
-A `data.table` with class `"ed"` containing:
+A `data.table` with class `"ED"` containing:
 
 - `ata_from`:
 
@@ -98,7 +98,7 @@ The returned object carries the following attributes: `group_var`,
 ## See also
 
 [`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md),
-[`summary_ed()`](https://seokhoonj.github.io/lossratio/reference/summary_ed.md),
+[`summary.ED()`](https://seokhoonj.github.io/lossratio/reference/summary.ED.md),
 [`fit_ed()`](https://seokhoonj.github.io/lossratio/reference/fit_ed.md)
 
 ## Examples

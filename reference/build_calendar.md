@@ -106,7 +106,7 @@ build_calendar(
 
 ## Value
 
-A data.frame with class `"calendar"`, containing the following derived
+A data.frame with class `"Calendar"`, containing the following derived
 columns:
 
 - index:
@@ -146,7 +146,7 @@ columns:
   Cumulative loss ratio (`closs / crp`)
 
 The returned object also has an attribute `"longer"` containing a melted
-long-format version (`class = "calendar_longer"`).
+long-format version (`class = "CalendarLonger"`).
 
 ## Examples
 

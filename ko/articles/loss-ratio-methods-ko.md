@@ -4,7 +4,7 @@
 > CL](https://seokhoonj.github.io/lossratio/ko/loss-ratio-methods.md)
 
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md)
-은 `triangle` 객체로부터 코호트별 누적 손해율을 추정한다. 세 가지 방법이
+은 `Triangle` 객체로부터 코호트별 누적 손해율을 추정한다. 세 가지 방법이
 제공되며, 본 vignette 은 각 방법의 trade-off 를 설명한다.
 
 ## 표기

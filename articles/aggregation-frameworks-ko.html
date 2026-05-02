@@ -105,19 +105,19 @@ aggregation frameworks</a></p>
 <tbody>
 <tr class="odd">
 <td><code><a href="../reference/build_triangle.html">build_triangle()</a></code></td>
-<td><code>triangle</code></td>
+<td><code>Triangle</code></td>
 <td>코호트 × dev (2D)</td>
 <td>Chain ladder, ED, SA 추정</td>
 </tr>
 <tr class="even">
 <td><code><a href="../reference/build_calendar.html">build_calendar()</a></code></td>
-<td><code>calendar</code></td>
+<td><code>Calendar</code></td>
 <td>달력 기간 (1D)</td>
 <td>달력 연도 추세, 대각선 효과</td>
 </tr>
 <tr class="odd">
 <td><code><a href="../reference/build_total.html">build_total()</a></code></td>
-<td><code>total</code></td>
+<td><code>Total</code></td>
 <td>포트폴리오 합계 (그룹별)</td>
 <td>상위 수준 손해율 비교</td>
 </tr>
@@ -126,15 +126,15 @@ aggregation frameworks</a></p>
 <p>개념적으로 다음과 같다.</p>
 <ul>
 <li>
-<code>triangle</code> 은 코호트 축 (계약 인수 시점) 과 경과 축 (경과
+<code>Triangle</code> 은 코호트 축 (계약 인수 시점) 과 경과 축 (경과
 기간에 따라 손해가 누적되는 양상) 을 모두 보존한다. Chain ladder 의 표준
 데이터 구조이다.</li>
 <li>
-<code>calendar</code> 는 코호트를 대각선 위로 합산한다 — 각 행은
+<code>Calendar</code> 는 코호트를 대각선 위로 합산한다 — 각 행은
 모든 인수 코호트에 걸친 하나의 달력 기간이다. Triangle 의 대각선 합과
 동치이다.</li>
 <li>
-<code>total</code> 은 두 차원을 모두 합쳐 그룹당 하나의 값으로
+<code>Total</code> 은 두 차원을 모두 합쳐 그룹당 하나의 값으로
 축약한다. 포트폴리오 수준 비교에 유용하다 (해당 기간에 어떤 상품이 가장
 나쁜 손해율을 보였는가?).</li>
 </ul>
@@ -188,7 +188,7 @@ aggregation frameworks</a></p>
 <span>                        cohort_var <span class="op">=</span> <span class="st">"uyq"</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
 <p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="100%"></p>
-<p><code>triangle</code> 은 다음 함수의 입력으로 사용된다.</p>
+<p><code>Triangle</code> 은 다음 함수의 입력으로 사용된다.</p>
 <ul>
 <li>
 <code><a href="../reference/build_ata.html">build_ata()</a></code>, <code><a href="../reference/build_ed.html">build_ed()</a></code> — 발달 인자</li>
@@ -293,7 +293,7 @@ on-leveling 이벤트)</li>
    (cohort × dev)      (calendar series)     (portfolio total)
          │                    │                     │
          ▼                    ▼                     ▼
-     triangle             calendar               total
+     Triangle             Calendar               Total
    (2D, projection)     (1D, trend)         (0D, comparison)</code></pre>
 <p>세 빌더 모두 동일한 <code>experience</code> 에서 출발해 인구통계
 차원을 제거한다. 분석 질문에 맞춰 프레임워크를 선택한다.</p>

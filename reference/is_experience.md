@@ -1,6 +1,6 @@
-# Check whether an object is an `experience`
+# Check whether an object is an `Experience`
 
-Check whether an object is an `experience`
+Check whether an object is an `Experience`
 
 ## Usage
 

@@ -1,7 +1,7 @@
-# Build age-to-age (ata) factors from `triangle` data
+# Build age-to-age (ata) factors from `Triangle` data
 
 Construct age-to-age development factors from an object of class
-`triangle`, typically produced by
+`Triangle`, typically produced by
 [`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md).
 Age-to-age factors are calculated from cumulative values such as `closs`
 or `crp`.
@@ -28,7 +28,7 @@ build_ata(
 
 - x:
 
-  An object of class `triangle`.
+  An object of class `Triangle`.
 
 - value_var:
 
@@ -39,7 +39,7 @@ build_ata(
 
   An optional single cumulative metric used as weights in WLS estimation
   via
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md).
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md).
   Must be one of `"closs"`, `"crp"`, or `"clr"`, and must differ from
   `value_var`. Typical use is `weight_var = "crp"` when
   `value_var = "clr"`, since `clr` values are ratios and carry no
@@ -58,16 +58,16 @@ build_ata(
 
   Logical; if `TRUE`, rows with invalid (non-finite) age-to-age factors
   are dropped. Useful for clean output when passing to
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md)
   or
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md).
   When `FALSE` (default), all rows are retained, preserving the full
   triangle structure for diagnostic visualisation via
-  [`plot_triangle.ata()`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ata.md).
+  [`plot_triangle.ATA()`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.ATA.md).
 
 ## Value
 
-A data.frame with class `"ata"` containing:
+A data.frame with class `"ATA"` containing:
 
 - `ata_from`:
 
@@ -101,7 +101,7 @@ The returned object carries the following attributes: `group_var`,
 ## See also
 
 [`build_triangle()`](https://seokhoonj.github.io/lossratio/reference/build_triangle.md),
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md),
+[`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md),
 [`fit_ata()`](https://seokhoonj.github.io/lossratio/reference/fit_ata.md)
 
 ## Examples

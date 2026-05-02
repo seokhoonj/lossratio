@@ -1,7 +1,7 @@
 # Backtest a loss-ratio / chain ladder fit on existing data
 
 Hold out the latest `holdout` calendar diagonals from the input
-`triangle`, refit the model on the earlier portion, project the held-out
+`Triangle`, refit the model on the earlier portion, project the held-out
 cells, and compare the projection to the actual values that were
 withheld.
 
@@ -15,13 +15,13 @@ development period (`col_summary`) and by calendar diagonal
 ``` r
 backtest(x, holdout = 6L, fit_fn = fit_lr, value_var = "clr", ...)
 
-# S3 method for class 'backtest'
+# S3 method for class 'Backtest'
 print(x, ...)
 
-# S3 method for class 'backtest'
+# S3 method for class 'Backtest'
 summary(object, ...)
 
-# S3 method for class 'summary.backtest'
+# S3 method for class 'summary.Backtest'
 print(x, ...)
 ```
 
@@ -29,7 +29,7 @@ print(x, ...)
 
 - x:
 
-  A `"triangle"` object (or a `"backtest"` object for the S3
+  A `"Triangle"` object (or a `"Backtest"` object for the S3
   [`print()`](https://rdrr.io/r/base/print.html) method).
 
 - holdout:
@@ -60,12 +60,12 @@ print(x, ...)
 
 - object:
 
-  A `"backtest"` object. Used by the S3
+  A `"Backtest"` object. Used by the S3
   [`summary()`](https://rdrr.io/r/base/summary.html) method.
 
 ## Value
 
-An object of class `"backtest"` with components:
+An object of class `"Backtest"` with components:
 
 - `call`:
 
@@ -73,7 +73,7 @@ An object of class `"backtest"` with components:
 
 - `data`:
 
-  Original `triangle`.
+  Original `Triangle`.
 
 - `masked`:
 
@@ -108,7 +108,7 @@ An object of class `"backtest"` with components:
 
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md),
 [`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md),
-[`plot.backtest()`](https://seokhoonj.github.io/lossratio/ko/reference/plot.backtest.md)
+[`plot.Backtest()`](https://seokhoonj.github.io/lossratio/ko/reference/plot.Backtest.md)
 
 ## Examples
 

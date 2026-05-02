@@ -8,19 +8,19 @@ per framework. This vignette compares them.
 
 | Builder | Output object | Dimension | When to use |
 |----|----|----|----|
-| [`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md) | `triangle` | cohort × dev (2D) | Chain ladder, ED, SA projection |
-| [`build_calendar()`](https://seokhoonj.github.io/lossratio/ko/reference/build_calendar.md) | `calendar` | calendar period (1D) | Calendar-year trend, diagonal effect |
-| [`build_total()`](https://seokhoonj.github.io/lossratio/ko/reference/build_total.md) | `total` | portfolio total (per group) | High-level loss-ratio comparison |
+| [`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md) | `Triangle` | cohort × dev (2D) | Chain ladder, ED, SA projection |
+| [`build_calendar()`](https://seokhoonj.github.io/lossratio/ko/reference/build_calendar.md) | `Calendar` | calendar period (1D) | Calendar-year trend, diagonal effect |
+| [`build_total()`](https://seokhoonj.github.io/lossratio/ko/reference/build_total.md) | `Total` | portfolio total (per group) | High-level loss-ratio comparison |
 
 Conceptually:
 
-- `triangle` preserves both the cohort axis (when policies were
+- `Triangle` preserves both the cohort axis (when policies were
   underwritten) and the development axis (how loss accrues over
   development time). This is the canonical chain-ladder data structure.
-- `calendar` collapses cohorts onto the diagonal — each row is one
+- `Calendar` collapses cohorts onto the diagonal — each row is one
   calendar period across all underwriting cohorts. Equivalent to the
   diagonal sum of the triangle.
-- `total` collapses both dimensions to one value per group. Useful for
+- `Total` collapses both dimensions to one value per group. Useful for
   portfolio-level comparison (which product had the worst loss ratio
   over the window?).
 
@@ -84,7 +84,7 @@ plot_triangle(tri_q)   # cohort × dev heatmap of clr
 
 ![](aggregation-frameworks_files/figure-html/unnamed-chunk-2-2.png)
 
-Use `triangle` as input to: -
+Use `Triangle` as input to: -
 [`build_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ata.md),
 [`build_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ed.md)
 — development factors -
@@ -195,7 +195,7 @@ by reserve / share of portfolio - Build executive summary tables
        (cohort × dev)      (calendar series)     (portfolio total)
              │                    │                     │
              ▼                    ▼                     ▼
-         triangle             calendar               total
+         Triangle             Calendar               Total
        (2D, projection)     (1D, trend)         (0D, comparison)
 
 All three start from the same `experience` and aggregate demographic

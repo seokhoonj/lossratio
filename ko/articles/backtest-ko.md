@@ -29,7 +29,7 @@ tri_sur <- build_triangle(exp[cv_nm == "SUR"], cv_nm)
 
 bt <- backtest(tri_sur, holdout = 6L)
 print(bt)
-#> <backtest>
+#> <Backtest>
 #>   fit_fn      : fit_lr
 #>   value_var   : clr
 #>   holdout     : 6 calendar diagonals
@@ -39,7 +39,7 @@ print(bt)
 
 기본 적합 함수는 단계 적응적(stage-adaptive, SA) 손해율 추정
 (`fit_lr(method = "sa")`) 이며, 기본 비교 컬럼은 `value_var = "clr"`
-이다 (누적 손해율). 반환되는 객체는 `"backtest"` 리스트이며, 주요 슬롯은
+이다 (누적 손해율). 반환되는 객체는 `"Backtest"` 리스트이며, 주요 슬롯은
 다음과 같다.
 
 - `aeg` — 셀 단위 `data.table` (cohort, dev, actual, pred, aeg,
@@ -47,7 +47,7 @@ print(bt)
 - `col_summary` — `dev` 별로 집계된 AEG.
 - `diag_summary` — 대각선별로 집계된 AEG.
 - `masked` — 적합에 사용된 triangle (최근 대각선이 제거됨).
-- `fit` — `fit_fn` 이 반환한 적합 객체 (`lr_fit` 또는 `cl_fit`).
+- `fit` — `fit_fn` 이 반환한 적합 객체 (`LRFit` 또는 `CLFit`).
 
 `summary(bt)` 는 호출 메타데이터와 함께 두 요약 표를 출력한다.
 
@@ -132,7 +132,7 @@ head(bt$aeg, 5)
 
 ## 플롯 데모
 
-`"backtest"` 에는 네 가지 플롯 뷰가 등록되어 있다.
+`"Backtest"` 에는 네 가지 플롯 뷰가 등록되어 있다.
 
 ``` r
 
@@ -206,7 +206,7 @@ bt_ed_clr   <- backtest(tri_sur, holdout = 6L, method = "ed")
 bt_cl_clr   <- backtest(tri_sur, holdout = 6L, method = "cl")
 
 print(bt_sa_clr)
-#> <backtest>
+#> <Backtest>
 #>   fit_fn      : fit_lr
 #>   value_var   : clr
 #>   holdout     : 6 calendar diagonals
@@ -234,5 +234,5 @@ print(bt_sa_clr)
   [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md)
   및 `"sa"`, `"ed"`, `"cl"` 방법.
 - [`?backtest`](https://seokhoonj.github.io/lossratio/ko/reference/backtest.md),
-  [`?plot.backtest`](https://seokhoonj.github.io/lossratio/ko/reference/plot.backtest.md),
-  [`?plot_triangle.backtest`](https://seokhoonj.github.io/lossratio/ko/reference/plot_triangle.backtest.md).
+  [`?plot.Backtest`](https://seokhoonj.github.io/lossratio/ko/reference/plot.Backtest.md),
+  [`?plot_triangle.Backtest`](https://seokhoonj.github.io/lossratio/ko/reference/plot_triangle.Backtest.md).

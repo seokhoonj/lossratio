@@ -106,19 +106,19 @@ one builder per framework. This vignette compares them.</p>
 <tbody>
 <tr class="odd">
 <td><code><a href="../reference/build_triangle.html">build_triangle()</a></code></td>
-<td><code>triangle</code></td>
+<td><code>Triangle</code></td>
 <td>cohort × dev (2D)</td>
 <td>Chain ladder, ED, SA projection</td>
 </tr>
 <tr class="even">
 <td><code><a href="../reference/build_calendar.html">build_calendar()</a></code></td>
-<td><code>calendar</code></td>
+<td><code>Calendar</code></td>
 <td>calendar period (1D)</td>
 <td>Calendar-year trend, diagonal effect</td>
 </tr>
 <tr class="odd">
 <td><code><a href="../reference/build_total.html">build_total()</a></code></td>
-<td><code>total</code></td>
+<td><code>Total</code></td>
 <td>portfolio total (per group)</td>
 <td>High-level loss-ratio comparison</td>
 </tr>
@@ -127,16 +127,16 @@ one builder per framework. This vignette compares them.</p>
 <p>Conceptually:</p>
 <ul>
 <li>
-<code>triangle</code> preserves both the cohort axis (when policies
+<code>Triangle</code> preserves both the cohort axis (when policies
 were underwritten) and the development axis (how loss accrues over
 development time). This is the canonical chain-ladder data
 structure.</li>
 <li>
-<code>calendar</code> collapses cohorts onto the diagonal — each row
+<code>Calendar</code> collapses cohorts onto the diagonal — each row
 is one calendar period across all underwriting cohorts. Equivalent to
 the diagonal sum of the triangle.</li>
 <li>
-<code>total</code> collapses both dimensions to one value per group.
+<code>Total</code> collapses both dimensions to one value per group.
 Useful for portfolio-level comparison (which product had the worst loss
 ratio over the window?).</li>
 </ul>
@@ -190,7 +190,7 @@ premium. Visualise as line plot or heatmap:</p>
 <span>                        cohort_var <span class="op">=</span> <span class="st">"uyq"</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># cohort × dev heatmap of clr</span></span></code></pre></div>
 <p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="100%"></p>
-<p>Use <code>triangle</code> as input to: - <code><a href="../reference/build_ata.html">build_ata()</a></code>,
+<p>Use <code>Triangle</code> as input to: - <code><a href="../reference/build_ata.html">build_ata()</a></code>,
 <code><a href="../reference/build_ed.html">build_ed()</a></code> — development factors - <code><a href="../reference/fit_cl.html">fit_cl()</a></code>,
 <code><a href="../reference/fit_lr.html">fit_lr()</a></code> — projection - <code><a href="../reference/detect_cohort_regime.html">detect_cohort_regime()</a></code>
 — structural change detection</p>
@@ -283,7 +283,7 @@ tables</p>
    (cohort × dev)      (calendar series)     (portfolio total)
          │                    │                     │
          ▼                    ▼                     ▼
-     triangle             calendar               total
+     Triangle             Calendar               Total
    (2D, projection)     (1D, trend)         (0D, comparison)</code></pre>
 <p>All three start from the same <code>experience</code> and aggregate
 demographic dimensions away. Choose the framework based on the

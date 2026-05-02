@@ -25,8 +25,8 @@ steps:
 
 - ata_summary:
 
-  A `data.table` of class `"ata_summary"` from
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md).
+  A `data.table` of class `"ATASummary"` from
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/ko/reference/summary.ATA.md).
 
 - maturity:
 

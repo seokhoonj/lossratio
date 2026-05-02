@@ -2,7 +2,7 @@
 
 Detect structural change points in the sequence of cohort-level
 development trajectories. Each underwriting cohort (indexed by the
-`cohort_var` of a `"triangle"` object) is treated as a feature vector
+`cohort_var` of a `"Triangle"` object) is treated as a feature vector
 whose entries are the selected `value_var` observed at development
 periods `1, ..., K`. Cohorts are then ordered by underwriting period and
 tested for structural shifts in the multivariate sequence.
@@ -45,13 +45,13 @@ detect_cohort_regime(
   ...
 )
 
-# S3 method for class 'cohort_regime'
+# S3 method for class 'CohortRegime'
 print(x, ...)
 
-# S3 method for class 'cohort_regime'
+# S3 method for class 'CohortRegime'
 summary(object, ...)
 
-# S3 method for class 'summary.cohort_regime'
+# S3 method for class 'summary.CohortRegime'
 print(x, ...)
 ```
 
@@ -59,10 +59,10 @@ print(x, ...)
 
 - x:
 
-  An object of class `"triangle"`. Must correspond to a single group (no
+  An object of class `"Triangle"`. Must correspond to a single group (no
   `group_var` or a single-value `group_var` subset). Also used by S3
   [`print()`](https://rdrr.io/r/base/print.html) method on
-  `cohort_regime` objects.
+  `CohortRegime` objects.
 
 - value_var:
 
@@ -99,12 +99,12 @@ print(x, ...)
 
 - object:
 
-  An object of class `"cohort_regime"`. Used by the S3
+  An object of class `"CohortRegime"`. Used by the S3
   [`summary()`](https://rdrr.io/r/base/summary.html) method.
 
 ## Value
 
-An object of class `"cohort_regime"` with components:
+An object of class `"CohortRegime"` with components:
 
 - `call`:
 
@@ -151,7 +151,7 @@ An object of class `"cohort_regime"` with components:
 
 ## See also
 
-[`plot.cohort_regime()`](https://seokhoonj.github.io/lossratio/ko/reference/plot.cohort_regime.md),
+[`plot.CohortRegime()`](https://seokhoonj.github.io/lossratio/ko/reference/plot.CohortRegime.md),
 [`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md)
 
 ## Examples

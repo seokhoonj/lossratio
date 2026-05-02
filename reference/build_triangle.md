@@ -86,7 +86,7 @@ build_triangle(
 
 ## Value
 
-A data.frame with class `"triangle"`, containing the following derived
+A data.frame with class `"Triangle"`, containing the following derived
 columns:
 
 - n_obs:
@@ -122,7 +122,7 @@ columns:
   Cumulative loss ratio (`closs / crp`)
 
 The returned object also has an attribute `"longer"` containing a melted
-long-format version (`class = "triangle_longer"`).
+long-format version (`class = "TriangleLonger"`).
 
 ## Examples
 

@@ -143,7 +143,7 @@ for spotting cohorts that deviate from the central tendency.</p>
 <span><span class="co">#&gt; 4: 0.49175016</span></span>
 <span><span class="co">#&gt; 5: 0.49843641</span></span>
 <span><span class="co">#&gt; 6: 0.52060534</span></span></code></pre></div>
-<p>Returns a <code>triangle_summary</code> object with mean / median /
+<p>Returns a <code>TriangleSummary</code> object with mean / median /
 weighted loss ratios per (group, dev) cell.</p>
 </div>
 </div>
@@ -152,7 +152,7 @@ weighted loss ratios per (group, dev) cell.</p>
 </h2>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ata</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ata.html">build_ata</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span><span class="op">)</span></span>
-<span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_ata.html">summary_ata</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
 <span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link    mean median     wt    cv      f   f_se</span></span>
@@ -171,8 +171,8 @@ weighted loss ratios per (group, dev) cell.</p>
 <span><span class="co">#&gt; 4: 0.128  5616.591    26      26     0     0       1.000</span></span>
 <span><span class="co">#&gt; 5: 0.068  3445.872    25      25     0     0       1.000</span></span>
 <span><span class="co">#&gt; 6: 0.056  3158.200    24      24     0     0       1.000</span></span></code></pre></div>
-<p><code><a href="../reference/summary_ata.html">summary_ata()</a></code> computes per-link statistics that drive
-maturity detection:</p>
+<p>The <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> method on an <code>ATA</code> object
+computes per-link statistics that drive maturity detection:</p>
 <ul>
 <li>
 <code>mean</code>, <code>median</code>, <code>wt</code> —
@@ -195,7 +195,7 @@ relative standard error.</li>
 the share of finite ata factors per link.</li>
 </ul>
 <div class="section level3">
-<h3 id="diagnostic-plots-for-ata">Diagnostic plots for <code>ata</code><a class="anchor" aria-label="anchor" href="#diagnostic-plots-for-ata"></a>
+<h3 id="diagnostic-plots-for-ata">Diagnostic plots for <code>ATA</code><a class="anchor" aria-label="anchor" href="#diagnostic-plots-for-ata"></a>
 </h3>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"cv"</span><span class="op">)</span>            <span class="co"># CV vs ata link with maturity overlay</span></span></code></pre></div>
@@ -237,11 +237,11 @@ deviate from the link’s median.</p>
 factors are stable enough to trust for chain-ladder projection. Used
 internally by <code>fit_lr(method = "sa")</code> to switch from ED to
 CL.</p>
-<p><code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> operates on a
-<code><a href="../reference/summary_ata.html">summary_ata()</a></code> object — first build the descriptive / WLS
-summary, then probe it for the first mature link:</p>
+<p><code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> operates on a summary of an
+<code>ATA</code> object — first build the descriptive / WLS summary via
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>, then probe it for the first mature link:</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_ata.html">summary_ata</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">mat</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/find_ata_maturity.html">find_ata_maturity</a></span><span class="op">(</span></span>
 <span>  <span class="va">sm</span>,</span>
 <span>  cv_threshold    <span class="op">=</span> <span class="fl">0.10</span>,    <span class="co"># CV must be below this</span></span>
@@ -271,8 +271,7 @@ are also stored as attributes on the returned object.
 <code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> is also called internally by
 <code><a href="../reference/fit_ata.html">fit_ata()</a></code> and <code><a href="../reference/fit_cl.html">fit_cl()</a></code> when
 <code>maturity_args</code> is supplied (the <code>alpha</code> of the
-internal <code><a href="../reference/summary_ata.html">summary_ata()</a></code> step is taken from those
-callers).</p>
+internal <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> step is taken from those callers).</p>
 <p>Tune the thresholds to your portfolio’s volatility profile. Tight
 thresholds (e.g. <code>cv_threshold = 0.05</code>) push maturity later;
 loose thresholds push it earlier.</p>
@@ -282,7 +281,7 @@ loose thresholds push it earlier.</p>
 </h2>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ed.html">build_ed</a></span><span class="op">(</span><span class="va">tri</span>, loss_var <span class="op">=</span> <span class="st">"closs"</span>, exposure_var <span class="op">=</span> <span class="st">"crp"</span><span class="op">)</span></span>
-<span><span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_ed.html">summary_ed</a></span><span class="op">(</span><span class="va">ed</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ed</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
 <span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link    mean  median      wt      cv       g</span></span>
@@ -310,9 +309,9 @@ loose thresholds push it earlier.</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">ed</span><span class="op">)</span></span></code></pre></div>
 <p><img src="triangle-diagnostics_files/figure-html/unnamed-chunk-9-3.png" class="r-plt" alt="" width="100%"></p>
-<p><code><a href="../reference/summary_ed.html">summary_ed()</a></code> is the ED-side analogue of
-<code><a href="../reference/summary_ata.html">summary_ata()</a></code>, computing per-link statistics for the
-intensity
+<p>The <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> method on an <code>ED</code> object is the
+ED-side analogue of <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> on an <code>ATA</code>
+object, computing per-link statistics for the intensity
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mi mathvariant="normal">Δ</mi><msubsup><mi>C</mi><mi>k</mi><mi>L</mi></msubsup><mi>/</mi><msubsup><mi>C</mi><mi>k</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">g_k = \Delta C^L_k / C^P_k</annotation></semantics></math>.</p>
 </div>
 <div class="section level2">
@@ -325,7 +324,7 @@ before <code><a href="../reference/build_triangle.html">build_triangle()</a></co
 <span>                          cohort_var <span class="op">=</span> <span class="st">"uym"</span>, dev_var <span class="op">=</span> <span class="st">"elap_m"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">gaps</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Empty data.table (0 rows and 5 cols): cv_nm,uym,n_observed,n_expected,missing</span></span></code></pre></div>
-<p>Returns a <code>triangle_validation</code> object with one row per
+<p>Returns a <code>TriangleValidation</code> object with one row per
 cohort that has non-consecutive development periods. An empty result
 means the triangle is clean.</p>
 <p>If gaps exist, options:</p>
@@ -345,7 +344,7 @@ reserving regime shift), restrict estimation to the recent calendar
 diagonals:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/fit_ata.html">fit_ata</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span>        <span class="co"># last 12 calendar diagonals</span></span>
-<span><span class="co">#&gt; &lt;ata_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;ATAFit&gt;</span></span>
 <span><span class="co">#&gt; alpha       : 1 </span></span>
 <span><span class="co">#&gt; sigma_method: min_last2 </span></span>
 <span><span class="co">#&gt; recent      : 12 </span></span>
@@ -354,7 +353,7 @@ diagonals:</p>
 <span><span class="co">#&gt; n_groups    : 4 </span></span>
 <span><span class="co">#&gt; ata links   : 116</span></span>
 <span><span class="fu"><a href="../reference/fit_cl.html">fit_cl</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;cl_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;CLFit&gt;</span></span>
 <span><span class="co">#&gt; method      : basic </span></span>
 <span><span class="co">#&gt; value_var   : closs </span></span>
 <span><span class="co">#&gt; weight_var  : none </span></span>
@@ -365,7 +364,7 @@ diagonals:</p>
 <span><span class="co">#&gt; groups      : cv_nm </span></span>
 <span><span class="co">#&gt; periods     : 30</span></span>
 <span><span class="fu"><a href="../reference/fit_lr.html">fit_lr</a></span><span class="op">(</span><span class="va">tri</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;lr_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;LRFit&gt;</span></span>
 <span><span class="co">#&gt; method        : sa </span></span>
 <span><span class="co">#&gt; loss_var      : closs </span></span>
 <span><span class="co">#&gt; exposure_var  : crp </span></span>

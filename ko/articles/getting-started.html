@@ -128,7 +128,7 @@ dimensions (<code>cv_nm</code>, <code>age_band</code>,
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">exp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as_experience.html">as_experience</a></span><span class="op">(</span><span class="va">experience</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">exp</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "experience" "data.table" "data.frame"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Experience" "data.table" "data.frame"</span></span></code></pre></div>
 <p><code><a href="../reference/as_experience.html">as_experience()</a></code> checks required columns
 (<code>cym</code>, <code>uym</code>, <code>loss</code>,
 <code>rp</code>), coerces date columns, and tags the class. Use
@@ -140,7 +140,7 @@ dimensions (<code>cv_nm</code>, <code>age_band</code>,
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tri</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span><span class="op">[</span><span class="va">cv_nm</span> <span class="op">==</span> <span class="st">"SUR"</span><span class="op">]</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "triangle"   "data.table" "data.frame"</span></span>
+<span><span class="co">#&gt; [1] "Triangle"   "data.table" "data.frame"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  [1] "cv_nm"      "n_obs"      "cohort"     "dev"        "loss"      </span></span>
 <span><span class="co">#&gt;  [6] "rp"         "closs"      "crp"        "margin"     "cmargin"   </span></span>
@@ -249,7 +249,7 @@ labels.</li>
 <code class="sourceCode R"><span><span class="co"># Age-to-age factors</span></span>
 <span><span class="va">ata</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ata.html">build_ata</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/fit_ata.html">fit_ata</a></span><span class="op">(</span><span class="va">ata</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;ata_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;ATAFit&gt;</span></span>
 <span><span class="co">#&gt; alpha       : 1 </span></span>
 <span><span class="co">#&gt; sigma_method: min_last2 </span></span>
 <span><span class="co">#&gt; recent      : all </span></span>
@@ -261,7 +261,7 @@ labels.</li>
 <span><span class="co"># Exposure-driven intensities</span></span>
 <span><span class="va">ed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ed.html">build_ed</a></span><span class="op">(</span><span class="va">tri</span>, loss_var <span class="op">=</span> <span class="st">"closs"</span>, exposure_var <span class="op">=</span> <span class="st">"crp"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/fit_ed.html">fit_ed</a></span><span class="op">(</span><span class="va">ed</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;ed_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;EDFit&gt;</span></span>
 <span><span class="co">#&gt; method      : basic </span></span>
 <span><span class="co">#&gt; loss_var    : closs </span></span>
 <span><span class="co">#&gt; exposure_var: crp </span></span>
@@ -476,7 +476,7 @@ before loss-ratio fitting on a homogeneous subset:</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sub</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span><span class="op">[</span><span class="va">cv_nm</span> <span class="op">==</span> <span class="st">"SUR"</span><span class="op">]</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/detect_cohort_regime.html">detect_cohort_regime</a></span><span class="op">(</span><span class="va">sub</span>, K <span class="op">=</span> <span class="fl">12</span>, method <span class="op">=</span> <span class="st">"ecp"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;cohort_regime&gt;</span></span>
+<span><span class="co">#&gt; &lt;CohortRegime&gt;</span></span>
 <span><span class="co">#&gt;   method      : ecp</span></span>
 <span><span class="co">#&gt;   value_var   : clr</span></span>
 <span><span class="co">#&gt;   window (K)  : elap_m 1, ..., 12</span></span>
@@ -504,7 +504,7 @@ walkthrough.</p>
 dive (Mack variance, tail factor).</li>
 <li>
 <code><a href="../articles/triangle-diagnostics.html">vignette("triangle-diagnostics")</a></code> —
-<code><a href="../reference/summary_ata.html">summary_ata()</a></code>, <code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code>, and
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>, <code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code>, and
 triangle-style visualisations.</li>
 <li>
 <code><a href="../articles/regime-detection.html">vignette("regime-detection")</a></code> —

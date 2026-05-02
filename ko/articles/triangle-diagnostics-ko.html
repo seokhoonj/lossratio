@@ -153,7 +153,7 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 <span><span class="co">#&gt; 5: 0.49843641</span></span>
 <span><span class="co">#&gt; 6: 0.52060534</span></span></code></pre></div>
 <p>(group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은
-<code>triangle_summary</code> 객체를 반환한다.</p>
+<code>TriangleSummary</code> 객체를 반환한다.</p>
 </div>
 </div>
 <div class="section level2">
@@ -161,7 +161,7 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 </h2>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ata</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ata.html">build_ata</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span><span class="op">)</span></span>
-<span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_ata.html">summary_ata</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
 <span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link    mean median     wt    cv      f   f_se</span></span>
@@ -180,8 +180,8 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 <span><span class="co">#&gt; 4: 0.128  5616.591    26      26     0     0       1.000</span></span>
 <span><span class="co">#&gt; 5: 0.068  3445.872    25      25     0     0       1.000</span></span>
 <span><span class="co">#&gt; 6: 0.056  3158.200    24      24     0     0       1.000</span></span></code></pre></div>
-<p><code><a href="../reference/summary_ata.html">summary_ata()</a></code> 는 성숙점 탐지를 구동하는 링크별 통계를
-계산한다.</p>
+<p><code>ATA</code> 객체의 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> 메소드는 성숙점 탐지를
+구동하는 링크별 통계를 계산한다.</p>
 <ul>
 <li>
 <code>mean</code>, <code>median</code>, <code>wt</code> — 각
@@ -205,7 +205,7 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 </ul>
 <div class="section level3">
 <h3 id="ata-진단-플롯">
-<code>ata</code> 진단 플롯<a class="anchor" aria-label="anchor" href="#ata-%EC%A7%84%EB%8B%A8-%ED%94%8C%EB%A1%AF"></a>
+<code>ATA</code> 진단 플롯<a class="anchor" aria-label="anchor" href="#ata-%EC%A7%84%EB%8B%A8-%ED%94%8C%EB%A1%AF"></a>
 </h3>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"cv"</span><span class="op">)</span>            <span class="co"># ata 링크별 CV (성숙점 overlay 포함)</span></span></code></pre></div>
@@ -247,11 +247,12 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 신뢰할 만큼 안정화되는 경과 기간 링크이다.
 <code>fit_lr(method = "sa")</code> 가 ED 에서 CL 로 전환할 때 내부적으로
 사용한다.</p>
-<p><code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> 는 <code><a href="../reference/summary_ata.html">summary_ata()</a></code> 객체를
-입력으로 받는다 — 먼저 기술/WLS 요약을 만들고, 거기서 첫 성숙 링크를
+<p><code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> 는 <code>ATA</code> 객체의
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> 결과를 입력으로 받는다 — 먼저
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> 로 기술/WLS 요약을 만들고, 거기서 첫 성숙 링크를
 탐색한다.</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_ata.html">summary_ata</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">sm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">mat</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/find_ata_maturity.html">find_ata_maturity</a></span><span class="op">(</span></span>
 <span>  <span class="va">sm</span>,</span>
 <span>  cv_threshold    <span class="op">=</span> <span class="fl">0.10</span>,    <span class="co"># CV 가 이 값보다 작아야 함</span></span>
@@ -279,9 +280,8 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 해당 링크의 전체 통계가 같이 실린다. 임계값 인자들은 반환 객체의
 attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.html">find_ata_maturity()</a></code> 는
 <code>maturity_args</code> 가 주어진 경우 <code><a href="../reference/fit_ata.html">fit_ata()</a></code> 와
-<code><a href="../reference/fit_cl.html">fit_cl()</a></code> 내부에서도 호출된다 (내부
-<code><a href="../reference/summary_ata.html">summary_ata()</a></code> 단계의 <code>alpha</code> 는 호출자의 값을
-그대로 받는다).</p>
+<code><a href="../reference/fit_cl.html">fit_cl()</a></code> 내부에서도 호출된다 (내부 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>
+단계의 <code>alpha</code> 는 호출자의 값을 그대로 받는다).</p>
 <p>임계값은 포트폴리오의 변동성 프로파일에 맞춰 조정한다. 임계값을
 빡빡하게 (예: <code>cv_threshold = 0.05</code>) 잡으면 성숙점이 뒤로
 밀리고, 느슨하게 잡으면 앞으로 당겨진다.</p>
@@ -291,7 +291,7 @@ attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.htm
 </h2>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ed.html">build_ed</a></span><span class="op">(</span><span class="va">tri</span>, loss_var <span class="op">=</span> <span class="st">"closs"</span>, exposure_var <span class="op">=</span> <span class="st">"crp"</span><span class="op">)</span></span>
-<span><span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/summary_ed.html">summary_ed</a></span><span class="op">(</span><span class="va">ed</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">sm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">ed</span>, alpha <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">sm</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm&gt;</span></span>
 <span><span class="co">#&gt;     cv_nm ata_from ata_to ata_link    mean  median      wt      cv       g</span></span>
@@ -319,8 +319,9 @@ attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.htm
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">ed</span><span class="op">)</span></span></code></pre></div>
 <p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-3.png" class="r-plt" alt="" width="100%"></p>
-<p><code><a href="../reference/summary_ed.html">summary_ed()</a></code> 는 <code><a href="../reference/summary_ata.html">summary_ata()</a></code> 의 ED 측
-대응물로, 강도
+<p><code>ED</code> 객체의 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> 메소드는
+<code>ATA</code> 객체의 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> 에 대응하는 ED 측
+분석으로, 강도
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mi mathvariant="normal">Δ</mi><msubsup><mi>C</mi><mi>k</mi><mi>L</mi></msubsup><mi>/</mi><msubsup><mi>C</mi><mi>k</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">g_k = \Delta C^L_k / C^P_k</annotation></semantics></math>
 에 대해 링크별 통계를 계산한다.</p>
 </div>
@@ -335,7 +336,7 @@ attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.htm
 <span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">gaps</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Empty data.table (0 rows and 5 cols): cv_nm,uym,n_observed,n_expected,missing</span></span></code></pre></div>
 <p>경과 기간이 비연속인 코호트마다 한 행씩을 담은
-<code>triangle_validation</code> 객체를 반환한다. 결과가 비어 있다면
+<code>TriangleValidation</code> 객체를 반환한다. 결과가 비어 있다면
 triangle 이 깨끗하다는 뜻이다.</p>
 <p>결손이 있는 경우의 선택지는 다음과 같다.</p>
 <ul>
@@ -354,7 +355,7 @@ triangle 이 깨끗하다는 뜻이다.</p>
 등) 추정을 최근 대각선으로 제한한다.</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/fit_ata.html">fit_ata</a></span><span class="op">(</span><span class="va">ata</span>, alpha <span class="op">=</span> <span class="fl">1</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span>        <span class="co"># 최근 12개 대각선</span></span>
-<span><span class="co">#&gt; &lt;ata_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;ATAFit&gt;</span></span>
 <span><span class="co">#&gt; alpha       : 1 </span></span>
 <span><span class="co">#&gt; sigma_method: min_last2 </span></span>
 <span><span class="co">#&gt; recent      : 12 </span></span>
@@ -363,7 +364,7 @@ triangle 이 깨끗하다는 뜻이다.</p>
 <span><span class="co">#&gt; n_groups    : 4 </span></span>
 <span><span class="co">#&gt; ata links   : 116</span></span>
 <span><span class="fu"><a href="../reference/fit_cl.html">fit_cl</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;cl_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;CLFit&gt;</span></span>
 <span><span class="co">#&gt; method      : basic </span></span>
 <span><span class="co">#&gt; value_var   : closs </span></span>
 <span><span class="co">#&gt; weight_var  : none </span></span>
@@ -374,7 +375,7 @@ triangle 이 깨끗하다는 뜻이다.</p>
 <span><span class="co">#&gt; groups      : cv_nm </span></span>
 <span><span class="co">#&gt; periods     : 30</span></span>
 <span><span class="fu"><a href="../reference/fit_lr.html">fit_lr</a></span><span class="op">(</span><span class="va">tri</span>, recent <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;lr_fit&gt;</span></span>
+<span><span class="co">#&gt; &lt;LRFit&gt;</span></span>
 <span><span class="co">#&gt; method        : sa </span></span>
 <span><span class="co">#&gt; loss_var      : closs </span></span>
 <span><span class="co">#&gt; exposure_var  : crp </span></span>

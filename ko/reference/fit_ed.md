@@ -1,7 +1,7 @@
 # Fit ED intensity factors
 
 Estimate incremental loss intensities \\g_k\\ from an object of class
-`"ed"` and return an `"ed_fit"` object that bundles factor summaries,
+`"ED"` and return an `"EDFit"` object that bundles factor summaries,
 selected intensities, and maturity diagnostics.
 
 Two methods are supported via the `method` argument:
@@ -34,7 +34,7 @@ fit_ed(
 
 - x:
 
-  An object of class `"ed"`, typically produced by
+  An object of class `"ED"`, typically produced by
   [`build_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ed.md).
 
 - method:
@@ -64,14 +64,14 @@ fit_ed(
 - ...:
 
   Additional arguments passed to
-  [`summary_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ed.md).
+  [`summary.ED()`](https://seokhoonj.github.io/lossratio/ko/reference/summary.ED.md).
 
 ## Value
 
-An object of class `"ed_fit"` (a named list).
+An object of class `"EDFit"` (a named list).
 
 ## See also
 
 [`build_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ed.md),
-[`summary_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ed.md),
+[`summary.ED()`](https://seokhoonj.github.io/lossratio/ko/reference/summary.ED.md),
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md)

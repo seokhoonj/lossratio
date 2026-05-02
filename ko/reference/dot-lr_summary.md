@@ -1,6 +1,6 @@
-# Summarise an `lr_fit` object by cohort
+# Summarise an `LRFit` object by cohort
 
-Summarise an `lr_fit` object by cohort
+Summarise an `LRFit` object by cohort
 
 ## Usage
 
@@ -12,7 +12,7 @@ Summarise an `lr_fit` object by cohort
 
 - x:
 
-  An object of class `"lr_fit"`.
+  An object of class `"LRFit"`.
 
 ## Value
 

@@ -38,7 +38,7 @@ the group-wise long-form condition
 - dev_var:
 
   Single column name for the development variable (e.g. `dev` for
-  `triangle` objects, or `ata_from` for `ata`/`ed` objects).
+  `Triangle` objects, or `ata_from` for `ATA`/`ED` objects).
 
 ## Value
 

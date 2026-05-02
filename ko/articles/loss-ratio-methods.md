@@ -1,7 +1,7 @@
 # Loss-ratio projection methods: SA, ED, CL
 
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md)
-projects cumulative loss ratio per cohort from a `triangle` object.
+projects cumulative loss ratio per cohort from a `Triangle` object.
 Three methods are available; this vignette explains the trade-offs.
 
 ## Notation

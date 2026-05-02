@@ -92,7 +92,7 @@ head(sm)
 #> 6: 0.52060534
 ```
 
-(group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은 `triangle_summary`
+(group, dev) 셀별 평균 / 중앙값 / 가중 손해율을 담은 `TriangleSummary`
 객체를 반환한다.
 
 ## Age-to-age 인자 진단
@@ -100,7 +100,7 @@ head(sm)
 ``` r
 
 ata <- build_ata(tri, value_var = "closs")
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 head(sm)
 #> Key: <cv_nm>
 #>     cv_nm ata_from ata_to ata_link    mean median     wt    cv      f   f_se
@@ -121,8 +121,8 @@ head(sm)
 #> 6: 0.056  3158.200    24      24     0     0       1.000
 ```
 
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
-는 성숙점 탐지를 구동하는 링크별 통계를 계산한다.
+`ATA` 객체의 [`summary()`](https://rdrr.io/r/base/summary.html) 메소드는
+성숙점 탐지를 구동하는 링크별 통계를 계산한다.
 
 - `mean`, `median`, `wt` — 각 링크에서 관측된 ata 인자의 기술 평균 (해당
   링크가 관측되지 않은 코호트는 제외).
@@ -133,7 +133,7 @@ head(sm)
 - `n_obs`, `n_valid`, `n_inf`, `n_nan`, `valid_ratio` — 관측 수와 링크별
   유한 ata 인자의 비율.
 
-### `ata` 진단 플롯
+### `ATA` 진단 플롯
 
 ``` r
 
@@ -204,14 +204,14 @@ plot_triangle(ata, show_maturity = TRUE)          # 성숙점 라인 overlay
 CL 로 전환할 때 내부적으로 사용한다.
 
 [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md)
-는
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
-객체를 입력으로 받는다 — 먼저 기술/WLS 요약을 만들고, 거기서 첫 성숙
-링크를 탐색한다.
+는 `ATA` 객체의 [`summary()`](https://rdrr.io/r/base/summary.html)
+결과를 입력으로 받는다 — 먼저
+[`summary()`](https://rdrr.io/r/base/summary.html) 로 기술/WLS 요약을
+만들고, 거기서 첫 성숙 링크를 탐색한다.
 
 ``` r
 
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 mat <- find_ata_maturity(
   sm,
   cv_threshold    = 0.10,    # CV 가 이 값보다 작아야 함
@@ -246,8 +246,8 @@ print(mat)
 와
 [`fit_cl()`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md)
 내부에서도 호출된다 (내부
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
-단계의 `alpha` 는 호출자의 값을 그대로 받는다).
+[`summary()`](https://rdrr.io/r/base/summary.html) 단계의 `alpha` 는
+호출자의 값을 그대로 받는다).
 
 임계값은 포트폴리오의 변동성 프로파일에 맞춰 조정한다. 임계값을 빡빡하게
 (예: `cv_threshold = 0.05`) 잡으면 성숙점이 뒤로 밀리고, 느슨하게 잡으면
@@ -258,7 +258,7 @@ print(mat)
 ``` r
 
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
-sm <- summary_ed(ed, alpha = 1)
+sm <- summary(ed, alpha = 1)
 head(sm)
 #> Key: <cv_nm>
 #>     cv_nm ata_from ata_to ata_link    mean  median      wt      cv       g
@@ -297,11 +297,10 @@ plot_triangle(ed)
 
 ![](triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-3.png)
 
-[`summary_ed()`](https://seokhoonj.github.io/lossratio/reference/summary_ed.md)
-는
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md)
-의 ED 측 대응물로, 강도 $`g_k = \Delta C^L_k / C^P_k`$ 에 대해 링크별
-통계를 계산한다.
+`ED` 객체의 [`summary()`](https://rdrr.io/r/base/summary.html) 메소드는
+`ATA` 객체의 [`summary()`](https://rdrr.io/r/base/summary.html) 에
+대응하는 ED 측 분석으로, 강도 $`g_k = \Delta C^L_k / C^P_k`$ 에 대해
+링크별 통계를 계산한다.
 
 ## 빌드 전 검증
 
@@ -317,7 +316,7 @@ head(gaps)
 #> Empty data.table (0 rows and 5 cols): cv_nm,uym,n_observed,n_expected,missing
 ```
 
-경과 기간이 비연속인 코호트마다 한 행씩을 담은 `triangle_validation`
+경과 기간이 비연속인 코호트마다 한 행씩을 담은 `TriangleValidation`
 객체를 반환한다. 결과가 비어 있다면 triangle 이 깨끗하다는 뜻이다.
 
 결손이 있는 경우의 선택지는 다음과 같다.
@@ -336,7 +335,7 @@ head(gaps)
 ``` r
 
 fit_ata(ata, alpha = 1, recent = 12)        # 최근 12개 대각선
-#> <ata_fit>
+#> <ATAFit>
 #> alpha       : 1 
 #> sigma_method: min_last2 
 #> recent      : 12 
@@ -345,7 +344,7 @@ fit_ata(ata, alpha = 1, recent = 12)        # 최근 12개 대각선
 #> n_groups    : 4 
 #> ata links   : 116
 fit_cl(tri, value_var = "closs", recent = 12)
-#> <cl_fit>
+#> <CLFit>
 #> method      : basic 
 #> value_var   : closs 
 #> weight_var  : none 
@@ -356,7 +355,7 @@ fit_cl(tri, value_var = "closs", recent = 12)
 #> groups      : cv_nm 
 #> periods     : 30
 fit_lr(tri, recent = 12)
-#> <lr_fit>
+#> <LRFit>
 #> method        : sa 
 #> loss_var      : closs 
 #> exposure_var  : crp 

@@ -27,7 +27,7 @@ avoid numerical noise from essentially perfect fits.
 
 - x:
 
-  An object of class `"ata"`.
+  An object of class `"ATA"`.
 
 - weights:
 

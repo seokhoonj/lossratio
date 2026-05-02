@@ -1,6 +1,6 @@
-# Expand a `triangle` object to a full projection grid
+# Expand a `Triangle` object to a full projection grid
 
-Expand a `triangle` object to a full projection grid
+Expand a `Triangle` object to a full projection grid
 
 ## Usage
 

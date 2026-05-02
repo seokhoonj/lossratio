@@ -1,4 +1,4 @@
-# Summarise a `cl_fit` object by cohort
+# Summarise a `CLFit` object by cohort
 
 Internal helper producing a one-row-per-cohort summary from the full
 development grid. Contains latest observed, ultimate projection, and

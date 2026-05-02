@@ -85,7 +85,7 @@ build_total(
 
 ## Value
 
-A data.frame with class `"total"` containing:
+A data.frame with class `"Total"` containing:
 
 - n_obs:
 

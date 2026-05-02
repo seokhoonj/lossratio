@@ -23,7 +23,7 @@ tri <- build_triangle(exp, group_var = cv_nm)
 
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 print(cl)
-#> <cl_fit>
+#> <CLFit>
 #> method      : mack 
 #> value_var   : closs 
 #> weight_var  : none 
@@ -265,7 +265,7 @@ Mack 분산은 모든 발달 링크에서 $`\sigma_k`$ 가 필요한데, 마지�
 ``` r
 
 fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
-#> <cl_fit>
+#> <CLFit>
 #> method      : mack 
 #> value_var   : closs 
 #> weight_var  : none 
@@ -285,8 +285,7 @@ fit_cl(tri, value_var = "closs", method = "mack", sigma_method = "loglinear")
   [`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
   을 사용해야 할 때.
 - [`vignette("triangle-diagnostics")`](https://seokhoonj.github.io/lossratio/articles/triangle-diagnostics.md)
-  —
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md),
+  — [`summary()`](https://rdrr.io/r/base/summary.html),
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md),
   ata 진단 플롯.
 - [`?fit_cl`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md),

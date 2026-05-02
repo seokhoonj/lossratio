@@ -1,10 +1,10 @@
 # Fit age-to-age development factors
 
 Estimate age-to-age (ata) development factors from an object of class
-`"ata"` and return a unified `"ata_fit"` object that bundles:
+`"ATA"` and return a unified `"ATAFit"` object that bundles:
 
 - Summary statistics and WLS estimates (`summary`) from
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md).
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md).
 
 - Selected factors (`selected`) ready for chain ladder projection, after
   optional maturity filtering and LOCF fill.
@@ -30,7 +30,7 @@ fit_ata(
 
 - x:
 
-  An object of class `"ata"`, typically produced by
+  An object of class `"ATA"`, typically produced by
   [`build_ata()`](https://seokhoonj.github.io/lossratio/reference/build_ata.md).
 
 - alpha:
@@ -91,11 +91,11 @@ fit_ata(
 - ...:
 
   Additional arguments passed to
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md).
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md).
 
 ## Value
 
-An object of class `"ata_fit"` (a named list) containing:
+An object of class `"ATAFit"` (a named list) containing:
 
 - `call`:
 
@@ -103,12 +103,12 @@ An object of class `"ata_fit"` (a named list) containing:
 
 - `ata`:
 
-  The input `"ata"` object.
+  The input `"ATA"` object.
 
 - `summary`:
 
-  `"ata_summary"` object from
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md).
+  `"ATASummary"` object from
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md).
 
 - `selected`:
 
@@ -148,6 +148,6 @@ An object of class `"ata_fit"` (a named list) containing:
 ## See also
 
 [`build_ata()`](https://seokhoonj.github.io/lossratio/reference/build_ata.md),
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md),
+[`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md),
 [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md),
 [`fit_cl()`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md)

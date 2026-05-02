@@ -1,4 +1,4 @@
-# Apply tail factor to a Mack-fitted `cl_fit` object
+# Apply tail factor to a Mack-fitted `CLFit` object
 
 Internal helper scaling projected value and Mack variance components by
 the tail factor for the last development period of each cohort,

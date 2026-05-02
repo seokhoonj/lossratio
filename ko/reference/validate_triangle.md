@@ -4,9 +4,9 @@ Check that each `(group_var, cohort_var)` cohort has a consecutive
 `dev_var` sequence within its observed range. Non-consecutive cohorts
 produce non-consecutive age-to-age links downstream (e.g., `14 -> 17`
 instead of `14 -> 15`), which breaks
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md)
+[`summary.ATA()`](https://seokhoonj.github.io/lossratio/ko/reference/summary.ATA.md)
 /
-[`summary_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ed.md)
+[`summary.ED()`](https://seokhoonj.github.io/lossratio/ko/reference/summary.ED.md)
 key uniqueness and causes cartesian joins in
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md).
 
@@ -42,7 +42,7 @@ validate_triangle(df, group_var, cohort_var = "uym", dev_var = "elap_m")
 
 ## Value
 
-A `data.table` of class `"triangle_validation"` with one row per cohort
+A `data.table` of class `"TriangleValidation"` with one row per cohort
 containing gaps. Columns:
 
 - group_var(s), cohort_var:

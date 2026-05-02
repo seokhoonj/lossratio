@@ -48,7 +48,7 @@ str(experience)
 
 exp <- as_experience(experience)
 class(exp)
-#> [1] "experience" "data.table" "data.frame"
+#> [1] "Experience" "data.table" "data.frame"
 ```
 
 [`as_experience()`](https://seokhoonj.github.io/lossratio/reference/as_experience.md)
@@ -62,7 +62,7 @@ class(exp)
 
 tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 class(tri)
-#> [1] "triangle"   "data.table" "data.frame"
+#> [1] "Triangle"   "data.table" "data.frame"
 names(tri)
 #>  [1] "cv_nm"      "n_obs"      "cohort"     "dev"        "loss"      
 #>  [6] "rp"         "closs"      "crp"        "margin"     "cmargin"   
@@ -179,7 +179,7 @@ summary(tri)           # 경과 기간별 그룹 통계량
 # 연속 발달비(age-to-age) 인자
 ata <- build_ata(tri, value_var = "closs")
 fit_ata(ata)
-#> <ata_fit>
+#> <ATAFit>
 #> alpha       : 1 
 #> sigma_method: min_last2 
 #> recent      : all 
@@ -191,7 +191,7 @@ fit_ata(ata)
 # 노출 기반(exposure-driven) 강도
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
 fit_ed(ed)
-#> <ed_fit>
+#> <EDFit>
 #> method      : basic 
 #> loss_var    : closs 
 #> exposure_var: crp 
@@ -426,7 +426,7 @@ summary(lr)
 
 sub <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 detect_cohort_regime(sub, K = 12, method = "ecp")
-#> <cohort_regime>
+#> <CohortRegime>
 #>   method      : ecp
 #>   value_var   : clr
 #>   window (K)  : elap_m 1, ..., 12
@@ -453,8 +453,7 @@ detect_cohort_regime(sub, K = 12, method = "ecp")
   [`fit_cl()`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md)
   심층 해설 (Mack 분산, tail factor).
 - [`vignette("triangle-diagnostics")`](https://seokhoonj.github.io/lossratio/articles/triangle-diagnostics.md)
-  —
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md),
+  — [`summary()`](https://rdrr.io/r/base/summary.html),
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/reference/find_ata_maturity.md),
   triangle 형식의 시각화.
 - [`vignette("regime-detection")`](https://seokhoonj.github.io/lossratio/articles/regime-detection.md)

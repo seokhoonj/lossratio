@@ -1,6 +1,6 @@
-# Fit chain ladder projection from a `triangle` object
+# Fit chain ladder projection from a `Triangle` object
 
-Fit a chain ladder projection from an object of class `"triangle"`. The
+Fit a chain ladder projection from an object of class `"Triangle"`. The
 function works on long-form cumulative data and does not require a
 complete triangle.
 
@@ -44,7 +44,7 @@ fit_cl(
 
 - x:
 
-  An object of class `"triangle"`.
+  An object of class `"Triangle"`.
 
 - method:
 
@@ -99,7 +99,7 @@ fit_cl(
 
 ## Value
 
-An object of class `"cl_fit"` containing:
+An object of class `"CLFit"` containing:
 
 - `call`:
 
@@ -107,7 +107,7 @@ An object of class `"cl_fit"` containing:
 
 - `data`:
 
-  The input `"triangle"` object.
+  The input `"Triangle"` object.
 
 - `method`:
 
@@ -140,7 +140,7 @@ An object of class `"cl_fit"` containing:
 
 - `ata`:
 
-  The `"ata"` object produced by
+  The `"ATA"` object produced by
   [`build_ata()`](https://seokhoonj.github.io/lossratio/reference/build_ata.md).
 
 - `summary`:

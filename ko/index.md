@@ -114,22 +114,26 @@ granularity 는 attribute (`cohort_var`, `cohort_type`, `dev_var`,
 
 ## Methods
 
-### 단계 적응적 (`fit_lr(method = "sa")`, 기본값)
+### 단계 적응적
 
-노출 기반과 chain ladder 의 결합으로, 그룹별 성숙점에서 전환된다:
+`fit_lr(method = "sa")` (기본값). 노출 기반과 chain ladder 의 결합으로,
+그룹별 성숙점에서 전환된다:
 
 - 성숙점 이전: 노출 기반 추정 $`\Delta C^L = g_k \cdot C^P_k`$ — 연속
   발달비가 변동성이 큰 구간에서 추정값을 보험료 규모에 고정한다.
 - 성숙점 이후: chain ladder 추정 $`C^L_{k+1} = f_k \cdot C^L_k`$ — 연속
   발달비가 안정된 이후 코호트의 관측 수준을 보존한다.
 
-### 노출 기반 (`fit_lr(method = "ed")`)
+### 노출 기반
 
-모든 미래 손해 증가분이 익스포저(위험보험료)를 분모로 사용한다. 연속
-발달비가 정보량이 부족하거나 전 구간에 걸쳐 불안정할 때 적합하다.
+`fit_lr(method = "ed")`. 모든 미래 손해 증가분이 익스포저(위험보험료)를
+분모로 사용한다. 연속 발달비가 정보량이 부족하거나 전 구간에 걸쳐
+불안정할 때 적합하다.
 
-### Chain Ladder (`fit_lr(method = "cl")` / `fit_cl()`)
+### Chain Ladder
 
+`fit_lr(method = "cl")` 또는
+[`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md).
 고전적 Mack chain ladder. 선택적 log-linear tail factor 와 해석적 Mack
 표준오차를 지원한다.
 

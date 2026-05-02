@@ -11,18 +11,18 @@
 
 | 빌더 | 출력 객체 | 차원 | 사용 시점 |
 |----|----|----|----|
-| [`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md) | `triangle` | 코호트 × dev (2D) | Chain ladder, ED, SA 추정 |
-| [`build_calendar()`](https://seokhoonj.github.io/lossratio/ko/reference/build_calendar.md) | `calendar` | 달력 기간 (1D) | 달력 연도 추세, 대각선 효과 |
-| [`build_total()`](https://seokhoonj.github.io/lossratio/ko/reference/build_total.md) | `total` | 포트폴리오 합계 (그룹별) | 상위 수준 손해율 비교 |
+| [`build_triangle()`](https://seokhoonj.github.io/lossratio/ko/reference/build_triangle.md) | `Triangle` | 코호트 × dev (2D) | Chain ladder, ED, SA 추정 |
+| [`build_calendar()`](https://seokhoonj.github.io/lossratio/ko/reference/build_calendar.md) | `Calendar` | 달력 기간 (1D) | 달력 연도 추세, 대각선 효과 |
+| [`build_total()`](https://seokhoonj.github.io/lossratio/ko/reference/build_total.md) | `Total` | 포트폴리오 합계 (그룹별) | 상위 수준 손해율 비교 |
 
 개념적으로 다음과 같다.
 
-- `triangle` 은 코호트 축 (계약 인수 시점) 과 경과 축 (경과 기간에 따라
+- `Triangle` 은 코호트 축 (계약 인수 시점) 과 경과 축 (경과 기간에 따라
   손해가 누적되는 양상) 을 모두 보존한다. Chain ladder 의 표준 데이터
   구조이다.
-- `calendar` 는 코호트를 대각선 위로 합산한다 — 각 행은 모든 인수
+- `Calendar` 는 코호트를 대각선 위로 합산한다 — 각 행은 모든 인수
   코호트에 걸친 하나의 달력 기간이다. Triangle 의 대각선 합과 동치이다.
-- `total` 은 두 차원을 모두 합쳐 그룹당 하나의 값으로 축약한다.
+- `Total` 은 두 차원을 모두 합쳐 그룹당 하나의 값으로 축약한다.
   포트폴리오 수준 비교에 유용하다 (해당 기간에 어떤 상품이 가장 나쁜
   손해율을 보였는가?).
 
@@ -86,7 +86,7 @@ plot_triangle(tri_q)   # 코호트 × dev clr 히트맵
 
 ![](aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-2.png)
 
-`triangle` 은 다음 함수의 입력으로 사용된다.
+`Triangle` 은 다음 함수의 입력으로 사용된다.
 
 - [`build_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ata.md),
   [`build_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/build_ed.md)
@@ -203,7 +203,7 @@ head(tot)
        (cohort × dev)      (calendar series)     (portfolio total)
              │                    │                     │
              ▼                    ▼                     ▼
-         triangle             calendar               total
+         Triangle             Calendar               Total
        (2D, projection)     (1D, trend)         (0D, comparison)
 
 세 빌더 모두 동일한 `experience` 에서 출발해 인구통계 차원을 제거한다.

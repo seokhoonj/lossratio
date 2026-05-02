@@ -55,7 +55,7 @@ tri_sur <- build_triangle(exp[cv_nm == "SUR"], cv_nm)
 
 r <- detect_cohort_regime(tri_sur, K = 12, method = "ecp")
 r
-#> <cohort_regime>
+#> <CohortRegime>
 #>   method      : ecp
 #>   value_var   : clr
 #>   window (K)  : elap_m 1, ..., 12

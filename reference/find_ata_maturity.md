@@ -1,8 +1,8 @@
 # Find ata maturity by group
 
 Identify the first mature age-to-age (ata) link from an object of class
-`"ata_summary"`, typically produced by
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md).
+`"ATASummary"`, typically produced by
+[`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md).
 
 Maturity is determined using a combination of:
 
@@ -38,8 +38,8 @@ find_ata_maturity(
 
 - x:
 
-  An object of class `"ata_summary"`, typically produced by
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/reference/summary_ata.md).
+  An object of class `"ATASummary"`, typically produced by
+  [`summary.ATA()`](https://seokhoonj.github.io/lossratio/reference/summary.ATA.md).
 
 - cv_threshold:
 
@@ -64,5 +64,5 @@ find_ata_maturity(
 
 ## Value
 
-A `data.table` with class `"ata_maturity"` containing one row per group.
+A `data.table` with class `"ATAMaturity"` containing one row per group.
 If no mature link is found, all values for that group are `NA`.

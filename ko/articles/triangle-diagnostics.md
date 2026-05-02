@@ -90,7 +90,7 @@ head(sm)
 #> 6: 0.52060534
 ```
 
-Returns a `triangle_summary` object with mean / median / weighted loss
+Returns a `TriangleSummary` object with mean / median / weighted loss
 ratios per (group, dev) cell.
 
 ## Age-to-age factor diagnostics
@@ -98,7 +98,7 @@ ratios per (group, dev) cell.
 ``` r
 
 ata <- build_ata(tri, value_var = "closs")
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 head(sm)
 #> Key: <cv_nm>
 #>     cv_nm ata_from ata_to ata_link    mean median     wt    cv      f   f_se
@@ -119,8 +119,8 @@ head(sm)
 #> 6: 0.056  3158.200    24      24     0     0       1.000
 ```
 
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md)
-computes per-link statistics that drive maturity detection:
+The [`summary()`](https://rdrr.io/r/base/summary.html) method on an
+`ATA` object computes per-link statistics that drive maturity detection:
 
 - `mean`, `median`, `wt` — descriptive averages of observed ata factors
   at each link (excluding cohorts where the link is not observed).
@@ -132,7 +132,7 @@ computes per-link statistics that drive maturity detection:
 - `n_obs`, `n_valid`, `n_inf`, `n_nan`, `valid_ratio` — observation
   counts and the share of finite ata factors per link.
 
-### Diagnostic plots for `ata`
+### Diagnostic plots for `ATA`
 
 ``` r
 
@@ -203,14 +203,13 @@ factors are stable enough to trust for chain-ladder projection. Used
 internally by `fit_lr(method = "sa")` to switch from ED to CL.
 
 [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/ko/reference/find_ata_maturity.md)
-operates on a
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md)
-object — first build the descriptive / WLS summary, then probe it for
-the first mature link:
+operates on a summary of an `ATA` object — first build the descriptive /
+WLS summary via [`summary()`](https://rdrr.io/r/base/summary.html), then
+probe it for the first mature link:
 
 ``` r
 
-sm  <- summary_ata(ata, alpha = 1)
+sm  <- summary(ata, alpha = 1)
 mat <- find_ata_maturity(
   sm,
   cv_threshold    = 0.10,    # CV must be below this
@@ -245,8 +244,8 @@ is also called internally by
 and
 [`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md)
 when `maturity_args` is supplied (the `alpha` of the internal
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md)
-step is taken from those callers).
+[`summary()`](https://rdrr.io/r/base/summary.html) step is taken from
+those callers).
 
 Tune the thresholds to your portfolio’s volatility profile. Tight
 thresholds (e.g. `cv_threshold = 0.05`) push maturity later; loose
@@ -257,7 +256,7 @@ thresholds push it earlier.
 ``` r
 
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
-sm <- summary_ed(ed, alpha = 1)
+sm <- summary(ed, alpha = 1)
 head(sm)
 #> Key: <cv_nm>
 #>     cv_nm ata_from ata_to ata_link    mean  median      wt      cv       g
@@ -296,9 +295,9 @@ plot_triangle(ed)
 
 ![](triangle-diagnostics_files/figure-html/unnamed-chunk-9-3.png)
 
-[`summary_ed()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ed.md)
-is the ED-side analogue of
-[`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md),
+The [`summary()`](https://rdrr.io/r/base/summary.html) method on an `ED`
+object is the ED-side analogue of
+[`summary()`](https://rdrr.io/r/base/summary.html) on an `ATA` object,
 computing per-link statistics for the intensity
 $`g_k = \Delta C^L_k / C^P_k`$.
 
@@ -315,7 +314,7 @@ head(gaps)
 #> Empty data.table (0 rows and 5 cols): cv_nm,uym,n_observed,n_expected,missing
 ```
 
-Returns a `triangle_validation` object with one row per cohort that has
+Returns a `TriangleValidation` object with one row per cohort that has
 non-consecutive development periods. An empty result means the triangle
 is clean.
 
@@ -335,7 +334,7 @@ regime shift), restrict estimation to the recent calendar diagonals:
 ``` r
 
 fit_ata(ata, alpha = 1, recent = 12)        # last 12 calendar diagonals
-#> <ata_fit>
+#> <ATAFit>
 #> alpha       : 1 
 #> sigma_method: min_last2 
 #> recent      : 12 
@@ -344,7 +343,7 @@ fit_ata(ata, alpha = 1, recent = 12)        # last 12 calendar diagonals
 #> n_groups    : 4 
 #> ata links   : 116
 fit_cl(tri, value_var = "closs", recent = 12)
-#> <cl_fit>
+#> <CLFit>
 #> method      : basic 
 #> value_var   : closs 
 #> weight_var  : none 
@@ -355,7 +354,7 @@ fit_cl(tri, value_var = "closs", recent = 12)
 #> groups      : cv_nm 
 #> periods     : 30
 fit_lr(tri, recent = 12)
-#> <lr_fit>
+#> <LRFit>
 #> method        : sa 
 #> loss_var      : closs 
 #> exposure_var  : crp 

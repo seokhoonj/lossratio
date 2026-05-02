@@ -3,7 +3,7 @@
 dev_var sequence within its observed range. Non-consecutive
 cohorts produce non-consecutive age-to-age links downstream (e.g.,
 14 -&amp;gt; 17 instead of 14 -&amp;gt; 15), which breaks
-summary_ata() / summary_ed() key uniqueness and causes cartesian
+summary.ATA() / summary.ED() key uniqueness and causes cartesian
 joins in fit_lr().
 This function inspects the raw data without modifying it. Use it
 before build_triangle() to decide whether to fix the data source, drop
@@ -11,7 +11,7 @@ offending cohorts, or pass fill_gaps = TRUE to build_triangle()."><meta property
 dev_var sequence within its observed range. Non-consecutive
 cohorts produce non-consecutive age-to-age links downstream (e.g.,
 14 -&amp;gt; 17 instead of 14 -&amp;gt; 15), which breaks
-summary_ata() / summary_ed() key uniqueness and causes cartesian
+summary.ATA() / summary.ED() key uniqueness and causes cartesian
 joins in fit_lr().
 This function inspects the raw data without modifying it. Use it
 before build_triangle() to decide whether to fix the data source, drop
@@ -66,7 +66,7 @@ offending cohorts, or pass fill_gaps = TRUE to build_triangle()."><meta property
 <code>dev_var</code> sequence within its observed range. Non-consecutive
 cohorts produce non-consecutive age-to-age links downstream (e.g.,
 <code>14 -&gt; 17</code> instead of <code>14 -&gt; 15</code>), which breaks
-<code><a href="summary_ata.html">summary_ata()</a></code> / <code><a href="summary_ed.html">summary_ed()</a></code> key uniqueness and causes cartesian
+<code><a href="summary.ATA.html">summary.ATA()</a></code> / <code><a href="summary.ED.html">summary.ED()</a></code> key uniqueness and causes cartesian
 joins in <code><a href="fit_lr.html">fit_lr()</a></code>.</p>
 <p>This function inspects the raw data without modifying it. Use it
 before <code><a href="build_triangle.html">build_triangle()</a></code> to decide whether to fix the data source, drop
@@ -100,7 +100,7 @@ offending cohorts, or pass <code>fill_gaps = TRUE</code> to <code><a href="build
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A <code>data.table</code> of class <code>"triangle_validation"</code> with one row
+    <p>A <code>data.table</code> of class <code>"TriangleValidation"</code> with one row
 per cohort containing gaps. Columns:</p><dl><dt>group_var(s), cohort_var</dt>
 <dd><p>Cohort identifier.</p></dd>
 

@@ -115,10 +115,10 @@ Original column names and granularity are preserved as attributes
 
 ## Methods
 
-### Stage-Adaptive (`fit_lr(method = "sa")`, default)
+### Stage-Adaptive
 
-Hybrid of exposure-driven and chain ladder, switching at the maturity
-point per group:
+`fit_lr(method = "sa")` (default). Hybrid of exposure-driven and chain
+ladder, switching at the maturity point per group:
 
 - Before maturity: exposure-driven projection
   $`\Delta C^L = g_k \cdot C^P_k`$ — anchors the estimate to premium
@@ -127,14 +127,16 @@ point per group:
   $`C^L_{k+1} = f_k \cdot C^L_k`$ — preserves the cohort’s observed
   level once age-to-age factors stabilise.
 
-### Exposure-Driven (`fit_lr(method = "ed")`)
+### Exposure-Driven
 
-All future loss increments use exposure (risk premium) as the
-denominator. Suitable when age-to-age factors are uninformative or
-unstable across the full development.
+`fit_lr(method = "ed")`. All future loss increments use exposure (risk
+premium) as the denominator. Suitable when age-to-age factors are
+uninformative or unstable across the full development.
 
-### Chain Ladder (`fit_lr(method = "cl")` / `fit_cl()`)
+### Chain Ladder
 
+`fit_lr(method = "cl")` or
+[`fit_cl()`](https://seokhoonj.github.io/lossratio/reference/fit_cl.md).
 Classical Mack chain ladder with optional log-linear tail factor and
 analytic Mack standard errors.
 

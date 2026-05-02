@@ -234,23 +234,23 @@
 <h2 id="methods">Methods<a class="anchor" aria-label="anchor" href="#methods"></a>
 </h2>
 <div class="section level3">
-<h3 id="stage-adaptive-fit_lrmethod--sa-default">Stage-Adaptive (<code>fit_lr(method = "sa")</code>, default)<a class="anchor" aria-label="anchor" href="#stage-adaptive-fit_lrmethod--sa-default"></a>
+<h3 id="stage-adaptive">Stage-Adaptive<a class="anchor" aria-label="anchor" href="#stage-adaptive"></a>
 </h3>
-<p>Hybrid of exposure-driven and chain ladder, switching at the maturity point per group:</p>
+<p><code>fit_lr(method = "sa")</code> (default). Hybrid of exposure-driven and chain ladder, switching at the maturity point per group:</p>
 <ul>
 <li>Before maturity: exposure-driven projection <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi mathvariant="normal">Δ</mi><msup><mi>C</mi><mi>L</mi></msup><mo>=</mo><msub><mi>g</mi><mi>k</mi></msub><mo>⋅</mo><msubsup><mi>C</mi><mi>k</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">\Delta C^L = g_k \cdot C^P_k</annotation></semantics></math> — anchors the estimate to premium volume while age-to-age factors are volatile.</li>
 <li>After maturity: chain ladder projection <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>C</mi><mrow><mi>k</mi><mo>+</mo><mn>1</mn></mrow><mi>L</mi></msubsup><mo>=</mo><msub><mi>f</mi><mi>k</mi></msub><mo>⋅</mo><msubsup><mi>C</mi><mi>k</mi><mi>L</mi></msubsup></mrow><annotation encoding="application/x-tex">C^L_{k+1} = f_k \cdot C^L_k</annotation></semantics></math> — preserves the cohort’s observed level once age-to-age factors stabilise.</li>
 </ul>
 </div>
 <div class="section level3">
-<h3 id="exposure-driven-fit_lrmethod--ed">Exposure-Driven (<code>fit_lr(method = "ed")</code>)<a class="anchor" aria-label="anchor" href="#exposure-driven-fit_lrmethod--ed"></a>
+<h3 id="exposure-driven">Exposure-Driven<a class="anchor" aria-label="anchor" href="#exposure-driven"></a>
 </h3>
-<p>All future loss increments use exposure (risk premium) as the denominator. Suitable when age-to-age factors are uninformative or unstable across the full development.</p>
+<p><code>fit_lr(method = "ed")</code>. All future loss increments use exposure (risk premium) as the denominator. Suitable when age-to-age factors are uninformative or unstable across the full development.</p>
 </div>
 <div class="section level3">
-<h3 id="chain-ladder-fit_lrmethod--cl--fit_cl">Chain Ladder (<code>fit_lr(method = "cl")</code> / <code>fit_cl()</code>)<a class="anchor" aria-label="anchor" href="#chain-ladder-fit_lrmethod--cl--fit_cl"></a>
+<h3 id="chain-ladder">Chain Ladder<a class="anchor" aria-label="anchor" href="#chain-ladder"></a>
 </h3>
-<p>Classical Mack chain ladder with optional log-linear tail factor and analytic Mack standard errors.</p>
+<p><code>fit_lr(method = "cl")</code> or <code><a href="reference/fit_cl.html">fit_cl()</a></code>. Classical Mack chain ladder with optional log-linear tail factor and analytic Mack standard errors.</p>
 </div>
 </div>
 <div class="section level2">

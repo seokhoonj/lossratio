@@ -1,7 +1,7 @@
-# Expand a `triangle` object to a full development grid
+# Expand a `Triangle` object to a full development grid
 
 Internal helper that constructs a complete cohort-by-development-period
-grid from an object of class `"triangle"`, analogous to
+grid from an object of class `"Triangle"`, analogous to
 [`base::expand.grid()`](https://rdrr.io/r/base/expand.grid.html).
 
 ## Usage

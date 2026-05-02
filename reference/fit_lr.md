@@ -1,6 +1,6 @@
 # Fit loss ratio projection model
 
-Unified interface for loss ratio projection from a `"triangle"` object.
+Unified interface for loss ratio projection from a `"Triangle"` object.
 Three projection methods are available:
 
 - `"sa"` (default):
@@ -55,7 +55,7 @@ fit_lr(
 
 - x:
 
-  An object of class `"triangle"`.
+  An object of class `"Triangle"`.
 
 - method:
 
@@ -138,7 +138,7 @@ fit_lr(
 
 ## Value
 
-An object of class `"lr_fit"`.
+An object of class `"LRFit"`.
 
 ## See also
 

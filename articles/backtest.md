@@ -27,7 +27,7 @@ tri_sur <- build_triangle(exp[cv_nm == "SUR"], cv_nm)
 
 bt <- backtest(tri_sur, holdout = 6L)
 print(bt)
-#> <backtest>
+#> <Backtest>
 #>   fit_fn      : fit_lr
 #>   value_var   : clr
 #>   holdout     : 6 calendar diagonals
@@ -35,7 +35,7 @@ print(bt)
 #>   AEG         : mean 31.28% / median 7.85%
 ```
 
-The returned object is a `"backtest"` list with these key slots:
+The returned object is a `"Backtest"` list with these key slots:
 
 - `aeg` — per-cell `data.table` (cohort, dev, actual, pred, aeg,
   calendar_idx).
@@ -43,7 +43,7 @@ The returned object is a `"backtest"` list with these key slots:
 - `diag_summary` — AEG aggregated by calendar diagonal.
 - `masked` — the triangle the fit was trained on (latest diagonals
   removed).
-- `fit` — the fit object returned by `fit_fn` (an `lr_fit` or `cl_fit`).
+- `fit` — the fit object returned by `fit_fn` (an `LRFit` or `CLFit`).
 
 `summary(bt)` prints the two summary tables alongside the call metadata.
 
@@ -130,7 +130,7 @@ head(bt$aeg, 5)
 
 ## Plot demos
 
-Four plot views are registered on `"backtest"`:
+Four plot views are registered on `"Backtest"`:
 
 ``` r
 
@@ -215,7 +215,7 @@ bt_loss <- backtest(tri_sur, holdout = 6L, value_var = "closs")
 bt_rp   <- backtest(tri_sur, holdout = 6L, value_var = "crp")
 
 print(bt_sa)
-#> <backtest>
+#> <Backtest>
 #>   fit_fn      : fit_lr
 #>   value_var   : clr
 #>   holdout     : 6 calendar diagonals
@@ -242,5 +242,5 @@ supported.
   [`fit_lr()`](https://seokhoonj.github.io/lossratio/reference/fit_lr.md)
   and the `"sa"`, `"ed"`, `"cl"` methods.
 - [`?backtest`](https://seokhoonj.github.io/lossratio/reference/backtest.md),
-  [`?plot.backtest`](https://seokhoonj.github.io/lossratio/reference/plot.backtest.md),
-  [`?plot_triangle.backtest`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.backtest.md).
+  [`?plot.Backtest`](https://seokhoonj.github.io/lossratio/reference/plot.Backtest.md),
+  [`?plot_triangle.Backtest`](https://seokhoonj.github.io/lossratio/reference/plot_triangle.Backtest.md).

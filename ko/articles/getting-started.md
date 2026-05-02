@@ -45,7 +45,7 @@ str(experience)
 
 exp <- as_experience(experience)
 class(exp)
-#> [1] "experience" "data.table" "data.frame"
+#> [1] "Experience" "data.table" "data.frame"
 ```
 
 [`as_experience()`](https://seokhoonj.github.io/lossratio/ko/reference/as_experience.md)
@@ -59,7 +59,7 @@ non-mutating check.
 
 tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 class(tri)
-#> [1] "triangle"   "data.table" "data.frame"
+#> [1] "Triangle"   "data.table" "data.frame"
 names(tri)
 #>  [1] "cv_nm"      "n_obs"      "cohort"     "dev"        "loss"      
 #>  [6] "rp"         "closs"      "crp"        "margin"     "cmargin"   
@@ -176,7 +176,7 @@ Two complementary views of cohort development:
 # Age-to-age factors
 ata <- build_ata(tri, value_var = "closs")
 fit_ata(ata)
-#> <ata_fit>
+#> <ATAFit>
 #> alpha       : 1 
 #> sigma_method: min_last2 
 #> recent      : all 
@@ -188,7 +188,7 @@ fit_ata(ata)
 # Exposure-driven intensities
 ed <- build_ed(tri, loss_var = "closs", exposure_var = "crp")
 fit_ed(ed)
-#> <ed_fit>
+#> <EDFit>
 #> method      : basic 
 #> loss_var    : closs 
 #> exposure_var: crp 
@@ -424,7 +424,7 @@ homogeneous subset:
 
 sub <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 detect_cohort_regime(sub, K = 12, method = "ecp")
-#> <cohort_regime>
+#> <CohortRegime>
 #>   method      : ecp
 #>   value_var   : clr
 #>   window (K)  : elap_m 1, ..., 12
@@ -450,8 +450,7 @@ for the dedicated walkthrough.
   [`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md)
   deep dive (Mack variance, tail factor).
 - [`vignette("triangle-diagnostics")`](https://seokhoonj.github.io/lossratio/ko/articles/triangle-diagnostics.md)
-  —
-  [`summary_ata()`](https://seokhoonj.github.io/lossratio/ko/reference/summary_ata.md),
+  — [`summary()`](https://rdrr.io/r/base/summary.html),
   [`find_ata_maturity()`](https://seokhoonj.github.io/lossratio/ko/reference/find_ata_maturity.md),
   and triangle-style visualisations.
 - [`vignette("regime-detection")`](https://seokhoonj.github.io/lossratio/ko/articles/regime-detection.md)
