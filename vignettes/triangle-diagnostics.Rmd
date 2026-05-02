@@ -27,10 +27,13 @@ stability, and maturity detection.
 
 ## Triangle-level diagnostics
 
+For brevity this vignette uses the `SUR` group only — every step
+generalises to multi-group input.
+
 ```{r}
 library(lossratio)
 data(experience)
-exp <- as_experience(experience)
+exp <- as_experience(experience)[cv_nm == "SUR"]
 tri <- build_triangle(exp, group_var = cv_nm)
 ```
 

@@ -28,10 +28,13 @@ chain ladder 또는 손해율 모형을 적합하기 전에 기반이 되는 tri
 
 ## Triangle 수준 진단
 
+이 vignette 은 간결성을 위해 `SUR` 그룹만 사용한다 — 모든 절차는
+다중 그룹 입력에도 그대로 일반화된다.
+
 ```{r}
 library(lossratio)
 data(experience)
-exp <- as_experience(experience)
+exp <- as_experience(experience)[cv_nm == "SUR"]
 tri <- build_triangle(exp, group_var = cv_nm)
 ```
 

@@ -27,11 +27,14 @@ and computes Mack-style standard errors per cohort.
 
 ## Basic usage
 
+For brevity this vignette uses the `SUR` group only — every step
+generalises to multi-group input.
+
 ```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
-tri <- build_triangle(exp, group_var = cv_nm)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 print(cl)

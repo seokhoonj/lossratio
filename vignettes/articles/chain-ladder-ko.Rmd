@@ -29,11 +29,14 @@ knitr::opts_chunk$set(
 
 ## 기본 사용법
 
+이 vignette 은 간결성을 위해 `SUR` 그룹만 사용한다 — 모든 절차는
+다중 그룹 입력에도 그대로 일반화된다.
+
 ```{r}
 library(lossratio)
 data(experience)
 exp <- as_experience(experience)
-tri <- build_triangle(exp, group_var = cv_nm)
+tri <- build_triangle(exp[cv_nm == "SUR"], group_var = cv_nm)
 
 cl <- fit_cl(tri, value_var = "closs", method = "mack")
 print(cl)
