@@ -174,7 +174,7 @@ ratio over the window?).</li>
 premium. Visualise as line plot or heatmap:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># one trajectory per cohort, faceted by group</span></span></code></pre></div>
-<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span></span>
 <span><span class="co"># Quarterly cohort and dev for the multi-group heatmap so each panel's</span></span>
@@ -182,7 +182,7 @@ premium. Visualise as line plot or heatmap:</p>
 <span><span class="va">tri_q</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>,</span>
 <span>                        cohort_var <span class="op">=</span> <span class="st">"uyq"</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># cohort × dev heatmap of clr</span></span></code></pre></div>
-<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="100%"></p>
 <p>Use <code>triangle</code> as input to: - <code><a href="../reference/build_ata.html">build_ata()</a></code>,
 <code><a href="../reference/build_ed.html">build_ed()</a></code> — development factors - <code><a href="../reference/fit_cl.html">fit_cl()</a></code>,
 <code><a href="../reference/fit_lr.html">fit_lr()</a></code> — projection - <code><a href="../reference/detect_cohort_regime.html">detect_cohort_regime()</a></code>
@@ -229,10 +229,10 @@ time”) - Calendar-year effect detection (e.g., regulatory shock, premium
 on-leveling event) - Portfolio monitoring dashboards</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cal</span><span class="op">)</span>                           <span class="co"># x = calendar</span></span></code></pre></div>
-<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-4-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-4-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cal</span>, x_by <span class="op">=</span> <span class="st">"dev"</span><span class="op">)</span>         <span class="co"># x = sequential index</span></span></code></pre></div>
-<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-4-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="aggregation-frameworks_files/figure-html/unnamed-chunk-4-2.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level2">
 <h2 id="total-portfolio-summary">Total (portfolio summary)<a class="anchor" aria-label="anchor" href="#total-portfolio-summary"></a>

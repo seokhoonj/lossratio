@@ -177,7 +177,7 @@ with fit_cl</a></p>
 (<code>show_interval = TRUE</code>) 을 사용할 수 있다.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cl_mack</span>, type <span class="op">=</span> <span class="st">"projection"</span>, show_interval <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-3-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-3-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level2">
 <h2 id="tail-인자">Tail 인자<a class="anchor" aria-label="anchor" href="#tail-%EC%9D%B8%EC%9E%90"></a>
@@ -283,7 +283,7 @@ with fit_cl</a></p>
 선택적 오차 막대와 함께) 표시한다.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cl_mack</span>, type <span class="op">=</span> <span class="st">"reserve"</span>, conf_level <span class="op">=</span> <span class="fl">0.95</span><span class="op">)</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-7-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-7-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level2">
 <h2 id="triangle-시각화">Triangle 시각화<a class="anchor" aria-label="anchor" href="#triangle-%EC%8B%9C%EA%B0%81%ED%99%94"></a>
@@ -292,24 +292,24 @@ with fit_cl</a></p>
 표시하며, 관측된 셀과 추정된 셀을 구분한다.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">cl_mack</span>, what <span class="op">=</span> <span class="st">"full"</span><span class="op">)</span>    <span class="co"># 관측 + 추정</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-8-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-8-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">cl_mack</span>, what <span class="op">=</span> <span class="st">"pred"</span><span class="op">)</span>    <span class="co"># 추정만</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-8-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-8-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">cl_mack</span>, what <span class="op">=</span> <span class="st">"data"</span><span class="op">)</span>    <span class="co"># 관측만</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-8-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-8-3.png" class="r-plt" alt="" width="100%"></p>
 <p><code>label_style = "cv"</code> 모드는 셀별 변동계수를 표시하며,
 신뢰성이 낮은 셀을 식별하는 데 유용하다.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">cl_mack</span>, label_style <span class="op">=</span> <span class="st">"cv"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-9-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-9-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">cl_mack</span>, label_style <span class="op">=</span> <span class="st">"se"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-9-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-9-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">cl_mack</span>, label_style <span class="op">=</span> <span class="st">"ci"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-9-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="chain-ladder-ko_files/figure-html/unnamed-chunk-9-3.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level2">
 <h2 id="sigma-외삽-방법">Sigma 외삽 방법<a class="anchor" aria-label="anchor" href="#sigma-%EC%99%B8%EC%82%BD-%EB%B0%A9%EB%B2%95"></a>

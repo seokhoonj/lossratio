@@ -105,13 +105,13 @@ ata diagnostics</a></p>
 </h3>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>                              <span class="co"># 코호트별 raw clr 궤적</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"loss"</span><span class="op">)</span>          <span class="co"># clr 대신 누적 loss</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-2-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span>, summary <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>              <span class="co"># raw + overlay (mean / median / weighted)</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-2-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-2-3.png" class="r-plt" alt="" width="100%"></p>
 <p><code>summary = TRUE</code> overlay 는 각 dev 에서 평균, 중앙값, 가중
 clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗어나는
 코호트를 포착하는 데 유용하다.</p>
@@ -121,13 +121,13 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 </h3>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>                          <span class="co"># 각 셀의 clr</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-3-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-3-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"loss"</span><span class="op">)</span>      <span class="co"># 누적 loss</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-3-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-3-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri</span>, label_style <span class="op">=</span> <span class="st">"detail"</span><span class="op">)</span>  <span class="co"># 비율 + (loss / rp) 금액</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-3-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-3-3.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="dev-별-그룹-통계">dev 별 그룹 통계<a class="anchor" aria-label="anchor" href="#dev-%EB%B3%84-%EA%B7%B8%EB%A3%B9-%ED%86%B5%EA%B3%84"></a>
@@ -209,32 +209,32 @@ clr 을 계산해 코호트 선 위에 겹쳐 그린다. 중심 경향에서 벗
 </h3>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"cv"</span><span class="op">)</span>            <span class="co"># ata 링크별 CV (성숙점 overlay 포함)</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"rse"</span><span class="op">)</span>           <span class="co"># ata 링크별 RSE</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"summary"</span><span class="op">)</span>       <span class="co"># 링크별 mean / median / wt overlay</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-3.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"box"</span><span class="op">)</span>           <span class="co"># 링크별 관측 ata 의 boxplot</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-4.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-4.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ata</span>, type <span class="op">=</span> <span class="st">"point"</span><span class="op">)</span>         <span class="co"># 링크별 관측 ata 의 산점도</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-5.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-6-5.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="ata-인자의-triangle">ata 인자의 triangle<a class="anchor" aria-label="anchor" href="#ata-%EC%9D%B8%EC%9E%90%EC%9D%98-triangle"></a>
 </h3>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">ata</span><span class="op">)</span>                                <span class="co"># 관측 인자 히트맵</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">ata</span>, label_style <span class="op">=</span> <span class="st">"detail"</span><span class="op">)</span>        <span class="co"># 인자 + (loss / rp) 금액</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">ata</span>, show_maturity <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>          <span class="co"># 성숙점 라인 overlay</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-3.png" class="r-plt" alt="" width="100%"></p>
 <p>이 히트맵은 각 셀을 자기 링크 내에서
 <code>log(ata / median(ata))</code> 로 색칠하므로, 열 방향 색상은 해당
 링크의 중앙값에서 벗어나는 코호트를 구분해 준다.</p>
@@ -312,13 +312,13 @@ attribute 로도 저장된다. <code><a href="../reference/find_ata_maturity.htm
 <span><span class="co">#&gt; 6: 0.02633 0.14490 1535.385    24      24     0     0           1</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ed</span>, type <span class="op">=</span> <span class="st">"summary"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-1.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ed</span>, type <span class="op">=</span> <span class="st">"box"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-2.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-2.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">ed</span><span class="op">)</span></span></code></pre></div>
-<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-3.png" class="r-plt" alt="" width="768"></p>
+<p><img src="triangle-diagnostics-ko_files/figure-html/unnamed-chunk-9-3.png" class="r-plt" alt="" width="100%"></p>
 <p><code><a href="../reference/summary_ed.html">summary_ed()</a></code> 는 <code><a href="../reference/summary_ata.html">summary_ata()</a></code> 의 ED 측
 대응물로, 강도
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mi mathvariant="normal">Δ</mi><msubsup><mi>C</mi><mi>k</mi><mi>L</mi></msubsup><mi>/</mi><msubsup><mi>C</mi><mi>k</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">g_k = \Delta C^L_k / C^P_k</annotation></semantics></math>
