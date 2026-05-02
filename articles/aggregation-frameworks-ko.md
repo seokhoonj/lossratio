@@ -75,8 +75,10 @@ plot(tri)              # 코호트별 궤적, 그룹별 facet
 ``` r
 
 
-# 4 그룹이 한 줄에 나란히 표시될 때 셀 라벨 가독성을 위해 코호트·dev
-# 모두 분기 단위 triangle 로 히트맵을 그린다.
+# 그룹이 여럿일 때는 패널마다 셀이 좁아져 가독성이 떨어지므로, 코호트와
+# dev 축 모두 분기 단위로 다시 만들어 패널당 ~10 × 10 셀로 줄인다.
+# 문서 표시 크기에 맞춘 처리이며, 실제 분석에서는 플롯을 키우면 월
+# 단위 그대로 볼 수 있다.
 tri_q <- build_triangle(exp, group_var = cv_nm,
                         cohort_var = "uyq", dev_var = "elap_q")
 plot_triangle(tri_q)   # 코호트 × dev clr 히트맵

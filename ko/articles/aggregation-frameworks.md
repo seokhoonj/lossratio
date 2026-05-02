@@ -73,8 +73,10 @@ plot(tri)              # one trajectory per cohort, faceted by group
 ``` r
 
 
-# Quarterly cohort and dev for the multi-group heatmap so each panel's
-# 10 x 10 cells stay readable when 4 panels share a row.
+# With multiple group panels each panel's cells get too narrow to read,
+# so use quarterly cohort and dev to bring each panel down to ~10 x 10
+# cells. This fits the documentation's display size; in practice you
+# can keep monthly resolution by enlarging the plot.
 tri_q <- build_triangle(exp, group_var = cv_nm,
                         cohort_var = "uyq", dev_var = "elap_q")
 plot_triangle(tri_q)   # cohort × dev heatmap of clr

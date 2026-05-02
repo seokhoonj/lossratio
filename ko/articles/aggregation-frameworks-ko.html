@@ -185,8 +185,10 @@ aggregation frameworks</a></p>
 <p><img src="aggregation-frameworks-ko_files/figure-html/unnamed-chunk-2-1.png" class="r-plt" alt="" width="100%"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span></span>
-<span><span class="co"># 4 그룹이 한 줄에 나란히 표시될 때 셀 라벨 가독성을 위해 코호트·dev</span></span>
-<span><span class="co"># 모두 분기 단위 triangle 로 히트맵을 그린다.</span></span>
+<span><span class="co"># 그룹이 여럿일 때는 패널마다 셀이 좁아져 가독성이 떨어지므로, 코호트와</span></span>
+<span><span class="co"># dev 축 모두 분기 단위로 다시 만들어 패널당 ~10 × 10 셀로 줄인다.</span></span>
+<span><span class="co"># 문서 표시 크기에 맞춘 처리이며, 실제 분석에서는 플롯을 키우면 월</span></span>
+<span><span class="co"># 단위 그대로 볼 수 있다.</span></span>
 <span><span class="va">tri_q</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span>,</span>
 <span>                        cohort_var <span class="op">=</span> <span class="st">"uyq"</span>, dev_var <span class="op">=</span> <span class="st">"elap_q"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/plot_triangle.html">plot_triangle</a></span><span class="op">(</span><span class="va">tri_q</span><span class="op">)</span>   <span class="co"># 코호트 × dev clr 히트맵</span></span></code></pre></div>
