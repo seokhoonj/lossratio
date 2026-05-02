@@ -140,8 +140,8 @@ aggregation frameworks</a></p>
 동치이다.</li>
 <li>
 <code>total</code> 은 두 차원을 모두 합쳐 그룹당 하나의 값으로
-축약한다. 포트폴리오 수준 비교에 유용하다 (어떤 상품이 해당 윈도우에서
-가장 나쁜 손해율을 보였는가?).</li>
+축약한다. 포트폴리오 수준 비교에 유용하다 (해당 기간에 어떤 상품이 가장
+나쁜 손해율을 보였는가?).</li>
 </ul>
 </div>
 <div class="section level2">
@@ -178,7 +178,7 @@ aggregation frameworks</a></p>
 <span><span class="co">#&gt; 4: 0.3255741 0.000000000 0.3255741</span></span>
 <span><span class="co">#&gt; 5: 0.1890296 0.000000000 0.2082178</span></span>
 <span><span class="co">#&gt; 6: 0.4153853 0.008953224 0.3608298</span></span></code></pre></div>
-<p>각 행은 (코호트, dev) 셀 하나이며 누적 손해 / 누적 위험보험료 값을
+<p>각 행은 (코호트, dev) 셀 하나이며 누적 손해액 / 누적 위험보험료 값을
 갖는다. 라인 플롯이나 히트맵으로 시각화할 수 있다.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>              <span class="co"># 코호트별 궤적, 그룹별 facet</span></span></code></pre></div>
@@ -274,9 +274,9 @@ on-leveling 이벤트)</li>
 <span><span class="co">#&gt; 2: 0.2369754 0.2619383</span></span>
 <span><span class="co">#&gt; 3: 0.1967275 0.2042414</span></span>
 <span><span class="co">#&gt; 4: 0.1534552 0.2739707</span></span></code></pre></div>
-<p>그룹당 한 행이며 해당 윈도우의 손해 / 위험보험료 / 손해율을 요약한다.
-<code>period_from</code> / <code>period_to</code> 인자로 고정 윈도우를
-지정해 그룹 간 비교 가능성을 확보한다.</p>
+<p>그룹당 한 행이며 해당 기간의 손해액 / 위험보험료 / 손해율을 요약한다.
+<code>period_from</code> / <code>period_to</code> 인자로 기간을 지정해
+그룹 간 비교 가능성을 확보한다.</p>
 <p>활용 사례는 다음과 같다.</p>
 <ul>
 <li>담보별 전체 손해율 비교</li>
