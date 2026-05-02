@@ -43,8 +43,11 @@ jobs:
       - name: Build Korean site
         run: |
           cp _pkgdown.yml _pkgdown.en.yml.bak
+          cp README.md README.en.md.bak
           cp _pkgdown.ko.yml _pkgdown.yml
+          cp README.ko.md README.md
           Rscript -e 'pkgdown::build_site(new_process = FALSE, install = FALSE, override = list(destination = "docs/ko"))'
+          mv README.en.md.bak README.md
           mv _pkgdown.en.yml.bak _pkgdown.yml
         shell: bash
 
