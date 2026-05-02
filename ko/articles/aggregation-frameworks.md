@@ -213,7 +213,7 @@ attr(tri, "cohort_type")     # "month"
 attr(tri, "dev_var")     # "elap_m"
 #> [1] "elap_m"
 attr(tri, "dev_type")    # "month"
-#> [1] "month"
+#> [1] NA
 
 attr(cal, "calendar_var")    # "cym"
 #> [1] "cym"
