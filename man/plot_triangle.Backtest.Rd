@@ -18,5 +18,5 @@ A \code{ggplot} object.
 }
 \description{
 Display the held-out cells as a \verb{cohort x dev} heatmap coloured by
-AEG (red = under-predicted, blue = over-predicted, white at 0).
+AEG (red = over-projected, blue = under-projected, white at 0).
 }
