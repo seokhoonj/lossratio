@@ -69,10 +69,33 @@
 .get_period_type <- function(var) {
   switch(
     var,
-    uym = , cym = , elap_m = "month",
-    uyq = , cyq = , elap_q = "quarter",
-    uyh = , cyh = , elap_h = "half",
-    uy  = , cy  = , elap_y = "year",
+    uym = , cym = "month",
+    uyq = , cyq = "quarter",
+    uyh = , cyh = "half",
+    uy  = , cy  = "year",
+    NA_character_
+  )
+}
+
+
+#' Granularity of a cohort or development variable
+#'
+#' Like [.get_period_type()] but also recognises the integer elapsed-period
+#' columns (`elap_m` / `elap_q` / `elap_h` / `elap_y`). Used by
+#' [build_triangle()] to verify that `cohort_var` and `dev_var` share the
+#' same granularity. Not used for date formatting (these elap columns
+#' are integers, not Date).
+#'
+#' @keywords internal
+.get_granularity <- function(var) {
+  type <- .get_period_type(var)
+  if (!is.na(type)) return(type)
+  switch(
+    var,
+    elap_m = "month",
+    elap_q = "quarter",
+    elap_h = "half",
+    elap_y = "year",
     NA_character_
   )
 }

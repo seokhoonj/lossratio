@@ -246,12 +246,12 @@ build_triangle <- function(df,
   .assert_length(dev_var)
   .assert_length(val_var)
 
-  coh_type <- .get_period_type(coh_var)
-  dev_type <- .get_period_type(dev_var)
-  if (!is.na(coh_type) && !is.na(dev_type) && coh_type != dev_type)
+  coh_gran <- .get_granularity(coh_var)
+  dev_gran <- .get_granularity(dev_var)
+  if (!is.na(coh_gran) && !is.na(dev_gran) && coh_gran != dev_gran)
     stop(sprintf(
       "`cohort_var` and `dev_var` must share the same granularity; got `%s` (%s) and `%s` (%s).",
-      coh_var, coh_type, dev_var, dev_type
+      coh_var, coh_gran, dev_var, dev_gran
     ), call. = FALSE)
 
   # standardize column names early
