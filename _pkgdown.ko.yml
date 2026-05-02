@@ -72,7 +72,7 @@ reference:
   contents:
   - build_ata
   - fit_ata
-  - summary_ata
+  - summary.ATA
   - find_ata_maturity
 
 - title: 노출 기반 (ED) 강도
@@ -80,7 +80,7 @@ reference:
   contents:
   - build_ed
   - fit_ed
-  - summary_ed
+  - summary.ED
 
 - title: 추정
   desc: >

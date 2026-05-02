@@ -63,7 +63,7 @@ reference:
   contents:
   - build_ata
   - fit_ata
-  - summary_ata
+  - summary.ATA
   - find_ata_maturity
 
 - title: Exposure-driven (ED) intensity
@@ -71,7 +71,7 @@ reference:
   contents:
   - build_ed
   - fit_ed
-  - summary_ed
+  - summary.ED
 
 - title: Projection
   desc: >
