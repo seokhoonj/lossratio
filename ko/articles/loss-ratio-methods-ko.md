@@ -57,30 +57,6 @@ tri <- build_triangle(exp, group_var = cv_nm)
 
 lr_sa <- fit_lr(tri, method = "sa")        # 기본값
 plot(lr_sa, type = "clr")
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> Warning: Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
 ```
 
 ![](loss-ratio-methods-ko_files/figure-html/unnamed-chunk-1-1.png)
@@ -153,30 +129,6 @@ summary(lr_sa)
 
 lr_ed <- fit_lr(tri, method = "ed")
 plot(lr_ed, type = "clr")
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> Warning: Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
 ```
 
 ![](loss-ratio-methods-ko_files/figure-html/unnamed-chunk-2-1.png)
@@ -208,30 +160,6 @@ plot(lr_ed, type = "clr")
 
 lr_cl <- fit_lr(tri, method = "cl")
 plot(lr_cl, type = "clr")
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> Warning: Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
 ```
 
 ![](loss-ratio-methods-ko_files/figure-html/unnamed-chunk-3-1.png)

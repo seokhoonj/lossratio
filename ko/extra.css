@@ -1,0 +1,11 @@
+/* Wide code blocks and R output: horizontal scroll instead of wrapping. */
+
+pre {
+  overflow-x: auto;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+pre code {
+  white-space: pre;
+}

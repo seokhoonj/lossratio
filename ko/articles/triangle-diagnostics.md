@@ -174,7 +174,6 @@ plot(ata, type = "point")         # scatter of observed ata per link
 ``` r
 
 plot_triangle(ata)                                # heatmap of observed factors
-#> Warning in log(ata/stats::median(ata, na.rm = TRUE)): NaNs produced
 ```
 
 ![](triangle-diagnostics_files/figure-html/unnamed-chunk-7-1.png)
@@ -182,7 +181,6 @@ plot_triangle(ata)                                # heatmap of observed factors
 ``` r
 
 plot_triangle(ata, label_style = "detail")        # factor + (loss / rp) amounts
-#> Warning in log(ata/stats::median(ata, na.rm = TRUE)): NaNs produced
 ```
 
 ![](triangle-diagnostics_files/figure-html/unnamed-chunk-7-2.png)
@@ -190,7 +188,6 @@ plot_triangle(ata, label_style = "detail")        # factor + (loss / rp) amounts
 ``` r
 
 plot_triangle(ata, show_maturity = TRUE)          # overlay maturity line
-#> Warning in log(ata/stats::median(ata, na.rm = TRUE)): NaNs produced
 ```
 
 ![](triangle-diagnostics_files/figure-html/unnamed-chunk-7-3.png)

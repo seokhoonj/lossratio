@@ -175,7 +175,6 @@ plot(ata, type = "point")         # 링크별 관측 ata 의 산점도
 ``` r
 
 plot_triangle(ata)                                # 관측 인자 히트맵
-#> Warning in log(ata/stats::median(ata, na.rm = TRUE)): NaNs produced
 ```
 
 ![](triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-1.png)
@@ -183,7 +182,6 @@ plot_triangle(ata)                                # 관측 인자 히트맵
 ``` r
 
 plot_triangle(ata, label_style = "detail")        # 인자 + (loss / rp) 금액
-#> Warning in log(ata/stats::median(ata, na.rm = TRUE)): NaNs produced
 ```
 
 ![](triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-2.png)
@@ -191,7 +189,6 @@ plot_triangle(ata, label_style = "detail")        # 인자 + (loss / rp) 금액
 ``` r
 
 plot_triangle(ata, show_maturity = TRUE)          # 성숙점 라인 overlay
-#> Warning in log(ata/stats::median(ata, na.rm = TRUE)): NaNs produced
 ```
 
 ![](triangle-diagnostics-ko_files/figure-html/unnamed-chunk-7-3.png)

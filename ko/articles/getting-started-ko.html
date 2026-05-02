@@ -15,7 +15,8 @@
 <link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><script src="../extra.js"></script><meta property="og:title" content="lossratio 시작하기">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><link href="../extra.css" rel="stylesheet">
+<script src="../extra.js"></script><meta property="og:title" content="lossratio 시작하기">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -35,7 +36,19 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="active nav-item"><a class="nav-link" href="../articles/getting-started-ko.html">시작하기</a></li>
-<li class="nav-item"><a class="nav-link" href="../articles/index.html">글</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown--" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">글</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown--">
+<li><a class="dropdown-item" href="../articles/index.html">전체 글</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><a class="dropdown-item" href="../articles/aggregation-frameworks-ko.html">집계 프레임워크</a></li>
+    <li><a class="dropdown-item" href="../articles/loss-ratio-methods-ko.html">손해율 추정 방법론</a></li>
+    <li><a class="dropdown-item" href="../articles/chain-ladder-ko.html">Chain ladder</a></li>
+    <li><a class="dropdown-item" href="../articles/triangle-diagnostics-ko.html">Triangle 및 ata 진단</a></li>
+    <li><a class="dropdown-item" href="../articles/regime-detection-ko.html">Regime 탐지</a></li>
+    <li><a class="dropdown-item" href="../articles/backtest-ko.html">Backtest</a></li>
+  </ul>
+</li>
 <li class="nav-item"><a class="nav-link" href="../reference/index.html">참조</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown--" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">변경 이력</button>
@@ -128,7 +141,7 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <h2 id="단계-코호트-경과-기간-구조-구축">2단계 — 코호트 × 경과 기간 구조 구축<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EC%BD%94%ED%98%B8%ED%8A%B8-%EA%B2%BD%EA%B3%BC-%EA%B8%B0%EA%B0%84-%EA%B5%AC%EC%A1%B0-%EA%B5%AC%EC%B6%95"></a>
 </h2>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">tri</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">tri</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_triangle.html">build_triangle</a></span><span class="op">(</span><span class="va">exp</span><span class="op">[</span><span class="va">cv_nm</span> <span class="op">==</span> <span class="st">"SUR"</span><span class="op">]</span>, group_var <span class="op">=</span> <span class="va">cv_nm</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "triangle"   "data.table" "data.frame"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span></span>
@@ -162,32 +175,74 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">tri</span><span class="op">)</span>           <span class="co"># 경과 기간별 그룹 통계량</span></span>
 <span><span class="co">#&gt; Key: &lt;cv_nm, dev&gt;</span></span>
-<span><span class="co">#&gt;       cv_nm   dev n_obs    lr_mean    lr_median      lr_wt   clr_mean</span></span>
-<span><span class="co">#&gt;      &lt;char&gt; &lt;int&gt; &lt;int&gt;      &lt;num&gt;        &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1:    2CI     1    30 0.07682952 0.0000684217 0.09346191 0.07682952</span></span>
-<span><span class="co">#&gt;   2:    2CI     2    29 0.31682799 0.0002658639 0.37921332 0.21699608</span></span>
-<span><span class="co">#&gt;   3:    2CI     3    28 0.46725413 0.1418544378 0.43601945 0.33392280</span></span>
-<span><span class="co">#&gt;   4:    2CI     4    27 0.64199653 0.5374941298 0.61222448 0.45737038</span></span>
-<span><span class="co">#&gt;   5:    2CI     5    26 0.64809352 0.2890663538 0.65077672 0.50492686</span></span>
-<span><span class="co">#&gt;  ---                                                                 </span></span>
-<span><span class="co">#&gt; 116:    SUR    26     5 1.64442416 0.8460267510 1.63425346 1.84602199</span></span>
-<span><span class="co">#&gt; 117:    SUR    27     4 1.55040105 1.3316006307 1.45324974 1.82084165</span></span>
-<span><span class="co">#&gt; 118:    SUR    28     3 1.97389029 1.0646915297 1.60414765 1.67851251</span></span>
-<span><span class="co">#&gt; 119:    SUR    29     2 1.08484998 1.0848499790 1.12970250 1.64509820</span></span>
-<span><span class="co">#&gt; 120:    SUR    30     1 1.14559716 1.1455971598 1.14559716 1.33809709</span></span>
-<span><span class="co">#&gt;        clr_median     clr_wt</span></span>
-<span><span class="co">#&gt;             &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1: 0.0000684217 0.09346191</span></span>
-<span><span class="co">#&gt;   2: 0.0274751765 0.25081620</span></span>
-<span><span class="co">#&gt;   3: 0.1477140322 0.33811373</span></span>
-<span><span class="co">#&gt;   4: 0.3862054651 0.43323143</span></span>
-<span><span class="co">#&gt;   5: 0.3658265200 0.49590320</span></span>
-<span><span class="co">#&gt;  ---                        </span></span>
-<span><span class="co">#&gt; 116: 1.8691337277 1.85029703</span></span>
-<span><span class="co">#&gt; 117: 1.8463935163 1.82648276</span></span>
-<span><span class="co">#&gt; 118: 1.6839090669 1.67155820</span></span>
-<span><span class="co">#&gt; 119: 1.6450981981 1.63511904</span></span>
-<span><span class="co">#&gt; 120: 1.3380970917 1.33809709</span></span></code></pre></div>
+<span><span class="co">#&gt;      cv_nm   dev n_obs   lr_mean   lr_median     lr_wt  clr_mean clr_median</span></span>
+<span><span class="co">#&gt;     &lt;char&gt; &lt;int&gt; &lt;int&gt;     &lt;num&gt;       &lt;num&gt;     &lt;num&gt;     &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1:    SUR     1    30 0.2080530 0.000000000 0.1939673 0.2080530 0.00000000</span></span>
+<span><span class="co">#&gt;  2:    SUR     2    29 0.2455538 0.005389659 0.2372175 0.2202379 0.07780699</span></span>
+<span><span class="co">#&gt;  3:    SUR     3    28 0.5412315 0.149100068 0.5524150 0.3571573 0.17176644</span></span>
+<span><span class="co">#&gt;  4:    SUR     4    27 1.5617397 0.543742527 1.5699270 0.8304897 0.41766876</span></span>
+<span><span class="co">#&gt;  5:    SUR     5    26 1.3257256 0.554421837 1.2462162 0.9114759 0.56431947</span></span>
+<span><span class="co">#&gt;  6:    SUR     6    25 1.0841279 0.364401372 1.0639413 0.9546004 0.62534087</span></span>
+<span><span class="co">#&gt;  7:    SUR     7    24 1.4711422 1.134317987 1.6172051 1.0984422 0.98311641</span></span>
+<span><span class="co">#&gt;  8:    SUR     8    23 2.2396563 0.996762568 2.4695749 1.3964044 1.08696795</span></span>
+<span><span class="co">#&gt;  9:    SUR     9    22 1.4031861 0.824852660 1.4343234 1.4472806 1.26573251</span></span>
+<span><span class="co">#&gt; 10:    SUR    10    21 1.7333809 1.634368507 1.6294610 1.4723949 1.34961049</span></span>
+<span><span class="co">#&gt; 11:    SUR    11    20 1.9663471 1.458094766 1.9482510 1.5649672 1.42466715</span></span>
+<span><span class="co">#&gt; 12:    SUR    12    19 1.6445594 1.513862297 1.6854737 1.6041294 1.73852449</span></span>
+<span><span class="co">#&gt; 13:    SUR    13    18 1.8888322 1.771917063 1.8753259 1.5778061 1.62346695</span></span>
+<span><span class="co">#&gt; 14:    SUR    14    17 2.7101106 1.600630993 2.9504589 1.7536365 1.80562172</span></span>
+<span><span class="co">#&gt; 15:    SUR    15    16 1.3972429 1.163043712 1.6278065 1.7482681 1.81444100</span></span>
+<span><span class="co">#&gt; 16:    SUR    16    15 1.3626847 0.949735140 1.4546782 1.7552695 1.77659237</span></span>
+<span><span class="co">#&gt; 17:    SUR    17    14 1.9781489 1.314777415 1.9060125 1.7781093 1.72479209</span></span>
+<span><span class="co">#&gt; 18:    SUR    18    13 1.1693884 0.932454770 1.2171785 1.7707780 1.66392094</span></span>
+<span><span class="co">#&gt; 19:    SUR    19    12 2.1965368 2.260330218 2.2839805 1.7476903 1.68893025</span></span>
+<span><span class="co">#&gt; 20:    SUR    20    11 1.5572205 1.469457065 1.4796093 1.7494610 1.68582650</span></span>
+<span><span class="co">#&gt; 21:    SUR    21    10 2.0892894 1.483108861 2.0235415 1.7519754 1.71238115</span></span>
+<span><span class="co">#&gt; 22:    SUR    22     9 2.7635619 2.409323706 2.7577694 1.8200468 1.78159642</span></span>
+<span><span class="co">#&gt; 23:    SUR    23     8 3.1877661 3.053144735 3.4726693 1.9556090 1.86412239</span></span>
+<span><span class="co">#&gt; 24:    SUR    24     7 1.9738514 2.197825361 2.1989655 1.9258036 1.94859885</span></span>
+<span><span class="co">#&gt; 25:    SUR    25     6 0.9013157 1.010235567 0.9451548 1.8263456 1.79643323</span></span>
+<span><span class="co">#&gt; 26:    SUR    26     5 1.6444242 0.846026751 1.6342535 1.8460220 1.86913373</span></span>
+<span><span class="co">#&gt; 27:    SUR    27     4 1.5504010 1.331600631 1.4532497 1.8208416 1.84639352</span></span>
+<span><span class="co">#&gt; 28:    SUR    28     3 1.9738903 1.064691530 1.6041476 1.6785125 1.68390907</span></span>
+<span><span class="co">#&gt; 29:    SUR    29     2 1.0848500 1.084849979 1.1297025 1.6450982 1.64509820</span></span>
+<span><span class="co">#&gt; 30:    SUR    30     1 1.1455972 1.145597160 1.1455972 1.3380971 1.33809709</span></span>
+<span><span class="co">#&gt;      cv_nm   dev n_obs   lr_mean   lr_median     lr_wt  clr_mean clr_median</span></span>
+<span><span class="co">#&gt;     &lt;char&gt; &lt;int&gt; &lt;int&gt;     &lt;num&gt;       &lt;num&gt;     &lt;num&gt;     &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;        clr_wt</span></span>
+<span><span class="co">#&gt;         &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1: 0.1939673</span></span>
+<span><span class="co">#&gt;  2: 0.2224665</span></span>
+<span><span class="co">#&gt;  3: 0.3630603</span></span>
+<span><span class="co">#&gt;  4: 0.8177716</span></span>
+<span><span class="co">#&gt;  5: 0.9316804</span></span>
+<span><span class="co">#&gt;  6: 0.9778684</span></span>
+<span><span class="co">#&gt;  7: 1.1201157</span></span>
+<span><span class="co">#&gt;  8: 1.4142730</span></span>
+<span><span class="co">#&gt;  9: 1.4513118</span></span>
+<span><span class="co">#&gt; 10: 1.4784032</span></span>
+<span><span class="co">#&gt; 11: 1.5736234</span></span>
+<span><span class="co">#&gt; 12: 1.6120511</span></span>
+<span><span class="co">#&gt; 13: 1.5964003</span></span>
+<span><span class="co">#&gt; 14: 1.7651456</span></span>
+<span><span class="co">#&gt; 15: 1.7502698</span></span>
+<span><span class="co">#&gt; 16: 1.7562775</span></span>
+<span><span class="co">#&gt; 17: 1.7802338</span></span>
+<span><span class="co">#&gt; 18: 1.7691786</span></span>
+<span><span class="co">#&gt; 19: 1.7542191</span></span>
+<span><span class="co">#&gt; 20: 1.7554551</span></span>
+<span><span class="co">#&gt; 21: 1.7613209</span></span>
+<span><span class="co">#&gt; 22: 1.8339909</span></span>
+<span><span class="co">#&gt; 23: 1.9722480</span></span>
+<span><span class="co">#&gt; 24: 1.9357069</span></span>
+<span><span class="co">#&gt; 25: 1.8304242</span></span>
+<span><span class="co">#&gt; 26: 1.8502970</span></span>
+<span><span class="co">#&gt; 27: 1.8264828</span></span>
+<span><span class="co">#&gt; 28: 1.6715582</span></span>
+<span><span class="co">#&gt; 29: 1.6351190</span></span>
+<span><span class="co">#&gt; 30: 1.3380971</span></span>
+<span><span class="co">#&gt;        clr_wt</span></span>
+<span><span class="co">#&gt;         &lt;num&gt;</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="단계-경과-기간-모형화">4단계 — 경과 기간 모형화<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EA%B2%BD%EA%B3%BC-%EA%B8%B0%EA%B0%84-%EB%AA%A8%ED%98%95%ED%99%94"></a>
@@ -203,8 +258,8 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <span><span class="co">#&gt; recent      : all </span></span>
 <span><span class="co">#&gt; use_maturity: FALSE </span></span>
 <span><span class="co">#&gt; groups      : cv_nm </span></span>
-<span><span class="co">#&gt; n_groups    : 4 </span></span>
-<span><span class="co">#&gt; ata links   : 116</span></span>
+<span><span class="co">#&gt; n_groups    : 1 </span></span>
+<span><span class="co">#&gt; ata links   : 29</span></span>
 <span></span>
 <span><span class="co"># 노출 기반(exposure-driven) 강도</span></span>
 <span><span class="va">ed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/build_ed.html">build_ed</a></span><span class="op">(</span><span class="va">tri</span>, loss_var <span class="op">=</span> <span class="st">"closs"</span>, exposure_var <span class="op">=</span> <span class="st">"crp"</span><span class="op">)</span></span>
@@ -217,8 +272,8 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <span><span class="co">#&gt; sigma_method: min_last2 </span></span>
 <span><span class="co">#&gt; recent      : all </span></span>
 <span><span class="co">#&gt; groups      : cv_nm </span></span>
-<span><span class="co">#&gt; n_groups    : 4 </span></span>
-<span><span class="co">#&gt; links       : 116</span></span></code></pre></div>
+<span><span class="co">#&gt; n_groups    : 1 </span></span>
+<span><span class="co">#&gt; links       : 29</span></span></code></pre></div>
 <p><code><a href="../reference/fit_ata.html">fit_ata()</a></code> 는 경과 기간 링크별로 선택된 age-to-age 인자를
 반환한다. <code><a href="../reference/fit_ed.html">fit_ed()</a></code> 는 강도 인자
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>g</mi><mi>k</mi></msub><mo>=</mo><mi mathvariant="normal">Δ</mi><msubsup><mi>C</mi><mi>k</mi><mi>L</mi></msubsup><mi>/</mi><msubsup><mi>C</mi><mi>k</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">g_k = \Delta C^L_k / C^P_k</annotation></semantics></math>
@@ -230,60 +285,78 @@ calendar / underwriting 기간 컬럼, 인구통계 차원 (<code>cv_nm</code>,
 <p><code><a href="../reference/fit_cl.html">fit_cl()</a></code> 은 chain ladder 추정을 수행한다.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_cl.html">fit_cl</a></span><span class="op">(</span><span class="va">tri</span>, value_var <span class="op">=</span> <span class="st">"closs"</span>, method <span class="op">=</span> <span class="st">"mack"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cl</span>, type <span class="op">=</span> <span class="st">"projection"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; Warning: Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">cl</span>, type <span class="op">=</span> <span class="st">"projection"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="getting-started-ko_files/figure-html/unnamed-chunk-6-1.png" class="r-plt" alt="" width="768"></p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">cl</span><span class="op">)</span></span>
-<span><span class="co">#&gt;       cv_nm     cohort     latest   ultimate    reserve     proc_se   param_se</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;       &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1:    2CI 2023-04-01 1769961365 1769961365          0           0          0</span></span>
-<span><span class="co">#&gt;   2:    2CI 2023-05-01 2177258013 2408047363  230789349    81021770   94495076</span></span>
-<span><span class="co">#&gt;   3:    2CI 2023-06-01 2004054588 2522359218  518304630   111885319  114904860</span></span>
-<span><span class="co">#&gt;   4:    2CI 2023-07-01 1740086803 2284297217  544210414   115767968  107391009</span></span>
-<span><span class="co">#&gt;   5:    2CI 2023-08-01 1020729631 1487357605  466627974   209491141  103506080</span></span>
-<span><span class="co">#&gt;  ---                                                                          </span></span>
-<span><span class="co">#&gt; 116:    SUR 2025-05-01   79474575 2873248566 2793773992  4722987523  809706186</span></span>
-<span><span class="co">#&gt; 117:    SUR 2025-06-01   44351381 2365070816 2320719436  7190998494 1055891775</span></span>
-<span><span class="co">#&gt; 118:    SUR 2025-07-01   12461511 2312527756 2300066245 20431127319 2852680795</span></span>
-<span><span class="co">#&gt; 119:    SUR 2025-08-01          0          0          0           0          0</span></span>
-<span><span class="co">#&gt; 120:    SUR 2025-09-01          0          0          0           0          0</span></span>
-<span><span class="co">#&gt;               se         cv</span></span>
-<span><span class="co">#&gt;            &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1:           0 0.00000000</span></span>
-<span><span class="co">#&gt;   2:   124474280 0.05169096</span></span>
-<span><span class="co">#&gt;   3:   160379087 0.06358297</span></span>
-<span><span class="co">#&gt;   4:   157908363 0.06912777</span></span>
-<span><span class="co">#&gt;   5:   233666529 0.15710178</span></span>
-<span><span class="co">#&gt;  ---                       </span></span>
-<span><span class="co">#&gt; 116:  4791892659 1.66776126</span></span>
-<span><span class="co">#&gt; 117:  7268106134 3.07310296</span></span>
-<span><span class="co">#&gt; 118: 20629317760 8.92067899</span></span>
-<span><span class="co">#&gt; 119:           0         NA</span></span>
-<span><span class="co">#&gt; 120:           0         NA</span></span></code></pre></div>
+<span><span class="co">#&gt;      cv_nm     cohort     latest   ultimate    reserve     proc_se   param_se</span></span>
+<span><span class="co">#&gt;     &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;       &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1:    SUR 2023-04-01 3507505356 3507505356          0           0          0</span></span>
+<span><span class="co">#&gt;  2:    SUR 2023-05-01 4406252675 4692659098  286406424   115260759  133302193</span></span>
+<span><span class="co">#&gt;  3:    SUR 2023-06-01 4509339237 4989741692  480402456   260546297  229777362</span></span>
+<span><span class="co">#&gt;  4:    SUR 2023-07-01 5313443543 6249920460  936476917   323487807  303531340</span></span>
+<span><span class="co">#&gt;  5:    SUR 2023-08-01 3911972952 4790104551  878131600   302841480  238651514</span></span>
+<span><span class="co">#&gt;  6:    SUR 2023-09-01 3526798889 4586214482 1059415593   392548272  254462375</span></span>
+<span><span class="co">#&gt;  7:    SUR 2023-10-01 4570171158 6156953685 1586782527   470323491  346064336</span></span>
+<span><span class="co">#&gt;  8:    SUR 2023-11-01 4307117714 6353810849 2046693136   682297376  413067407</span></span>
+<span><span class="co">#&gt;  9:    SUR 2023-12-01 2804040621 4756961997 1952921376   846641173  371481860</span></span>
+<span><span class="co">#&gt; 10:    SUR 2024-01-01 2802596394 5310789808 2508193413   967471922  433176089</span></span>
+<span><span class="co">#&gt; 11:    SUR 2024-02-01 2579006390 5390468156 2811461766  1040126141  455118832</span></span>
+<span><span class="co">#&gt; 12:    SUR 2024-03-01 1598826418 3605760085 2006933667   860004678  306092171</span></span>
+<span><span class="co">#&gt; 13:    SUR 2024-04-01 2886602142 7343304556 4456702414  1383569396  661959599</span></span>
+<span><span class="co">#&gt; 14:    SUR 2024-05-01 1069844601 2925726831 1855882230   902243763  267911601</span></span>
+<span><span class="co">#&gt; 15:    SUR 2024-06-01 1441825655 4443751247 3001925593  1330587755  446291293</span></span>
+<span><span class="co">#&gt; 16:    SUR 2024-07-01  920185549 3113972263 2193786714  1176679539  322137404</span></span>
+<span><span class="co">#&gt; 17:    SUR 2024-08-01 1367757350 5179388346 3811630995  1733832466  577622326</span></span>
+<span><span class="co">#&gt; 18:    SUR 2024-09-01  940227572 4479020413 3538792841  2210584453  610162835</span></span>
+<span><span class="co">#&gt; 19:    SUR 2024-10-01 1396666726 7711276603 6314609878  2989040405 1072033239</span></span>
+<span><span class="co">#&gt; 20:    SUR 2024-11-01  469264829 3075404317 2606139487  1979891967  440762324</span></span>
+<span><span class="co">#&gt; 21:    SUR 2024-12-01  402765219 3257251807 2854486587  2370955488  516172961</span></span>
+<span><span class="co">#&gt; 22:    SUR 2025-01-01  518265377 5092462598 4574197221  3206591244  851970535</span></span>
+<span><span class="co">#&gt; 23:    SUR 2025-02-01  193154960 2332563087 2139408127  2308254859  407144209</span></span>
+<span><span class="co">#&gt; 24:    SUR 2025-03-01   87626232 1619023322 1531397089  2577171382  351339683</span></span>
+<span><span class="co">#&gt; 25:    SUR 2025-04-01  141379071 3769384328 3628005256  4545247070  919561739</span></span>
+<span><span class="co">#&gt; 26:    SUR 2025-05-01   79474575 2873248566 2793773992  4722987523  809706186</span></span>
+<span><span class="co">#&gt; 27:    SUR 2025-06-01   44351381 2365070816 2320719436  7190998494 1055891775</span></span>
+<span><span class="co">#&gt; 28:    SUR 2025-07-01   12461511 2312527756 2300066245 20431127319 2852680795</span></span>
+<span><span class="co">#&gt; 29:    SUR 2025-08-01          0          0          0           0          0</span></span>
+<span><span class="co">#&gt; 30:    SUR 2025-09-01          0          0          0           0          0</span></span>
+<span><span class="co">#&gt;      cv_nm     cohort     latest   ultimate    reserve     proc_se   param_se</span></span>
+<span><span class="co">#&gt;     &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;       &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;              se         cv</span></span>
+<span><span class="co">#&gt;           &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1:           0 0.00000000</span></span>
+<span><span class="co">#&gt;  2:   176222919 0.03755289</span></span>
+<span><span class="co">#&gt;  3:   347393162 0.06962147</span></span>
+<span><span class="co">#&gt;  4:   443593999 0.07097594</span></span>
+<span><span class="co">#&gt;  5:   385574257 0.08049391</span></span>
+<span><span class="co">#&gt;  6:   467808985 0.10200329</span></span>
+<span><span class="co">#&gt;  7:   583921836 0.09483941</span></span>
+<span><span class="co">#&gt;  8:   797592874 0.12552984</span></span>
+<span><span class="co">#&gt;  9:   924553972 0.19435807</span></span>
+<span><span class="co">#&gt; 10:  1060020492 0.19959752</span></span>
+<span><span class="co">#&gt; 11:  1135339395 0.21061981</span></span>
+<span><span class="co">#&gt; 12:   912852926 0.25316519</span></span>
+<span><span class="co">#&gt; 13:  1533771425 0.20886665</span></span>
+<span><span class="co">#&gt; 14:   941180340 0.32169112</span></span>
+<span><span class="co">#&gt; 15:  1403438524 0.31582293</span></span>
+<span><span class="co">#&gt; 16:  1219978379 0.39177561</span></span>
+<span><span class="co">#&gt; 17:  1827518145 0.35284439</span></span>
+<span><span class="co">#&gt; 18:  2293247110 0.51199747</span></span>
+<span><span class="co">#&gt; 19:  3175471273 0.41179579</span></span>
+<span><span class="co">#&gt; 20:  2028359836 0.65954250</span></span>
+<span><span class="co">#&gt; 21:  2426492211 0.74495076</span></span>
+<span><span class="co">#&gt; 22:  3317842853 0.65152032</span></span>
+<span><span class="co">#&gt; 23:  2343887135 1.00485477</span></span>
+<span><span class="co">#&gt; 24:  2601009786 1.60653015</span></span>
+<span><span class="co">#&gt; 25:  4637333794 1.23026293</span></span>
+<span><span class="co">#&gt; 26:  4791892659 1.66776126</span></span>
+<span><span class="co">#&gt; 27:  7268106134 3.07310296</span></span>
+<span><span class="co">#&gt; 28: 20629317760 8.92067899</span></span>
+<span><span class="co">#&gt; 29:           0         NA</span></span>
+<span><span class="co">#&gt; 30:           0         NA</span></span>
+<span><span class="co">#&gt;              se         cv</span></span>
+<span><span class="co">#&gt;           &lt;num&gt;      &lt;num&gt;</span></span></code></pre></div>
 <p><code><a href="../reference/fit_lr.html">fit_lr()</a></code> 은 손해율 추정을 수행한다. 기본값
 <code>method = "sa"</code> (단계 적응적(stage-adaptive)) 는
 성숙점(maturity point) 이전에는 노출 기반 방식, 성숙점 이후에는 chain
@@ -291,73 +364,112 @@ ladder 를 적용한다. 전환 지점은 ata 인자에서 그룹별로 탐지�
 성숙점이다.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">lr</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_lr.html">fit_lr</a></span><span class="op">(</span><span class="va">tri</span>, method <span class="op">=</span> <span class="st">"sa"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">lr</span>, type <span class="op">=</span> <span class="st">"clr"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; Warning: Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; Removed 1 row containing missing values or values outside the scale range</span></span>
-<span><span class="co">#&gt; (`geom_segment()`).</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span>
-<span><span class="co">#&gt; `geom_line()`: Each group consists of only one observation.</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Do you need to adjust the <span style="color: #00BB00;">group</span> aesthetic?</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">lr</span>, type <span class="op">=</span> <span class="st">"clr"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="getting-started-ko_files/figure-html/unnamed-chunk-7-1.png" class="r-plt" alt="" width="768"></p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">lr</span><span class="op">)</span></span>
-<span><span class="co">#&gt;       cv_nm     cohort     latest   ultimate    reserve exposure_ult clr_latest</span></span>
-<span><span class="co">#&gt;      &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;        &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1:    2CI 2023-04-01 1769961365 1769961365          0   1991886535  0.8885854</span></span>
-<span><span class="co">#&gt;   2:    2CI 2023-05-01 2177258013 2408047363  230789349   2284418174  1.0198072</span></span>
-<span><span class="co">#&gt;   3:    2CI 2023-06-01 2004054588 2522359218  518304630   2375671198  0.9676132</span></span>
-<span><span class="co">#&gt;   4:    2CI 2023-07-01 1740086803 2284297217  544210414   2091234898  0.9992941</span></span>
-<span><span class="co">#&gt;   5:    2CI 2023-08-01 1020729631 1487357605  466627974   1933805836  0.6725715</span></span>
-<span><span class="co">#&gt;  ---                                                                           </span></span>
-<span><span class="co">#&gt; 116:    SUR 2025-05-01   79474575 5330755348 5251280773   3170694512  0.5208363</span></span>
-<span><span class="co">#&gt; 117:    SUR 2025-06-01   44351381 4669095782 4624744401   2746665433  0.4418904</span></span>
-<span><span class="co">#&gt; 118:    SUR 2025-07-01   12461511 6405537028 6393075517   3705335918  0.1463368</span></span>
-<span><span class="co">#&gt; 119:    SUR 2025-08-01          0 5151619396 5151619396   2969197221  0.0000000</span></span>
-<span><span class="co">#&gt; 120:    SUR 2025-09-01          0 5216378154 5216378154   2995415278  0.0000000</span></span>
-<span><span class="co">#&gt;        clr_ult maturity_from    proc_se  param_se         se         cv</span></span>
-<span><span class="co">#&gt;          &lt;num&gt;         &lt;num&gt;      &lt;num&gt;     &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1: 0.8885854            18          0         0          0 0.00000000</span></span>
-<span><span class="co">#&gt;   2: 1.0541185            18   81021770  94495076  124474280 0.05169096</span></span>
-<span><span class="co">#&gt;   3: 1.0617459            18  111885319 114904860  160379087 0.06358297</span></span>
-<span><span class="co">#&gt;   4: 1.0923198            18  115767968 107391009  157908363 0.06912777</span></span>
-<span><span class="co">#&gt;   5: 0.7691349            18  209491141 103506080  233666529 0.15710178</span></span>
-<span><span class="co">#&gt;  ---                                                                   </span></span>
-<span><span class="co">#&gt; 116: 1.6812579            15 2441571165 725982384 2547218125 0.47783437</span></span>
-<span><span class="co">#&gt; 117: 1.6999143            15 2282292178 633588616 2368605523 0.50729427</span></span>
-<span><span class="co">#&gt; 118: 1.7287331            15 2692258007 868125300 2828762046 0.44161200</span></span>
-<span><span class="co">#&gt; 119: 1.7350210            15 2413061918 697300804 2511791439 0.48757318</span></span>
-<span><span class="co">#&gt; 120: 1.7414541            15 2425838047 705030372 2526214175 0.48428509</span></span>
-<span><span class="co">#&gt;          se_clr     cv_clr    ci_lower  ci_upper</span></span>
-<span><span class="co">#&gt;           &lt;num&gt;      &lt;num&gt;       &lt;num&gt;     &lt;num&gt;</span></span>
-<span><span class="co">#&gt;   1: 0.00000000 0.00000000 0.888585436 0.8885854</span></span>
-<span><span class="co">#&gt;   2: 0.05448840 0.05169096 0.947323166 1.1609138</span></span>
-<span><span class="co">#&gt;   3: 0.06750896 0.06358297 0.929430801 1.1940611</span></span>
-<span><span class="co">#&gt;   4: 0.07550963 0.06912777 0.944323622 1.2403159</span></span>
-<span><span class="co">#&gt;   5: 0.12083247 0.15710178 0.532307642 1.0059622</span></span>
-<span><span class="co">#&gt;  ---                                            </span></span>
-<span><span class="co">#&gt; 116: 0.80336283 0.47783437 0.106695729 3.2558202</span></span>
-<span><span class="co">#&gt; 117: 0.86235677 0.50729427 0.009726071 3.3901025</span></span>
-<span><span class="co">#&gt; 118: 0.76342931 0.44161200 0.232439195 3.2250271</span></span>
-<span><span class="co">#&gt; 119: 0.84594968 0.48757318 0.076990049 3.3930519</span></span>
-<span><span class="co">#&gt; 120: 0.84336025 0.48428509 0.088498365 3.3944098</span></span></code></pre></div>
+<span><span class="co">#&gt;      cv_nm     cohort     latest   ultimate    reserve exposure_ult clr_latest</span></span>
+<span><span class="co">#&gt;     &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;        &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1:    SUR 2023-04-01 3507505356 3507505356          0   2621263717  1.3380971</span></span>
+<span><span class="co">#&gt;  2:    SUR 2023-05-01 4406252675 4692659098  286406424   2447179852  1.9373843</span></span>
+<span><span class="co">#&gt;  3:    SUR 2023-06-01 4509339237 4989741692  480402456   3045660786  1.6839091</span></span>
+<span><span class="co">#&gt;  4:    SUR 2023-07-01 5313443543 6249920460  936476917   2859002912  2.2532321</span></span>
+<span><span class="co">#&gt;  5:    SUR 2023-08-01 3911972952 4790104551  878131600   2669412392  1.8691337</span></span>
+<span><span class="co">#&gt;  6:    SUR 2023-09-01 3526798889 4586214482 1059415593   2893769142  1.6648169</span></span>
+<span><span class="co">#&gt;  7:    SUR 2023-10-01 4570171158 6156953685 1586782527   3094707500  2.1604887</span></span>
+<span><span class="co">#&gt;  8:    SUR 2023-11-01 4307117714 6353810849 2046693136   2879458987  2.3699733</span></span>
+<span><span class="co">#&gt;  9:    SUR 2023-12-01 2804040621 4756961997 1952921376   2843155663  1.6876214</span></span>
+<span><span class="co">#&gt; 10:    SUR 2024-01-01 2802596394 5310789808 2508193413   2974323113  1.7332940</span></span>
+<span><span class="co">#&gt; 11:    SUR 2024-02-01 2579006390 5390468156 2811461766   2661467247  1.9393670</span></span>
+<span><span class="co">#&gt; 12:    SUR 2024-03-01 1598826418 3605760085 2006933667   2483209935  1.4110120</span></span>
+<span><span class="co">#&gt; 13:    SUR 2024-04-01 2886602142 7343304556 4456702414   2676093355  2.5884670</span></span>
+<span><span class="co">#&gt; 14:    SUR 2024-05-01 1069844601 2925726831 1855882230   2650182997  1.0781941</span></span>
+<span><span class="co">#&gt; 15:    SUR 2024-06-01 1441825655 4443751247 3001925593   2653104694  1.6227525</span></span>
+<span><span class="co">#&gt; 16:    SUR 2024-07-01  920185549 3113972263 2193786714   2758730497  1.1155218</span></span>
+<span><span class="co">#&gt; 17:    SUR 2024-08-01 1367757350 5184406888 3816649538   2949332103  1.7510206</span></span>
+<span><span class="co">#&gt; 18:    SUR 2024-09-01  940227572 4529063006 3588835434   2628969704  1.5394236</span></span>
+<span><span class="co">#&gt; 19:    SUR 2024-10-01 1396666726 6507558014 5110891288   2600171987  2.6195782</span></span>
+<span><span class="co">#&gt; 20:    SUR 2024-11-01  469264829 3790320997 3321056168   2558267991  1.0529047</span></span>
+<span><span class="co">#&gt; 21:    SUR 2024-12-01  402765219 4334152656 3931387437   2865484237  0.9528421</span></span>
+<span><span class="co">#&gt; 22:    SUR 2025-01-01  518265377 5036348322 4518082945   2811568955  1.4882717</span></span>
+<span><span class="co">#&gt; 23:    SUR 2025-02-01  193154960 4645763088 4452608128   3116396355  0.6170140</span></span>
+<span><span class="co">#&gt; 24:    SUR 2025-03-01   87626232 4434935578 4347309346   2859035712  0.3804721</span></span>
+<span><span class="co">#&gt; 25:    SUR 2025-04-01  141379071 4826181874 4684802803   2820900137  0.7901498</span></span>
+<span><span class="co">#&gt; 26:    SUR 2025-05-01   79474575 5330755348 5251280773   3170694512  0.5208363</span></span>
+<span><span class="co">#&gt; 27:    SUR 2025-06-01   44351381 4669095782 4624744401   2746665433  0.4418904</span></span>
+<span><span class="co">#&gt; 28:    SUR 2025-07-01   12461511 6405537028 6393075517   3705335918  0.1463368</span></span>
+<span><span class="co">#&gt; 29:    SUR 2025-08-01          0 5151619396 5151619396   2969197221  0.0000000</span></span>
+<span><span class="co">#&gt; 30:    SUR 2025-09-01          0 5216378154 5216378154   2995415278  0.0000000</span></span>
+<span><span class="co">#&gt;      cv_nm     cohort     latest   ultimate    reserve exposure_ult clr_latest</span></span>
+<span><span class="co">#&gt;     &lt;char&gt;     &lt;Date&gt;      &lt;num&gt;      &lt;num&gt;      &lt;num&gt;        &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;      clr_ult maturity_from    proc_se  param_se         se         cv</span></span>
+<span><span class="co">#&gt;        &lt;num&gt;         &lt;num&gt;      &lt;num&gt;     &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1: 1.338097            15          0         0          0 0.00000000</span></span>
+<span><span class="co">#&gt;  2: 1.917578            15  115260759 133302193  176222919 0.03755289</span></span>
+<span><span class="co">#&gt;  3: 1.638312            15  260546297 229777362  347393162 0.06962147</span></span>
+<span><span class="co">#&gt;  4: 2.186049            15  323487807 303531340  443593999 0.07097594</span></span>
+<span><span class="co">#&gt;  5: 1.794442            15  302841480 238651514  385574257 0.08049391</span></span>
+<span><span class="co">#&gt;  6: 1.584858            15  392548272 254462375  467808985 0.10200329</span></span>
+<span><span class="co">#&gt;  7: 1.989511            15  470323491 346064336  583921836 0.09483941</span></span>
+<span><span class="co">#&gt;  8: 2.206599            15  682297376 413067407  797592874 0.12552984</span></span>
+<span><span class="co">#&gt;  9: 1.673128            15  846641173 371481860  924553972 0.19435807</span></span>
+<span><span class="co">#&gt; 10: 1.785546            15  967471922 433176089 1060020492 0.19959752</span></span>
+<span><span class="co">#&gt; 11: 2.025375            15 1040126141 455118832 1135339395 0.21061981</span></span>
+<span><span class="co">#&gt; 12: 1.452056            15  860004678 306092171  912852926 0.25316519</span></span>
+<span><span class="co">#&gt; 13: 2.744039            15 1383569396 661959599 1533771425 0.20886665</span></span>
+<span><span class="co">#&gt; 14: 1.103972            15  902243763 267911601  941180340 0.32169112</span></span>
+<span><span class="co">#&gt; 15: 1.674925            15 1330587755 446291293 1403438524 0.31582293</span></span>
+<span><span class="co">#&gt; 16: 1.128770            15 1176679539 322137404 1219978379 0.39177561</span></span>
+<span><span class="co">#&gt; 17: 1.757824            15 1653413517 562374194 1746436656 0.33686335</span></span>
+<span><span class="co">#&gt; 18: 1.722752            15 1920875276 560752113 2001050913 0.44182448</span></span>
+<span><span class="co">#&gt; 19: 2.502741            15 2158786246 742807671 2283007072 0.35082393</span></span>
+<span><span class="co">#&gt; 20: 1.481597            15 1896073998 507474792 1962811063 0.51784824</span></span>
+<span><span class="co">#&gt; 21: 1.512538            15 2081774707 587531425 2163094798 0.49908136</span></span>
+<span><span class="co">#&gt; 22: 1.791295            15 2161224847 643156031 2254893017 0.44772380</span></span>
+<span><span class="co">#&gt; 23: 1.490748            15 2219680565 643605267 2311105698 0.49746525</span></span>
+<span><span class="co">#&gt; 24: 1.551200            15 2238134503 619051552 2322169433 0.52360838</span></span>
+<span><span class="co">#&gt; 25: 1.710866            15 2299686885 650849914 2390013678 0.49521832</span></span>
+<span><span class="co">#&gt; 26: 1.681258            15 2441571165 725982384 2547218125 0.47783437</span></span>
+<span><span class="co">#&gt; 27: 1.699914            15 2282292178 633588616 2368605523 0.50729427</span></span>
+<span><span class="co">#&gt; 28: 1.728733            15 2692258007 868125300 2828762046 0.44161200</span></span>
+<span><span class="co">#&gt; 29: 1.735021            15 2413061918 697300804 2511791439 0.48757318</span></span>
+<span><span class="co">#&gt; 30: 1.741454            15 2425838047 705030372 2526214175 0.48428509</span></span>
+<span><span class="co">#&gt;      clr_ult maturity_from    proc_se  param_se         se         cv</span></span>
+<span><span class="co">#&gt;        &lt;num&gt;         &lt;num&gt;      &lt;num&gt;     &lt;num&gt;      &lt;num&gt;      &lt;num&gt;</span></span>
+<span><span class="co">#&gt;         se_clr     cv_clr    ci_lower ci_upper</span></span>
+<span><span class="co">#&gt;          &lt;num&gt;      &lt;num&gt;       &lt;num&gt;    &lt;num&gt;</span></span>
+<span><span class="co">#&gt;  1: 0.00000000 0.00000000 1.338097092 1.338097</span></span>
+<span><span class="co">#&gt;  2: 0.07201061 0.03755289 1.776440142 2.058717</span></span>
+<span><span class="co">#&gt;  3: 0.11406167 0.06962147 1.414754928 1.861868</span></span>
+<span><span class="co">#&gt;  4: 0.15515689 0.07097594 1.881947086 2.490151</span></span>
+<span><span class="co">#&gt;  5: 0.14444162 0.08049391 1.511341188 2.077542</span></span>
+<span><span class="co">#&gt;  6: 0.16166078 0.10200329 1.268009140 1.901708</span></span>
+<span><span class="co">#&gt;  7: 0.18868402 0.09483941 1.619696826 2.359325</span></span>
+<span><span class="co">#&gt;  8: 0.27699400 0.12552984 1.663700564 2.749497</span></span>
+<span><span class="co">#&gt;  9: 0.32518584 0.19435807 1.035774983 2.310480</span></span>
+<span><span class="co">#&gt; 10: 0.35639050 0.19959752 1.087033149 2.484058</span></span>
+<span><span class="co">#&gt; 11: 0.42658402 0.21061981 1.189285285 2.861464</span></span>
+<span><span class="co">#&gt; 12: 0.36761005 0.25316519 0.731553624 2.172559</span></span>
+<span><span class="co">#&gt; 13: 0.57313824 0.20886665 1.620708708 3.867369</span></span>
+<span><span class="co">#&gt; 14: 0.35513787 0.32169112 0.407914194 1.800029</span></span>
+<span><span class="co">#&gt; 15: 0.52897970 0.31582293 0.638143790 2.711706</span></span>
+<span><span class="co">#&gt; 16: 0.44222456 0.39177561 0.262025805 1.995514</span></span>
+<span><span class="co">#&gt; 17: 0.59214649 0.33686335 0.597238249 2.918410</span></span>
+<span><span class="co">#&gt; 18: 0.76115404 0.44182448 0.230917566 3.214587</span></span>
+<span><span class="co">#&gt; 19: 0.87802156 0.35082393 0.781850734 4.223632</span></span>
+<span><span class="co">#&gt; 20: 0.76724216 0.51784824 0.000000000 2.985364</span></span>
+<span><span class="co">#&gt; 21: 0.75487932 0.49908136 0.033001318 2.992074</span></span>
+<span><span class="co">#&gt; 22: 0.80200523 0.44772380 0.219393239 3.363196</span></span>
+<span><span class="co">#&gt; 23: 0.74159556 0.49746525 0.037247879 2.944249</span></span>
+<span><span class="co">#&gt; 24: 0.81222121 0.52360838 0.000000000 3.143124</span></span>
+<span><span class="co">#&gt; 25: 0.84725214 0.49521832 0.050282228 3.371450</span></span>
+<span><span class="co">#&gt; 26: 0.80336283 0.47783437 0.106695729 3.255820</span></span>
+<span><span class="co">#&gt; 27: 0.86235677 0.50729427 0.009726071 3.390102</span></span>
+<span><span class="co">#&gt; 28: 0.76342931 0.44161200 0.232439195 3.225027</span></span>
+<span><span class="co">#&gt; 29: 0.84594968 0.48757318 0.076990049 3.393052</span></span>
+<span><span class="co">#&gt; 30: 0.84336025 0.48428509 0.088498365 3.394410</span></span>
+<span><span class="co">#&gt;         se_clr     cv_clr    ci_lower ci_upper</span></span>
+<span><span class="co">#&gt;          &lt;num&gt;      &lt;num&gt;       &lt;num&gt;    &lt;num&gt;</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="단계-구조-변화-진단">6단계 — 구조 변화 진단<a class="anchor" aria-label="anchor" href="#%EB%8B%A8%EA%B3%84-%EA%B5%AC%EC%A1%B0-%EB%B3%80%ED%99%94-%EC%A7%84%EB%8B%A8"></a>

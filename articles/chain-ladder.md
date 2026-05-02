@@ -84,30 +84,6 @@ head(cl_mack$summary)
 ``` r
 
 plot(cl_mack, type = "projection", show_interval = TRUE)
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> Warning: Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> Removed 1 row containing missing values or values outside the scale range
-#> (`geom_segment()`).
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
-#> `geom_line()`: Each group consists of only one observation.
-#> ℹ Do you need to adjust the group aesthetic?
 ```
 
 ![](chain-ladder_files/figure-html/unnamed-chunk-3-1.png)

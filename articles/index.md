@@ -2,8 +2,6 @@
 
 ### Workflow
 
-- [Getting started with
-  lossratio](https://seokhoonj.github.io/lossratio/articles/getting-started.md):
 - [Aggregation frameworks: triangle, calendar,
   total](https://seokhoonj.github.io/lossratio/articles/aggregation-frameworks.md):
 

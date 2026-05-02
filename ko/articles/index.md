@@ -2,8 +2,6 @@
 
 ### 한국어
 
-- [lossratio
-  시작하기](https://seokhoonj.github.io/lossratio/ko/articles/getting-started-ko.md):
 - [집계 프레임워크: triangle, calendar,
   total](https://seokhoonj.github.io/lossratio/ko/articles/aggregation-frameworks-ko.md):
 - [손해율 추정 방법론: SA, ED,
