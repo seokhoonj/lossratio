@@ -61,6 +61,8 @@ colorbar breaks every <code>by_month</code> months (default 6), labeled as
 <span>  by_month <span class="op">=</span> <span class="fl">6</span>,</span>
 <span>  palette <span class="op">=</span> <span class="st">"ylgnbu"</span>,</span>
 <span>  n <span class="op">=</span> <span class="fl">256</span>,</span>
+<span>  begin <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  end <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  include_endpoints <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -83,6 +85,12 @@ vector of colors.</p></dd>
 
 <dt id="arg-n">n<a class="anchor" aria-label="anchor" href="#arg-n"></a></dt>
 <dd><p>Integer. Number of color steps.</p></dd>
+
+
+<dt id="arg-begin-end">begin, end<a class="anchor" aria-label="anchor" href="#arg-begin-end"></a></dt>
+<dd><p>Numeric in <code>[0, 1]</code>. Trim the generated palette to
+the <code>[begin, end]</code> slice (defaults <code>0</code> / <code>1</code> = no trim). Useful
+when a palette's light end is hard to read on white backgrounds.</p></dd>
 
 
 <dt id="arg-include-endpoints">include_endpoints<a class="anchor" aria-label="anchor" href="#arg-include-endpoints"></a></dt>

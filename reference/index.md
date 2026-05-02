@@ -99,7 +99,7 @@ compare projections against the withheld actuals.
   [`print(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
   [`summary(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
   [`print(`*`<summary.backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  : Backtest a chain ladder / loss ratio fit on existing data
+  : Backtest a loss-ratio / chain ladder fit on existing data
 
 ## Visualisation
 
@@ -155,7 +155,7 @@ print / summary / longer methods registered on package classes.
   [`print(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
   [`summary(`*`<backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
   [`print(`*`<summary.backtest>`*`)`](https://seokhoonj.github.io/lossratio/reference/backtest.md)
-  : Backtest a chain ladder / loss ratio fit on existing data
+  : Backtest a loss-ratio / chain ladder fit on existing data
 
 - [`detect_cohort_regime()`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)
   [`print(`*`<cohort_regime>`*`)`](https://seokhoonj.github.io/lossratio/reference/detect_cohort_regime.md)

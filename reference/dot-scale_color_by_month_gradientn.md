@@ -11,6 +11,8 @@ colorbar breaks every `by_month` months (default 6), labeled as
   by_month = 6,
   palette = "ylgnbu",
   n = 256,
+  begin = 0,
+  end = 1,
   include_endpoints = FALSE,
   ...
 )
@@ -31,6 +33,12 @@ colorbar breaks every `by_month` months (default 6), labeled as
 - n:
 
   Integer. Number of color steps.
+
+- begin, end:
+
+  Numeric in `[0, 1]`. Trim the generated palette to the `[begin, end]`
+  slice (defaults `0` / `1` = no trim). Useful when a palette's light
+  end is hard to read on white backgrounds.
 
 - include_endpoints:
 

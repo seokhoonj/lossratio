@@ -1,4 +1,4 @@
-# Backtest a chain ladder / loss ratio fit on existing data
+# Backtest a loss-ratio / chain ladder fit on existing data
 
 Hold out the latest `holdout` calendar diagonals from the input
 `triangle`, refit the model on the earlier portion, project the held-out
@@ -13,7 +13,7 @@ development period (`col_summary`) and by calendar diagonal
 ## Usage
 
 ``` r
-backtest(x, holdout = 6L, fit_fn = fit_cl, value_var = "closs", ...)
+backtest(x, holdout = 6L, fit_fn = fit_lr, value_var = "clr", ...)
 
 # S3 method for class 'backtest'
 print(x, ...)
@@ -39,7 +39,8 @@ print(x, ...)
 
 - fit_fn:
 
-  Fitting function. Supported: `fit_cl` (default) and `fit_lr`. If
+  Fitting function. Default `fit_lr` (stage-adaptive loss-ratio
+  projection); also supports `fit_cl` for single-column chain ladder. If
   `fit_fn` does not have a `value_var` formal (as is the case for
   `fit_lr`), `value_var` is used only to select the comparison column on
   the fit's `$full` table; arguments for the fitter itself (e.g.,
@@ -47,10 +48,10 @@ print(x, ...)
 
 - value_var:
 
-  Character scalar. Column to project and compare. For `fit_cl`, any
-  column present in `x` (default `"closs"`). For `fit_lr`, must be one
-  of `"closs"`, `"crp"`, or `"clr"`, which map to `loss_proj`,
-  `exposure_proj`, and `clr_proj` respectively on `fit_lr$full`.
+  Character scalar. Column to project and compare. For `fit_lr`
+  (default), must be one of `"closs"`, `"crp"`, or `"clr"` (default),
+  which map to `loss_proj`, `exposure_proj`, and `clr_proj` respectively
+  on `fit_lr$full`. For `fit_cl`, any column present in `x`.
 
 - ...:
 
@@ -105,8 +106,8 @@ An object of class `"backtest"` with components:
 
 ## See also
 
-[`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md),
 [`fit_lr()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_lr.md),
+[`fit_cl()`](https://seokhoonj.github.io/lossratio/ko/reference/fit_cl.md),
 [`plot.backtest()`](https://seokhoonj.github.io/lossratio/ko/reference/plot.backtest.md)
 
 ## Examples
@@ -116,7 +117,7 @@ if (FALSE) { # \dontrun{
 data(experience)
 exp <- as_experience(experience)
 tri <- build_triangle(exp, group_var = cv_nm)
-bt <- backtest(tri, holdout = 6L, value_var = "closs", method = "mack")
+bt <- backtest(tri, holdout = 6L)
 print(bt)
 summary(bt)
 plot(bt)
