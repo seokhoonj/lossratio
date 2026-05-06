@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lossratio"
+version = "0.0.1.dev0"
+description = "Loss ratio analysis for insurance experience data (Python implementation by the author of the R package; in development)."
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Seokhoon Joo", email = "seokhoonj@gmail.com"}]
+requires-python = ">=3.9"
+keywords = [
+  "actuarial",
+  "insurance",
+  "loss ratio",
+  "chain ladder",
+  "reserving",
+  "health insurance",
+]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.0",
+  "pytest>=7.0",
+  "ruff>=0.4",
+  "twine>=5.0",
+]
+
+[project.urls]
+Homepage = "https://seokhoonj.github.io/lossratio/"
+Source = "https://github.com/seokhoonj/lossratio-py"
+"R package" = "https://github.com/seokhoonj/lossratio"
+Issues = "https://github.com/seokhoonj/lossratio-py/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lossratio"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+ignore = []
