@@ -1,12 +1,11 @@
 # lossratio (Python)
 
-Python implementation of `lossratio` by the same author who wrote
-the R package. Both packages share the same methodology — chain
-ladder (Mack), exposure-driven (ED), and stage-adaptive (SA)
-loss-ratio projection methods, maturity point and convergence point
-detection ($k^*$, $k^{**}$), cohort regime change detection, and a
-hold-out backtest framework — applied to long-duration insurance
-experience data.
+Python sibling of the R `lossratio` package: loss-ratio analysis and
+projection for long-term health insurance from long-format experience
+data. Stage-adaptive (SA) projection uses an exposure-driven (ED)
+model before the maturity point and chain ladder (Mack, CL) after,
+supported by maturity point detection, cohort regime detection, and
+a calendar-diagonal backtest framework.
 
 This Python implementation is in development. The package is
 reserved on PyPI under PEP 541 legitimate future-use provisions.
@@ -19,7 +18,7 @@ reserved on PyPI under PEP 541 legitimate future-use provisions.
 - The working implementation is the R package; the Python version
   is being built up incrementally.
 
-## R package (working today)
+## R package
 
 - Source: <https://github.com/seokhoonj/lossratio>
 - Documentation: <https://seokhoonj.github.io/lossratio/>
