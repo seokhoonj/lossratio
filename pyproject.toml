@@ -48,8 +48,27 @@ Source = "https://github.com/seokhoonj/lossratio-py"
 "R package" = "https://github.com/seokhoonj/lossratio"
 Issues = "https://github.com/seokhoonj/lossratio-py/issues"
 
+[tool.hatch.build]
+exclude = [
+  "CLAUDE.md",
+  ".claude/",
+  ".github/",
+  "tests/",
+  "dev/",
+  ".venv/",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/lossratio"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/lossratio",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+  "CHANGELOG.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
