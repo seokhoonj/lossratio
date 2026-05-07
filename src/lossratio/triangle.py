@@ -10,6 +10,7 @@ from ._io import detect_input_type, mirror_output, to_polars
 
 if TYPE_CHECKING:
     from .experience import Experience
+    from .maturity import ATAMaturity
 
 
 _DEV_UNITS = {"month", "quarter", "half", "year"}
@@ -208,6 +209,34 @@ class Triangle:
     def dev_unit(self) -> str:
         """Development unit ('month', 'quarter', 'half', 'year')."""
         return self._dev_unit
+
+    def maturity(
+        self,
+        theta_cv: float = 0.1,
+        theta_rse: float = 0.05,
+        m: int = 2,
+    ) -> "ATAMaturity":
+        """Detect the ATA maturity point ``k*``.
+
+        Returns an ``ATAMaturity`` result with per-link diagnostics
+        (CV, RSE, stable flag) and the detected k_star (the first dev
+        at which factors are stable for ``m`` consecutive links).
+
+        Parameters
+        ----------
+        theta_cv
+            Threshold on the cross-cohort coefficient of variation of
+            individual link factors.
+        theta_rse
+            Threshold on the relative standard error of the pooled f_k.
+        m
+            Required number of consecutive stable links.
+        """
+        from .maturity import ATAMaturity
+
+        return ATAMaturity._from_triangle(
+            self, theta_cv=theta_cv, theta_rse=theta_rse, m=m
+        )
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
