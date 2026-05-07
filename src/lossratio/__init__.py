@@ -9,18 +9,21 @@ References:
 from .cl import CL, CLFit
 from .ed import ED, EDFit
 from .experience import Experience
+from .lr import LR, LRFit
 from .maturity import Maturity
 from .triangle import Triangle
 
 __version__ = "0.0.1.dev3"
 
 __all__ = [
-    "Maturity",
     "CL",
     "CLFit",
     "ED",
     "EDFit",
     "Experience",
+    "LR",
+    "LRFit",
+    "Maturity",
     "Triangle",
     "__version__",
 ]

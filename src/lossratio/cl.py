@@ -349,10 +349,14 @@ class CLFit:
             )
         )
 
-        out = latest.join(ultimate, on=keys, how="inner").with_columns(
-            (pl.col("se_ultimate") / pl.col("ultimate")).alias("cv_ultimate"),
+        out = (
+            latest.join(ultimate, on=keys, how="inner")
+            .with_columns(
+                (pl.col("se_ultimate") / pl.col("ultimate")).alias("cv_ultimate"),
+            )
+            .sort(keys)
         )
-        return out.sort(keys)
+        return mirror_output(out, self._output_type)
 
     @property
     def n_rows(self) -> int:

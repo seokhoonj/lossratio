@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Returns per-link diagnostics (`f`, `sigma2`, `cv`, `rse`,
   `stable`) and a `k_star` summary (single value when no group_var
   is set, or a `dict[group, k_star]` otherwise).
+- `LR` estimator + `LRFit` result class — sklearn-style
+  loss-ratio projection with three methods:
+  - `method="sa"` (default): stage-adaptive — exposure-driven (ED)
+    before the maturity point `k*`, chain ladder (CL) after.
+    Maturity is detected internally via the same CV/RSE thresholds
+    used by `Triangle.maturity()`. Falls back to ED throughout when
+    `k*` is not detected.
+  - `method="ed"`: ED projection only.
+  - `method="cl"`: Mack chain ladder projection only.
+  - The premium triangle is always projected forward via chain ladder
+    on cumulative risk premium.
+  - Output columns: `[group_var?, cohort, dev, closs, crp, loss_proj,
+    exposure_proj, lr_proj, se_loss, se_lr, cv_lr]`.
+  - `LRFit.summary()` returns per-cohort `ultimate_loss`,
+    `ultimate_exposure`, `ultimate_lr`, `se_lr`, `cv_lr`.
 
 ## [0.0.1.dev3] — 2026-05-07
 
