@@ -6,6 +6,7 @@ References:
 * R package documentation: https://seokhoonj.github.io/lossratio/
 """
 
+from .backtest import Backtest, BacktestFit
 from .cl import CL, CLFit
 from .ed import ED, EDFit
 from .experience import Experience
@@ -16,6 +17,8 @@ from .triangle import Triangle
 __version__ = "0.0.1.dev4"
 
 __all__ = [
+    "Backtest",
+    "BacktestFit",
     "CL",
     "CLFit",
     "ED",

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `Backtest` meta-estimator + `BacktestFit` result class —
+  calendar-diagonal hold-out backtest of any fit estimator.
+
+  ```python
+  bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6).fit(tri)
+  bt.aeg              # per-cell: cohort, dev, calendar_idx, actual, predicted, aeg
+  bt.col_summary      # aggregated by dev
+  bt.diag_summary     # aggregated by calendar diagonal
+  bt.fit              # the refitted estimator's result class instance
+  ```
+
+  Holds out the most recent ``holdout`` calendar diagonals (cells
+  where ``cohort_idx + (dev - 1) > max_cal_idx - holdout``), refits
+  the supplied estimator on the masked Triangle, and compares the
+  projection to the original observed `closs` on the held-out cells.
+  Supports `lr.CL`, `lr.ED`, and `lr.LR` (auto-resolves the
+  projected-loss column name: `closs_proj` for CL/ED, `loss_proj`
+  for LR). Per-group fitting when `Triangle.group_var` is set.
+
 ## [0.0.1.dev4] — 2026-05-07
 
 ### Added

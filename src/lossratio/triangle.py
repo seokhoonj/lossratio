@@ -210,6 +210,23 @@ class Triangle:
         """Development unit ('month', 'quarter', 'half', 'year')."""
         return self._dev_unit
 
+    @classmethod
+    def _from_masked(cls, original: "Triangle", masked_df: pl.DataFrame) -> "Triangle":
+        """Build a Triangle from a pre-built (masked) DataFrame.
+
+        Used internally by Backtest. ``masked_df`` must already have
+        all the standard Triangle columns; this constructor just wraps
+        it and copies metadata from ``original``.
+        """
+        tri = cls.__new__(cls)
+        tri._df = masked_df
+        tri._output_type = original._output_type
+        tri._group_var = original._group_var
+        tri._cohort_var = original._cohort_var
+        tri._dev_var = original._dev_var
+        tri._dev_unit = original._dev_unit
+        return tri
+
     def maturity(
         self,
         theta_cv: float = 0.1,
