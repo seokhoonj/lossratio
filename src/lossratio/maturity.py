@@ -59,10 +59,10 @@ def _compute_cv_rse(
             ck_pos = ck > 0
             if ck_pos.sum() >= 2:
                 indiv = ck1[ck_pos] / ck[ck_pos]
-                mean_f = float(indiv.mean())
-                sd_f = float(indiv.std(ddof=1))
-                if mean_f != 0:
-                    cv_k[k] = sd_f / mean_f
+                f_mean = float(indiv.mean())
+                f_sd = float(indiv.std(ddof=1))
+                if f_mean != 0:
+                    cv_k[k] = f_sd / f_mean
 
         # RSE of pooled f_k. Three cases:
         #   n_k >= 2, sigma^2 > 0  -> RSE = sqrt(sigma^2 / sum_j C_j) / f_k
@@ -71,8 +71,8 @@ def _compute_cv_rse(
         sum_col = float(col_k[~np.isnan(col_k)].sum())
         if n_k >= 2 and sum_col > 0 and f_k[k] > 0:
             if sigma2_k[k] > 0:
-                se_f = np.sqrt(sigma2_k[k] / sum_col)
-                rse_k[k] = float(se_f / f_k[k])
+                f_se = np.sqrt(sigma2_k[k] / sum_col)
+                rse_k[k] = float(f_se / f_k[k])
             else:
                 rse_k[k] = 0.0
 

@@ -132,8 +132,8 @@ def _fit_ed(closs_obs: np.ndarray, crp_obs: np.ndarray) -> _EDResult:
             var_proc += sigma2_g_k[k] * ck
             # Parameter: increment is (C^P_{i,k})^2 * Var(ĝ_k)
             #            with Var(ĝ_k) = sigma^2_g_k / sum_j C^P_{j,k}
-            var_g = sigma2_g_k[k] / sum_crp_k[k]
-            var_param += ck ** 2 * var_g
+            g_var = sigma2_g_k[k] / sum_crp_k[k]
+            var_param += ck ** 2 * g_var
 
             total = var_proc + var_param
             if total >= 0:

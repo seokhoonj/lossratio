@@ -115,8 +115,8 @@ def _fit_sa(
                     not np.isnan(crp_k) and crp_k > 0 and sum_crp_k[k] > 0
                 ):
                     var_proc_inc = sigma2_g_k[k] * crp_k
-                    var_g = sigma2_g_k[k] / sum_crp_k[k] if sum_crp_k[k] > 0 else 0.0
-                    var_param_inc = (crp_k ** 2) * var_g
+                    g_var = sigma2_g_k[k] / sum_crp_k[k] if sum_crp_k[k] > 0 else 0.0
+                    var_param_inc = (crp_k ** 2) * g_var
                     var_acc = var_acc + var_proc_inc + var_param_inc
             else:
                 # CL phase: multiplicative
