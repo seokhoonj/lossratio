@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev3] — 2026-05-07
+
+### Added
+- `ED` estimator (exposure-driven, sklearn-style fit/predict pattern)
+  and `EDFit` result class.
+  - Pooled intensity per link (`g_k = Σ Δloss / Σ crp`, alpha = 1).
+  - Per-link variance parameter (`sigma^2_g_k`) following the same
+    Mack-style tail recommendation as CL when only one observation
+    is available for the last link.
+  - Cumulative premium projection via a separate chain ladder fit on
+    the crp triangle (`f^P_k`); future incremental loss is then
+    projected as `Δ̂loss = ĝ_k · Ĉ^P_k`.
+  - Mack-style standard error on projected cumulative loss combining
+    parameter risk and process risk additively (in line with the
+    additive ED phase variance recursion described in the R sibling's
+    paper).
+  - `EDFit.summary()` returning per-cohort `ultimate`, `se_ultimate`,
+    and `cv_ultimate`.
+  - Per-group fitting when `Triangle.group_var` is set.
+  - Output frame columns: `[group_var?, cohort, dev, closs, closs_proj,
+    crp, crp_proj, se_proj]`.
+
+ED is *not* a chain ladder estimator: it uses an additive,
+exposure-anchored mean structure (`E[Δloss | F] = g_k · crp`),
+distinct from Mack's multiplicative recursion on cumulative loss.
+Cumulative loss in ED is obtained by summing the projected
+increments, and the loss ratio is a downstream quantity computed by
+dividing projected cumulative loss by projected cumulative premium.
+
 ## [0.0.1.dev2] — 2026-05-07
 
 ### Added

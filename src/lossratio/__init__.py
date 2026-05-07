@@ -7,9 +7,18 @@ References:
 """
 
 from .cl import CL, CLFit
+from .ed import ED, EDFit
 from .experience import Experience
 from .triangle import Triangle
 
-__version__ = "0.0.1.dev2"
+__version__ = "0.0.1.dev3"
 
-__all__ = ["CL", "CLFit", "Experience", "Triangle", "__version__"]
+__all__ = [
+    "CL",
+    "CLFit",
+    "ED",
+    "EDFit",
+    "Experience",
+    "Triangle",
+    "__version__",
+]
