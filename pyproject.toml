@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lossratio"
-version = "0.0.1.dev1"
+version = "0.0.1.dev2"
 description = "Loss ratio analysis for insurance experience data (Python sibling of the R lossratio package; in development)."
 readme = "README.md"
 license = "MPL-2.0"
@@ -35,6 +35,7 @@ classifiers = [
 ]
 dependencies = [
   "polars>=1.0",
+  "numpy>=1.24",
 ]
 
 [project.optional-dependencies]

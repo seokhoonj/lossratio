@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev2] — 2026-05-07
+
+### Added
+- `CL` estimator (Mack chain ladder, sklearn-style fit/predict pattern)
+  and `CLFit` result class.
+  - Volume-weighted ATA factor estimation (alpha = 1).
+  - Per-link variance parameter (`sigma^2_k`) following Mack (1993),
+    with the standard tail recommendation when only one observation
+    is available for the last link.
+  - Point projection of unobserved cells (`closs_proj`).
+  - Mack standard error on projected ultimate combining parameter
+    risk and process risk (`se_proj`).
+  - `CLFit.summary()` returns per-cohort `ultimate`, `se_ultimate`,
+    and `cv_ultimate`.
+  - Per-group fitting when `Triangle.group_var` is set (each group
+    fitted independently).
+- `numpy >= 1.24` as a required runtime dependency (used for the
+  Mack matrix recursion).
+
 ## [0.0.1.dev1] — 2026-05-07
 
 ### Added
