@@ -1,0 +1,118 @@
+"""Tests for the Triangle class."""
+
+import polars as pl
+import pytest
+
+import lossratio as lr
+
+
+def _exp_input() -> pl.DataFrame:
+    """Three-cohort, three-dev sample experience data."""
+    return pl.DataFrame(
+        {
+            "cym": [
+                # cohort 2024-01: dev months 1, 2, 3
+                "2024-01-01", "2024-02-01", "2024-03-01",
+                # cohort 2024-02: dev months 1, 2
+                "2024-02-01", "2024-03-01",
+                # cohort 2024-03: dev month 1
+                "2024-03-01",
+            ],
+            "uym": [
+                "2024-01-01", "2024-01-01", "2024-01-01",
+                "2024-02-01", "2024-02-01",
+                "2024-03-01",
+            ],
+            "loss": [10.0, 20.0, 30.0, 15.0, 25.0, 5.0],
+            "rp":   [100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+        }
+    )
+
+
+def test_triangle_no_group():
+    exp = lr.Experience(_exp_input())
+    tri = exp.triangle()
+    assert isinstance(tri.df, pl.DataFrame)
+    assert tri.columns == [
+        "cohort", "dev", "loss", "rp", "closs", "crp", "lr", "clr",
+    ]
+    # 3 cohorts: cohort_1 has 3 devs, cohort_2 has 2, cohort_3 has 1 -> 6 rows
+    assert tri.n_rows == 6
+
+
+def test_triangle_dev_indices():
+    exp = lr.Experience(_exp_input())
+    tri = exp.triangle()
+    df = tri.to_polars().sort(["cohort", "dev"])
+    # Cohort 2024-01: dev = 1, 2, 3
+    cohort_1 = df.filter(pl.col("cohort") == pl.lit("2024-01-01").cast(pl.Date))
+    assert cohort_1["dev"].to_list() == [1, 2, 3]
+
+
+def test_triangle_cumulative():
+    exp = lr.Experience(_exp_input())
+    tri = exp.triangle()
+    df = tri.to_polars().sort(["cohort", "dev"])
+    cohort_1 = df.filter(pl.col("cohort") == pl.lit("2024-01-01").cast(pl.Date))
+    # loss: 10, 20, 30 -> closs: 10, 30, 60
+    assert cohort_1["closs"].to_list() == [10.0, 30.0, 60.0]
+    # rp: 100, 100, 100 -> crp: 100, 200, 300
+    assert cohort_1["crp"].to_list() == [100.0, 200.0, 300.0]
+    # clr: 10/100, 30/200, 60/300
+    assert cohort_1["clr"].to_list() == [0.1, 0.15, 0.2]
+
+
+def test_triangle_with_group():
+    df = _exp_input().with_columns(
+        pl.lit("SUR").alias("cv_nm"),
+    )
+    exp = lr.Experience(df)
+    tri = exp.triangle(group_var="cv_nm")
+    assert "cv_nm" in tri.columns
+    assert tri.group_var == "cv_nm"
+
+
+def test_triangle_pandas_input_mirror():
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(
+        {
+            "cym":  ["2024-01-01", "2024-02-01"],
+            "uym":  ["2024-01-01", "2024-01-01"],
+            "loss": [10.0, 20.0],
+            "rp":   [100.0, 100.0],
+        }
+    )
+    exp = lr.Experience(df)
+    tri = exp.triangle()
+    # input mirroring propagates from Experience to Triangle
+    assert isinstance(tri.df, pd.DataFrame)
+
+
+def test_triangle_direct_constructor():
+    """Triangle accepts a raw DataFrame too (not just Experience)."""
+    df = _exp_input()
+    tri = lr.Triangle(df)
+    assert tri.n_rows == 6
+
+
+def test_triangle_invalid_dev_unit():
+    df = _exp_input()
+    with pytest.raises(ValueError, match="dev_unit"):
+        lr.Triangle(df, dev_unit="decade")
+
+
+def test_triangle_metadata():
+    exp = lr.Experience(_exp_input())
+    tri = exp.triangle(group_var=None, cohort_var="uym", dev_unit="month")
+    assert tri.cohort_var == "uym"
+    assert tri.dev_var == "elap_m"
+    assert tri.dev_unit == "month"
+    assert tri.group_var is None
+
+
+def test_triangle_repr():
+    exp = lr.Experience(_exp_input())
+    tri = exp.triangle()
+    text = repr(tri)
+    assert "Triangle" in text
+    assert "cohorts" in text

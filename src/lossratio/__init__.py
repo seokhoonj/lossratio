@@ -1,8 +1,4 @@
-"""lossratio — Python implementation by the same author as the R package.
-
-This release is currently a placeholder reserving the PyPI name. The
-working implementation today is the R package; the Python version is
-being built up incrementally with the same methodology.
+"""lossratio -- Python sibling of the R lossratio package.
 
 References:
 
@@ -10,4 +6,9 @@ References:
 * R package documentation: https://seokhoonj.github.io/lossratio/
 """
 
-__version__ = "0.0.1.dev0"
+from .experience import Experience
+from .triangle import Triangle
+
+__version__ = "0.0.1.dev1"
+
+__all__ = ["Experience", "Triangle", "__version__"]
