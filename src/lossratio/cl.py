@@ -89,8 +89,16 @@ def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else 1.0
 
         if n_k >= 2 and f_k[k] != 0:
-            indiv = ck1[mask] / ck[mask]
-            sigma2_k[k] = (ck[mask] * (indiv - f_k[k]) ** 2).sum() / (n_k - 1)
+            ck_pos = ck[mask] > 0
+            if ck_pos.any():
+                ck_eff = ck[mask][ck_pos]
+                ck1_eff = ck1[mask][ck_pos]
+                indiv = ck1_eff / ck_eff
+                sigma2_k[k] = (
+                    ck_eff * (indiv - f_k[k]) ** 2
+                ).sum() / (n_k - 1)
+            else:
+                sigma2_k[k] = 0.0
         else:
             sigma2_k[k] = 0.0
 

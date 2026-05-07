@@ -51,13 +51,18 @@ def _compute_cv_rse(
         mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
         n_k = int(mask.sum())
 
-        # Cross-cohort CV of individual link factors (needs n_k >= 2)
+        # Cross-cohort CV of individual link factors (needs n_k >= 2,
+        # and the denominator C^L_{i,k} > 0 for each contributing cohort).
         if n_k >= 2:
-            indiv = col_k1[mask] / col_k[mask]
-            mean_f = float(indiv.mean())
-            sd_f = float(indiv.std(ddof=1))
-            if mean_f != 0:
-                cv_k[k] = sd_f / mean_f
+            ck = col_k[mask]
+            ck1 = col_k1[mask]
+            ck_pos = ck > 0
+            if ck_pos.sum() >= 2:
+                indiv = ck1[ck_pos] / ck[ck_pos]
+                mean_f = float(indiv.mean())
+                sd_f = float(indiv.std(ddof=1))
+                if mean_f != 0:
+                    cv_k[k] = sd_f / mean_f
 
         # RSE of pooled f_k. Three cases:
         #   n_k >= 2, sigma^2 > 0  -> RSE = sqrt(sigma^2 / sum_j C_j) / f_k
