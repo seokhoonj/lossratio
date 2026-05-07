@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev4] — 2026-05-07
+
 ### Added
 - `Maturity` result class and `Triangle.maturity()` method.
   Detects the maturity point `k*` — the first development period at
