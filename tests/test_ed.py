@@ -1,0 +1,300 @@
+"""Tests for the ED (exposure-driven) estimator."""
+
+import math
+
+import polars as pl
+import pytest
+
+import lossratio as lr
+
+
+def _toy_triangle_input() -> pl.DataFrame:
+    """Reuses the 5x5 fixture from CL tests for ED.
+
+    Resulting (cohort, dev) cumulative loss closs:
+        2024-01: 100, 200, 320, 420, 500
+        2024-02: 150, 280, 440, 570
+        2024-03: 120, 250, 380
+        2024-04: 180, 370
+        2024-05: 200
+
+    Risk premium rp is constant 100 per cell, so cumulative crp is
+    100, 200, 300, ... per cohort regardless of dev attained.
+    """
+    return pl.DataFrame(
+        {
+            "cym": [
+                "2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
+                "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
+                "2024-03-01", "2024-04-01", "2024-05-01",
+                "2024-04-01", "2024-05-01",
+                "2024-05-01",
+            ],
+            "uym": [
+                "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01",
+                "2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01",
+                "2024-03-01", "2024-03-01", "2024-03-01",
+                "2024-04-01", "2024-04-01",
+                "2024-05-01",
+            ],
+            "loss": [
+                100.0, 100.0, 120.0, 100.0, 80.0,
+                150.0, 130.0, 160.0, 130.0,
+                120.0, 130.0, 130.0,
+                180.0, 190.0,
+                200.0,
+            ],
+            "rp": [100.0] * 15,
+        }
+    )
+
+
+def _date(s: str) -> pl.Expr:
+    return pl.lit(s).cast(pl.Date)
+
+
+# ---------------------------------------------------------------------------
+# Basic structure
+# ---------------------------------------------------------------------------
+
+
+def test_ed_output_shape():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    assert fit.n_rows == 25  # 5 cohorts x 5 devs
+
+
+def test_ed_repr():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    text = repr(fit)
+    assert "EDFit" in text
+    assert "alpha=1" in text
+
+
+def test_ed_alpha_other_raises():
+    with pytest.raises(NotImplementedError, match="alpha"):
+        lr.ED(alpha=2.0)
+
+
+# ---------------------------------------------------------------------------
+# g_k (intensity) and sigma^2_g_k
+# ---------------------------------------------------------------------------
+
+
+def test_ed_g_k_first_link_hand_check():
+    """At dev 1 -> 2 link, four cohorts contribute (2024-01..04):
+
+        Δloss[i,2]:  200-100=100, 280-150=130, 250-120=130, 370-180=190
+        crp[i,1]:    100,         100,         100,         100
+
+        sum Δloss = 100 + 130 + 130 + 190 = 550
+        sum crp   = 400
+
+        g_1 = 550 / 400 = 1.375
+    """
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    params = fit._params_df.sort("dev")
+    g = params["g"].to_list()
+    assert g[0] == pytest.approx(1.375)
+
+
+def test_ed_sigma2_g_k_first_three_links_positive():
+    """Links 1-3 each have n_k >= 2 contributions, so sigma^2_g > 0."""
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    params = fit._params_df.sort("dev")
+    sigma2 = params["sigma2_g"].to_list()
+    assert sigma2[0] > 0
+    assert sigma2[1] > 0
+    assert sigma2[2] > 0
+
+
+def test_ed_sigma2_g_k_last_link_uses_mack_tail():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    params = fit._params_df.sort("dev")
+    sigma2 = params["sigma2_g"].to_list()
+    s2 = sigma2[3]
+    assert s2 is not None
+    assert s2 > 0
+    expected = min(sigma2[2] ** 2 / sigma2[1], min(sigma2[2], sigma2[1]))
+    assert s2 == pytest.approx(expected, rel=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Premium chain ladder (f_p_k) embedded in EDFit
+# ---------------------------------------------------------------------------
+
+
+def test_ed_f_p_k_constant_when_premium_constant():
+    """All cohorts have rp=100 in every observed cell, so cumulative
+    crp grows linearly: dev k has crp = 100*k. Then f^P_k = (k+1)/k."""
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    params = fit._params_df.sort("dev")
+    f_p = params["f_p"].to_list()
+    # f_p_1 = 200/100 = 2.0
+    # f_p_2 = 300/200 = 1.5
+    # f_p_3 = 400/300 ~ 1.333
+    # f_p_4 = 500/400 = 1.25
+    assert f_p[0] == pytest.approx(2.0)
+    assert f_p[1] == pytest.approx(1.5)
+    assert f_p[2] == pytest.approx(4.0 / 3.0)
+    assert f_p[3] == pytest.approx(1.25)
+
+
+# ---------------------------------------------------------------------------
+# Projection of cumulative loss via ED rule
+# ---------------------------------------------------------------------------
+
+
+def test_ed_projection_observed_cells_unchanged():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    df = fit.to_polars()
+    observed = df.filter(pl.col("closs").is_not_null())
+    diffs = (observed["closs_proj"] - observed["closs"]).abs()
+    assert diffs.max() == pytest.approx(0.0)
+
+
+def test_ed_projection_uses_additive_rule():
+    """Cohort 2024-05 has only dev 1 observed (closs = 200, crp = 100).
+
+        closs_proj[1, 2] = closs[1, 1] + g_1 * crp_proj[1, 1]
+                         = 200 + 1.375 * 100
+                         = 337.5
+    """
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    df = fit.to_polars().sort(["cohort", "dev"])
+    cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
+    closs_proj = cohort_5["closs_proj"].to_list()
+    assert closs_proj[0] == 200.0
+    assert closs_proj[1] == pytest.approx(200.0 + 1.375 * 100.0)
+
+
+# ---------------------------------------------------------------------------
+# crp projection appears alongside closs projection
+# ---------------------------------------------------------------------------
+
+
+def test_ed_crp_proj_present_for_all_cells():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    df = fit.to_polars()
+    # Every cell has a projected crp (observed or chain-ladder forecast)
+    assert df["crp_proj"].null_count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Mack-style SE on projected cumulative loss
+# ---------------------------------------------------------------------------
+
+
+def test_ed_se_observed_cells_null():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    df = fit.to_polars()
+    observed = df.filter(pl.col("closs").is_not_null())
+    assert observed["se_proj"].null_count() == observed.height
+
+
+def test_ed_se_proj_positive_for_projected_cells():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    df = fit.to_polars()
+    projected = df.filter(pl.col("closs").is_null())
+    se_values = projected["se_proj"].to_list()
+    assert all(v is not None and v > 0 for v in se_values)
+
+
+def test_ed_se_grows_with_distance_from_observed():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    df = fit.to_polars().sort(["cohort", "dev"])
+    cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
+    se = cohort_5["se_proj"].to_list()
+    se_proj_only = [v for v in se if v is not None]
+    for i in range(1, len(se_proj_only)):
+        assert se_proj_only[i] >= se_proj_only[i - 1]
+
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+
+def test_ed_summary_columns_and_size():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    summary = fit.summary()
+    assert set(summary.columns) >= {
+        "cohort",
+        "latest_observed_dev",
+        "latest_observed_closs",
+        "ultimate",
+        "se_ultimate",
+        "cv_ultimate",
+    }
+    assert summary.height == 5
+
+
+def test_ed_summary_fully_observed_cohort():
+    fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
+    summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
+    assert summary.height == 1
+    assert summary["ultimate"].to_list()[0] == pytest.approx(500.0)
+    se = summary["se_ultimate"].to_list()[0]
+    assert se is None or se == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Grouping
+# ---------------------------------------------------------------------------
+
+
+def test_ed_with_group_var():
+    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("cv_nm"))
+    fit = lr.ED().fit(lr.Experience(df).triangle(group_var="cv_nm"))
+    assert "cv_nm" in fit.to_polars().columns
+    assert "cv_nm" in fit._params_df.columns
+
+
+def test_ed_groups_fitted_independently():
+    base = _toy_triangle_input()
+    df_grouped = pl.concat(
+        [
+            base.with_columns(pl.lit("A").alias("cv_nm")),
+            base.with_columns(pl.lit("B").alias("cv_nm")),
+        ]
+    )
+    fit = lr.ED().fit(lr.Experience(df_grouped).triangle(group_var="cv_nm"))
+    g_A = fit._params_df.filter(pl.col("cv_nm") == "A").sort("dev")["g"].to_list()
+    g_B = fit._params_df.filter(pl.col("cv_nm") == "B").sort("dev")["g"].to_list()
+    assert g_A == g_B
+
+
+# ---------------------------------------------------------------------------
+# Output type mirroring
+# ---------------------------------------------------------------------------
+
+
+def test_ed_pandas_input_mirror():
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(_toy_triangle_input().to_pandas())
+    fit = lr.ED().fit(lr.Experience(df).triangle())
+    assert isinstance(fit.df, pd.DataFrame)
+    assert isinstance(fit.g_k, pd.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# Contrast with CL
+# ---------------------------------------------------------------------------
+
+
+def test_ed_and_cl_differ_on_same_triangle():
+    """ED's additive projection differs from CL's multiplicative projection
+    when individual cohort loss histories differ from the pooled mean."""
+    tri = lr.Experience(_toy_triangle_input()).triangle()
+    cl_fit = lr.CL().fit(tri)
+    ed_fit = lr.ED().fit(tri)
+
+    cl_ult = cl_fit.summary().sort("cohort")["ultimate"].to_list()
+    ed_ult = ed_fit.summary().sort("cohort")["ultimate"].to_list()
+    # Numerically distinct (the two models would only coincide in
+    # degenerate cases — here they diverge because cohorts have
+    # different observed loss histories at the same exposure).
+    assert any(
+        abs(c - e) > 1e-6
+        for c, e in zip(cl_ult, ed_ult)
+        if c is not None and e is not None
+    )
