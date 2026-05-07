@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `ATAMaturity` result class and `Triangle.maturity()` method.
+- `Maturity` result class and `Triangle.maturity()` method.
   Detects the maturity point `k*` — the first development period at
   which the age-to-age factors are jointly stable (CV below
   `theta_cv` and RSE below `theta_rse`) for `m` consecutive links.

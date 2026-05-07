@@ -74,7 +74,7 @@ def _date(s: str) -> pl.Expr:
 def test_maturity_returns_atamaturity():
     tri = lr.Experience(_polars_input()).triangle()
     mat = tri.maturity()
-    assert isinstance(mat, lr.ATAMaturity)
+    assert isinstance(mat, lr.Maturity)
 
 
 def test_maturity_diagnostic_columns():
@@ -90,7 +90,7 @@ def test_maturity_repr():
     tri = lr.Experience(_polars_input()).triangle()
     mat = tri.maturity()
     text = repr(mat)
-    assert "ATAMaturity" in text
+    assert "Maturity" in text
     assert "theta_cv" in text
 
 

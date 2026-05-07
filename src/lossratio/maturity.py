@@ -162,7 +162,7 @@ def _kstar_to_df(
 # ---------------------------------------------------------------------------
 
 
-class ATAMaturity:
+class Maturity:
     """Result of ATA maturity detection.
 
     Maturity point ``k*`` is the first development period at which the
@@ -199,7 +199,7 @@ class ATAMaturity:
         theta_cv: float,
         theta_rse: float,
         m: int,
-    ) -> "ATAMaturity":
+    ) -> "Maturity":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._group_var = triangle._group_var
@@ -278,6 +278,6 @@ class ATAMaturity:
             f"theta_cv={self.theta_cv}, theta_rse={self.theta_rse}, m={self.m}"
         )
         if self._group_var is None:
-            return f"<ATAMaturity: k_star={self.k_star} ({thresh})>"
+            return f"<Maturity: k_star={self.k_star} ({thresh})>"
         n_groups = self._kstar_df.height
-        return f"<ATAMaturity: {n_groups} groups ({thresh})>"
+        return f"<Maturity: {n_groups} groups ({thresh})>"
