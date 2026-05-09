@@ -237,30 +237,33 @@ class Triangle:
 
     def maturity(
         self,
-        theta_cv: float = 0.1,
-        theta_rse: float = 0.05,
-        m: int = 2,
+        max_cv: float = 0.15,
+        max_rse: float = 0.05,
+        min_run: int = 2,
     ) -> "Maturity":
         """Detect the ATA maturity point ``k*``.
 
         Returns a ``Maturity`` result with per-link diagnostics
         (CV, RSE, stable flag) and the detected k_star (the first dev
-        at which factors are stable for ``m`` consecutive links).
+        at which factors are stable for ``min_run`` consecutive links).
 
         Parameters
         ----------
-        theta_cv
+        max_cv
             Threshold on the cross-cohort coefficient of variation of
             individual link factors.
-        theta_rse
+        max_rse
             Threshold on the relative standard error of the pooled f_k.
-        m
+        min_run
             Required number of consecutive stable links.
         """
         from .maturity import Maturity
 
         return Maturity._from_triangle(
-            self, theta_cv=theta_cv, theta_rse=theta_rse, m=m
+            self,
+            max_cv=max_cv,
+            max_rse=max_rse,
+            min_run=min_run,
         )
 
     def detect_regime(

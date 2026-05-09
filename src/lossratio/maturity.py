@@ -79,34 +79,34 @@ def _compute_cv_rse(
     return cv_k, rse_k
 
 
-def _detect_k_star(stable_k: np.ndarray, m: int) -> int | None:
-    """First link index k where stable_k[k:k+m] are all True (m consecutive).
+def _detect_k_star(stable_k: np.ndarray, min_run: int) -> int | None:
+    """First link index k where stable_k[k : k + min_run] are all True.
 
     Returns the 1-indexed dev value (link source dev), or ``None`` if
     no such window exists.
     """
     n_links = len(stable_k)
-    if m < 1 or n_links < m:
+    if min_run < 1 or n_links < min_run:
         return None
-    for k in range(n_links - m + 1):
-        if bool(np.all(stable_k[k : k + m])):
+    for k in range(n_links - min_run + 1):
+        if bool(np.all(stable_k[k : k + min_run])):
             return k + 1
     return None
 
 
 def _compute_maturity(
     loss_obs: np.ndarray,
-    theta_cv: float,
-    theta_rse: float,
-    m: int,
+    max_cv: float,
+    max_rse: float,
+    min_run: int,
 ) -> _MaturityResult:
     mack = _fit_mack(loss_obs)
     cv_k, rse_k = _compute_cv_rse(loss_obs, mack.f_k, mack.sigma2_k)
     stable_k = np.zeros(len(cv_k), dtype=bool)
     for k in range(len(cv_k)):
         if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):
-            stable_k[k] = (cv_k[k] < theta_cv) and (rse_k[k] < theta_rse)
-    k_star = _detect_k_star(stable_k, m)
+            stable_k[k] = (cv_k[k] < max_cv) and (rse_k[k] < max_rse)
+    k_star = _detect_k_star(stable_k, min_run)
     return _MaturityResult(
         f_k=mack.f_k,
         sigma2_k=mack.sigma2_k,
@@ -171,8 +171,9 @@ class Maturity:
     """Result of ATA maturity detection.
 
     Maturity point ``k*`` is the first development period at which the
-    age-to-age factors are jointly *stable*: ``CV(f_k) < theta_cv`` and
-    ``RSE(f_k) < theta_rse``, sustained for ``m`` consecutive links.
+    age-to-age factors are jointly *stable*: ``CV(f_k) < max_cv`` and
+    ``RSE(f_k) < max_rse``, sustained for ``min_run`` consecutive
+    links.
 
     Properties
     ----------
@@ -193,17 +194,17 @@ class Maturity:
         self._cohort_var: str
         self._dev_var: str
         self._dev_unit: str
-        self.theta_cv: float
-        self.theta_rse: float
-        self.m: int
+        self.max_cv: float
+        self.max_rse: float
+        self.min_run: int
 
     @classmethod
     def _from_triangle(
         cls,
         triangle: "Triangle",
-        theta_cv: float,
-        theta_rse: float,
-        m: int,
+        max_cv: float,
+        max_rse: float,
+        min_run: int,
     ) -> "Maturity":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
@@ -211,16 +212,16 @@ class Maturity:
         self._cohort_var = triangle._cohort_var
         self._dev_var = triangle._dev_var
         self._dev_unit = triangle._dev_unit
-        self.theta_cv = theta_cv
-        self.theta_rse = theta_rse
-        self.m = m
+        self.max_cv = max_cv
+        self.max_rse = max_rse
+        self.min_run = min_run
 
         tri_df = triangle._df
         group_var = triangle._group_var
 
         if group_var is None:
             loss_obs, _, _ = _build_loss_matrix(tri_df)
-            result = _compute_maturity(loss_obs, theta_cv, theta_rse, m)
+            result = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
             diag_df = _diagnostic_to_df(result, group_var=None, group_value=None)
             kstar_df = _kstar_to_df(result, group_var=None, group_value=None)
         else:
@@ -232,7 +233,7 @@ class Maturity:
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
                 loss_obs, _, _ = _build_loss_matrix(sub)
-                result = _compute_maturity(loss_obs, theta_cv, theta_rse, m)
+                result = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
                 diag_parts.append(
                     _diagnostic_to_df(result, group_var=group_var, group_value=g)
                 )
@@ -280,7 +281,7 @@ class Maturity:
 
     def __repr__(self) -> str:
         thresh = (
-            f"theta_cv={self.theta_cv}, theta_rse={self.theta_rse}, m={self.m}"
+            f"max_cv={self.max_cv}, max_rse={self.max_rse}, m={self.min_run}"
         )
         if self._group_var is None:
             return f"<Maturity: k_star={self.k_star} ({thresh})>"

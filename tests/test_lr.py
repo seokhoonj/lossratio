@@ -135,7 +135,7 @@ def test_lr_ed_method_matches_ed_fit():
 
 def test_lr_sa_with_loose_thresholds_detects_kstar_early():
     """With loose thresholds, k_star should be detected (e.g., 1)."""
-    fit = lr.LR(method="sa", theta_cv=10.0, theta_rse=10.0, m=2).fit(
+    fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
     assert fit.k_star is not None
@@ -145,7 +145,7 @@ def test_lr_sa_strict_thresholds_falls_back_to_ed():
     """When maturity not detected, SA falls back to ED throughout, so
     loss_proj should match the pure-ED projection."""
     tri = lr.Experience(_toy_triangle_input()).triangle()
-    sa_fit = lr.LR(method="sa", theta_cv=1e-9, theta_rse=1e-9, m=2).fit(tri)
+    sa_fit = lr.LR(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
     ed_fit = lr.ED().fit(tri)
 
     assert sa_fit.k_star is None
@@ -159,7 +159,7 @@ def test_lr_sa_kstar_one_matches_cl_projection():
     Wait, link_idx >= k_star means CL phase. With k_star=1 and link_idx
     starting at 1, all links use CL → SA should match pure CL."""
     tri = lr.Experience(_toy_triangle_input()).triangle()
-    sa_fit = lr.LR(method="sa", theta_cv=10.0, theta_rse=10.0, m=2).fit(tri)
+    sa_fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.CL().fit(tri)
 
     if sa_fit.k_star == 1:
@@ -239,7 +239,7 @@ def test_lr_groups_fitted_independently():
 
 def test_lr_sa_kstar_per_group_dict():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("cv_nm"))
-    fit = lr.LR(method="sa", theta_cv=10.0, theta_rse=10.0).fit(
+    fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0).fit(
         lr.Experience(df).triangle(group_var="cv_nm")
     )
     assert isinstance(fit.k_star, dict)

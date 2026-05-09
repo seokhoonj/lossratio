@@ -91,7 +91,7 @@ def test_maturity_repr():
     mat = tri.maturity()
     text = repr(mat)
     assert "Maturity" in text
-    assert "theta_cv" in text
+    assert "max_cv" in text
 
 
 # ---------------------------------------------------------------------------
@@ -109,23 +109,23 @@ def test_maturity_stable_data_finds_k_star_at_one():
 def test_maturity_strict_thresholds_no_detection():
     """Set thresholds tighter than any observed CV/RSE → k_star=None."""
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity(theta_cv=1e-9, theta_rse=1e-9, m=2)
+    mat = tri.maturity(max_cv=1e-9, max_rse=1e-9, min_run=2)
     assert mat.k_star is None
 
 
 def test_maturity_loose_thresholds_finds_k_star():
     """Generous thresholds: k_star should be the first link."""
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity(theta_cv=10.0, theta_rse=10.0, m=2)
-    # With m=2 we need 2 consecutive stable links — first available is k=1
+    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
+    # With min_run=2 we need 2 consecutive stable links — first available is k=1
     assert mat.k_star == 1
 
 
 def test_maturity_m_consecutive_required():
     """With m larger than the number of links, no detection possible."""
     tri = lr.Experience(_polars_input()).triangle()
-    # n_links = 4. m=5 cannot be satisfied.
-    mat = tri.maturity(theta_cv=10.0, theta_rse=10.0, m=5)
+    # n_links = 4. min_run=5 cannot be satisfied.
+    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=5)
     assert mat.k_star is None
 
 
@@ -184,7 +184,7 @@ def test_maturity_rse_link_with_one_observation_is_null():
 def test_maturity_with_group_var():
     df = _polars_input().with_columns(pl.lit("SUR").alias("cv_nm"))
     tri = lr.Experience(df).triangle(group_var="cv_nm")
-    mat = tri.maturity(theta_cv=10.0, theta_rse=10.0, m=2)
+    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
 
     assert "cv_nm" in mat.to_polars().columns
     # k_star is a dict per group when group_var present
@@ -201,7 +201,7 @@ def test_maturity_per_group_independent():
         ]
     )
     tri = lr.Experience(df_grouped).triangle(group_var="cv_nm")
-    mat = tri.maturity(theta_cv=10.0, theta_rse=10.0, m=2)
+    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # Same data in each group → same k_star
     assert mat.k_star == {"A": 1, "B": 1}
 
@@ -227,7 +227,7 @@ def test_maturity_pandas_input_mirror():
 
 def test_maturity_thresholds_stored():
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity(theta_cv=0.2, theta_rse=0.1, m=3)
-    assert mat.theta_cv == 0.2
-    assert mat.theta_rse == 0.1
-    assert mat.m == 3
+    mat = tri.maturity(max_cv=0.2, max_rse=0.1, min_run=3)
+    assert mat.max_cv == 0.2
+    assert mat.max_rse == 0.1
+    assert mat.min_run == 3

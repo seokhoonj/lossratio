@@ -199,7 +199,7 @@ def test_backtest_with_ed_estimator():
 
 def test_backtest_with_lr_sa_estimator():
     bt = lr.Backtest(
-        estimator=lr.LR(method="sa", theta_cv=10.0, theta_rse=10.0, m=2),
+        estimator=lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
         holdout=1,
     ).fit(lr.Experience(_toy_triangle_input()).triangle())
     assert bt.aeg.shape[0] == 4

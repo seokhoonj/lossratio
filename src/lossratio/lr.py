@@ -146,9 +146,9 @@ def _fit_lr(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     method: str,
-    theta_cv: float,
-    theta_rse: float,
-    m: int,
+    max_cv: float,
+    max_rse: float,
+    min_run: int,
     alpha: float,
 ) -> _LRResult:
     """Single-group LR fit. Always returns cumulative loss_proj, premium_proj,
@@ -171,7 +171,7 @@ def _fit_lr(
         se_loss = ed_result.se_proj
     elif method == "sa":
         # Detect maturity and project hybrid
-        mat = _compute_maturity(loss_obs, theta_cv, theta_rse, m)
+        mat = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
         k_star = mat.k_star
         if k_star is None:
             # Fall back to ED throughout if maturity not detected
@@ -287,7 +287,7 @@ class LR:
     * ``"sa"`` (default): stage-adaptive — exposure-driven (ED) before
       the maturity point ``k*``, chain ladder (CL) after. Maturity is
       detected internally per group via ``Triangle.maturity`` style
-      thresholds (``theta_cv``, ``theta_rse``, ``m``). Falls back to
+      thresholds (``max_cv``, ``max_rse``, ``min_run``). Falls back to
       ED throughout when maturity is not detected.
     * ``"ed"``: ED projection only (additive, exposure-anchored).
     * ``"cl"``: Mack chain ladder projection only (multiplicative on
@@ -308,9 +308,9 @@ class LR:
         self,
         method: str = "sa",
         alpha: float = 1.0,
-        theta_cv: float = 0.1,
-        theta_rse: float = 0.05,
-        m: int = 2,
+        max_cv: float = 0.15,
+        max_rse: float = 0.05,
+        min_run: int = 2,
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -322,9 +322,9 @@ class LR:
             )
         self.method = method
         self.alpha = alpha
-        self.theta_cv = theta_cv
-        self.theta_rse = theta_rse
-        self.m = m
+        self.max_cv = max_cv
+        self.max_rse = max_rse
+        self.min_run = min_run
 
     def fit(self, triangle: "Triangle") -> "LRFit":
         """Fit the LR estimator on a Triangle."""
@@ -381,9 +381,9 @@ class LRFit:
                 loss_obs,
                 premium_obs,
                 estimator.method,
-                estimator.theta_cv,
-                estimator.theta_rse,
-                estimator.m,
+                estimator.max_cv,
+                estimator.max_rse,
+                estimator.min_run,
                 estimator.alpha,
             )
             long_df = _result_to_long_df(
@@ -404,9 +404,9 @@ class LRFit:
                     loss_obs,
                     premium_obs,
                     estimator.method,
-                    estimator.theta_cv,
-                    estimator.theta_rse,
-                    estimator.m,
+                    estimator.max_cv,
+                    estimator.max_rse,
+                    estimator.min_run,
                     estimator.alpha,
                 )
                 long_parts.append(
