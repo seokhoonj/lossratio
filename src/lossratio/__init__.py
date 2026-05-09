@@ -14,7 +14,7 @@ from .lr import LR, LRFit
 from .maturity import Maturity
 from .triangle import Triangle
 
-__version__ = "0.0.1.dev4"
+__version__ = "0.0.1.dev5"
 
 __all__ = [
     "Backtest",
