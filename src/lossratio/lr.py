@@ -463,16 +463,16 @@ class LRFit:
 
         observed = df.filter(pl.col("loss").is_not_null())
         latest = observed.group_by(keys).agg(
-            pl.col("dev").max().alias("latest_observed_dev"),
+            pl.col("dev").max().alias("latest"),
         )
 
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("ultimate_loss"),
-                pl.col("premium_proj").last().alias("ultimate_exposure"),
-                pl.col("lr_proj").last().alias("ultimate_lr"),
+                pl.col("loss_proj").last().alias("loss_ult"),
+                pl.col("premium_proj").last().alias("premium_ult"),
+                pl.col("lr_proj").last().alias("lr_ult"),
                 pl.col("se_lr").last().alias("se_lr"),
                 pl.col("cv_lr").last().alias("cv_lr"),
             )

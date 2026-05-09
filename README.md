@@ -54,7 +54,7 @@ tri = exp.triangle(group_var="coverage")
 
 # 2. Project loss ratios with stage-adaptive method (default)
 fit = lr.LR().fit(tri)
-fit.summary()        # per-(group, cohort) ultimate_loss / ultimate_lr / SE / CV
+fit.summary()        # per-(group, cohort) loss_ult / lr_ult / SE / CV
 
 # 3. Detect cohort regime shifts. detect_regime works on a single
 #    group, so subset to the coverage of interest first.

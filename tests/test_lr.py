@@ -184,10 +184,10 @@ def test_lr_summary_columns():
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
-        "latest_observed_dev",
-        "ultimate_loss",
-        "ultimate_exposure",
-        "ultimate_lr",
+        "latest",
+        "loss_ult",
+        "premium_ult",
+        "lr_ult",
         "se_lr",
         "cv_lr",
     }
@@ -200,11 +200,11 @@ def test_lr_summary_fully_observed_cohort():
     )
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    # Cohort 2024-01 has all 5 devs observed; ultimate_loss = 500
-    assert summary["ultimate_loss"].to_list()[0] == pytest.approx(500.0)
-    # ultimate_exposure = 500 (rp=100 per dev for 5 devs)
-    assert summary["ultimate_exposure"].to_list()[0] == pytest.approx(500.0)
-    assert summary["ultimate_lr"].to_list()[0] == pytest.approx(1.0)
+    # Cohort 2024-01 has all 5 devs observed; loss_ult = 500
+    assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
+    # premium_ult = 500 (rp=100 per dev for 5 devs)
+    assert summary["premium_ult"].to_list()[0] == pytest.approx(500.0)
+    assert summary["lr_ult"].to_list()[0] == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

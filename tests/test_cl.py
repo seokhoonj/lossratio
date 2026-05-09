@@ -240,7 +240,7 @@ def test_cl_summary_columns_and_size():
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
-        "latest_observed_dev",
+        "latest",
         "latest_observed_loss",
         "ultimate",
         "se_ultimate",

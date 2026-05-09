@@ -341,7 +341,7 @@ class CLFit:
         # Latest observed dev per cohort (NaN-aware)
         observed = df.filter(pl.col("loss").is_not_null())
         latest = observed.group_by(keys).agg(
-            pl.col("dev").max().alias("latest_observed_dev"),
+            pl.col("dev").max().alias("latest"),
             pl.col("loss").last().alias("latest_observed_loss"),
         )
 
