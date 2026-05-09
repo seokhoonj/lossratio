@@ -8,6 +8,7 @@ References:
 
 from .backtest import Backtest, BacktestFit
 from .cl import CL, CLFit
+from .datasets import load_experience
 from .ed import ED, EDFit
 from .experience import Experience
 from .lr import LR, LRFit
@@ -31,4 +32,5 @@ __all__ = [
     "Regime",
     "Triangle",
     "__version__",
+    "load_experience",
 ]

@@ -38,21 +38,16 @@ the R sibling provides has not been ported.
 
 ## Quick Start
 
-Input columns:
-
-- `cym` (date) — calendar year-month
-- `uym` (date) — underwriting year-month (cohort)
-- `loss_incr` (numeric) — per-period claim amount
-- `premium_incr` (numeric) — per-period premium
-
-A typical workflow — given a long-format `df` with the columns above:
-
 ```python
 import lossratio as lr
 
+# Built-in synthetic experience: 36 monthly cohorts x up to 36 dev
+# months (2024-01 .. 2026-12) with one regime shift at 2025-07.
+df = lr.load_experience()
+
 # 1. Validate the experience data and build the cohort x dev triangle
 exp = lr.Experience(df)
-tri = exp.triangle(group_var="cv_nm")        # group_var optional
+tri = exp.triangle()
 
 # 2. Project loss ratios with stage-adaptive method (default)
 fit = lr.LR().fit(tri)
@@ -60,8 +55,7 @@ fit.summary()        # per-cohort ultimate_loss / ultimate_lr / se_lr / cv_lr
 
 # 3. Detect structural shifts across cohorts (E-Divisive)
 reg = tri.detect_regime(loss_var="lr", K=12)
-reg.breakpoints      # cohort dates at which a new regime begins
-reg.df               # per-cohort regime_id labels
+reg.breakpoints      # [datetime.date(2025, 7, 1)]
 
 # 4. Calendar-diagonal hold-out backtest — last 6 diagonals are masked,
 #    the estimator is refitted on the remaining cells, and the
@@ -69,6 +63,17 @@ reg.df               # per-cohort regime_id labels
 bt = lr.Backtest(estimator=lr.LR(), holdout=6).fit(tri)
 bt.diag_summary      # actual vs predicted vs AEG by calendar diagonal
 ```
+
+To plug in your own data, build a long-format frame with these
+columns and pass it to `lr.Experience(df)`:
+
+- `cym` (date) — calendar year-month
+- `uym` (date) — underwriting year-month (cohort)
+- `loss_incr` (numeric) — per-period claim amount
+- `premium_incr` (numeric) — per-period premium
+
+`Triangle` also accepts an optional `group_var` (coverage, product,
+age band, ...) — each estimator and detector then fits per group.
 
 Pandas inputs are accepted too; outputs mirror the input type
 (pandas in → pandas out, polars in → polars out). Install with the
