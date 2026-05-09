@@ -5,10 +5,17 @@ for long-term health insurance — cohort development analysis,
 stage-adaptive projection, regime detection, and backtest validation
 on long-format experience data. Stage-adaptive (SA) projection uses
 an exposure-driven (ED) model before the maturity point and chain
-ladder (CL) after, supported by maturity point detection, cohort
-regime detection, and a calendar-diagonal backtest framework.
+ladder (CL) after.
 
-This Python implementation is in active development.
+This Python implementation is in active development (currently at
+the pre-alpha release line on PyPI).
+
+## Install
+
+```bash
+pip install lossratio              # polars only
+pip install lossratio[pandas]      # add pandas / pyarrow support
+```
 
 ## Current status
 
@@ -81,12 +88,9 @@ columns and pass it to `lr.Experience(df)`:
 age band, ...) — each estimator and detector then fits per group.
 
 Pandas inputs are accepted too; outputs mirror the input type
-(pandas in → pandas out, polars in → polars out). Install with the
-optional `pandas` extra:
-
-```bash
-pip install lossratio[pandas]
-```
+(pandas in → pandas out, polars in → polars out). Use the
+``[pandas]`` install extra (see above) to pull in `pandas` and
+`pyarrow`.
 
 ## R package
 
@@ -101,8 +105,9 @@ library(lossratio)
 
 ## Author
 
-Seokhoon Joo (<seokhoonj@gmail.com>) — also maintains the R
-`lossratio` package.
+Seokhoon Joo
+([@seokhoonj](https://github.com/seokhoonj),
+<seokhoonj@gmail.com>) — also maintains the R `lossratio` package.
 
 ## License
 
