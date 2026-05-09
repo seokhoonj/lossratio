@@ -213,34 +213,34 @@ def test_lr_summary_fully_observed_cohort():
 
 
 def test_lr_with_group_var():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("cv_nm"))
+    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     fit = lr.LR(method="cl").fit(
-        lr.Experience(df).triangle(group_var="cv_nm")
+        lr.Experience(df).triangle(group_var="coverage")
     )
-    assert "cv_nm" in fit.to_polars().columns
+    assert "coverage" in fit.to_polars().columns
 
 
 def test_lr_groups_fitted_independently():
     base = _toy_triangle_input()
     df_grouped = pl.concat(
         [
-            base.with_columns(pl.lit("A").alias("cv_nm")),
-            base.with_columns(pl.lit("B").alias("cv_nm")),
+            base.with_columns(pl.lit("A").alias("coverage")),
+            base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
     fit = lr.LR(method="cl").fit(
-        lr.Experience(df_grouped).triangle(group_var="cv_nm")
+        lr.Experience(df_grouped).triangle(group_var="coverage")
     )
-    df = fit.to_polars().sort(["cv_nm", "cohort", "dev"])
-    a_loss = df.filter(pl.col("cv_nm") == "A")["loss_proj"].to_list()
-    b_loss = df.filter(pl.col("cv_nm") == "B")["loss_proj"].to_list()
+    df = fit.to_polars().sort(["coverage", "cohort", "dev"])
+    a_loss = df.filter(pl.col("coverage") == "A")["loss_proj"].to_list()
+    b_loss = df.filter(pl.col("coverage") == "B")["loss_proj"].to_list()
     assert a_loss == b_loss
 
 
 def test_lr_sa_kstar_per_group_dict():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("cv_nm"))
+    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0).fit(
-        lr.Experience(df).triangle(group_var="cv_nm")
+        lr.Experience(df).triangle(group_var="coverage")
     )
     assert isinstance(fit.k_star, dict)
     assert "SUR" in fit.k_star

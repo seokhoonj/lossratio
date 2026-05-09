@@ -225,7 +225,7 @@ class CL:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Experience(df).triangle(group_var="cv_nm")
+    >>> tri = lr.Experience(df).triangle(group_var="coverage")
     >>> fit = lr.CL().fit(tri)
     >>> fit.summary()
     """

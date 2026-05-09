@@ -123,7 +123,7 @@ class Backtest:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Experience(df).triangle(group_var="cv_nm")
+    >>> tri = lr.Experience(df).triangle(group_var="coverage")
     >>> bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6).fit(tri)
     >>> bt.aeg
     >>> bt.col_summary

@@ -67,12 +67,12 @@ def test_triangle_cumulative():
 
 def test_triangle_with_group():
     df = _exp_input().with_columns(
-        pl.lit("SUR").alias("cv_nm"),
+        pl.lit("SUR").alias("coverage"),
     )
     exp = lr.Experience(df)
-    tri = exp.triangle(group_var="cv_nm")
-    assert "cv_nm" in tri.columns
-    assert tri.group_var == "cv_nm"
+    tri = exp.triangle(group_var="coverage")
+    assert "coverage" in tri.columns
+    assert tri.group_var == "coverage"
 
 
 def test_triangle_pandas_input_mirror():

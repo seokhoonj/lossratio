@@ -299,7 +299,7 @@ class LR:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Experience(df).triangle(group_var="cv_nm")
+    >>> tri = lr.Experience(df).triangle(group_var="coverage")
     >>> fit = lr.LR(method="sa").fit(tri)
     >>> fit.summary()
     """

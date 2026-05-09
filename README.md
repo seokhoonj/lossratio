@@ -42,15 +42,15 @@ the R sibling provides has not been ported.
 import polars as pl
 import lossratio as lr
 
-# Built-in synthetic experience: four coverages (2CI / CAN / HOS / SUR),
+# Built-in synthetic experience: four coverages (CI / CAN / HOS / SUR),
 # 36 monthly cohorts each, up to 36 dev months. SUR carries one regime
 # shift at 2025-07.
 df = lr.load_experience()
 
 # 1. Validate the experience data and build a cohort x dev triangle.
-#    Pass group_var="cv_nm" to fit each coverage independently.
+#    Pass group_var="coverage" to fit each coverage independently.
 exp = lr.Experience(df)
-tri = exp.triangle(group_var="cv_nm")
+tri = exp.triangle(group_var="coverage")
 
 # 2. Project loss ratios with stage-adaptive method (default)
 fit = lr.LR().fit(tri)
@@ -58,7 +58,7 @@ fit.summary()        # per-(group, cohort) ultimate_loss / ultimate_lr / SE / CV
 
 # 3. Detect cohort regime shifts. detect_regime works on a single
 #    group, so subset to the coverage of interest first.
-tri_sur = lr.Experience(df.filter(pl.col("cv_nm") == "SUR")).triangle()
+tri_sur = lr.Experience(df.filter(pl.col("coverage") == "SUR")).triangle()
 reg = tri_sur.detect_regime(loss_var="lr", K=12)
 reg.breakpoints      # [datetime.date(2025, 7, 1)]
 

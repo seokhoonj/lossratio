@@ -7,15 +7,15 @@ import polars as pl
 
 
 _COVERAGES = (
-    # (cv_nm, base_target_lr, regime_shift)
+    # (coverage, base_target_lr, regime_shift)
     # regime_shift is None or (cohort_idx, post_break_target_lr)
     # Target LRs calibrated to a real long-term Korean health-insurance
-    # portfolio: SUR's pre-break level above 1.0 reflects the
-    # underwriting situation that drove the cohort regime change.
-    ("2CI", 0.56, None),
-    ("CAN", 0.52, None),
-    ("HOS", 0.39, None),
-    ("SUR", 1.67, (18, 1.00)),
+    # portfolio. SUR's level above 1.0 reflects the underwriting
+    # situation that motivated the cohort regime change.
+    ("CI",  0.60, None),
+    ("CAN", 0.50, None),
+    ("HOS", 0.35, None),
+    ("SUR", 1.43, (18, 1.43 * 0.60)),
 )
 
 
@@ -29,14 +29,14 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
     * "Today" is the last day of 2026-12, so each coverage produces the
       usual jagged triangle: cohort 2024-01 has 36 dev observed and
       cohort 2026-12 has only 1.
-    * Four coverages keyed by ``cv_nm``, mirroring the Korean long-term
-      health insurance product structure:
+    * Four coverages keyed by ``coverage``:
 
-      - ``2CI`` — two major critical illnesses (cancer + acute cerebro-
-        cardiovascular events such as stroke and heart attack), a
-        common Korean rider name.
-      - ``CAN`` — cancer-only rider (Korean insurers commonly sell
-        both 2CI and a separate cancer rider on the same policy).
+      - ``CI`` — the two major non-cancer critical illnesses, covering
+        cerebrovascular disease (stroke, cerebral infarction, cerebral
+        haemorrhage) and ischemic heart disease (angina, acute
+        myocardial infarction). Does **not** include cancer; cancer
+        is the separate ``CAN`` coverage.
+      - ``CAN`` — cancer.
       - ``HOS`` — hospitalisation per-day fixed benefit.
       - ``SUR`` — surgery per-event fixed benefit.
 
@@ -44,13 +44,13 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
       "waiting-period" dip followed by a roughly constant incremental
       loss per dev — and a base premium of 100, but starts from a
       different target cumulative loss ratio. Targets are calibrated
-      to a real long-term Korean health-insurance portfolio: ``2CI``
-      ≈ 0.56, ``CAN`` ≈ 0.52, ``HOS`` ≈ 0.39, ``SUR`` ≈ 1.67 (loss
-      territory).
-    * ``SUR`` has a single regime shift at cohort 2025-07: its target
-      cumulative LR drops from 1.67 to 1.00, reflecting an
-      underwriting tightening that the real portfolio went through.
-      The other three coverages are stable.
+      to a real long-term Korean health-insurance portfolio:
+      ``CI`` ≈ 0.60, ``CAN`` ≈ 0.50, ``HOS`` ≈ 0.35, ``SUR`` ≈ 1.43
+      (loss territory).
+    * ``SUR`` carries a single regime shift at cohort 2025-07: its
+      target cumulative LR drops to roughly 0.60 of the pre-break
+      level, reflecting an underwriting tightening that the real
+      portfolio went through. The other three coverages are stable.
 
     The values are synthetic — no real-portfolio data is shipped — but
     the structure is realistic enough for QuickStart-style exploration
@@ -60,11 +60,11 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        Columns ``cv_nm`` (str), ``cym`` (date string), ``uym`` (date
+        Columns ``coverage`` (str), ``cym`` (date string), ``uym`` (date
         string), ``loss_incr`` (float), ``premium_incr`` (float). Pass
-        it directly to :class:`Experience`; pass ``group_var="cv_nm"``
+        it directly to :class:`Experience`; pass ``group_var="coverage"``
         to :meth:`Experience.triangle` for a per-coverage triangle, or
-        filter to a single ``cv_nm`` value first if you want the simple
+        filter to a single ``coverage`` value first if you want the simple
         single-group flow.
     """
     rng = np.random.default_rng(seed)
@@ -81,7 +81,7 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
     weights /= weights.sum()
 
     records = []
-    for cv_nm, base_lr, shift in _COVERAGES:
+    for coverage, base_lr, shift in _COVERAGES:
         for ci in range(n_cohorts):
             target_lr = base_lr
             if shift is not None and ci >= shift[0]:
@@ -98,7 +98,7 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
                     total_loss * weights[k] * float(rng.normal(1.0, 0.10))
                 )
                 records.append({
-                    "cv_nm": cv_nm,
+                    "coverage": coverage,
                     "cym": cym,
                     "uym": uym,
                     "loss_incr": float(incr_loss),

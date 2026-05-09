@@ -218,26 +218,26 @@ def test_backtest_with_lr_cl_method():
 
 
 def test_backtest_with_group_var():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("cv_nm"))
-    tri = lr.Experience(df).triangle(group_var="cv_nm")
+    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    tri = lr.Experience(df).triangle(group_var="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
-    assert "cv_nm" in bt.aeg.columns
-    assert "cv_nm" in bt.col_summary.columns
+    assert "coverage" in bt.aeg.columns
+    assert "coverage" in bt.col_summary.columns
 
 
 def test_backtest_per_group_independent():
     base = _toy_triangle_input()
     df_grouped = pl.concat(
         [
-            base.with_columns(pl.lit("A").alias("cv_nm")),
-            base.with_columns(pl.lit("B").alias("cv_nm")),
+            base.with_columns(pl.lit("A").alias("coverage")),
+            base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Experience(df_grouped).triangle(group_var="cv_nm")
+    tri = lr.Experience(df_grouped).triangle(group_var="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
     aeg = bt.aeg
-    a_aeg = aeg.filter(pl.col("cv_nm") == "A").sort(["cohort", "dev"])
-    b_aeg = aeg.filter(pl.col("cv_nm") == "B").sort(["cohort", "dev"])
+    a_aeg = aeg.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])
+    b_aeg = aeg.filter(pl.col("coverage") == "B").sort(["cohort", "dev"])
     assert a_aeg["aeg"].to_list() == b_aeg["aeg"].to_list()
 
 

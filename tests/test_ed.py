@@ -243,23 +243,23 @@ def test_ed_summary_fully_observed_cohort():
 
 
 def test_ed_with_group_var():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("cv_nm"))
-    fit = lr.ED().fit(lr.Experience(df).triangle(group_var="cv_nm"))
-    assert "cv_nm" in fit.to_polars().columns
-    assert "cv_nm" in fit._params_df.columns
+    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    fit = lr.ED().fit(lr.Experience(df).triangle(group_var="coverage"))
+    assert "coverage" in fit.to_polars().columns
+    assert "coverage" in fit._params_df.columns
 
 
 def test_ed_groups_fitted_independently():
     base = _toy_triangle_input()
     df_grouped = pl.concat(
         [
-            base.with_columns(pl.lit("A").alias("cv_nm")),
-            base.with_columns(pl.lit("B").alias("cv_nm")),
+            base.with_columns(pl.lit("A").alias("coverage")),
+            base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    fit = lr.ED().fit(lr.Experience(df_grouped).triangle(group_var="cv_nm"))
-    g_A = fit._params_df.filter(pl.col("cv_nm") == "A").sort("dev")["g"].to_list()
-    g_B = fit._params_df.filter(pl.col("cv_nm") == "B").sort("dev")["g"].to_list()
+    fit = lr.ED().fit(lr.Experience(df_grouped).triangle(group_var="coverage"))
+    g_A = fit._params_df.filter(pl.col("coverage") == "A").sort("dev")["g"].to_list()
+    g_B = fit._params_df.filter(pl.col("coverage") == "B").sort("dev")["g"].to_list()
     assert g_A == g_B
 
 

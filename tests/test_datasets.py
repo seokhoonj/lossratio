@@ -9,8 +9,8 @@ def test_load_experience_shape():
     df = lr.load_experience()
     # 4 coverages x triangular cells (36+35+...+1 per coverage) = 2664
     assert df.height == 2664
-    assert df.columns == ["cv_nm", "cym", "uym", "loss_incr", "premium_incr"]
-    assert sorted(df["cv_nm"].unique().to_list()) == ["2CI", "CAN", "HOS", "SUR"]
+    assert df.columns == ["coverage", "cym", "uym", "loss_incr", "premium_incr"]
+    assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]
 
 
 def test_load_experience_deterministic():
@@ -21,17 +21,17 @@ def test_load_experience_deterministic():
 
 def test_load_experience_grouped_pipeline_runs():
     df = lr.load_experience()
-    tri = lr.Experience(df).triangle(group_var="cv_nm")
+    tri = lr.Experience(df).triangle(group_var="coverage")
 
     fit = lr.LR().fit(tri)
     summary = fit.summary()
     # 4 groups * 36 cohorts = 144 rows
     assert summary.height == 144
-    assert "cv_nm" in summary.columns
+    assert "coverage" in summary.columns
 
 
 def test_load_experience_sur_has_regime_break():
-    df = lr.load_experience().filter(pl.col("cv_nm") == "SUR")
+    df = lr.load_experience().filter(pl.col("coverage") == "SUR")
     tri = lr.Experience(df).triangle()
     reg = tri.detect_regime(loss_var="lr", K=12)
     assert len(reg.breakpoints) == 1

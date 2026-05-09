@@ -182,11 +182,11 @@ def test_maturity_rse_link_with_one_observation_is_null():
 
 
 def test_maturity_with_group_var():
-    df = _polars_input().with_columns(pl.lit("SUR").alias("cv_nm"))
-    tri = lr.Experience(df).triangle(group_var="cv_nm")
+    df = _polars_input().with_columns(pl.lit("SUR").alias("coverage"))
+    tri = lr.Experience(df).triangle(group_var="coverage")
     mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
 
-    assert "cv_nm" in mat.to_polars().columns
+    assert "coverage" in mat.to_polars().columns
     # k_star is a dict per group when group_var present
     assert isinstance(mat.k_star, dict)
     assert "SUR" in mat.k_star
@@ -196,11 +196,11 @@ def test_maturity_per_group_independent():
     base = _polars_input()
     df_grouped = pl.concat(
         [
-            base.with_columns(pl.lit("A").alias("cv_nm")),
-            base.with_columns(pl.lit("B").alias("cv_nm")),
+            base.with_columns(pl.lit("A").alias("coverage")),
+            base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Experience(df_grouped).triangle(group_var="cv_nm")
+    tri = lr.Experience(df_grouped).triangle(group_var="coverage")
     mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # Same data in each group → same k_star
     assert mat.k_star == {"A": 1, "B": 1}
