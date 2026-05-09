@@ -9,8 +9,8 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_closs_matrix, _fit_mack
-from .ed import _build_crp_matrix, _fit_ed
+from .cl import _build_loss_matrix, _fit_mack
+from .ed import _build_premium_matrix, _fit_ed
 from .maturity import _compute_maturity
 
 if TYPE_CHECKING:
@@ -30,13 +30,13 @@ class _LRResult:
     """Single-group LR fit result."""
 
     n_devs: int
-    closs_obs: np.ndarray
-    crp_obs: np.ndarray
+    loss_obs: np.ndarray
+    premium_obs: np.ndarray
     loss_proj: np.ndarray         # cumulative projected loss
-    exposure_proj: np.ndarray     # cumulative projected premium
-    lr_proj: np.ndarray           # loss_proj / exposure_proj
+    premium_proj: np.ndarray     # cumulative projected premium
+    lr_proj: np.ndarray           # loss_proj / premium_proj
     se_loss: np.ndarray           # SE on loss_proj
-    se_lr: np.ndarray             # SE on lr_proj (= se_loss / exposure_proj)
+    se_lr: np.ndarray             # SE on lr_proj (= se_loss / premium_proj)
     cv_lr: np.ndarray             # se_lr / lr_proj
     method: str
     k_star: int | None            # for SA; None for CL/ED
@@ -51,8 +51,8 @@ def _safe_div(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def _fit_sa(
-    closs_obs: np.ndarray,
-    crp_obs: np.ndarray,
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
     k_star: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Stage-adaptive projection (ED before k*, CL after).
@@ -60,32 +60,32 @@ def _fit_sa(
     k_star is 1-indexed dev: link index < k_star uses ED, >= k_star uses CL.
     Returns (loss_proj, se_loss) — both shape (n_cohorts, n_devs).
     """
-    n_cohorts, n_devs = closs_obs.shape
+    n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
-    # Premium chain ladder (for crp projection)
-    crp_mack = _fit_mack(crp_obs)
-    crp_proj = crp_mack.closs_proj
+    # Premium chain ladder (for premium projection)
+    premium_mack = _fit_mack(premium_obs)
+    premium_proj = premium_mack.loss_proj
 
     # ED parameters (g_k, sigma^2_g_k) and CL parameters (f_k, sigma^2_f_k)
-    ed_result = _fit_ed(closs_obs, crp_obs)
+    ed_result = _fit_ed(loss_obs, premium_obs)
     g_k = ed_result.g_k
     sigma2_g_k = ed_result.sigma2_g_k
 
-    cl_result = _fit_mack(closs_obs)
+    cl_result = _fit_mack(loss_obs)
     f_k = cl_result.f_k
     sigma2_f_k = cl_result.sigma2_k
 
     # Per-link cohort sums for parameter variance terms
-    sum_crp_k = np.zeros(n_links)
-    sum_closs_k = np.zeros(n_links)
+    sum_premium_k = np.zeros(n_links)
+    sum_loss_k = np.zeros(n_links)
     for k in range(n_links):
-        crp_col = crp_obs[:, k]
-        sum_crp_k[k] = float(crp_col[~np.isnan(crp_col)].sum())
-        closs_col = closs_obs[:, k]
-        sum_closs_k[k] = float(closs_col[~np.isnan(closs_col)].sum())
+        premium_col = premium_obs[:, k]
+        sum_premium_k[k] = float(premium_col[~np.isnan(premium_col)].sum())
+        loss_col = loss_obs[:, k]
+        sum_loss_k[k] = float(loss_col[~np.isnan(loss_col)].sum())
 
-    loss_proj = closs_obs.copy()
+    loss_proj = loss_obs.copy()
     se_loss = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
 
     # Project per cohort
@@ -93,7 +93,7 @@ def _fit_sa(
         # last observed dev for cohort i
         last_obs = -1
         for k in range(n_devs - 1, -1, -1):
-            if not np.isnan(closs_obs[i, k]):
+            if not np.isnan(loss_obs[i, k]):
                 last_obs = k
                 break
         if last_obs < 0 or last_obs >= n_devs - 1:
@@ -105,18 +105,18 @@ def _fit_sa(
             # number = k + 1. Use ED while link number < k_star, CL when >= k_star.
             link_idx = k + 1
             ck = loss_proj[i, k]
-            crp_k = crp_proj[i, k]
+            premium_k = premium_proj[i, k]
 
             if link_idx < k_star:
                 # ED phase: additive
-                if not np.isnan(crp_k) and crp_k > 0:
-                    loss_proj[i, k + 1] = ck + g_k[k] * crp_k
+                if not np.isnan(premium_k) and premium_k > 0:
+                    loss_proj[i, k + 1] = ck + g_k[k] * premium_k
                 if (
-                    not np.isnan(crp_k) and crp_k > 0 and sum_crp_k[k] > 0
+                    not np.isnan(premium_k) and premium_k > 0 and sum_premium_k[k] > 0
                 ):
-                    var_proc_inc = sigma2_g_k[k] * crp_k
-                    g_var = sigma2_g_k[k] / sum_crp_k[k] if sum_crp_k[k] > 0 else 0.0
-                    var_param_inc = (crp_k ** 2) * g_var
+                    var_proc_inc = sigma2_g_k[k] * premium_k
+                    g_var = sigma2_g_k[k] / sum_premium_k[k] if sum_premium_k[k] > 0 else 0.0
+                    var_param_inc = (premium_k ** 2) * g_var
                     var_acc = var_acc + var_proc_inc + var_param_inc
             else:
                 # CL phase: multiplicative
@@ -124,11 +124,11 @@ def _fit_sa(
                     loss_proj[i, k + 1] = f_k[k] * ck
                 if (
                     not np.isnan(ck) and ck > 0
-                    and f_k[k] > 0 and sum_closs_k[k] > 0
+                    and f_k[k] > 0 and sum_loss_k[k] > 0
                 ):
                     # Mack: increment to var_acc
                     # SE^2(C_{k+1}) recursion: var multiplies by f^2 + new
-                    var_acc = (f_k[k] ** 2) * var_acc + sigma2_f_k[k] * (ck + (ck ** 2) / sum_closs_k[k])
+                    var_acc = (f_k[k] ** 2) * var_acc + sigma2_f_k[k] * (ck + (ck ** 2) / sum_loss_k[k])
 
             ck1 = loss_proj[i, k + 1]
             if not np.isnan(ck1) and var_acc >= 0:
@@ -143,58 +143,58 @@ def _fit_sa(
 
 
 def _fit_lr(
-    closs_obs: np.ndarray,
-    crp_obs: np.ndarray,
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
     method: str,
     theta_cv: float,
     theta_rse: float,
     m: int,
     alpha: float,
 ) -> _LRResult:
-    """Single-group LR fit. Always returns cumulative loss_proj, exposure_proj,
+    """Single-group LR fit. Always returns cumulative loss_proj, premium_proj,
     lr_proj, plus SE on loss/lr."""
-    n_devs = closs_obs.shape[1]
+    n_devs = loss_obs.shape[1]
 
-    # Premium chain ladder (always — needed for exposure_proj and SE on lr)
-    crp_mack = _fit_mack(crp_obs)
-    exposure_proj = crp_mack.closs_proj
+    # Premium chain ladder (always — needed for premium_proj and SE on lr)
+    premium_mack = _fit_mack(premium_obs)
+    premium_proj = premium_mack.loss_proj
 
     k_star: int | None = None
 
     if method == "cl":
-        cl_result = _fit_mack(closs_obs)
-        loss_proj = cl_result.closs_proj
+        cl_result = _fit_mack(loss_obs)
+        loss_proj = cl_result.loss_proj
         se_loss = cl_result.se_proj
     elif method == "ed":
-        ed_result = _fit_ed(closs_obs, crp_obs)
-        loss_proj = ed_result.closs_proj
+        ed_result = _fit_ed(loss_obs, premium_obs)
+        loss_proj = ed_result.loss_proj
         se_loss = ed_result.se_proj
     elif method == "sa":
         # Detect maturity and project hybrid
-        mat = _compute_maturity(closs_obs, theta_cv, theta_rse, m)
+        mat = _compute_maturity(loss_obs, theta_cv, theta_rse, m)
         k_star = mat.k_star
         if k_star is None:
             # Fall back to ED throughout if maturity not detected
-            ed_result = _fit_ed(closs_obs, crp_obs)
-            loss_proj = ed_result.closs_proj
+            ed_result = _fit_ed(loss_obs, premium_obs)
+            loss_proj = ed_result.loss_proj
             se_loss = ed_result.se_proj
         else:
-            loss_proj, se_loss = _fit_sa(closs_obs, crp_obs, k_star)
+            loss_proj, se_loss = _fit_sa(loss_obs, premium_obs, k_star)
     else:
         raise ValueError(
             f"method must be one of {_VALID_METHODS}, got {method!r}"
         )
 
-    lr_proj = _safe_div(loss_proj, exposure_proj)
-    se_lr = _safe_div(se_loss, exposure_proj)
+    lr_proj = _safe_div(loss_proj, premium_proj)
+    se_lr = _safe_div(se_loss, premium_proj)
     cv_lr = _safe_div(se_lr, lr_proj)
 
     return _LRResult(
         n_devs=n_devs,
-        closs_obs=closs_obs,
-        crp_obs=crp_obs,
+        loss_obs=loss_obs,
+        premium_obs=premium_obs,
         loss_proj=loss_proj,
-        exposure_proj=exposure_proj,
+        premium_proj=premium_proj,
         lr_proj=lr_proj,
         se_loss=se_loss,
         se_lr=se_lr,
@@ -219,14 +219,14 @@ def _result_to_long_df(
                 row[group_var] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
-            row["closs"] = (
-                float(result.closs_obs[i, k])
-                if not np.isnan(result.closs_obs[i, k])
+            row["loss"] = (
+                float(result.loss_obs[i, k])
+                if not np.isnan(result.loss_obs[i, k])
                 else None
             )
-            row["crp"] = (
-                float(result.crp_obs[i, k])
-                if not np.isnan(result.crp_obs[i, k])
+            row["premium"] = (
+                float(result.premium_obs[i, k])
+                if not np.isnan(result.premium_obs[i, k])
                 else None
             )
             row["loss_proj"] = (
@@ -234,9 +234,9 @@ def _result_to_long_df(
                 if not np.isnan(result.loss_proj[i, k])
                 else None
             )
-            row["exposure_proj"] = (
-                float(result.exposure_proj[i, k])
-                if not np.isnan(result.exposure_proj[i, k])
+            row["premium_proj"] = (
+                float(result.premium_proj[i, k])
+                if not np.isnan(result.premium_proj[i, k])
                 else None
             )
             row["lr_proj"] = (
@@ -338,7 +338,7 @@ class LRFit:
     ----------
     df : DataFrame
         Long-format triangle with columns
-        ``[group_var?, cohort, dev, closs, crp, loss_proj, exposure_proj,
+        ``[group_var?, cohort, dev, loss, premium, loss_proj, premium_proj,
         lr_proj, se_loss, se_lr, cv_lr]``.
     method : str
         The fitting method used (``"sa"``, ``"ed"``, or ``"cl"``).
@@ -375,11 +375,11 @@ class LRFit:
         group_var = triangle._group_var
 
         if group_var is None:
-            closs_obs, cohorts, _ = _build_closs_matrix(tri_df)
-            crp_obs, _, _ = _build_crp_matrix(tri_df)
+            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
+            premium_obs, _, _ = _build_premium_matrix(tri_df)
             result = _fit_lr(
-                closs_obs,
-                crp_obs,
+                loss_obs,
+                premium_obs,
                 estimator.method,
                 estimator.theta_cv,
                 estimator.theta_rse,
@@ -398,11 +398,11 @@ class LRFit:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                closs_obs, cohorts, _ = _build_closs_matrix(sub)
-                crp_obs, _, _ = _build_crp_matrix(sub)
+                loss_obs, cohorts, _ = _build_loss_matrix(sub)
+                premium_obs, _, _ = _build_premium_matrix(sub)
                 result = _fit_lr(
-                    closs_obs,
-                    crp_obs,
+                    loss_obs,
+                    premium_obs,
                     estimator.method,
                     estimator.theta_cv,
                     estimator.theta_rse,
@@ -461,7 +461,7 @@ class LRFit:
             keys.append(self._group_var)
         keys.append("cohort")
 
-        observed = df.filter(pl.col("closs").is_not_null())
+        observed = df.filter(pl.col("loss").is_not_null())
         latest = observed.group_by(keys).agg(
             pl.col("dev").max().alias("latest_observed_dev"),
         )
@@ -471,7 +471,7 @@ class LRFit:
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").last().alias("ultimate_loss"),
-                pl.col("exposure_proj").last().alias("ultimate_exposure"),
+                pl.col("premium_proj").last().alias("ultimate_exposure"),
                 pl.col("lr_proj").last().alias("ultimate_lr"),
                 pl.col("se_lr").last().alias("se_lr"),
                 pl.col("cv_lr").last().alias("cv_lr"),

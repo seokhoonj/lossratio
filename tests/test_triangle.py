@@ -23,8 +23,8 @@ def _exp_input() -> pl.DataFrame:
                 "2024-02-01", "2024-02-01",
                 "2024-03-01",
             ],
-            "loss": [10.0, 20.0, 30.0, 15.0, 25.0, 5.0],
-            "rp":   [100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+            "loss_incr":    [10.0, 20.0, 30.0, 15.0, 25.0, 5.0],
+            "premium_incr": [100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
         }
     )
 
@@ -34,7 +34,10 @@ def test_triangle_no_group():
     tri = exp.triangle()
     assert isinstance(tri.df, pl.DataFrame)
     assert tri.columns == [
-        "cohort", "dev", "loss", "rp", "closs", "crp", "lr", "clr",
+        "cohort", "dev",
+        "loss", "loss_incr",
+        "premium", "premium_incr",
+        "lr", "lr_incr",
     ]
     # 3 cohorts: cohort_1 has 3 devs, cohort_2 has 2, cohort_3 has 1 -> 6 rows
     assert tri.n_rows == 6
@@ -54,12 +57,12 @@ def test_triangle_cumulative():
     tri = exp.triangle()
     df = tri.to_polars().sort(["cohort", "dev"])
     cohort_1 = df.filter(pl.col("cohort") == pl.lit("2024-01-01").cast(pl.Date))
-    # loss: 10, 20, 30 -> closs: 10, 30, 60
-    assert cohort_1["closs"].to_list() == [10.0, 30.0, 60.0]
-    # rp: 100, 100, 100 -> crp: 100, 200, 300
-    assert cohort_1["crp"].to_list() == [100.0, 200.0, 300.0]
-    # clr: 10/100, 30/200, 60/300
-    assert cohort_1["clr"].to_list() == [0.1, 0.15, 0.2]
+    # loss: 10, 20, 30 -> loss: 10, 30, 60
+    assert cohort_1["loss"].to_list() == [10.0, 30.0, 60.0]
+    # rp: 100, 100, 100 -> premium: 100, 200, 300
+    assert cohort_1["premium"].to_list() == [100.0, 200.0, 300.0]
+    # lr: 10/100, 30/200, 60/300
+    assert cohort_1["lr"].to_list() == [0.1, 0.15, 0.2]
 
 
 def test_triangle_with_group():
@@ -76,10 +79,10 @@ def test_triangle_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(
         {
-            "cym":  ["2024-01-01", "2024-02-01"],
-            "uym":  ["2024-01-01", "2024-01-01"],
-            "loss": [10.0, 20.0],
-            "rp":   [100.0, 100.0],
+            "cym":          ["2024-01-01", "2024-02-01"],
+            "uym":          ["2024-01-01", "2024-01-01"],
+            "loss_incr":    [10.0, 20.0],
+            "premium_incr": [100.0, 100.0],
         }
     )
     exp = lr.Experience(df)

@@ -24,14 +24,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss": [
+            "loss_incr": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "rp": [100.0] * 15,
+            "premium_incr": [100.0] * 15,
         }
     )
 
@@ -65,8 +65,8 @@ def test_lr_output_columns():
         lr.Experience(_toy_triangle_input()).triangle()
     )
     expected = {
-        "cohort", "dev", "closs", "crp",
-        "loss_proj", "exposure_proj", "lr_proj",
+        "cohort", "dev", "loss", "premium",
+        "loss_proj", "premium_proj", "lr_proj",
         "se_loss", "se_lr", "cv_lr",
     }
     assert set(fit.to_polars().columns) >= expected
@@ -80,7 +80,7 @@ def test_lr_output_shape():
 
 
 # ---------------------------------------------------------------------------
-# method="cl" — should match CLFit numerics (loss_proj == closs_proj)
+# method="cl" — should match CLFit numerics (loss_proj == loss_proj)
 # ---------------------------------------------------------------------------
 
 
@@ -93,7 +93,7 @@ def test_lr_cl_method_matches_cl_fit():
     lr_df = lr_fit.to_polars().sort(["cohort", "dev"])
 
     # Cumulative loss projections must match
-    assert cl_df["closs_proj"].to_list() == lr_df["loss_proj"].to_list()
+    assert cl_df["loss_proj"].to_list() == lr_df["loss_proj"].to_list()
 
 
 def test_lr_cl_lr_proj_equals_loss_div_exposure():
@@ -103,10 +103,10 @@ def test_lr_cl_lr_proj_equals_loss_div_exposure():
     df = fit.to_polars()
     df_filt = df.filter(
         pl.col("loss_proj").is_not_null()
-        & pl.col("exposure_proj").is_not_null()
-        & (pl.col("exposure_proj") != 0)
+        & pl.col("premium_proj").is_not_null()
+        & (pl.col("premium_proj") != 0)
     )
-    expected = (df_filt["loss_proj"] / df_filt["exposure_proj"]).to_list()
+    expected = (df_filt["loss_proj"] / df_filt["premium_proj"]).to_list()
     actual = df_filt["lr_proj"].to_list()
     for a, b in zip(actual, expected):
         assert a == pytest.approx(b)
@@ -125,7 +125,7 @@ def test_lr_ed_method_matches_ed_fit():
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
     lr_df = lr_fit.to_polars().sort(["cohort", "dev"])
 
-    assert ed_df["closs_proj"].to_list() == lr_df["loss_proj"].to_list()
+    assert ed_df["loss_proj"].to_list() == lr_df["loss_proj"].to_list()
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ def test_lr_sa_strict_thresholds_falls_back_to_ed():
     assert sa_fit.k_star is None
     sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
-    assert sa_df["loss_proj"].to_list() == ed_df["closs_proj"].to_list()
+    assert sa_df["loss_proj"].to_list() == ed_df["loss_proj"].to_list()
 
 
 def test_lr_sa_kstar_one_matches_cl_projection():
@@ -166,7 +166,7 @@ def test_lr_sa_kstar_one_matches_cl_projection():
         sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
         cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
         # Both use CL throughout when k_star = 1
-        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["closs_proj"].to_list()):
+        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
             if a is None or b is None:
                 continue
             assert a == pytest.approx(b)

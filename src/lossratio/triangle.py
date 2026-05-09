@@ -63,10 +63,13 @@ class Triangle:
     * ``group_var`` -- present only if supplied
     * ``cohort`` -- the underwriting period (renamed from cohort_var)
     * ``dev`` -- the development index (1, 2, ...) within each cohort
-    * ``loss``, ``rp`` -- incremental sums per cell
-    * ``closs``, ``crp`` -- cumulative sums within each (group, cohort)
-    * ``lr`` -- incremental loss ratio (loss / rp)
-    * ``clr`` -- cumulative loss ratio (closs / crp)
+    * ``loss``, ``premium`` -- cumulative sums within each (group, cohort)
+    * ``loss_incr``, ``premium_incr`` -- per-period sums per cell
+    * ``lr`` -- cumulative loss ratio (``loss / premium``)
+    * ``lr_incr`` -- per-period loss ratio (``loss_incr / premium_incr``)
+
+    Cumulative is the unmarked default; per-period values carry an
+    ``_incr`` (incremental) suffix.
 
     Original column names (e.g. ``"uym"`` for cohort_var) are kept
     as instance attributes for downstream plotting.
@@ -101,7 +104,7 @@ class Triangle:
             df_pl = to_polars(source)
 
         # Validate required columns
-        required = {cohort_var, cym_var, "loss", "rp"}
+        required = {cohort_var, cym_var, "loss_incr", "premium_incr"}
         if group_var is not None:
             required.add(group_var)
         missing = required - set(df_pl.columns)
@@ -117,14 +120,14 @@ class Triangle:
             df_pl = df_pl.with_columns(
                 pl.col(cohort_var).cast(pl.Date),
                 pl.col(cym_var).cast(pl.Date),
-                pl.col("loss").cast(pl.Float64),
-                pl.col("rp").cast(pl.Float64),
+                pl.col("loss_incr").cast(pl.Float64),
+                pl.col("premium_incr").cast(pl.Float64),
             )
 
         # Compute dev index (1, 2, ...) per cohort
         df_pl = _compute_dev(df_pl, cohort_var, cym_var, dev_unit)
 
-        # Aggregate: sum(loss), sum(rp) by (group_var, cohort, dev)
+        # Aggregate per-period values by (group_var, cohort, dev)
         agg_keys: list[str] = []
         if group_var is not None:
             agg_keys.append(group_var)
@@ -133,34 +136,39 @@ class Triangle:
         agg = (
             df_pl.group_by(agg_keys)
             .agg(
-                pl.col("loss").sum(),
-                pl.col("rp").sum(),
+                pl.col("loss_incr").sum(),
+                pl.col("premium_incr").sum(),
             )
             .sort(agg_keys)
         )
 
-        # Cumulative sums within (group, cohort)
+        # Cumulative sums within (group, cohort) — cumulative is default name
         cum_keys: list[str] = []
         if group_var is not None:
             cum_keys.append(group_var)
         cum_keys.append(cohort_var)
 
         agg = agg.with_columns(
-            pl.col("loss").cum_sum().over(cum_keys).alias("closs"),
-            pl.col("rp").cum_sum().over(cum_keys).alias("crp"),
+            pl.col("loss_incr").cum_sum().over(cum_keys).alias("loss"),
+            pl.col("premium_incr").cum_sum().over(cum_keys).alias("premium"),
         ).with_columns(
-            (pl.col("loss") / pl.col("rp")).alias("lr"),
-            (pl.col("closs") / pl.col("crp")).alias("clr"),
+            (pl.col("loss") / pl.col("premium")).alias("lr"),
+            (pl.col("loss_incr") / pl.col("premium_incr")).alias("lr_incr"),
         )
 
         # Rename to standard column names: cohort_var -> cohort, _dev_temp -> dev
         agg = agg.rename({cohort_var: "cohort", "_dev_temp": "dev"})
 
-        # Reorder columns for readability
+        # Reorder columns: cum-first paired
         ordered = []
         if group_var is not None:
             ordered.append(group_var)
-        ordered.extend(["cohort", "dev", "loss", "rp", "closs", "crp", "lr", "clr"])
+        ordered.extend([
+            "cohort", "dev",
+            "loss", "loss_incr",
+            "premium", "premium_incr",
+            "lr", "lr_incr",
+        ])
         agg = agg.select(ordered)
 
         self._df = agg

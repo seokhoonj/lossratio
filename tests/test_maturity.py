@@ -24,14 +24,14 @@ def _polars_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss": [
+            "loss_incr": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "rp": [100.0] * 15,
+            "premium_incr": [100.0] * 15,
         }
     )
 
@@ -49,15 +49,15 @@ def _stable_input() -> pl.DataFrame:
             month = ci + di + 1
             cym = f"2024-{month:02d}-01"
             # Constant rp = 100, loss doubling pattern via incremental loss
-            # closs target: 100, 200, 400, 800 → incremental loss: 100, 100, 200, 400
+            # loss target: 100, 200, 400, 800 → incremental loss: 100, 100, 200, 400
             target_closs = 100 * (2 ** di)
             prev_closs = 100 * (2 ** (di - 1)) if di > 0 else 0
             inc_loss = target_closs - prev_closs
             rows.append({
                 "cym": cym,
                 "uym": uym,
-                "loss": float(inc_loss),
-                "rp": 100.0,
+                "loss_incr": float(inc_loss),
+                "premium_incr": 100.0,
             })
     return pl.DataFrame(rows)
 

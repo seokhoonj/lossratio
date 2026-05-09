@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_closs_matrix, _fit_mack
+from .cl import _build_loss_matrix, _fit_mack
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -34,20 +34,20 @@ class _MaturityResult:
 
 
 def _compute_cv_rse(
-    closs_obs: np.ndarray,
+    loss_obs: np.ndarray,
     f_k: np.ndarray,
     sigma2_k: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute CV (across cohort link factors) and RSE (of pooled f_k)."""
-    n_cohorts, n_devs = closs_obs.shape
+    n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
     cv_k = np.full(n_links, np.nan, dtype=np.float64)
     rse_k = np.full(n_links, np.nan, dtype=np.float64)
 
     for k in range(n_links):
-        col_k = closs_obs[:, k]
-        col_k1 = closs_obs[:, k + 1]
+        col_k = loss_obs[:, k]
+        col_k1 = loss_obs[:, k + 1]
         mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
         n_k = int(mask.sum())
 
@@ -95,13 +95,13 @@ def _detect_k_star(stable_k: np.ndarray, m: int) -> int | None:
 
 
 def _compute_maturity(
-    closs_obs: np.ndarray,
+    loss_obs: np.ndarray,
     theta_cv: float,
     theta_rse: float,
     m: int,
 ) -> _MaturityResult:
-    mack = _fit_mack(closs_obs)
-    cv_k, rse_k = _compute_cv_rse(closs_obs, mack.f_k, mack.sigma2_k)
+    mack = _fit_mack(loss_obs)
+    cv_k, rse_k = _compute_cv_rse(loss_obs, mack.f_k, mack.sigma2_k)
     stable_k = np.zeros(len(cv_k), dtype=bool)
     for k in range(len(cv_k)):
         if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):
@@ -114,7 +114,7 @@ def _compute_maturity(
         rse_k=rse_k,
         stable_k=stable_k,
         k_star=k_star,
-        n_devs=closs_obs.shape[1],
+        n_devs=loss_obs.shape[1],
     )
 
 
@@ -219,8 +219,8 @@ class Maturity:
         group_var = triangle._group_var
 
         if group_var is None:
-            closs_obs, _, _ = _build_closs_matrix(tri_df)
-            result = _compute_maturity(closs_obs, theta_cv, theta_rse, m)
+            loss_obs, _, _ = _build_loss_matrix(tri_df)
+            result = _compute_maturity(loss_obs, theta_cv, theta_rse, m)
             diag_df = _diagnostic_to_df(result, group_var=None, group_value=None)
             kstar_df = _kstar_to_df(result, group_var=None, group_value=None)
         else:
@@ -231,8 +231,8 @@ class Maturity:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                closs_obs, _, _ = _build_closs_matrix(sub)
-                result = _compute_maturity(closs_obs, theta_cv, theta_rse, m)
+                loss_obs, _, _ = _build_loss_matrix(sub)
+                result = _compute_maturity(loss_obs, theta_cv, theta_rse, m)
                 diag_parts.append(
                     _diagnostic_to_df(result, group_var=group_var, group_value=g)
                 )

@@ -11,7 +11,7 @@ from ._io import detect_input_type, mirror_output, to_polars
 if TYPE_CHECKING:
     from .triangle import Triangle
 
-REQUIRED_COLS = ("cym", "uym", "loss", "rp")
+REQUIRED_COLS = ("cym", "uym", "loss_incr", "premium_incr")
 
 
 class Experience:
@@ -22,8 +22,10 @@ class Experience:
 
     * ``cym`` -- calendar year-month (date or coercible to date)
     * ``uym`` -- underwriting year-month (date or coercible to date)
-    * ``loss`` -- incremental claim amount in the cell (numeric)
-    * ``rp`` -- incremental risk premium in the cell (numeric)
+    * ``loss_incr`` -- per-period claim amount in the cell (numeric)
+    * ``premium_incr`` -- per-period premium in the cell (numeric); for
+      long-term health insurance applications, risk premium is commonly
+      used
 
     Internally the data is stored as polars for performance. The
     :attr:`df` property mirrors the original input format: pandas in,
@@ -47,8 +49,8 @@ class Experience:
         self._df = df_pl.with_columns(
             pl.col("cym").cast(pl.Date),
             pl.col("uym").cast(pl.Date),
-            pl.col("loss").cast(pl.Float64),
-            pl.col("rp").cast(pl.Float64),
+            pl.col("loss_incr").cast(pl.Float64),
+            pl.col("premium_incr").cast(pl.Float64),
         )
 
     @property

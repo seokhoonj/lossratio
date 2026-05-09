@@ -1,11 +1,12 @@
 # lossratio (Python)
 
-Python sibling of the R `lossratio` package: loss-ratio analysis and
-projection for long-term health insurance from long-format experience
-data. Stage-adaptive (SA) projection uses an exposure-driven (ED)
-model before the maturity point and chain ladder (Mack, CL) after,
-supported by maturity point detection, cohort regime detection, and
-a calendar-diagonal backtest framework.
+Python sibling of the R `lossratio` package: loss ratio analytics
+for long-term health insurance — cohort development analysis,
+stage-adaptive projection, regime detection, and backtest validation
+on long-format experience data. Stage-adaptive (SA) projection uses
+an exposure-driven (ED) model before the maturity point and chain
+ladder (CL) after, supported by maturity point detection, cohort
+regime detection, and a calendar-diagonal backtest framework.
 
 This Python implementation is in active development.
 
@@ -13,11 +14,12 @@ This Python implementation is in active development.
 
 Working components so far:
 
-- `Experience` — validates loss-ratio experience data (`cym`, `uym`,
-  `loss`, `rp`), accepts polars or pandas input.
-- `Triangle` — cohort × dev aggregation with incremental (`loss`,
-  `rp`) and cumulative (`closs`, `crp`) sums and ratios (`lr`,
-  `clr`) per (group, cohort, dev) lane.
+- `Experience` — validates loss ratio experience data (`cym`, `uym`,
+  `loss_incr`, `premium_incr`), accepts polars or pandas input.
+- `Triangle` — cohort × dev aggregation. Cumulative is the unmarked
+  default (`loss`, `premium`, `lr`); per-period values carry an
+  `_incr` (incremental) suffix (`loss_incr`, `premium_incr`,
+  `lr_incr`).
 
 Additional components (loss-ratio projection with stage-adaptive
 method, maturity point and cohort regime detection, calendar-diagonal

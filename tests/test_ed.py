@@ -11,14 +11,14 @@ import lossratio as lr
 def _toy_triangle_input() -> pl.DataFrame:
     """Reuses the 5x5 fixture from CL tests for ED.
 
-    Resulting (cohort, dev) cumulative loss closs:
+    Resulting (cohort, dev) cumulative loss loss:
         2024-01: 100, 200, 320, 420, 500
         2024-02: 150, 280, 440, 570
         2024-03: 120, 250, 380
         2024-04: 180, 370
         2024-05: 200
 
-    Risk premium rp is constant 100 per cell, so cumulative crp is
+    Risk premium rp is constant 100 per cell, so cumulative premium is
     100, 200, 300, ... per cohort regardless of dev attained.
     """
     return pl.DataFrame(
@@ -37,14 +37,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss": [
+            "loss_incr": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "rp": [100.0] * 15,
+            "premium_incr": [100.0] * 15,
         }
     )
 
@@ -84,10 +84,10 @@ def test_ed_g_k_first_link_hand_check():
     """At dev 1 -> 2 link, four cohorts contribute (2024-01..04):
 
         Δloss[i,2]:  200-100=100, 280-150=130, 250-120=130, 370-180=190
-        crp[i,1]:    100,         100,         100,         100
+        premium[i,1]:    100,         100,         100,         100
 
         sum Δloss = 100 + 130 + 130 + 190 = 550
-        sum crp   = 400
+        sum premium   = 400
 
         g_1 = 550 / 400 = 1.375
     """
@@ -125,7 +125,7 @@ def test_ed_sigma2_g_k_last_link_uses_mack_tail():
 
 def test_ed_f_p_k_constant_when_premium_constant():
     """All cohorts have rp=100 in every observed cell, so cumulative
-    crp grows linearly: dev k has crp = 100*k. Then f^P_k = (k+1)/k."""
+    premium grows linearly: dev k has premium = 100*k. Then f^P_k = (k+1)/k."""
     fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
     params = fit._params_df.sort("dev")
     f_p = params["f_p"].to_list()
@@ -147,36 +147,36 @@ def test_ed_f_p_k_constant_when_premium_constant():
 def test_ed_projection_observed_cells_unchanged():
     fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
     df = fit.to_polars()
-    observed = df.filter(pl.col("closs").is_not_null())
-    diffs = (observed["closs_proj"] - observed["closs"]).abs()
+    observed = df.filter(pl.col("loss").is_not_null())
+    diffs = (observed["loss_proj"] - observed["loss"]).abs()
     assert diffs.max() == pytest.approx(0.0)
 
 
 def test_ed_projection_uses_additive_rule():
-    """Cohort 2024-05 has only dev 1 observed (closs = 200, crp = 100).
+    """Cohort 2024-05 has only dev 1 observed (loss = 200, premium = 100).
 
-        closs_proj[1, 2] = closs[1, 1] + g_1 * crp_proj[1, 1]
+        loss_proj[1, 2] = loss[1, 1] + g_1 * premium_proj[1, 1]
                          = 200 + 1.375 * 100
                          = 337.5
     """
     fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
-    closs_proj = cohort_5["closs_proj"].to_list()
-    assert closs_proj[0] == 200.0
-    assert closs_proj[1] == pytest.approx(200.0 + 1.375 * 100.0)
+    loss_proj = cohort_5["loss_proj"].to_list()
+    assert loss_proj[0] == 200.0
+    assert loss_proj[1] == pytest.approx(200.0 + 1.375 * 100.0)
 
 
 # ---------------------------------------------------------------------------
-# crp projection appears alongside closs projection
+# premium projection appears alongside loss projection
 # ---------------------------------------------------------------------------
 
 
-def test_ed_crp_proj_present_for_all_cells():
+def test_ed_premium_proj_present_for_all_cells():
     fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
     df = fit.to_polars()
-    # Every cell has a projected crp (observed or chain-ladder forecast)
-    assert df["crp_proj"].null_count() == 0
+    # Every cell has a projected premium (observed or chain-ladder forecast)
+    assert df["premium_proj"].null_count() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -187,14 +187,14 @@ def test_ed_crp_proj_present_for_all_cells():
 def test_ed_se_observed_cells_null():
     fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
     df = fit.to_polars()
-    observed = df.filter(pl.col("closs").is_not_null())
+    observed = df.filter(pl.col("loss").is_not_null())
     assert observed["se_proj"].null_count() == observed.height
 
 
 def test_ed_se_proj_positive_for_projected_cells():
     fit = lr.ED().fit(lr.Experience(_toy_triangle_input()).triangle())
     df = fit.to_polars()
-    projected = df.filter(pl.col("closs").is_null())
+    projected = df.filter(pl.col("loss").is_null())
     se_values = projected["se_proj"].to_list()
     assert all(v is not None and v > 0 for v in se_values)
 
@@ -220,7 +220,7 @@ def test_ed_summary_columns_and_size():
     assert set(summary.columns) >= {
         "cohort",
         "latest_observed_dev",
-        "latest_observed_closs",
+        "latest_observed_loss",
         "ultimate",
         "se_ultimate",
         "cv_ultimate",

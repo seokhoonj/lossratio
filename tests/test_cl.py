@@ -11,7 +11,7 @@ import lossratio as lr
 def _toy_triangle_input() -> pl.DataFrame:
     """Hand-verifiable 5-cohort, 5-dev experience data.
 
-    Resulting closs (cumulative loss) per (cohort, dev):
+    Resulting loss (cumulative loss) per (cohort, dev):
 
         cohort       dev_1  dev_2  dev_3  dev_4  dev_5
         2024-01      100    200    320    420    500
@@ -56,14 +56,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-05-01",
             ],
             # Incremental losses chosen so cumulative matches the docstring
-            "loss": [
+            "loss_incr": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "rp": [100.0] * 15,
+            "premium_incr": [100.0] * 15,
         }
     )
 
@@ -160,12 +160,12 @@ def test_cl_sigma2_last_link_uses_mack_tail():
 
 
 def test_cl_projection_observed_cells_unchanged():
-    """closs_proj equals closs in observed cells."""
+    """loss_proj equals loss in observed cells."""
     exp = lr.Experience(_toy_triangle_input())
     fit = lr.CL().fit(exp.triangle())
     df = fit.to_polars()
-    observed = df.filter(pl.col("closs").is_not_null())
-    diffs = (observed["closs_proj"] - observed["closs"]).abs()
+    observed = df.filter(pl.col("loss").is_not_null())
+    diffs = (observed["loss_proj"] - observed["loss"]).abs()
     assert diffs.max() == pytest.approx(0.0)
 
 
@@ -177,12 +177,12 @@ def test_cl_projection_propagates_via_f_k():
     fk = fit._fk_df.sort("dev")["f"].to_list()
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
-    closs_proj = cohort_5["closs_proj"].to_list()
-    assert closs_proj[0] == 200.0
-    assert closs_proj[1] == pytest.approx(200.0 * fk[0])
-    assert closs_proj[2] == pytest.approx(200.0 * fk[0] * fk[1])
-    assert closs_proj[3] == pytest.approx(200.0 * fk[0] * fk[1] * fk[2])
-    assert closs_proj[4] == pytest.approx(
+    loss_proj = cohort_5["loss_proj"].to_list()
+    assert loss_proj[0] == 200.0
+    assert loss_proj[1] == pytest.approx(200.0 * fk[0])
+    assert loss_proj[2] == pytest.approx(200.0 * fk[0] * fk[1])
+    assert loss_proj[3] == pytest.approx(200.0 * fk[0] * fk[1] * fk[2])
+    assert loss_proj[4] == pytest.approx(
         200.0 * fk[0] * fk[1] * fk[2] * fk[3]
     )
 
@@ -196,7 +196,7 @@ def test_cl_se_observed_cells_null():
     exp = lr.Experience(_toy_triangle_input())
     fit = lr.CL().fit(exp.triangle())
     df = fit.to_polars()
-    observed = df.filter(pl.col("closs").is_not_null())
+    observed = df.filter(pl.col("loss").is_not_null())
     # Observed cells have no projection SE
     assert observed["se_proj"].null_count() == observed.height
 
@@ -208,7 +208,7 @@ def test_cl_se_proj_positive_for_projected_cells():
     exp = lr.Experience(_toy_triangle_input())
     fit = lr.CL().fit(exp.triangle())
     df = fit.to_polars()
-    projected = df.filter(pl.col("closs").is_null())
+    projected = df.filter(pl.col("loss").is_null())
     # Every projected cell carries a numeric SE
     se_values = projected["se_proj"].to_list()
     assert all(v is not None and v > 0 for v in se_values)
@@ -241,7 +241,7 @@ def test_cl_summary_columns_and_size():
     assert set(summary.columns) >= {
         "cohort",
         "latest_observed_dev",
-        "latest_observed_closs",
+        "latest_observed_loss",
         "ultimate",
         "se_ultimate",
         "cv_ultimate",
@@ -251,7 +251,7 @@ def test_cl_summary_columns_and_size():
 
 def test_cl_summary_ultimate_for_fully_observed_cohort():
     """Cohort 2024-01 has all 5 devs observed; ultimate must equal the
-    observed closs at dev 5 = 500.0 with se = 0 (no projection)."""
+    observed loss at dev 5 = 500.0 with se = 0 (no projection)."""
     exp = lr.Experience(_toy_triangle_input())
     fit = lr.CL().fit(exp.triangle())
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))

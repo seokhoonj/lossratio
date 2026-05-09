@@ -32,15 +32,15 @@ class _MackResult:
 
     cohorts: list
     n_devs: int
-    closs_obs: np.ndarray   # (n_cohorts, n_devs) -- observed (NaN where unobserved)
-    closs_proj: np.ndarray  # (n_cohorts, n_devs) -- projected (filled in unobserved)
+    loss_obs: np.ndarray   # (n_cohorts, n_devs) -- observed (NaN where unobserved)
+    loss_proj: np.ndarray  # (n_cohorts, n_devs) -- projected (filled in unobserved)
     se_proj: np.ndarray     # (n_cohorts, n_devs) -- Mack SE on projected cells
     f_k: np.ndarray         # (n_devs - 1,)
     sigma2_k: np.ndarray    # (n_devs - 1,)
 
 
-def _build_closs_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Convert a single-group Triangle subset into a closs matrix.
+def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
+    """Convert a single-group Triangle subset into a loss matrix.
 
     Rows are cohorts (sorted), columns are dev = 1..max_dev.
     """
@@ -49,21 +49,21 @@ def _build_closs_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     n_cohorts = len(cohorts)
     max_dev = int(df["dev"].max())
 
-    closs = np.full((n_cohorts, max_dev), np.nan, dtype=np.float64)
+    loss = np.full((n_cohorts, max_dev), np.nan, dtype=np.float64)
     cohort_index = {c: i for i, c in enumerate(cohorts)}
 
     for row in df.iter_rows(named=True):
         i = cohort_index[row["cohort"]]
         k = row["dev"] - 1
         if 0 <= k < max_dev:
-            closs[i, k] = row["closs"]
+            loss[i, k] = row["loss"]
 
-    return closs, cohorts, max_dev
+    return loss, cohorts, max_dev
 
 
-def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
-    """Fit Mack chain ladder (alpha = 1) on an observed closs matrix."""
-    n_cohorts, n_devs = closs_obs.shape
+def _fit_mack(loss_obs: np.ndarray) -> _MackResult:
+    """Fit Mack chain ladder (alpha = 1) on an observed loss matrix."""
+    n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
     f_k = np.full(n_links, np.nan, dtype=np.float64)
@@ -72,9 +72,11 @@ def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
     # ATA factors (volume-weighted) + sigma^2_k
     sum_col_k = np.zeros(n_links, dtype=np.float64)  # cached for parameter variance
     for k in range(n_links):
-        ck = closs_obs[:, k]
-        ck1 = closs_obs[:, k + 1]
-        mask = ~np.isnan(ck) & ~np.isnan(ck1)
+        ck = loss_obs[:, k]
+        ck1 = loss_obs[:, k + 1]
+        # Match R's .lm_ata: drop cohorts with ck <= 0 (otherwise wt-style
+        # accumulation includes 0/positive cohorts that bias f upward).
+        mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
         n_k = int(mask.sum())
 
         if n_k == 0:
@@ -82,23 +84,19 @@ def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
             sigma2_k[k] = 0.0
             continue
 
-        sum_k = ck[mask].sum()
-        sum_k1 = ck1[mask].sum()
+        ck_eff = ck[mask]
+        ck1_eff = ck1[mask]
+        sum_k = ck_eff.sum()
+        sum_k1 = ck1_eff.sum()
         sum_col_k[k] = sum_k
 
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else 1.0
 
         if n_k >= 2 and f_k[k] != 0:
-            ck_pos = ck[mask] > 0
-            if ck_pos.any():
-                ck_eff = ck[mask][ck_pos]
-                ck1_eff = ck1[mask][ck_pos]
-                indiv = ck1_eff / ck_eff
-                sigma2_k[k] = (
-                    ck_eff * (indiv - f_k[k]) ** 2
-                ).sum() / (n_k - 1)
-            else:
-                sigma2_k[k] = 0.0
+            indiv = ck1_eff / ck_eff
+            sigma2_k[k] = (
+                ck_eff * (indiv - f_k[k]) ** 2
+            ).sum() / (n_k - 1)
         else:
             sigma2_k[k] = 0.0
 
@@ -110,11 +108,11 @@ def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
             sigma2_k[-1] = min(s[-2] ** 2 / s[-3], min(s[-2], s[-3]))
 
     # Point projection: fill missing cells via f_k
-    closs_proj = closs_obs.copy()
+    loss_proj = loss_obs.copy()
     for i in range(n_cohorts):
         for k in range(1, n_devs):
-            if np.isnan(closs_proj[i, k]) and not np.isnan(closs_proj[i, k - 1]):
-                closs_proj[i, k] = closs_proj[i, k - 1] * f_k[k - 1]
+            if np.isnan(loss_proj[i, k]) and not np.isnan(loss_proj[i, k - 1]):
+                loss_proj[i, k] = loss_proj[i, k - 1] * f_k[k - 1]
 
     # Mack SE on projected ultimate (per cohort, per projected dev)
     se_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
@@ -122,7 +120,7 @@ def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
         # Last observed dev for cohort i
         last_obs = -1
         for k in range(n_devs - 1, -1, -1):
-            if not np.isnan(closs_obs[i, k]):
+            if not np.isnan(loss_obs[i, k]):
                 last_obs = k
                 break
         if last_obs < 0 or last_obs >= n_devs - 1:
@@ -133,20 +131,20 @@ def _fit_mack(closs_obs: np.ndarray) -> _MackResult:
         #     sigma^2_k / f_k^2 * (1/C_{i,k} + 1/sum_j C_{j,k})
         var_acc = 0.0
         for k in range(last_obs, n_devs - 1):
-            ck = closs_proj[i, k]
+            ck = loss_proj[i, k]
             if ck <= 0 or f_k[k] == 0 or sum_col_k[k] == 0:
                 continue
             var_acc += (sigma2_k[k] / (f_k[k] ** 2)) * (1.0 / ck + 1.0 / sum_col_k[k])
 
-            ck1 = closs_proj[i, k + 1]
+            ck1 = loss_proj[i, k + 1]
             if ck1 > 0 and var_acc >= 0:
                 se_proj[i, k + 1] = float(np.sqrt(ck1 ** 2 * var_acc))
 
     return _MackResult(
         cohorts=[],  # filled by caller (with cohort identifiers)
         n_devs=n_devs,
-        closs_obs=closs_obs,
-        closs_proj=closs_proj,
+        loss_obs=loss_obs,
+        loss_proj=loss_proj,
         se_proj=se_proj,
         f_k=f_k,
         sigma2_k=sigma2_k,
@@ -171,14 +169,14 @@ def _result_to_long_df(
                 row[group_var] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
-            row["closs"] = (
-                float(result.closs_obs[i, k])
-                if not np.isnan(result.closs_obs[i, k])
+            row["loss"] = (
+                float(result.loss_obs[i, k])
+                if not np.isnan(result.loss_obs[i, k])
                 else None
             )
-            row["closs_proj"] = (
-                float(result.closs_proj[i, k])
-                if not np.isnan(result.closs_proj[i, k])
+            row["loss_proj"] = (
+                float(result.loss_proj[i, k])
+                if not np.isnan(result.loss_proj[i, k])
                 else None
             )
             row["se_proj"] = (
@@ -251,7 +249,7 @@ class CLFit:
     ----------
     df : DataFrame (polars or pandas, mirroring the source Triangle)
         Long-format triangle with columns
-        ``[group_var (optional), cohort, dev, closs, closs_proj, se_proj]``.
+        ``[group_var (optional), cohort, dev, loss, loss_proj, se_proj]``.
     f_k : DataFrame
         Per-link ATA factors and variance parameters
         (``dev``, ``f``, ``sigma2``); split by group_var if present.
@@ -282,8 +280,8 @@ class CLFit:
         group_var = triangle._group_var
 
         if group_var is None:
-            closs_obs, cohorts, _ = _build_closs_matrix(tri_df)
-            result = _fit_mack(closs_obs)
+            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
+            result = _fit_mack(loss_obs)
             long_df = _result_to_long_df(
                 result, cohorts, group_var=None, group_value=None
             )
@@ -296,8 +294,8 @@ class CLFit:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                closs_obs, cohorts, _ = _build_closs_matrix(sub)
-                result = _fit_mack(closs_obs)
+                loss_obs, cohorts, _ = _build_loss_matrix(sub)
+                result = _fit_mack(loss_obs)
                 long_parts.append(
                     _result_to_long_df(result, cohorts, group_var=group_var, group_value=g)
                 )
@@ -341,10 +339,10 @@ class CLFit:
         keys.append("cohort")
 
         # Latest observed dev per cohort (NaN-aware)
-        observed = df.filter(pl.col("closs").is_not_null())
+        observed = df.filter(pl.col("loss").is_not_null())
         latest = observed.group_by(keys).agg(
             pl.col("dev").max().alias("latest_observed_dev"),
-            pl.col("closs").last().alias("latest_observed_closs"),
+            pl.col("loss").last().alias("latest_observed_loss"),
         )
 
         # Ultimate (max dev) per cohort
@@ -352,7 +350,7 @@ class CLFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("closs_proj").last().alias("ultimate"),
+                pl.col("loss_proj").last().alias("ultimate"),
                 pl.col("se_proj").last().alias("se_ultimate"),
             )
         )

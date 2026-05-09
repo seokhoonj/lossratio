@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Column naming convention swept to mirror R `lossratio`**:
+  cumulative is now the unmarked default (`loss`, `premium`, `lr`);
+  per-period values carry an `_incr` (incremental) suffix (`loss_incr`,
+  `premium_incr`, `lr_incr`). Old c-prefix forms (`closs`, `crp`,
+  `clr`) are gone, including compound identifiers like `closs_obs`,
+  `closs_proj`, `crp_obs`, `crp_proj`, `_build_closs_matrix`,
+  `_build_crp_matrix` — all renamed to `loss_*` / `premium_*`.
+- Raw `Experience` required columns: `loss` → `loss_incr`, `rp` →
+  `premium_incr`. `REQUIRED_COLS = ("cym", "uym", "loss_incr",
+  "premium_incr")`.
+- README tagline aligned to R: "Loss ratio analytics for long-term
+  health insurance — cohort development analysis, stage-adaptive
+  projection, regime detection, and backtest validation."
+
 ### Added
 - `Backtest` meta-estimator + `BacktestFit` result class —
   calendar-diagonal hold-out backtest of any fit estimator.
@@ -22,10 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Holds out the most recent ``holdout`` calendar diagonals (cells
   where ``cohort_idx + (dev - 1) > max_cal_idx - holdout``), refits
   the supplied estimator on the masked Triangle, and compares the
-  projection to the original observed `closs` on the held-out cells.
-  Supports `lr.CL`, `lr.ED`, and `lr.LR` (auto-resolves the
-  projected-loss column name: `closs_proj` for CL/ED, `loss_proj`
-  for LR). Per-group fitting when `Triangle.group_var` is set.
+  projection to the original observed `loss` on the held-out cells.
+  Supports `lr.CL`, `lr.ED`, and `lr.LR` (all three now produce a
+  unified `loss_proj` column on `.df`). Per-group fitting when
+  `Triangle.group_var` is set.
 
 ## [0.0.1.dev4] — 2026-05-07
 

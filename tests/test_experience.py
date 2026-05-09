@@ -11,8 +11,8 @@ def _polars_input() -> pl.DataFrame:
         {
             "cym": ["2024-01-01", "2024-02-01"],
             "uym": ["2024-01-01", "2024-01-01"],
-            "loss": [100.0, 150.0],
-            "rp": [200.0, 250.0],
+            "loss_incr": [100.0, 150.0],
+            "premium_incr": [200.0, 250.0],
         }
     )
 
@@ -22,7 +22,7 @@ def test_polars_input_basic():
     assert isinstance(exp.df, pl.DataFrame)
     assert exp.n_rows == 2
     assert len(exp) == 2
-    assert exp.df["loss"].dtype == pl.Float64
+    assert exp.df["loss_incr"].dtype == pl.Float64
     assert exp.df["cym"].dtype == pl.Date
 
 
@@ -30,8 +30,8 @@ def test_missing_required_column():
     df = pl.DataFrame(
         {
             "cym": ["2024-01-01"],
-            "loss": [100.0],
-            "rp": [200.0],
+            "loss_incr": [100.0],
+            "premium_incr": [200.0],
             # missing uym
         }
     )
@@ -72,8 +72,8 @@ def test_pandas_input_mirrors_to_pandas_output():
         {
             "cym": ["2024-01-01", "2024-02-01"],
             "uym": ["2024-01-01", "2024-01-01"],
-            "loss": [100.0, 150.0],
-            "rp": [200.0, 250.0],
+            "loss_incr": [100.0, 150.0],
+            "premium_incr": [200.0, 250.0],
         }
     )
     exp = lr.Experience(df)

@@ -54,9 +54,9 @@ def _build_masked_df(
 
     Returns ``(masked_df, mask_df)``:
 
-    * ``masked_df`` has ``loss``, ``rp``, ``closs``, ``crp`` set to
-      ``None`` for cells whose calendar diagonal is among the top
-      ``holdout``.
+    * ``masked_df`` has ``loss``, ``loss_incr``, ``premium``,
+      ``premium_incr``, ``lr``, ``lr_incr`` set to ``None`` for cells
+      whose calendar diagonal is among the top ``holdout``.
     * ``mask_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
     """
@@ -79,7 +79,7 @@ def _build_masked_df(
     masked_df = df.with_columns(
         [
             pl.when(pl.col("masked")).then(None).otherwise(pl.col(c)).alias(c)
-            for c in ("loss", "rp", "closs", "crp", "lr", "clr")
+            for c in ("loss", "loss_incr", "premium", "premium_incr", "lr", "lr_incr")
             if c in df.columns
         ]
     ).drop("__cohort_idx", "__max_cal", "calendar_idx", "masked")
@@ -92,11 +92,9 @@ def _resolve_predicted_column(fit_df_columns: list[str]) -> str:
     """Return the projected-loss column name for an LRFit / CLFit / EDFit."""
     if "loss_proj" in fit_df_columns:
         return "loss_proj"
-    if "closs_proj" in fit_df_columns:
-        return "closs_proj"
     raise ValueError(
-        "Refitted estimator output has neither 'loss_proj' nor "
-        "'closs_proj' columns. Backtest currently supports CL / ED / LR."
+        "Refitted estimator output has no 'loss_proj' column. "
+        "Backtest currently supports CL / ED / LR."
     )
 
 
@@ -118,7 +116,7 @@ class Backtest:
     estimator
         An ``lr.CL``, ``lr.ED``, or ``lr.LR`` instance (or any
         estimator whose ``fit(triangle)`` returns a result class with
-        a ``loss_proj`` or ``closs_proj`` column in ``.df``).
+        a ``loss_proj`` column in ``.df``).
     holdout
         Number of most recent calendar diagonals to mask.
 
@@ -205,8 +203,8 @@ class BacktestFit:
         keys.extend(["cohort", "dev"])
 
         held_out = annotated_df.filter(pl.col("masked")).select(
-            keys + ["calendar_idx", "closs"]
-        ).rename({"closs": "actual"})
+            keys + ["calendar_idx", "loss"]
+        ).rename({"loss": "actual"})
 
         refit_pred = refit_df.select(keys + [pred_col]).rename({pred_col: "predicted"})
 

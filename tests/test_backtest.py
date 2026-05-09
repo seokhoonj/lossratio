@@ -24,14 +24,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss": [
+            "loss_incr": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "rp": [100.0] * 15,
+            "premium_incr": [100.0] * 15,
         }
     )
 
@@ -111,21 +111,21 @@ def test_backtest_aeg_size_holdout_two():
 
 
 def test_backtest_aeg_actual_matches_original_closs():
-    """Actual values in AEG should match the original Triangle's closs."""
+    """Actual values in AEG should match the original Triangle's loss."""
     tri = lr.Experience(_toy_triangle_input()).triangle()
     orig = tri.to_polars()
 
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
     aeg = bt.aeg
 
-    # Inner join on (cohort, dev) — actual should equal closs
+    # Inner join on (cohort, dev) — actual should equal loss
     joined = aeg.join(
-        orig.select(["cohort", "dev", "closs"]),
+        orig.select(["cohort", "dev", "loss"]),
         on=["cohort", "dev"],
         how="inner",
     )
-    for actual, closs in zip(joined["actual"].to_list(), joined["closs"].to_list()):
-        assert actual == pytest.approx(closs)
+    for actual, loss in zip(joined["actual"].to_list(), joined["loss"].to_list()):
+        assert actual == pytest.approx(loss)
 
 
 def test_backtest_predicted_is_finite_for_all_held_cells():
@@ -193,7 +193,7 @@ def test_backtest_with_ed_estimator():
         lr.Experience(_toy_triangle_input()).triangle()
     )
     assert bt.aeg.shape[0] == 4
-    # ED returns closs_proj; backtest auto-resolves
+    # ED returns loss_proj; backtest auto-resolves
     assert "predicted" in bt.aeg.columns
 
 
