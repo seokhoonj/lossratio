@@ -39,27 +39,32 @@ the R sibling provides has not been ported.
 ## Quick Start
 
 ```python
+import polars as pl
 import lossratio as lr
 
-# Built-in synthetic experience: 36 monthly cohorts x up to 36 dev
-# months (2024-01 .. 2026-12) with one regime shift at 2025-07.
+# Built-in synthetic experience: four coverages (2CI / CAN / HOS / SUR),
+# 36 monthly cohorts each, up to 36 dev months. SUR carries one regime
+# shift at 2025-07.
 df = lr.load_experience()
 
-# 1. Validate the experience data and build the cohort x dev triangle
+# 1. Validate the experience data and build a cohort x dev triangle.
+#    Pass group_var="cv_nm" to fit each coverage independently.
 exp = lr.Experience(df)
-tri = exp.triangle()
+tri = exp.triangle(group_var="cv_nm")
 
 # 2. Project loss ratios with stage-adaptive method (default)
 fit = lr.LR().fit(tri)
-fit.summary()        # per-cohort ultimate_loss / ultimate_lr / se_lr / cv_lr
+fit.summary()        # per-(group, cohort) ultimate_loss / ultimate_lr / SE / CV
 
-# 3. Detect structural shifts across cohorts (E-Divisive)
-reg = tri.detect_regime(loss_var="lr", K=12)
+# 3. Detect cohort regime shifts. detect_regime works on a single
+#    group, so subset to the coverage of interest first.
+tri_sur = lr.Experience(df.filter(pl.col("cv_nm") == "SUR")).triangle()
+reg = tri_sur.detect_regime(loss_var="lr", K=12)
 reg.breakpoints      # [datetime.date(2025, 7, 1)]
 
-# 4. Calendar-diagonal hold-out backtest — last 6 diagonals are masked,
-#    the estimator is refitted on the remaining cells, and the
-#    projection is compared with the actual loss
+# 4. Calendar-diagonal hold-out backtest on the grouped triangle.
+#    The last 6 diagonals are masked, the estimator is refitted on the
+#    remaining cells, and the projection is compared with actual loss.
 bt = lr.Backtest(estimator=lr.LR(), holdout=6).fit(tri)
 bt.diag_summary      # actual vs predicted vs AEG by calendar diagonal
 ```

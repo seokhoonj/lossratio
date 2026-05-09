@@ -9,10 +9,13 @@ import polars as pl
 _COVERAGES = (
     # (cv_nm, base_target_lr, regime_shift)
     # regime_shift is None or (cohort_idx, post_break_target_lr)
-    ("2CI", 0.40, None),
-    ("CAN", 0.65, None),
-    ("HOS", 0.55, None),
-    ("SUR", 0.50, (18, 0.30)),
+    # Target LRs calibrated to a real long-term Korean health-insurance
+    # portfolio: SUR's pre-break level above 1.0 reflects the
+    # underwriting situation that drove the cohort regime change.
+    ("2CI", 0.56, None),
+    ("CAN", 0.52, None),
+    ("HOS", 0.39, None),
+    ("SUR", 1.67, (18, 1.00)),
 )
 
 
@@ -38,15 +41,21 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
       - ``SUR`` — surgery per-event fixed benefit.
 
       Each coverage shares the same runoff shape — a small dev-1
-      "waiting-period" dip followed by exponential decay — and a base
-      premium of 100, but starts from a different target cumulative
-      loss ratio.
-    * ``SUR`` has a single regime shift at cohort 2025-07 — its target
-      cumulative LR drops from 0.50 to 0.30. The other three coverages
-      are stable.
+      "waiting-period" dip followed by a roughly constant incremental
+      loss per dev — and a base premium of 100, but starts from a
+      different target cumulative loss ratio. Targets are calibrated
+      to a real long-term Korean health-insurance portfolio: ``2CI``
+      ≈ 0.56, ``CAN`` ≈ 0.52, ``HOS`` ≈ 0.39, ``SUR`` ≈ 1.67 (loss
+      territory).
+    * ``SUR`` has a single regime shift at cohort 2025-07: its target
+      cumulative LR drops from 1.67 to 1.00, reflecting an
+      underwriting tightening that the real portfolio went through.
+      The other three coverages are stable.
 
-    The data has no real-portfolio dependency and is intended only as a
-    friendly starting point for users exploring the package.
+    The values are synthetic — no real-portfolio data is shipped — but
+    the structure is realistic enough for QuickStart-style exploration
+    and for unit tests that exercise the projection / regime / backtest
+    pipeline.
 
     Returns
     -------
@@ -54,7 +63,9 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
         Columns ``cv_nm`` (str), ``cym`` (date string), ``uym`` (date
         string), ``loss_incr`` (float), ``premium_incr`` (float). Pass
         it directly to :class:`Experience`; pass ``group_var="cv_nm"``
-        to :meth:`Experience.triangle` for a per-coverage triangle.
+        to :meth:`Experience.triangle` for a per-coverage triangle, or
+        filter to a single ``cv_nm`` value first if you want the simple
+        single-group flow.
     """
     rng = np.random.default_rng(seed)
     n_cohorts, K, premium = 36, 36, 100.0
