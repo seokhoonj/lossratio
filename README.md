@@ -12,66 +12,62 @@ This Python implementation is in active development.
 
 ## Current status
 
-Working components so far:
+Working components:
 
 - `Experience` — validates loss ratio experience data (`cym`, `uym`,
   `loss_incr`, `premium_incr`), accepts polars or pandas input.
 - `Triangle` — cohort × dev aggregation. Cumulative is the unmarked
   default (`loss`, `premium`, `lr`); per-period values carry an
-  `_incr` (incremental) suffix (`loss_incr`, `premium_incr`,
-  `lr_incr`).
+  `_incr` suffix (`loss_incr`, `premium_incr`, `lr_incr`).
+- `CL`, `ED`, `LR` — sklearn-style estimators for chain ladder,
+  exposure-driven, and stage-adaptive loss-ratio projection
+  (`fit(triangle)` → `CLFit` / `EDFit` / `LRFit` with `summary()`,
+  `df` projection frame, and per-cohort SE / CV).
+- `Triangle.maturity()` — detects the development period at which
+  age-to-age factors stabilise (returns a `Maturity` result).
+- `Triangle.detect_regime()` — detects structural shifts across the
+  cohort sequence via E-Divisive or Ward hierarchical clustering
+  (returns a `Regime` result).
+- `Backtest` — calendar-diagonal hold-out backtest of any of the
+  above estimators (returns a `BacktestFit` with per-cell, by-dev,
+  and by-diagonal AEG summaries).
 
-Additional components (loss-ratio projection with stage-adaptive
-method, maturity point and cohort regime detection, calendar-diagonal
-backtest) are being added incrementally. The full working reference
-implementation is the R `lossratio` package; see the section below
-for a link.
+Still pre-alpha: no `Calendar` / `Total` aggregations yet, no
+intermediate `Link` object, and the `Convergence` diagnostic that
+the R sibling provides has not been ported.
 
 ## Quick Start
 
+Input columns:
+
+- `cym` (date) — calendar year-month
+- `uym` (date) — underwriting year-month (cohort)
+- `loss_incr` (numeric) — per-period claim amount
+- `premium_incr` (numeric) — per-period premium
+
+A typical workflow — given a long-format `df` with the columns above:
+
 ```python
-import polars as pl
 import lossratio as lr
 
-# Three cohorts (2024-01, 02, 03) each observed over up to three months
-df = pl.DataFrame({
-    "cym": [
-        "2024-01-01", "2024-02-01", "2024-03-01",   # cohort 2024-01, dev 1-3
-        "2024-02-01", "2024-03-01",                  # cohort 2024-02, dev 1-2
-        "2024-03-01",                                # cohort 2024-03, dev 1
-    ],
-    "uym": [
-        "2024-01-01", "2024-01-01", "2024-01-01",
-        "2024-02-01", "2024-02-01",
-        "2024-03-01",
-    ],
-    "loss": [12.0, 18.0, 25.0, 15.0, 22.0,  9.0],
-    "rp":   [100.0, 100.0, 100.0, 110.0, 110.0, 120.0],
-})
-
+# 1. Validate the experience data and build the cohort x dev triangle
 exp = lr.Experience(df)
-tri = exp.triangle()
-print(tri.df)
-#> shape: (6, 8)
-#> ┌────────────┬─────┬──────┬───────┬───────┬───────┬──────────┬──────────┐
-#> │ cohort     ┆ dev ┆ loss ┆ rp    ┆ closs ┆ crp   ┆ lr       ┆ clr      │
-#> │ date       ┆ i64 ┆ f64  ┆ f64   ┆ f64   ┆ f64   ┆ f64      ┆ f64      │
-#> ╞════════════╪═════╪══════╪═══════╪═══════╪═══════╪══════════╪══════════╡
-#> │ 2024-01-01 ┆ 1   ┆ 12.0 ┆ 100.0 ┆ 12.0  ┆ 100.0 ┆ 0.12     ┆ 0.12     │
-#> │ 2024-01-01 ┆ 2   ┆ 18.0 ┆ 100.0 ┆ 30.0  ┆ 200.0 ┆ 0.18     ┆ 0.15     │
-#> │ 2024-01-01 ┆ 3   ┆ 25.0 ┆ 100.0 ┆ 55.0  ┆ 300.0 ┆ 0.25     ┆ 0.183333 │
-#> │ 2024-02-01 ┆ 1   ┆ 15.0 ┆ 110.0 ┆ 15.0  ┆ 110.0 ┆ 0.136364 ┆ 0.136364 │
-#> │ 2024-02-01 ┆ 2   ┆ 22.0 ┆ 110.0 ┆ 37.0  ┆ 220.0 ┆ 0.2      ┆ 0.168182 │
-#> │ 2024-03-01 ┆ 1   ┆  9.0 ┆ 120.0 ┆  9.0  ┆ 120.0 ┆ 0.075    ┆ 0.075    │
-#> └────────────┴─────┴──────┴───────┴───────┴───────┴──────────┴──────────┘
-```
+tri = exp.triangle(group_var="cv_nm")        # group_var optional
 
-The same triangle can be sliced by an optional grouping variable
-(coverage, product, age band, sum insured, ...):
+# 2. Project loss ratios with stage-adaptive method (default)
+fit = lr.LR().fit(tri)
+fit.summary()        # per-cohort ultimate_loss / ultimate_lr / se_lr / cv_lr
 
-```python
-df_grouped = df.with_columns(pl.lit("SUR").alias("cv_nm"))
-tri = lr.Experience(df_grouped).triangle(group_var="cv_nm")
+# 3. Detect structural shifts across cohorts (E-Divisive)
+reg = tri.detect_regime(loss_var="lr", K=12)
+reg.breakpoints      # cohort dates at which a new regime begins
+reg.df               # per-cohort regime_id labels
+
+# 4. Calendar-diagonal hold-out backtest — last 6 diagonals are masked,
+#    the estimator is refitted on the remaining cells, and the
+#    projection is compared with the actual loss
+bt = lr.Backtest(estimator=lr.LR(), holdout=6).fit(tri)
+bt.diag_summary      # actual vs predicted vs AEG by calendar diagonal
 ```
 
 Pandas inputs are accepted too; outputs mirror the input type

@@ -263,6 +263,77 @@ class Triangle:
             self, theta_cv=theta_cv, theta_rse=theta_rse, m=m
         )
 
+    def detect_regime(
+        self,
+        loss_var: str = "lr",
+        K: int = 12,
+        method: str = "e_divisive",
+        n_regimes: int | None = None,
+        sig_level: float = 0.05,
+        R: int = 999,
+        min_size: int = 3,
+        seed: int | None = None,
+    ) -> "Regime":
+        """Detect structural regime shifts across underwriting cohorts.
+
+        Each cohort is treated as a feature vector (the chosen
+        ``loss_var`` over development periods 1, ..., K). The ordered
+        sequence is tested for structural shifts using one of two
+        methods:
+
+        * ``"e_divisive"`` — E-Divisive (Matteson & James 2014).
+          Multivariate non-parametric divisive change-point detection
+          with permutation significance. Number of regimes is
+          determined by ``sig_level``.
+        * ``"hclust"`` — Ward hierarchical clustering on the
+          standardised cohort matrix, cut at ``n_regimes`` clusters.
+          Ignores time ordering — useful as a sanity check.
+
+        Parameters
+        ----------
+        loss_var
+            Trajectory variable. Default ``"lr"`` (cumulative loss
+            ratio).
+        K
+            Common development-period window. Cohorts with fewer than
+            ``K`` observed periods are dropped.
+        method
+            ``"e_divisive"`` (default) or ``"hclust"``.
+        n_regimes
+            Required for ``method="hclust"``. Ignored for
+            ``method="e_divisive"`` (auto-detected via permutation
+            testing).
+        sig_level
+            Significance threshold for E-Divisive. Default ``0.05``.
+        R
+            Number of permutations per significance test. Default
+            ``999``.
+        min_size
+            Minimum cohort count on either side of any candidate split.
+            Default ``3``.
+        seed
+            Optional integer seed for reproducible permutations.
+
+        Returns
+        -------
+        Regime
+            Result with per-cohort regime labels, breakpoints, and
+            metadata.
+        """
+        from .regime import Regime
+
+        return Regime._from_triangle(
+            self,
+            loss_var=loss_var,
+            K=K,
+            method=method,
+            n_regimes=n_regimes,
+            sig_level=sig_level,
+            R=R,
+            min_size=min_size,
+            seed=seed,
+        )
+
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
         if self._group_var is not None:

@@ -260,7 +260,7 @@ def _result_to_long_df(
                 else None
             )
             rows.append(row)
-    return pl.DataFrame(rows)
+    return pl.DataFrame(rows, infer_schema_length=None)
 
 
 def _kstar_to_df(

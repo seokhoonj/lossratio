@@ -100,3 +100,6 @@ Thumbs.db
 # Claude Code agent state
 CLAUDE.md
 .claude/
+
+# Local-only dev scripts and data
+dev/

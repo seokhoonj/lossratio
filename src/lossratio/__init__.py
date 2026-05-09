@@ -12,6 +12,7 @@ from .ed import ED, EDFit
 from .experience import Experience
 from .lr import LR, LRFit
 from .maturity import Maturity
+from .regime import Regime
 from .triangle import Triangle
 
 __version__ = "0.0.1.dev5"
@@ -27,6 +28,7 @@ __all__ = [
     "LR",
     "LRFit",
     "Maturity",
+    "Regime",
     "Triangle",
     "__version__",
 ]
