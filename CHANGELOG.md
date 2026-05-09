@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev6] — 2026-05-10
+
+### Added
+- `Regime` result class and `Triangle.detect_regime()` method.
+  Multivariate non-parametric divisive change-point detection
+  via the E-Divisive procedure of Matteson & James (2014, JASA),
+  plus a Ward hierarchical clustering fallback. The implementation
+  follows the (tau, kappa) double-loop best-split of Algorithm 2
+  in James & Matteson (2014, JSS) and is vectorised to O(n^2) via
+  a 2D prefix-sum table.
+- `lr.load_experience()` built-in synthetic dataset: 36 monthly
+  cohorts × up to 36 dev months × 4 coverages (`CI`, `CAN`, `HOS`,
+  `SUR`), generated deterministically. Per-coverage target LR,
+  cohort premium volume mean / CV, and cell-level loss noise CV
+  are calibrated to a real long-term Korean health portfolio (no
+  real-data file is shipped). `SUR` carries a planted regime shift
+  at cohort 2025-07.
+- `scipy >= 1.10` runtime dependency (Ward hierarchical clustering
+  and pairwise distances).
+
+### Changed
+- LR / Triangle.maturity / Maturity argument rename to mirror the
+  R sibling and to read as "the maximum X tolerated":
+  `theta_cv` → `max_cv`, `theta_rse` → `max_rse`, `m` → `min_run`.
+  Default `max_cv` raised 0.10 → 0.15 to match R, so SA fits on
+  cohort-scale portfolios pick the same `k_star` as the R sibling.
+- Column rename: `cv_nm` → `coverage` everywhere (data,
+  `Triangle.group_var`, examples). `2CI` value → `CI` so it is a
+  letter-first identifier; documented as the two major non-cancer
+  critical illnesses (cerebrovascular + ischemic heart disease;
+  cancer is the separate `CAN` coverage).
+- Summary column rename to suffix style for parity with R:
+  `ultimate_loss` → `loss_ult`, `ultimate_exposure` →
+  `premium_ult`, `ultimate_lr` → `lr_ult`,
+  `latest_observed_dev` → `latest`. Matches the existing
+  `loss_*` / `premium_*` / `lr_*` column families.
+- README QuickStart now opens with `df = lr.load_experience()` and
+  walks Experience → Triangle → LR fit → detect_regime → Backtest
+  in one block. Adds an Install section with the polars-only and
+  `[pandas]` extras.
+
+### Fixed
+- `_result_to_long_df` now passes `infer_schema_length=None` to
+  `pl.DataFrame`, so backtest refits whose summary frame mixes
+  `None` and `float` in the same column no longer fail polars'
+  schema inference.
+
 ## [0.0.1.dev5] — 2026-05-09
 
 ### Changed

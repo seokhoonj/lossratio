@@ -7,8 +7,8 @@ on long-format experience data. Stage-adaptive (SA) projection uses
 an exposure-driven (ED) model before the maturity point and chain
 ladder (CL) after.
 
-This Python implementation is in active development (currently at
-the pre-alpha release line on PyPI).
+This Python implementation is in active development (`0.0.1.devN`
+release line on PyPI).
 
 ## Install
 
@@ -39,9 +39,9 @@ Working components:
   above estimators (returns a `BacktestFit` with per-cell, by-dev,
   and by-diagonal AEG summaries).
 
-Still pre-alpha: no `Calendar` / `Total` aggregations yet, no
-intermediate `Link` object, and the `Convergence` diagnostic that
-the R sibling provides has not been ported.
+Not yet ported from the R sibling: `Calendar` / `Total`
+aggregations, the intermediate `Link` object, and the
+`Convergence` diagnostic.
 
 ## Quick Start
 
