@@ -12,6 +12,7 @@ from ._io import mirror_output
 from .cl import _build_loss_matrix, _fit_mack
 
 if TYPE_CHECKING:
+    from .ata import ATA
     from .triangle import Triangle
 
 
@@ -199,6 +200,74 @@ class Maturity:
         self.min_run: int
 
     @classmethod
+    def _from_ata(
+        cls,
+        ata: "ATA",
+        max_cv: float,
+        max_rse: float,
+        min_run: int,
+    ) -> "Maturity":
+        """Build Maturity by applying stability thresholds on top of an
+        existing ATA factor diagnostic. This is the canonical
+        constructor — :meth:`Triangle.maturity` is a thin shortcut
+        that calls ``triangle.ata().maturity()``.
+        """
+        self = cls.__new__(cls)
+        self._output_type = ata._output_type
+        self._group_var = ata._group_var
+        self._cohort_var = ata._cohort_var
+        self._dev_var = ata._dev_var
+        self._dev_unit = ata._dev_unit
+        self.max_cv = max_cv
+        self.max_rse = max_rse
+        self.min_run = min_run
+
+        diag_df = ata._df.with_columns(
+            (
+                pl.col("cv").is_not_null()
+                & pl.col("rse").is_not_null()
+                & (pl.col("cv") < max_cv)
+                & (pl.col("rse") < max_rse)
+            ).alias("stable")
+        )
+
+        if self._group_var is None:
+            stable_arr = diag_df["stable"].to_numpy()
+            k_star = _detect_k_star(stable_arr, min_run)
+            kstar_df = pl.DataFrame(
+                [
+                    {
+                        "k_star": k_star,
+                        "n_links": int(len(stable_arr)),
+                        "n_stable_links": int(stable_arr.sum()),
+                    }
+                ]
+            )
+        else:
+            kstar_rows: list[dict[str, Any]] = []
+            for g in (
+                diag_df[self._group_var].unique(maintain_order=True).to_list()
+            ):
+                sub = diag_df.filter(pl.col(self._group_var) == g)
+                stable_arr = sub["stable"].to_numpy()
+                k_star = _detect_k_star(stable_arr, min_run)
+                kstar_rows.append(
+                    {
+                        self._group_var: g,
+                        "k_star": k_star,
+                        "n_links": int(len(stable_arr)),
+                        "n_stable_links": int(stable_arr.sum()),
+                    }
+                )
+            kstar_df = (
+                pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
+            )
+
+        self._df = diag_df
+        self._kstar_df = kstar_df
+        return self
+
+    @classmethod
     def _from_triangle(
         cls,
         triangle: "Triangle",
@@ -206,46 +275,15 @@ class Maturity:
         max_rse: float,
         min_run: int,
     ) -> "Maturity":
-        self = cls.__new__(cls)
-        self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
-        self._dev_unit = triangle._dev_unit
-        self.max_cv = max_cv
-        self.max_rse = max_rse
-        self.min_run = min_run
-
-        tri_df = triangle._df
-        group_var = triangle._group_var
-
-        if group_var is None:
-            loss_obs, _, _ = _build_loss_matrix(tri_df)
-            result = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
-            diag_df = _diagnostic_to_df(result, group_var=None, group_value=None)
-            kstar_df = _kstar_to_df(result, group_var=None, group_value=None)
-        else:
-            diag_parts: list[pl.DataFrame] = []
-            kstar_parts: list[pl.DataFrame] = []
-            group_values = (
-                tri_df[group_var].unique(maintain_order=True).to_list()
-            )
-            for g in group_values:
-                sub = tri_df.filter(pl.col(group_var) == g)
-                loss_obs, _, _ = _build_loss_matrix(sub)
-                result = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
-                diag_parts.append(
-                    _diagnostic_to_df(result, group_var=group_var, group_value=g)
-                )
-                kstar_parts.append(
-                    _kstar_to_df(result, group_var=group_var, group_value=g)
-                )
-            diag_df = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
-            kstar_df = pl.concat(kstar_parts) if kstar_parts else pl.DataFrame()
-
-        self._df = diag_df
-        self._kstar_df = kstar_df
-        return self
+        """Backward-compat shortcut: build ATA factor diagnostic on the
+        triangle, then apply maturity thresholds. Equivalent to
+        ``triangle.ata().maturity(...)``.
+        """
+        return triangle.ata().maturity(
+            max_cv=max_cv,
+            max_rse=max_rse,
+            min_run=min_run,
+        )
 
     @property
     def df(self):

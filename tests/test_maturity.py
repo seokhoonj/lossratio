@@ -81,7 +81,10 @@ def test_maturity_diagnostic_columns():
     tri = lr.Experience(_polars_input()).triangle()
     mat = tri.maturity()
     df = mat.to_polars()
-    assert set(df.columns) == {"dev", "f", "sigma2", "cv", "rse", "stable"}
+    # Maturity now builds on top of ATA factor diagnostic, so its
+    # df carries the full ATA schema (`f`, `sigma2`, `cv`, `rse`,
+    # `n_obs`) plus the maturity-specific `stable` column.
+    assert set(df.columns) >= {"dev", "f", "sigma2", "cv", "rse", "stable"}
     # n_links = n_devs - 1 = 4
     assert df.height == 4
 
