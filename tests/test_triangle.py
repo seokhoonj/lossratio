@@ -89,13 +89,13 @@ def test_triangle_pandas_input_mirror():
 def test_triangle_invalid_dev_var():
     df = _exp_input()
     with pytest.raises(ValueError, match="dev_var"):
-        lr.Triangle(df, dev_var="elap_decade")
+        lr.Triangle(df, dev_var="dev_decade")
 
 
 def test_triangle_metadata():
-    tri = lr.Triangle(_exp_input(), group_var=None, cohort_var="uym", dev_var="elap_m")
+    tri = lr.Triangle(_exp_input(), group_var=None, cohort_var="uym", dev_var="dev_m")
     assert tri.cohort_var == "uym"
-    assert tri.dev_var == "elap_m"
+    assert tri.dev_var == "dev_m"
     assert tri.dev_type == "month"
     assert tri.group_var is None
 

@@ -9,8 +9,8 @@ This module exposes two module-level functions:
   coercible to the expected types; return the same DataFrame type as
   input (pandas in -> pandas out, polars in -> polars out).
 * :func:`add_experience_period` — derive standard period variables
-  (``uy``, ``uyh``, ``uyq``, ``cy``, ``cyh``, ``cyq``, ``elap_y``,
-  ``elap_h``, ``elap_q``, and ``elap_m`` if absent) from the source
+  (``uy``, ``uyh``, ``uyq``, ``cy``, ``cyh``, ``cyq``, ``dev_y``,
+  ``dev_h``, ``dev_q``, and ``dev_m`` if absent) from the source
   ``uym`` / ``cym`` columns. Same input mirroring.
 
 There is intentionally no ``Experience`` *class*. Wrapping a polars
@@ -85,7 +85,7 @@ def add_experience_period(df: Any) -> Any:
     """Add standard period variables to an experience DataFrame.
 
     Derives underwriting / calendar / development period variables from
-    the source ``uym`` and ``cym`` columns (and ``elap_m`` if present).
+    the source ``uym`` and ``cym`` columns (and ``dev_m`` if present).
     Mirrors the R package's :func:`add_experience_period`.
 
     The following columns are added when the corresponding source
@@ -93,12 +93,12 @@ def add_experience_period(df: Any) -> Any:
 
     * Underwriting period (from ``uym``): ``uy``, ``uyh``, ``uyq``.
     * Calendar period (from ``cym``): ``cy``, ``cyh``, ``cyq``.
-    * Development period: ``elap_m`` (from ``uym`` and ``cym`` if
-      absent), then ``elap_y``, ``elap_h``, ``elap_q`` aligned to
+    * Development period: ``dev_m`` (from ``uym`` and ``cym`` if
+      absent), then ``dev_y``, ``dev_h``, ``dev_q`` aligned to
       calendar half-year and quarter boundaries.
 
     Half-year and quarter development indices are *not* simple grouped
-    versions of ``elap_m`` -- they are aligned to calendar boundaries
+    versions of ``dev_m`` -- they are aligned to calendar boundaries
     so that underwriting cohorts in (say) Q1 vs Q2 are compared on a
     consistent cumulative development basis.
 
@@ -120,7 +120,7 @@ def add_experience_period(df: Any) -> Any:
     cols = set(df_pl.columns)
     has_uym = "uym" in cols
     has_cym = "cym" in cols
-    has_elap_m = "elap_m" in cols
+    has_dev_m = "dev_m" in cols
 
     # Coerce uym / cym to Date when present (no-op if already Date).
     coerce: list[pl.Expr] = []
@@ -163,36 +163,36 @@ def add_experience_period(df: Any) -> Any:
             ).alias("cyq"),
         )
 
-    # Development month (elap_m).
-    if not has_elap_m and has_uym and has_cym:
+    # Development month (dev_m).
+    if not has_dev_m and has_uym and has_cym:
         df_pl = df_pl.with_columns(
             (
                 (pl.col("cym").dt.year() - pl.col("uym").dt.year()) * 12
                 + (pl.col("cym").dt.month() - pl.col("uym").dt.month())
                 + 1
-            ).cast(pl.Int64).alias("elap_m")
+            ).cast(pl.Int64).alias("dev_m")
         )
-        has_elap_m = True
+        has_dev_m = True
 
-    # Development period (elap_y, elap_h, elap_q).
-    if has_uym and has_cym and has_elap_m:
+    # Development period (dev_y, dev_h, dev_q).
+    if has_uym and has_cym and has_dev_m:
         uy_half = (pl.col("uym").dt.month() - 1) // 6
         cy_half = (pl.col("cym").dt.month() - 1) // 6
         uy_q = (pl.col("uym").dt.month() - 1) // 3
         cy_q = (pl.col("cym").dt.month() - 1) // 3
 
         df_pl = df_pl.with_columns(
-            (((pl.col("elap_m") - 1) // 12) + 1).cast(pl.Int64).alias("elap_y"),
+            (((pl.col("dev_m") - 1) // 12) + 1).cast(pl.Int64).alias("dev_y"),
             (
                 (pl.col("cym").dt.year() - pl.col("uym").dt.year()) * 2
                 + (cy_half - uy_half)
                 + 1
-            ).cast(pl.Int64).alias("elap_h"),
+            ).cast(pl.Int64).alias("dev_h"),
             (
                 (pl.col("cym").dt.year() - pl.col("uym").dt.year()) * 4
                 + (cy_q - uy_q)
                 + 1
-            ).cast(pl.Int64).alias("elap_q"),
+            ).cast(pl.Int64).alias("dev_q"),
         )
 
     return mirror_output(df_pl, output_type)

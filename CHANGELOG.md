@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev8] — 2026-05-10
+
+### Breaking
+
+- Renamed raw experience data columns from `elap_y/h/q/m` to
+  `dev_y/h/q/m` to match R `lossratio`'s 2026-05-10 sweep. The
+  "elap" prefix was an etymology word ("elapsed") rather than the
+  concept word; `dev_*` aligns raw column names with the abstract
+  `dev` axis used by Triangle and matches ChainLadder-style framing.
+  Migration:
+    Before: lr.Triangle(df, dev_var="elap_m")
+    After:  lr.Triangle(df, dev_var="dev_m")
+  Mapping: `"elap_m"` → `"dev_m"`, `"elap_q"` → `"dev_q"`,
+  `"elap_h"` → `"dev_h"`, `"elap_y"` → `"dev_y"`. The default
+  `dev_var` is now `"dev_m"`. `add_experience_period(df)` derives
+  `dev_y/h/q/m` columns. R↔Python parity restored.
+
 ## [0.0.1.dev7] — 2026-05-10
 
 ### Added

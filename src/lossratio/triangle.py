@@ -14,12 +14,12 @@ if TYPE_CHECKING:
     from .regime import Regime
 
 
-_VALID_DEV_VARS = {"elap_m", "elap_q", "elap_h", "elap_y"}
+_VALID_DEV_VARS = {"dev_m", "dev_q", "dev_h", "dev_y"}
 _DEV_VAR_TO_TYPE = {
-    "elap_m": "month",
-    "elap_q": "quarter",
-    "elap_h": "half",
-    "elap_y": "year",
+    "dev_m": "month",
+    "dev_q": "quarter",
+    "dev_h": "half",
+    "dev_y": "year",
 }
 
 
@@ -93,7 +93,7 @@ class Triangle:
         df: "pl.DataFrame | Any",
         group_var: str | None = None,
         cohort_var: str = "uym",
-        dev_var: str = "elap_m",
+        dev_var: str = "dev_m",
         cym_var: str = "cym",
     ) -> None:
         if dev_var not in _VALID_DEV_VARS:
@@ -208,7 +208,7 @@ class Triangle:
 
     @property
     def dev_var(self) -> str:
-        """Development variable name (e.g. 'elap_m')."""
+        """Development variable name (e.g. 'dev_m')."""
         return self._dev_var
 
     @property

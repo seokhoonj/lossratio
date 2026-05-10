@@ -108,36 +108,36 @@ def test_add_experience_period_pandas_returns_pandas():
 
 
 def test_add_experience_period_columns_present():
-    """Derived columns are uy/uyh/uyq, cy/cyh/cyq, elap_y/elap_h/elap_q/elap_m."""
+    """Derived columns are uy/uyh/uyq, cy/cyh/cyq, dev_y/dev_h/dev_q/dev_m."""
     out = lr.add_experience_period(_period_input())
     cols = set(out.columns)
     assert {
         "uy", "uyh", "uyq",
         "cy", "cyh", "cyq",
-        "elap_y", "elap_h", "elap_q", "elap_m",
+        "dev_y", "dev_h", "dev_q", "dev_m",
     } <= cols
 
 
-def test_add_experience_period_elap_m_calc():
-    """elap_m = (cym_year - uym_year) * 12 + (cym_month - uym_month) + 1."""
+def test_add_experience_period_dev_m_calc():
+    """dev_m = (cym_year - uym_year) * 12 + (cym_month - uym_month) + 1."""
     out = lr.add_experience_period(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    # Row 0: uym = 2024-01, cym = 2024-03 -> elap_m = 0*12 + (3 - 1) + 1 = 3
-    # Row 1: uym = 2024-04, cym = 2024-06 -> elap_m = 0*12 + (6 - 4) + 1 = 3
-    # Row 2: uym = 2024-07, cym = 2024-09 -> elap_m = 0*12 + (9 - 7) + 1 = 3
-    assert out["elap_m"].to_list() == [3, 3, 3]
+    # Row 0: uym = 2024-01, cym = 2024-03 -> dev_m = 0*12 + (3 - 1) + 1 = 3
+    # Row 1: uym = 2024-04, cym = 2024-06 -> dev_m = 0*12 + (6 - 4) + 1 = 3
+    # Row 2: uym = 2024-07, cym = 2024-09 -> dev_m = 0*12 + (9 - 7) + 1 = 3
+    assert out["dev_m"].to_list() == [3, 3, 3]
 
 
-def test_add_experience_period_elap_q_calc():
+def test_add_experience_period_dev_q_calc():
     """Quarter elapsed: same calendar-anchored logic."""
     out = lr.add_experience_period(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    # Row 0: uym = 2024-01 (Q1), cym = 2024-03 (Q1) -> elap_q = 1
-    # Row 1: uym = 2024-04 (Q2), cym = 2024-06 (Q2) -> elap_q = 1
-    # Row 2: uym = 2024-07 (Q3), cym = 2024-09 (Q3) -> elap_q = 1
-    assert out["elap_q"].to_list() == [1, 1, 1]
+    # Row 0: uym = 2024-01 (Q1), cym = 2024-03 (Q1) -> dev_q = 1
+    # Row 1: uym = 2024-04 (Q2), cym = 2024-06 (Q2) -> dev_q = 1
+    # Row 2: uym = 2024-07 (Q3), cym = 2024-09 (Q3) -> dev_q = 1
+    assert out["dev_q"].to_list() == [1, 1, 1]
 
 
 def test_add_experience_period_uy_first_of_year():

@@ -9,7 +9,7 @@ References:
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .cl import CL, CLFit
-from .datasets import load_experience
+from .datasets import load_experience, make_experience
 from .ed import ED, EDFit
 from .experience import add_experience_period, validate_experience
 from .intensity import Intensity
@@ -19,7 +19,7 @@ from .maturity import Maturity
 from .regime import Regime
 from .triangle import Triangle
 
-__version__ = "0.0.1.dev7"
+__version__ = "0.0.1.dev8"
 
 __all__ = [
     "ATA",
@@ -39,5 +39,6 @@ __all__ = [
     "__version__",
     "add_experience_period",
     "load_experience",
+    "make_experience",
     "validate_experience",
 ]
