@@ -30,8 +30,7 @@ def _exp_input() -> pl.DataFrame:
 
 
 def test_triangle_no_group():
-    exp = lr.Experience(_exp_input())
-    tri = exp.triangle()
+    tri = lr.Triangle(_exp_input())
     assert isinstance(tri.df, pl.DataFrame)
     assert tri.columns == [
         "cohort", "dev",
@@ -44,8 +43,7 @@ def test_triangle_no_group():
 
 
 def test_triangle_dev_indices():
-    exp = lr.Experience(_exp_input())
-    tri = exp.triangle()
+    tri = lr.Triangle(_exp_input())
     df = tri.to_polars().sort(["cohort", "dev"])
     # Cohort 2024-01: dev = 1, 2, 3
     cohort_1 = df.filter(pl.col("cohort") == pl.lit("2024-01-01").cast(pl.Date))
@@ -53,8 +51,7 @@ def test_triangle_dev_indices():
 
 
 def test_triangle_cumulative():
-    exp = lr.Experience(_exp_input())
-    tri = exp.triangle()
+    tri = lr.Triangle(_exp_input())
     df = tri.to_polars().sort(["cohort", "dev"])
     cohort_1 = df.filter(pl.col("cohort") == pl.lit("2024-01-01").cast(pl.Date))
     # loss: 10, 20, 30 -> loss: 10, 30, 60
@@ -69,8 +66,7 @@ def test_triangle_with_group():
     df = _exp_input().with_columns(
         pl.lit("SUR").alias("coverage"),
     )
-    exp = lr.Experience(df)
-    tri = exp.triangle(group_var="coverage")
+    tri = lr.Triangle(df, group_var="coverage")
     assert "coverage" in tri.columns
     assert tri.group_var == "coverage"
 
@@ -85,37 +81,27 @@ def test_triangle_pandas_input_mirror():
             "premium_incr": [100.0, 100.0],
         }
     )
-    exp = lr.Experience(df)
-    tri = exp.triangle()
-    # input mirroring propagates from Experience to Triangle
+    tri = lr.Triangle(df)
+    # input mirroring: pandas in -> pandas out
     assert isinstance(tri.df, pd.DataFrame)
 
 
-def test_triangle_direct_constructor():
-    """Triangle accepts a raw DataFrame too (not just Experience)."""
+def test_triangle_invalid_dev_var():
     df = _exp_input()
-    tri = lr.Triangle(df)
-    assert tri.n_rows == 6
-
-
-def test_triangle_invalid_dev_unit():
-    df = _exp_input()
-    with pytest.raises(ValueError, match="dev_unit"):
-        lr.Triangle(df, dev_unit="decade")
+    with pytest.raises(ValueError, match="dev_var"):
+        lr.Triangle(df, dev_var="elap_decade")
 
 
 def test_triangle_metadata():
-    exp = lr.Experience(_exp_input())
-    tri = exp.triangle(group_var=None, cohort_var="uym", dev_unit="month")
+    tri = lr.Triangle(_exp_input(), group_var=None, cohort_var="uym", dev_var="elap_m")
     assert tri.cohort_var == "uym"
     assert tri.dev_var == "elap_m"
-    assert tri.dev_unit == "month"
+    assert tri.dev_type == "month"
     assert tri.group_var is None
 
 
 def test_triangle_repr():
-    exp = lr.Experience(_exp_input())
-    tri = exp.triangle()
+    tri = lr.Triangle(_exp_input())
     text = repr(tri)
     assert "Triangle" in text
     assert "cohorts" in text

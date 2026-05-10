@@ -165,7 +165,6 @@ class Maturity:
         self._group_var: str | None
         self._cohort_var: str
         self._dev_var: str
-        self._dev_unit: str
         self.max_cv: float
         self.max_rse: float
         self.min_run: int
@@ -187,7 +186,6 @@ class Maturity:
         self._group_var = ata._group_var
         self._cohort_var = ata._cohort_var
         self._dev_var = ata._dev_var
-        self._dev_unit = ata._dev_unit
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run

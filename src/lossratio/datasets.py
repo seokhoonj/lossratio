@@ -62,10 +62,9 @@ def load_experience(seed: int = 20260501) -> pl.DataFrame:
     polars.DataFrame
         Columns ``coverage`` (str), ``cym`` (date string), ``uym`` (date
         string), ``loss_incr`` (float), ``premium_incr`` (float). Pass
-        it directly to :class:`Experience`; pass ``group_var="coverage"``
-        to :meth:`Experience.triangle` for a per-coverage triangle, or
-        filter to a single ``coverage`` value first if you want the simple
-        single-group flow.
+        it directly to :class:`Triangle` with ``group_var="coverage"``
+        for a per-coverage triangle, or filter to a single ``coverage``
+        value first if you want the simple single-group flow.
     """
     rng = np.random.default_rng(seed)
     n_cohorts, K, premium = 36, 36, 100.0

@@ -128,7 +128,7 @@ class ATA:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Experience(df).triangle(group_var="coverage")
+    >>> tri = lr.Triangle(df, group_var="coverage")
     >>> ata = tri.link().ata()
     >>> ata.df
     """
@@ -139,7 +139,6 @@ class ATA:
         self._group_var: str | None
         self._cohort_var: str
         self._dev_var: str
-        self._dev_unit: str
 
     @classmethod
     def _from_link(cls, link: "Link") -> "ATA":
@@ -148,7 +147,6 @@ class ATA:
         self._group_var = link._group_var
         self._cohort_var = link._cohort_var
         self._dev_var = link._dev_var
-        self._dev_unit = link._dev_unit
 
         tri_df = link._tri_df
         group_var = link._group_var

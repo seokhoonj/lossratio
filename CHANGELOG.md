@@ -69,6 +69,27 @@ This is a breaking change for callers that read `bt.aeg`,
 `bt.col_summary["sum_aeg"]`, etc. The new column / property names
 match the R sibling's `ae_err` family.
 
+- Removed the `Experience` class. Schema validation and derived-column
+  enrichment (cy / cyh / cyq / uy / uyh / uyq / elap_y / elap_h / elap_q /
+  elap_m) now happen inside `Triangle.__init__`. Migration:
+    Before: `lr.Experience(df).triangle(group_var=...)`
+    After:  `lr.Triangle(df, group_var=...)`
+  `add_experience_period(df)` and `validate_experience(df)` remain as
+  module-level helpers for users who want an explicit pre-validation
+  step. The class wrapper added friction for ad-hoc filter/transform
+  workflows in polars/pandas without offsetting value.
+
+- Renamed `Triangle()`'s `dev_unit` argument to `dev_var` (R parity —
+  R's `build_triangle()` uses `dev_var = "elap_m"`). The new argument
+  takes a column name (e.g., `"elap_m"` / `"elap_q"` / `"elap_h"` /
+  `"elap_y"`) instead of a granularity string. Migration:
+    Before: `lr.Triangle(df, dev_unit="month")`
+    After:  `lr.Triangle(df, dev_var="elap_m")`
+  Mapping: `"month"` → `"elap_m"`, `"quarter"` → `"elap_q"`,
+  `"half"` → `"elap_h"`, `"year"` → `"elap_y"`. Triangle exposes
+  `dev_var` (column name) and `dev_type` (granularity) attributes,
+  mirroring R's two-attribute pattern.
+
 ## [0.0.1.dev6] — 2026-05-10
 
 ### Added

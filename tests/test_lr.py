@@ -46,7 +46,7 @@ def _date(s: str) -> pl.Expr:
 
 
 def test_lr_default_method_is_sa():
-    fit = lr.LR().fit(lr.Experience(_toy_triangle_input()).triangle())
+    fit = lr.LR().fit(lr.Triangle(_toy_triangle_input()))
     assert fit.method == "sa"
 
 
@@ -62,7 +62,7 @@ def test_lr_alpha_other_raises():
 
 def test_lr_output_columns():
     fit = lr.LR(method="cl").fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     expected = {
         "cohort", "dev", "loss", "premium",
@@ -74,7 +74,7 @@ def test_lr_output_columns():
 
 def test_lr_output_shape():
     fit = lr.LR(method="cl").fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert fit.n_rows == 25  # 5 cohorts x 5 devs
 
@@ -85,7 +85,7 @@ def test_lr_output_shape():
 
 
 def test_lr_cl_method_matches_cl_fit():
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     cl_fit = lr.CL().fit(tri)
     lr_fit = lr.LR(method="cl").fit(tri)
 
@@ -98,7 +98,7 @@ def test_lr_cl_method_matches_cl_fit():
 
 def test_lr_cl_lr_proj_equals_loss_div_exposure():
     fit = lr.LR(method="cl").fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     df = fit.to_polars()
     df_filt = df.filter(
@@ -118,7 +118,7 @@ def test_lr_cl_lr_proj_equals_loss_div_exposure():
 
 
 def test_lr_ed_method_matches_ed_fit():
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     ed_fit = lr.ED().fit(tri)
     lr_fit = lr.LR(method="ed").fit(tri)
 
@@ -136,7 +136,7 @@ def test_lr_ed_method_matches_ed_fit():
 def test_lr_sa_with_loose_thresholds_detects_kstar_early():
     """With loose thresholds, k_star should be detected (e.g., 1)."""
     fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert fit.k_star is not None
 
@@ -144,7 +144,7 @@ def test_lr_sa_with_loose_thresholds_detects_kstar_early():
 def test_lr_sa_strict_thresholds_falls_back_to_ed():
     """When maturity not detected, SA falls back to ED throughout, so
     loss_proj should match the pure-ED projection."""
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.LR(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
     ed_fit = lr.ED().fit(tri)
 
@@ -158,7 +158,7 @@ def test_lr_sa_kstar_one_matches_cl_projection():
     """With k_star=1, every link is in CL phase (k+1 >= 1 for all).
     Wait, link_idx >= k_star means CL phase. With k_star=1 and link_idx
     starting at 1, all links use CL → SA should match pure CL."""
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.CL().fit(tri)
 
@@ -179,7 +179,7 @@ def test_lr_sa_kstar_one_matches_cl_projection():
 
 def test_lr_summary_columns():
     fit = lr.LR(method="cl").fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     summary = fit.summary()
     assert set(summary.columns) >= {
@@ -196,7 +196,7 @@ def test_lr_summary_columns():
 
 def test_lr_summary_fully_observed_cohort():
     fit = lr.LR(method="cl").fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
@@ -215,7 +215,7 @@ def test_lr_summary_fully_observed_cohort():
 def test_lr_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     fit = lr.LR(method="cl").fit(
-        lr.Experience(df).triangle(group_var="coverage")
+        lr.Triangle(df, group_var="coverage")
     )
     assert "coverage" in fit.to_polars().columns
 
@@ -229,7 +229,7 @@ def test_lr_groups_fitted_independently():
         ]
     )
     fit = lr.LR(method="cl").fit(
-        lr.Experience(df_grouped).triangle(group_var="coverage")
+        lr.Triangle(df_grouped, group_var="coverage")
     )
     df = fit.to_polars().sort(["coverage", "cohort", "dev"])
     a_loss = df.filter(pl.col("coverage") == "A")["loss_proj"].to_list()
@@ -240,7 +240,7 @@ def test_lr_groups_fitted_independently():
 def test_lr_sa_kstar_per_group_dict():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0).fit(
-        lr.Experience(df).triangle(group_var="coverage")
+        lr.Triangle(df, group_var="coverage")
     )
     assert isinstance(fit.k_star, dict)
     assert "SUR" in fit.k_star
@@ -254,7 +254,7 @@ def test_lr_sa_kstar_per_group_dict():
 def test_lr_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_triangle_input().to_pandas())
-    fit = lr.LR(method="cl").fit(lr.Experience(df).triangle())
+    fit = lr.LR(method="cl").fit(lr.Triangle(df))
     assert isinstance(fit.df, pd.DataFrame)
     assert isinstance(fit.summary(), pd.DataFrame)
 
@@ -265,7 +265,7 @@ def test_lr_pandas_input_mirror():
 
 
 def test_lr_repr():
-    fit = lr.LR(method="ed").fit(lr.Experience(_toy_triangle_input()).triangle())
+    fit = lr.LR(method="ed").fit(lr.Triangle(_toy_triangle_input()))
     text = repr(fit)
     assert "LRFit" in text
     assert "ed" in text

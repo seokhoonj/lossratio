@@ -39,12 +39,12 @@ def _toy_input() -> pl.DataFrame:
 
 
 def _tri():
-    return lr.Experience(_toy_input()).triangle()
+    return lr.Triangle(_toy_input())
 
 
 def _tri_grouped():
     df = _toy_input().with_columns(pl.lit("SUR").alias("coverage"))
-    return lr.Experience(df).triangle(group_var="coverage")
+    return lr.Triangle(df, group_var="coverage")
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ def test_intensity_n_obs_decreasing_with_dev():
 def test_intensity_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_input().to_pandas())
-    intensity = lr.Experience(df).triangle().link().intensity()
+    intensity = lr.Triangle(df).link().intensity()
     assert isinstance(intensity.df, pd.DataFrame)
     assert isinstance(intensity.summary(), pd.DataFrame)
 
@@ -158,7 +158,7 @@ def test_intensity_per_group_independent():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Experience(df_grouped).triangle(group_var="coverage")
+    tri = lr.Triangle(df_grouped, group_var="coverage")
     intensity = tri.link().intensity()
     df = intensity.df
     a_g = df.filter(pl.col("coverage") == "A").sort("dev")["g"].to_list()

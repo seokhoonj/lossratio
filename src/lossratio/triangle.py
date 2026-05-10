@@ -7,47 +7,55 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from ._io import detect_input_type, mirror_output, to_polars
+from .experience import REQUIRED_COLS
 
 if TYPE_CHECKING:
-    from .experience import Experience
     from .link import Link
+    from .regime import Regime
 
 
-_DEV_UNITS = {"month", "quarter", "half", "year"}
+_VALID_DEV_VARS = {"elap_m", "elap_q", "elap_h", "elap_y"}
+_DEV_VAR_TO_TYPE = {
+    "elap_m": "month",
+    "elap_q": "quarter",
+    "elap_h": "half",
+    "elap_y": "year",
+}
 
 
 def _compute_dev(
     df: pl.DataFrame,
     cohort_var: str,
     cym_var: str,
-    dev_unit: str,
+    dev_var: str,
 ) -> pl.DataFrame:
     """Add a numeric dev column derived from cohort_var and cym_var."""
-    if dev_unit == "month":
+    dev_type = _DEV_VAR_TO_TYPE.get(dev_var)
+    if dev_type == "month":
         elap = (
             (pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year()) * 12
             + (pl.col(cym_var).dt.month() - pl.col(cohort_var).dt.month())
             + 1
         )
-    elif dev_unit == "quarter":
+    elif dev_type == "quarter":
         elap = (
             (pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year()) * 4
             + ((pl.col(cym_var).dt.month() - 1) // 3
                - (pl.col(cohort_var).dt.month() - 1) // 3)
             + 1
         )
-    elif dev_unit == "half":
+    elif dev_type == "half":
         elap = (
             (pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year()) * 2
             + ((pl.col(cym_var).dt.month() - 1) // 6
                - (pl.col(cohort_var).dt.month() - 1) // 6)
             + 1
         )
-    elif dev_unit == "year":
+    elif dev_type == "year":
         elap = pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year() + 1
     else:
         raise ValueError(
-            f"dev_unit must be one of {sorted(_DEV_UNITS)}, got {dev_unit!r}"
+            f"dev_var must be one of {sorted(_VALID_DEV_VARS)}, got {dev_var!r}"
         )
 
     return df.with_columns(elap.cast(pl.Int64).alias("_dev_temp"))
@@ -56,9 +64,14 @@ def _compute_dev(
 class Triangle:
     """Cohort x development period aggregated experience data.
 
-    A Triangle is built by aggregating an :class:`Experience` (or a
-    raw DataFrame with the same schema) over ``group_var`` (optional),
-    cohort, and development period. The resulting frame has columns:
+    A Triangle is built by aggregating a raw experience DataFrame
+    (polars or pandas) over ``group_var`` (optional), cohort, and
+    development period. Validation and type coercion of the required
+    experience columns are performed inline -- there is no separate
+    ``Experience`` wrapper class. Users who want an explicit validation
+    step can call :func:`validate_experience` first.
+
+    The resulting frame has columns:
 
     * ``group_var`` -- present only if supplied
     * ``cohort`` -- the underwriting period (renamed from cohort_var)
@@ -77,34 +90,22 @@ class Triangle:
 
     def __init__(
         self,
-        source: "Experience | pl.DataFrame | Any",
+        df: "pl.DataFrame | Any",
         group_var: str | None = None,
         cohort_var: str = "uym",
-        dev_unit: str = "month",
+        dev_var: str = "elap_m",
         cym_var: str = "cym",
     ) -> None:
-        if dev_unit not in _DEV_UNITS:
+        if dev_var not in _VALID_DEV_VARS:
             raise ValueError(
-                f"dev_unit must be one of {sorted(_DEV_UNITS)}, got {dev_unit!r}"
+                f"dev_var must be one of {sorted(_VALID_DEV_VARS)}, got {dev_var!r}"
             )
 
-        # Resolve source: Experience instance or DataFrame
-        # (avoid circular import by checking class name and module path)
-        src_cls = type(source)
-        is_experience = (
-            src_cls.__module__.endswith("lossratio.experience")
-            and src_cls.__name__ == "Experience"
-        )
+        self._output_type = detect_input_type(df)
+        df_pl = to_polars(df)
 
-        if is_experience:
-            self._output_type = source._output_type
-            df_pl = source._df
-        else:
-            self._output_type = detect_input_type(source)
-            df_pl = to_polars(source)
-
-        # Validate required columns
-        required = {cohort_var, cym_var, "loss_incr", "premium_incr"}
+        # Validate required columns (experience schema + cohort/cym/group).
+        required = set(REQUIRED_COLS) | {cohort_var, cym_var}
         if group_var is not None:
             required.add(group_var)
         missing = required - set(df_pl.columns)
@@ -114,18 +115,16 @@ class Triangle:
                 f"Required: {sorted(required)}"
             )
 
-        # Coerce types when source was raw DataFrame
-        # (Experience already coerced these in its own __init__)
-        if not is_experience:
-            df_pl = df_pl.with_columns(
-                pl.col(cohort_var).cast(pl.Date),
-                pl.col(cym_var).cast(pl.Date),
-                pl.col("loss_incr").cast(pl.Float64),
-                pl.col("premium_incr").cast(pl.Float64),
-            )
+        # Coerce required experience types inline.
+        df_pl = df_pl.with_columns(
+            pl.col(cohort_var).cast(pl.Date),
+            pl.col(cym_var).cast(pl.Date),
+            pl.col("loss_incr").cast(pl.Float64),
+            pl.col("premium_incr").cast(pl.Float64),
+        )
 
         # Compute dev index (1, 2, ...) per cohort
-        df_pl = _compute_dev(df_pl, cohort_var, cym_var, dev_unit)
+        df_pl = _compute_dev(df_pl, cohort_var, cym_var, dev_var)
 
         # Aggregate per-period values by (group_var, cohort, dev)
         agg_keys: list[str] = []
@@ -174,8 +173,7 @@ class Triangle:
         self._df = agg
         self._group_var = group_var
         self._cohort_var = cohort_var
-        self._dev_var = "elap_m" if dev_unit == "month" else f"elap_{dev_unit[0]}"
-        self._dev_unit = dev_unit
+        self._dev_var = dev_var
 
     @property
     def df(self):
@@ -214,9 +212,12 @@ class Triangle:
         return self._dev_var
 
     @property
-    def dev_unit(self) -> str:
-        """Development unit ('month', 'quarter', 'half', 'year')."""
-        return self._dev_unit
+    def dev_type(self) -> str:
+        """Development granularity ('month', 'quarter', 'half', 'year').
+
+        Derived from ``dev_var`` on each access — not stored.
+        """
+        return _DEV_VAR_TO_TYPE[self._dev_var]
 
     @classmethod
     def _from_masked(cls, original: "Triangle", masked_df: pl.DataFrame) -> "Triangle":
@@ -232,7 +233,6 @@ class Triangle:
         tri._group_var = original._group_var
         tri._cohort_var = original._cohort_var
         tri._dev_var = original._dev_var
-        tri._dev_unit = original._dev_unit
         return tri
 
     def link(self) -> "Link":
@@ -254,7 +254,7 @@ class Triangle:
 
         Examples
         --------
-        >>> tri = lr.Experience(df).triangle(group_var="coverage")
+        >>> tri = lr.Triangle(df, group_var="coverage")
         >>> link = tri.link()
         >>> link.ata()                            # multiplicative
         >>> link.intensity()                      # additive

@@ -39,12 +39,12 @@ def _toy_input() -> pl.DataFrame:
 
 
 def _tri():
-    return lr.Experience(_toy_input()).triangle()
+    return lr.Triangle(_toy_input())
 
 
 def _tri_grouped():
     df = _toy_input().with_columns(pl.lit("SUR").alias("coverage"))
-    return lr.Experience(df).triangle(group_var="coverage")
+    return lr.Triangle(df, group_var="coverage")
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ def test_ata_factors_match_maturity_factors():
 def test_ata_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_input().to_pandas())
-    ata = lr.Experience(df).triangle().link().ata()
+    ata = lr.Triangle(df).link().ata()
     assert isinstance(ata.df, pd.DataFrame)
     assert isinstance(ata.summary(), pd.DataFrame)
 
@@ -180,7 +180,7 @@ def test_ata_per_group_independent():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Experience(df_grouped).triangle(group_var="coverage")
+    tri = lr.Triangle(df_grouped, group_var="coverage")
     ata = tri.link().ata()
     df = ata.df
     a_f = df.filter(pl.col("coverage") == "A").sort("dev")["f"].to_list()

@@ -38,12 +38,12 @@ def _toy_input() -> pl.DataFrame:
 
 
 def _tri():
-    return lr.Experience(_toy_input()).triangle()
+    return lr.Triangle(_toy_input())
 
 
 def _tri_grouped():
     df = _toy_input().with_columns(pl.lit("SUR").alias("coverage"))
-    return lr.Experience(df).triangle(group_var="coverage")
+    return lr.Triangle(df, group_var="coverage")
 
 
 # ---------------------------------------------------------------------------
@@ -161,5 +161,5 @@ def test_link_build_once_summarise_twice():
 def test_link_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_input().to_pandas())
-    link = lr.Experience(df).triangle().link()
+    link = lr.Triangle(df).link()
     assert isinstance(link.df, pd.DataFrame)

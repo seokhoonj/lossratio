@@ -60,7 +60,7 @@ def test_backtest_estimator_must_have_fit():
 
 def test_backtest_repr():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     text = repr(bt)
     assert "BacktestFit" in text
@@ -75,7 +75,7 @@ def test_backtest_repr():
 
 def test_backtest_ae_err_columns():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.ae_err.columns) >= {
         "cohort", "dev", "calendar_idx", "actual", "predicted", "ae_err",
@@ -89,7 +89,7 @@ def test_backtest_ae_err_size_holdout_one():
 
     Reachable: 4 cells.
     """
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
     assert bt.ae_err.shape[0] == 4
 
@@ -100,7 +100,7 @@ def test_backtest_ae_err_size_holdout_two():
     unreachable. Reachable: 6 cells (cohort 1 dev 4-5, cohort 2 dev 3-4,
     cohort 3 dev 2-3).
     """
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(tri)
     assert bt.ae_err.shape[0] == 6
 
@@ -113,7 +113,7 @@ def test_backtest_ae_err_size_holdout_two():
 def test_backtest_ae_err_actual_matches_original_loss():
     """Actual values in A/E Error table should match the original
     Triangle's loss."""
-    tri = lr.Experience(_toy_triangle_input()).triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     orig = tri.to_polars()
 
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
@@ -131,7 +131,7 @@ def test_backtest_ae_err_actual_matches_original_loss():
 
 def test_backtest_predicted_is_finite_for_all_held_cells():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     for v in bt.ae_err["predicted"].to_list():
         assert v is not None
@@ -140,7 +140,7 @@ def test_backtest_predicted_is_finite_for_all_held_cells():
 def test_backtest_ae_err_equals_relative_error():
     """ae_err = actual / predicted - 1 (signed relative error)."""
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     df = bt.ae_err
     for actual, pred, err in zip(
@@ -161,7 +161,7 @@ def test_backtest_ae_err_equals_relative_error():
 
 def test_backtest_col_summary_columns():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.col_summary.columns) >= {
         "dev", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
@@ -170,7 +170,7 @@ def test_backtest_col_summary_columns():
 
 def test_backtest_diag_summary_columns():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.diag_summary.columns) >= {
         "calendar_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
@@ -179,7 +179,7 @@ def test_backtest_diag_summary_columns():
 
 def test_backtest_summary_n_matches_ae_err_total():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     ae_err_n = bt.ae_err.shape[0]
     col_n = bt.col_summary["n"].sum()
@@ -195,7 +195,7 @@ def test_backtest_summary_n_matches_ae_err_total():
 
 def test_backtest_with_ed_estimator():
     bt = lr.Backtest(estimator=lr.ED(), holdout=1).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert bt.ae_err.shape[0] == 4
     # ED returns loss_proj; backtest auto-resolves
@@ -206,13 +206,13 @@ def test_backtest_with_lr_sa_estimator():
     bt = lr.Backtest(
         estimator=lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
         holdout=1,
-    ).fit(lr.Experience(_toy_triangle_input()).triangle())
+    ).fit(lr.Triangle(_toy_triangle_input()))
     assert bt.ae_err.shape[0] == 4
 
 
 def test_backtest_with_lr_cl_method():
     bt = lr.Backtest(estimator=lr.LR(method="cl"), holdout=1).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert bt.ae_err.shape[0] == 4
 
@@ -224,7 +224,7 @@ def test_backtest_with_lr_cl_method():
 
 def test_backtest_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    tri = lr.Experience(df).triangle(group_var="coverage")
+    tri = lr.Triangle(df, group_var="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
     assert "coverage" in bt.ae_err.columns
     assert "coverage" in bt.col_summary.columns
@@ -238,7 +238,7 @@ def test_backtest_per_group_independent():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Experience(df_grouped).triangle(group_var="coverage")
+    tri = lr.Triangle(df_grouped, group_var="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
     ae_err = bt.ae_err
     a_err = ae_err.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])
@@ -255,7 +255,7 @@ def test_backtest_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_triangle_input().to_pandas())
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(
-        lr.Experience(df).triangle()
+        lr.Triangle(df)
     )
     assert isinstance(bt.ae_err, pd.DataFrame)
     assert isinstance(bt.col_summary, pd.DataFrame)
@@ -269,13 +269,13 @@ def test_backtest_pandas_input_mirror():
 
 def test_backtest_refit_is_cl_fit():
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert isinstance(bt.fit, lr.CLFit)
 
 
 def test_backtest_refit_is_lr_fit():
     bt = lr.Backtest(estimator=lr.LR(method="cl"), holdout=1).fit(
-        lr.Experience(_toy_triangle_input()).triangle()
+        lr.Triangle(_toy_triangle_input())
     )
     assert isinstance(bt.fit, lr.LRFit)

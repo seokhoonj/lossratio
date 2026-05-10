@@ -21,7 +21,7 @@ def test_load_experience_deterministic():
 
 def test_load_experience_grouped_pipeline_runs():
     df = lr.load_experience()
-    tri = lr.Experience(df).triangle(group_var="coverage")
+    tri = lr.Triangle(df, group_var="coverage")
 
     fit = lr.LR().fit(tri)
     summary = fit.summary()
@@ -32,7 +32,7 @@ def test_load_experience_grouped_pipeline_runs():
 
 def test_load_experience_sur_has_regime_break():
     df = lr.load_experience().filter(pl.col("coverage") == "SUR")
-    tri = lr.Experience(df).triangle()
+    tri = lr.Triangle(df)
     reg = tri.detect_regime(loss_var="lr", K=12)
     assert len(reg.breakpoints) == 1
     assert reg.breakpoints[0].isoformat() == "2025-07-01"

@@ -11,7 +11,7 @@ from .backtest import Backtest, BacktestFit
 from .cl import CL, CLFit
 from .datasets import load_experience
 from .ed import ED, EDFit
-from .experience import Experience
+from .experience import add_experience_period, validate_experience
 from .intensity import Intensity
 from .link import Link
 from .lr import LR, LRFit
@@ -29,7 +29,6 @@ __all__ = [
     "CLFit",
     "ED",
     "EDFit",
-    "Experience",
     "Intensity",
     "LR",
     "LRFit",
@@ -38,5 +37,7 @@ __all__ = [
     "Regime",
     "Triangle",
     "__version__",
+    "add_experience_period",
     "load_experience",
+    "validate_experience",
 ]

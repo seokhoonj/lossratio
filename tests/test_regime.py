@@ -182,8 +182,7 @@ def test_detect_regime_e_divisive_finds_shift():
         ).alias("cym")
     ).drop("_dev_target")
 
-    exp = lr.Experience(df)
-    tri = exp.triangle()
+    tri = lr.Triangle(df)
     reg = tri.detect_regime(
         loss_var="lr", K=12, method="e_divisive", min_size=3, R=199, seed=20260509
     )
@@ -207,8 +206,7 @@ def test_detect_regime_hclust():
         ).alias("cym")
     ).drop("_dev_target")
 
-    exp = lr.Experience(df)
-    tri = exp.triangle()
+    tri = lr.Triangle(df)
     reg = tri.detect_regime(
         loss_var="lr", K=12, method="hclust", n_regimes=2
     )
@@ -228,8 +226,7 @@ def test_detect_regime_invalid_method_raises():
         ).alias("cym")
     ).drop("_dev_target")
 
-    exp = lr.Experience(df)
-    tri = exp.triangle()
+    tri = lr.Triangle(df)
     with pytest.raises(ValueError, match="method must be one of"):
         tri.detect_regime(method="nonsense")
 
@@ -246,7 +243,6 @@ def test_detect_regime_low_K_raises():
         ).alias("cym")
     ).drop("_dev_target")
 
-    exp = lr.Experience(df)
-    tri = exp.triangle()
+    tri = lr.Triangle(df)
     with pytest.raises(ValueError, match="K must be"):
         tri.detect_regime(K=1)

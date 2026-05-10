@@ -140,7 +140,7 @@ class Link:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Experience(df).triangle(group_var="coverage")
+    >>> tri = lr.Triangle(df, group_var="coverage")
     >>> link = tri.link()
     >>> link.ata()         # ATA factor diagnostic
     >>> link.intensity()   # ED intensity diagnostic
@@ -154,7 +154,6 @@ class Link:
         self._group_var: str | None
         self._cohort_var: str
         self._dev_var: str
-        self._dev_unit: str
         self._has_premium: bool
 
     @classmethod
@@ -164,7 +163,6 @@ class Link:
         self._group_var = triangle._group_var
         self._cohort_var = triangle._cohort_var
         self._dev_var = triangle._dev_var
-        self._dev_unit = triangle._dev_unit
 
         tri_df = triangle._df
         self._tri_df = tri_df
@@ -199,8 +197,8 @@ class Link:
             raise ValueError(
                 "Link.intensity() requires the source Triangle to "
                 "carry a `premium` column. The current Link is "
-                "ATA-only — rebuild the Triangle from Experience "
-                "with `premium_incr` data."
+                "ATA-only — rebuild the Triangle from a DataFrame "
+                "that includes `premium_incr`."
             )
         from .intensity import Intensity
 

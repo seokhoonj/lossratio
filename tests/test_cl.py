@@ -78,16 +78,14 @@ def _date(s: str) -> pl.Expr:
 
 
 def test_cl_output_shape():
-    exp = lr.Experience(_toy_triangle_input())
-    tri = exp.triangle()
+    tri = lr.Triangle(_toy_triangle_input())
     fit = lr.CL().fit(tri)
     # 5 cohorts x 5 devs = 25 cells (observed + projected)
     assert fit.n_rows == 25
 
 
 def test_cl_repr():
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     text = repr(fit)
     assert "CLFit" in text
     assert "alpha=1" in text
@@ -105,15 +103,13 @@ def test_cl_alpha_other_raises():
 
 def test_cl_ata_factor_first_link_exact():
     """f_1 was constructed to come out as 2.0 exactly."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     fk = fit._fk_df.sort("dev")
     assert fk["f"].to_list()[0] == pytest.approx(2.0)
 
 
 def test_cl_ata_factors_subsequent_links():
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     fk = fit._fk_df.sort("dev")
     factors = fk["f"].to_list()
     assert factors[1] == pytest.approx(1140 / 730)
@@ -128,8 +124,7 @@ def test_cl_ata_factors_subsequent_links():
 
 def test_cl_sigma2_first_three_links_positive():
     """Links 1-3 each have n_k >= 2, so sigma^2_k > 0."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     fk = fit._fk_df.sort("dev")
     sigma2 = fk["sigma2"].to_list()
     assert sigma2[0] > 0
@@ -139,8 +134,7 @@ def test_cl_sigma2_first_three_links_positive():
 
 def test_cl_sigma2_last_link_uses_mack_tail():
     """Link 4 has n_k = 1, so sigma^2_4 is set via Mack's tail rule."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     fk = fit._fk_df.sort("dev")
     sigma2 = fk["sigma2"].to_list()
     s2 = sigma2[3]
@@ -161,8 +155,7 @@ def test_cl_sigma2_last_link_uses_mack_tail():
 
 def test_cl_projection_observed_cells_unchanged():
     """loss_proj equals loss in observed cells."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
     observed = df.filter(pl.col("loss").is_not_null())
     diffs = (observed["loss_proj"] - observed["loss"]).abs()
@@ -172,8 +165,7 @@ def test_cl_projection_observed_cells_unchanged():
 def test_cl_projection_propagates_via_f_k():
     """Cohort 2024-05 only has dev 1 observed; subsequent devs are projected
     by successive multiplication of f_1, f_2, f_3, f_4."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     fk = fit._fk_df.sort("dev")["f"].to_list()
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
@@ -193,8 +185,7 @@ def test_cl_projection_propagates_via_f_k():
 
 
 def test_cl_se_observed_cells_null():
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
     observed = df.filter(pl.col("loss").is_not_null())
     # Observed cells have no projection SE
@@ -205,8 +196,7 @@ def test_cl_se_proj_positive_for_projected_cells():
     """All projected cells should carry a positive Mack SE now that
     every link has a non-zero sigma^2 (links 1-3 by sample, link 4
     via Mack's tail rule)."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
     projected = df.filter(pl.col("loss").is_null())
     # Every projected cell carries a numeric SE
@@ -217,8 +207,7 @@ def test_cl_se_proj_positive_for_projected_cells():
 def test_cl_se_grows_with_distance_from_observed():
     """For a single cohort, SE on the ultimate should be >= SE on an
     intermediate projected cell (variance accumulates monotonically)."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
     se = cohort_5["se_proj"].to_list()
@@ -235,8 +224,7 @@ def test_cl_se_grows_with_distance_from_observed():
 
 
 def test_cl_summary_columns_and_size():
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
@@ -252,8 +240,7 @@ def test_cl_summary_columns_and_size():
 def test_cl_summary_ultimate_for_fully_observed_cohort():
     """Cohort 2024-01 has all 5 devs observed; ultimate must equal the
     observed loss at dev 5 = 500.0 with se = 0 (no projection)."""
-    exp = lr.Experience(_toy_triangle_input())
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
     assert summary["ultimate"].to_list()[0] == pytest.approx(500.0)
@@ -269,8 +256,7 @@ def test_cl_summary_ultimate_for_fully_observed_cohort():
 
 def test_cl_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    exp = lr.Experience(df)
-    tri = exp.triangle(group_var="coverage")
+    tri = lr.Triangle(df, group_var="coverage")
     fit = lr.CL().fit(tri)
     assert "coverage" in fit.to_polars().columns
     assert "coverage" in fit._fk_df.columns
@@ -286,8 +272,7 @@ def test_cl_groups_fitted_independently():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    exp = lr.Experience(df_grouped)
-    fit = lr.CL().fit(exp.triangle(group_var="coverage"))
+    fit = lr.CL().fit(lr.Triangle(df_grouped, group_var="coverage"))
     fk_A = fit._fk_df.filter(pl.col("coverage") == "A").sort("dev")["f"].to_list()
     fk_B = fit._fk_df.filter(pl.col("coverage") == "B").sort("dev")["f"].to_list()
     assert fk_A == fk_B
@@ -301,13 +286,12 @@ def test_cl_groups_fitted_independently():
 def test_cl_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_triangle_input().to_pandas())
-    exp = lr.Experience(df)
-    fit = lr.CL().fit(exp.triangle())
+    fit = lr.CL().fit(lr.Triangle(df))
     assert isinstance(fit.df, pd.DataFrame)
     assert isinstance(fit.f_k, pd.DataFrame)
 
 
-def test_cl_chain_with_triangle_method():
-    """sklearn-style estimator + chained Triangle creation."""
-    fit = lr.CL().fit(lr.Experience(_toy_triangle_input()).triangle())
+def test_cl_chain_with_triangle_constructor():
+    """sklearn-style estimator + Triangle constructor."""
+    fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     assert fit.n_rows == 25

@@ -299,7 +299,7 @@ class LR:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Experience(df).triangle(group_var="coverage")
+    >>> tri = lr.Triangle(df, group_var="coverage")
     >>> fit = lr.LR(method="sa").fit(tri)
     >>> fit.summary()
     """
@@ -354,7 +354,6 @@ class LRFit:
         self._group_var: str | None
         self._cohort_var: str
         self._dev_var: str
-        self._dev_unit: str
         self.method: str
         self.alpha: float
 
@@ -367,7 +366,6 @@ class LRFit:
         self._group_var = triangle._group_var
         self._cohort_var = triangle._cohort_var
         self._dev_var = triangle._dev_var
-        self._dev_unit = triangle._dev_unit
         self.method = estimator.method
         self.alpha = estimator.alpha
 
