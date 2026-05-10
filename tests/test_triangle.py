@@ -105,3 +105,37 @@ def test_triangle_repr():
     text = repr(tri)
     assert "Triangle" in text
     assert "cohorts" in text
+
+
+# ---------------------------------------------------------------------------
+# fill_gaps: cohort × dev consecutiveness
+# ---------------------------------------------------------------------------
+
+
+def _gap_input() -> pl.DataFrame:
+    """Cohort 2024-01 has dev months 1, 2, 4 (gap at dev=3)."""
+    return pl.DataFrame(
+        {
+            "cy_m":         ["2024-01-01", "2024-02-01", "2024-04-01"],
+            "uy_m":         ["2024-01-01", "2024-01-01", "2024-01-01"],
+            "loss_incr":    [10.0, 20.0, 40.0],
+            "premium_incr": [100.0, 100.0, 100.0],
+        }
+    )
+
+
+def test_triangle_fill_gaps_false_raises():
+    with pytest.raises(ValueError, match="non-consecutive dev sequences"):
+        lr.Triangle(_gap_input())
+
+
+def test_triangle_fill_gaps_true_zero_fills():
+    tri = lr.Triangle(_gap_input(), fill_gaps=True)
+    df = tri.to_polars()
+    # 4 dev cells (1, 2, 3, 4); dev=3 is the zero-filled gap.
+    assert df.height == 4
+    assert df["dev"].to_list() == [1, 2, 3, 4]
+    # Incremental loss at dev=3 is the zero-fill; the others are originals.
+    assert df["loss_incr"].to_list() == [10.0, 20.0, 0.0, 40.0]
+    # Cumulative loss progresses through the zero-fill (10, 30, 30, 70).
+    assert df["loss"].to_list() == [10.0, 30.0, 30.0, 70.0]

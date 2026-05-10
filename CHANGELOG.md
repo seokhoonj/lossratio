@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Triangle()` accepts a new `fill_gaps: bool = False` argument
+  (R parity with `build_triangle(fill_gaps=...)`). The default `False`
+  raises a `ValueError` when any cohort has a non-consecutive dev
+  sequence in the aggregated triangle; `True` zero-fills the gaps so
+  every cohort spans a contiguous `[dev_min, dev_max]` range.
+
 ### Breaking
 
 - Renamed `add_experience_period(df)` to `derive_grain_columns(df)`

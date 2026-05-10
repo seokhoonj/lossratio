@@ -76,6 +76,7 @@ class Triangle:
         cohort_var: str = "uy_m",
         calendar_var: str = "cy_m",
         grain: str = "auto",
+        fill_gaps: bool = False,
     ) -> None:
         self._output_type = detect_input_type(df)
         df_pl = to_polars(df)
@@ -128,6 +129,52 @@ class Triangle:
             )
             .sort(agg_keys)
         )
+
+        # Check for non-consecutive dev sequences within each cohort.
+        # R parity: build_triangle(fill_gaps = FALSE) raises; TRUE zero-fills.
+        gap_keys = agg_keys[:-1]  # group_var + cohort_var (or cohort_var alone)
+        gap_summary = (
+            agg.group_by(gap_keys)
+            .agg(
+                pl.col("_dev_temp").min().alias("dev_min"),
+                pl.col("_dev_temp").max().alias("dev_max"),
+                pl.col("_dev_temp").n_unique().alias("dev_observed"),
+            )
+            .with_columns(
+                (pl.col("dev_max") - pl.col("dev_min") + 1).alias("dev_expected"),
+            )
+        )
+        gaps = gap_summary.filter(
+            pl.col("dev_observed") != pl.col("dev_expected")
+        )
+        if gaps.height:
+            if fill_gaps:
+                # Build full (group, cohort, dev) grid spanning each cohort's
+                # observed dev range, left-join the aggregate, zero-fill.
+                full_grid = (
+                    gap_summary
+                    .with_columns(
+                        pl.int_ranges(
+                            pl.col("dev_min"), pl.col("dev_max") + 1
+                        ).alias("_dev_temp")
+                    )
+                    .explode("_dev_temp")
+                    .select([*gap_keys, "_dev_temp"])
+                )
+                agg = (
+                    full_grid.join(agg, on=agg_keys, how="left")
+                    .with_columns(
+                        pl.col("loss_incr").fill_null(0.0),
+                        pl.col("premium_incr").fill_null(0.0),
+                    )
+                    .sort(agg_keys)
+                )
+            else:
+                raise ValueError(
+                    f"Found {gaps.height} cohort(s) with non-consecutive "
+                    f"dev sequences. Pass fill_gaps=True to zero-fill, or "
+                    f"inspect with validate_experience()."
+                )
 
         # Cumulative sums within (group, cohort) — cumulative is default name.
         cum_keys: list[str] = []
