@@ -98,10 +98,10 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        Columns ``coverage`` (str), ``cym`` (str, ISO date), ``uym``
-        (str, ISO date), ``loss_incr`` (float), ``premium_incr``
-        (float). Pass directly to :class:`Triangle` with
-        ``group_var="coverage"``.
+        Columns ``coverage`` (str), ``uym`` (str, ISO date), ``cym``
+        (str, ISO date), ``dev_m`` (int), ``loss_incr`` (float),
+        ``premium_incr`` (float). Pass directly to :class:`Triangle`
+        with ``group_var="coverage"``.
     """
     rng = np.random.default_rng(seed)
     weights = _make_weights()
@@ -137,10 +137,11 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
 
                 records.append(
                     {
-                        "coverage": coverage,
-                        "cym": cym,
-                        "uym": uym,
-                        "loss_incr": incr_loss,
+                        "coverage":     coverage,
+                        "uym":          uym,
+                        "cym":          cym,
+                        "dev_m":        k + 1,
+                        "loss_incr":    incr_loss,
                         "premium_incr": incr_premium,
                     }
                 )
