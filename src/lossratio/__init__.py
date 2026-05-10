@@ -16,7 +16,7 @@ from .maturity import Maturity
 from .regime import Regime
 from .triangle import Triangle
 
-__version__ = "0.0.1.dev6"
+__version__ = "0.0.1.dev7"
 
 __all__ = [
     "Backtest",

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lossratio"
-version = "0.0.1.dev6"
+version = "0.0.1.dev7"
 description = "Loss ratio analytics for long-term health insurance."
 readme = "README.md"
 license = "MPL-2.0"

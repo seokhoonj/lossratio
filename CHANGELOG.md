@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev7] — 2026-05-10
+
+### Changed (R-parity)
+- `BacktestFit.aeg` property renamed to **`BacktestFit.ae_err`** and
+  the underlying formula switched from a literal `actual - predicted`
+  gap to the standard A/E convention
+  **`ae_err = actual / predicted - 1`** (signed relative error).
+  Positive values now flag under-projection (model under-estimated;
+  actual exceeded the projection); negative values flag
+  over-projection. Aggregations in `col_summary` / `diag_summary`
+  follow R lossratio:
+  - `n` (count)
+  - `ae_err_mean` (mean of cell-level A/E - 1)
+  - `ae_err_med` (median)
+  - `ae_err_wt = sum(actual - predicted) / sum(predicted)`
+    (exposure-weighted pooled A/E - 1)
+- The previous `sum_actual` / `sum_predicted` / `sum_aeg` aggregation
+  columns are removed (recoverable from cell-level `bt.ae_err` if
+  needed).
+
+This is a breaking change for callers that read `bt.aeg`,
+`bt.col_summary["sum_aeg"]`, etc. The new column / property names
+match the R sibling's `ae_err` family.
+
 ## [0.0.1.dev6] — 2026-05-10
 
 ### Added

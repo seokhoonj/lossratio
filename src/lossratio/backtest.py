@@ -109,7 +109,11 @@ class Backtest:
     Holds out the ``holdout`` most recent calendar diagonals from the
     triangle, refits the supplied estimator on the masked data, and
     compares the projection to the original observed values on the
-    held-out cells.
+    held-out cells. The cell-level metric (``ae_err``, "A/E Error")
+    follows the standard actuarial A/E convention,
+    ``ae_err = actual / predicted - 1``, where positive values mark
+    cells where the model under-projected (actual exceeded the
+    projection) and negative values mark over-projection.
 
     Parameters
     ----------
@@ -125,7 +129,7 @@ class Backtest:
     >>> import lossratio as lr
     >>> tri = lr.Experience(df).triangle(group_var="coverage")
     >>> bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6).fit(tri)
-    >>> bt.aeg
+    >>> bt.ae_err
     >>> bt.col_summary
     >>> bt.diag_summary
     """
@@ -149,20 +153,25 @@ class BacktestFit:
 
     Properties
     ----------
-    aeg : DataFrame
+    ae_err : DataFrame
         Per-cell hold-out comparison
-        ``[group_var?, cohort, dev, calendar_idx, actual, predicted, aeg]``.
+        ``[group_var?, cohort, dev, calendar_idx, actual, predicted, ae_err]``.
+        ``ae_err = actual / predicted - 1`` (signed relative error;
+        positive = under-projection, negative = over-projection).
     col_summary : DataFrame
-        Aggregated by dev: total actual, total predicted, total aeg, n.
+        Aggregated by dev:
+        ``[group_var?, dev, n, ae_err_mean, ae_err_med, ae_err_wt]``.
+        ``ae_err_wt = sum(actual - predicted) / sum(predicted)`` is the
+        exposure-weighted pooled A/E - 1.
     diag_summary : DataFrame
-        Aggregated by calendar_idx: total actual, total predicted,
-        total aeg, n.
+        Aggregated by calendar_idx with the same statistics as
+        ``col_summary``.
     fit :
         The refitted estimator's result (e.g. CLFit / EDFit / LRFit).
     """
 
     def __init__(self) -> None:
-        self._aeg: pl.DataFrame
+        self._ae_err: pl.DataFrame
         self._col_summary: pl.DataFrame
         self._diag_summary: pl.DataFrame
         self._refit: Any
@@ -196,7 +205,7 @@ class BacktestFit:
         refit_df = refit.to_polars()
         pred_col = _resolve_predicted_column(refit_df.columns)
 
-        # 4. Build per-cell AEG by joining masked cells with refit
+        # 4. Build per-cell A/E Error by joining masked cells with refit
         keys: list[str] = []
         if triangle._group_var is not None:
             keys.append(triangle._group_var)
@@ -211,26 +220,37 @@ class BacktestFit:
         # Drop unreachable cells: cohorts whose observations are wholly
         # within the held-out diagonals have no anchor for projection,
         # so the refit returns NaN at those cells.
-        aeg = (
+        ae_err = (
             held_out.join(refit_pred, on=keys, how="inner")
             .filter(pl.col("predicted").is_not_null())
-            .with_columns((pl.col("actual") - pl.col("predicted")).alias("aeg"))
+            .with_columns(
+                pl.when(
+                    pl.col("predicted").is_finite() & (pl.col("predicted") != 0)
+                )
+                .then(pl.col("actual") / pl.col("predicted") - 1)
+                .otherwise(None)
+                .alias("ae_err")
+            )
         )
-        self._aeg = aeg.sort(keys + ["calendar_idx"])
+        self._ae_err = ae_err.sort(keys + ["calendar_idx"])
 
-        # 5. Summaries
+        # 5. Summaries — mean / median / weighted A/E - 1 per dev or
+        #    per calendar diagonal.
         col_keys: list[str] = []
         if triangle._group_var is not None:
             col_keys.append(triangle._group_var)
         col_keys.append("dev")
 
         self._col_summary = (
-            aeg.group_by(col_keys)
+            ae_err.group_by(col_keys)
             .agg(
-                pl.col("actual").sum().alias("sum_actual"),
-                pl.col("predicted").sum().alias("sum_predicted"),
-                pl.col("aeg").sum().alias("sum_aeg"),
                 pl.len().alias("n"),
+                pl.col("ae_err").mean().alias("ae_err_mean"),
+                pl.col("ae_err").median().alias("ae_err_med"),
+                (
+                    (pl.col("actual") - pl.col("predicted")).sum()
+                    / pl.col("predicted").sum()
+                ).alias("ae_err_wt"),
             )
             .sort(col_keys)
         )
@@ -241,12 +261,15 @@ class BacktestFit:
         diag_keys.append("calendar_idx")
 
         self._diag_summary = (
-            aeg.group_by(diag_keys)
+            ae_err.group_by(diag_keys)
             .agg(
-                pl.col("actual").sum().alias("sum_actual"),
-                pl.col("predicted").sum().alias("sum_predicted"),
-                pl.col("aeg").sum().alias("sum_aeg"),
                 pl.len().alias("n"),
+                pl.col("ae_err").mean().alias("ae_err_mean"),
+                pl.col("ae_err").median().alias("ae_err_med"),
+                (
+                    (pl.col("actual") - pl.col("predicted")).sum()
+                    / pl.col("predicted").sum()
+                ).alias("ae_err_wt"),
             )
             .sort(diag_keys)
         )
@@ -254,8 +277,8 @@ class BacktestFit:
         return self
 
     @property
-    def aeg(self):
-        return mirror_output(self._aeg, self._output_type)
+    def ae_err(self):
+        return mirror_output(self._ae_err, self._output_type)
 
     @property
     def col_summary(self):
@@ -270,6 +293,6 @@ class BacktestFit:
         return self._refit
 
     def __repr__(self) -> str:
-        n_cells = self._aeg.height
+        n_cells = self._ae_err.height
         est_name = type(self.estimator).__name__
         return f"<BacktestFit: estimator={est_name}, holdout={self.holdout}, n_held_out_cells={n_cells}>"

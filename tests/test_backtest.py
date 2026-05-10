@@ -69,20 +69,20 @@ def test_backtest_repr():
 
 
 # ---------------------------------------------------------------------------
-# AEG schema
+# A/E Error schema
 # ---------------------------------------------------------------------------
 
 
-def test_backtest_aeg_columns():
+def test_backtest_ae_err_columns():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
-    assert set(bt.aeg.columns) >= {
-        "cohort", "dev", "calendar_idx", "actual", "predicted", "aeg",
+    assert set(bt.ae_err.columns) >= {
+        "cohort", "dev", "calendar_idx", "actual", "predicted", "ae_err",
     }
 
 
-def test_backtest_aeg_size_holdout_one():
+def test_backtest_ae_err_size_holdout_one():
     """holdout=1 masks the most recent diagonal (5 cells in a 5x5
     triangular Triangle). Cohort 5 (dev 1 only) becomes unreachable
     once dev 1 is masked, so its single masked cell is excluded.
@@ -91,10 +91,10 @@ def test_backtest_aeg_size_holdout_one():
     """
     tri = lr.Experience(_toy_triangle_input()).triangle()
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
-    assert bt.aeg.shape[0] == 4
+    assert bt.ae_err.shape[0] == 4
 
 
-def test_backtest_aeg_size_holdout_two():
+def test_backtest_ae_err_size_holdout_two():
     """holdout=2 masks the two most recent diagonals (9 cells). Cohorts
     4 and 5 (only dev 1 / dev 1-2 observed) lose all anchors and become
     unreachable. Reachable: 6 cells (cohort 1 dev 4-5, cohort 2 dev 3-4,
@@ -102,7 +102,7 @@ def test_backtest_aeg_size_holdout_two():
     """
     tri = lr.Experience(_toy_triangle_input()).triangle()
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(tri)
-    assert bt.aeg.shape[0] == 6
+    assert bt.ae_err.shape[0] == 6
 
 
 # ---------------------------------------------------------------------------
@@ -110,16 +110,17 @@ def test_backtest_aeg_size_holdout_two():
 # ---------------------------------------------------------------------------
 
 
-def test_backtest_aeg_actual_matches_original_closs():
-    """Actual values in AEG should match the original Triangle's loss."""
+def test_backtest_ae_err_actual_matches_original_loss():
+    """Actual values in A/E Error table should match the original
+    Triangle's loss."""
     tri = lr.Experience(_toy_triangle_input()).triangle()
     orig = tri.to_polars()
 
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
-    aeg = bt.aeg
+    ae_err = bt.ae_err
 
     # Inner join on (cohort, dev) — actual should equal loss
-    joined = aeg.join(
+    joined = ae_err.join(
         orig.select(["cohort", "dev", "loss"]),
         on=["cohort", "dev"],
         how="inner",
@@ -132,21 +133,25 @@ def test_backtest_predicted_is_finite_for_all_held_cells():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
-    for v in bt.aeg["predicted"].to_list():
+    for v in bt.ae_err["predicted"].to_list():
         assert v is not None
 
 
-def test_backtest_aeg_equals_actual_minus_predicted():
+def test_backtest_ae_err_equals_relative_error():
+    """ae_err = actual / predicted - 1 (signed relative error)."""
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
-    df = bt.aeg
-    for actual, pred, aeg in zip(
+    df = bt.ae_err
+    for actual, pred, err in zip(
         df["actual"].to_list(),
         df["predicted"].to_list(),
-        df["aeg"].to_list(),
+        df["ae_err"].to_list(),
     ):
-        assert aeg == pytest.approx(actual - pred)
+        if pred is None or pred == 0:
+            assert err is None
+        else:
+            assert err == pytest.approx(actual / pred - 1)
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +164,7 @@ def test_backtest_col_summary_columns():
         lr.Experience(_toy_triangle_input()).triangle()
     )
     assert set(bt.col_summary.columns) >= {
-        "dev", "sum_actual", "sum_predicted", "sum_aeg", "n",
+        "dev", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 
@@ -168,19 +173,19 @@ def test_backtest_diag_summary_columns():
         lr.Experience(_toy_triangle_input()).triangle()
     )
     assert set(bt.diag_summary.columns) >= {
-        "calendar_idx", "sum_actual", "sum_predicted", "sum_aeg", "n",
+        "calendar_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 
-def test_backtest_summary_n_matches_aeg_total():
+def test_backtest_summary_n_matches_ae_err_total():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
-    aeg_n = bt.aeg.shape[0]
+    ae_err_n = bt.ae_err.shape[0]
     col_n = bt.col_summary["n"].sum()
     diag_n = bt.diag_summary["n"].sum()
-    assert col_n == aeg_n
-    assert diag_n == aeg_n
+    assert col_n == ae_err_n
+    assert diag_n == ae_err_n
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +197,9 @@ def test_backtest_with_ed_estimator():
     bt = lr.Backtest(estimator=lr.ED(), holdout=1).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
-    assert bt.aeg.shape[0] == 4
+    assert bt.ae_err.shape[0] == 4
     # ED returns loss_proj; backtest auto-resolves
-    assert "predicted" in bt.aeg.columns
+    assert "predicted" in bt.ae_err.columns
 
 
 def test_backtest_with_lr_sa_estimator():
@@ -202,14 +207,14 @@ def test_backtest_with_lr_sa_estimator():
         estimator=lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
         holdout=1,
     ).fit(lr.Experience(_toy_triangle_input()).triangle())
-    assert bt.aeg.shape[0] == 4
+    assert bt.ae_err.shape[0] == 4
 
 
 def test_backtest_with_lr_cl_method():
     bt = lr.Backtest(estimator=lr.LR(method="cl"), holdout=1).fit(
         lr.Experience(_toy_triangle_input()).triangle()
     )
-    assert bt.aeg.shape[0] == 4
+    assert bt.ae_err.shape[0] == 4
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +226,7 @@ def test_backtest_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     tri = lr.Experience(df).triangle(group_var="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
-    assert "coverage" in bt.aeg.columns
+    assert "coverage" in bt.ae_err.columns
     assert "coverage" in bt.col_summary.columns
 
 
@@ -235,10 +240,10 @@ def test_backtest_per_group_independent():
     )
     tri = lr.Experience(df_grouped).triangle(group_var="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(tri)
-    aeg = bt.aeg
-    a_aeg = aeg.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])
-    b_aeg = aeg.filter(pl.col("coverage") == "B").sort(["cohort", "dev"])
-    assert a_aeg["aeg"].to_list() == b_aeg["aeg"].to_list()
+    ae_err = bt.ae_err
+    a_err = ae_err.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])
+    b_err = ae_err.filter(pl.col("coverage") == "B").sort(["cohort", "dev"])
+    assert a_err["ae_err"].to_list() == b_err["ae_err"].to_list()
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +257,7 @@ def test_backtest_pandas_input_mirror():
     bt = lr.Backtest(estimator=lr.CL(), holdout=1).fit(
         lr.Experience(df).triangle()
     )
-    assert isinstance(bt.aeg, pd.DataFrame)
+    assert isinstance(bt.ae_err, pd.DataFrame)
     assert isinstance(bt.col_summary, pd.DataFrame)
     assert isinstance(bt.diag_summary, pd.DataFrame)
 
