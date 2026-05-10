@@ -9,10 +9,8 @@ import polars as pl
 from ._io import detect_input_type, mirror_output, to_polars
 
 if TYPE_CHECKING:
-    from .ata import ATA
     from .experience import Experience
-    from .intensity import Intensity
-    from .maturity import Maturity
+    from .link import Link
 
 
 _DEV_UNITS = {"month", "quarter", "half", "year"}
@@ -237,81 +235,34 @@ class Triangle:
         tri._dev_unit = original._dev_unit
         return tri
 
-    def maturity(
-        self,
-        max_cv: float = 0.15,
-        max_rse: float = 0.05,
-        min_run: int = 2,
-    ) -> "Maturity":
-        """Detect the ATA maturity point ``k*``.
+    def link(self) -> "Link":
+        """Build the long-format link table.
 
-        Returns a ``Maturity`` result with per-link diagnostics
-        (CV, RSE, stable flag) and the detected k_star (the first dev
-        at which factors are stable for ``min_run`` consecutive links).
+        Returns a :class:`Link` data class — one row per (cohort,
+        adjacent dev pair) — that exposes the per-cell ATA factor
+        and (when the source Triangle has a premium column) the
+        per-cell ED intensity. Diagnostic methods :meth:`Link.ata`
+        and :meth:`Link.intensity` aggregate across cohorts to
+        per-link summaries.
 
-        Parameters
-        ----------
-        max_cv
-            Threshold on the cross-cohort coefficient of variation of
-            individual link factors.
-        max_rse
-            Threshold on the relative standard error of the pooled f_k.
-        min_run
-            Required number of consecutive stable links.
-        """
-        from .maturity import Maturity
+        ``tri.link()`` is the single canonical entry point for
+        factor-level diagnostics. The chains:
 
-        return Maturity._from_triangle(
-            self,
-            max_cv=max_cv,
-            max_rse=max_rse,
-            min_run=min_run,
-        )
-
-    def ata(self) -> "ATA":
-        """ATA factor diagnostic.
-
-        Returns an :class:`ATA` result with per-link Mack-pooled
-        factors ``f_k = E[C^L_{k+1} / C^L_k]``, their cross-cohort
-        CV, relative standard error, residual sigma^2, and the
-        per-link cohort count.
-
-        Pairs with :meth:`intensity` (the additive ED-side
-        factor diagnostic). For maturity-point detection on top of
-        the same factor diagnostic see :meth:`maturity`.
+        - ``tri.link().ata()``                    → :class:`ATA`
+        - ``tri.link().intensity()``              → :class:`Intensity`
+        - ``tri.link().ata().maturity(...)``      → :class:`Maturity`
 
         Examples
         --------
         >>> tri = lr.Experience(df).triangle(group_var="coverage")
-        >>> ata = tri.ata()
-        >>> ata.df
+        >>> link = tri.link()
+        >>> link.ata()                            # multiplicative
+        >>> link.intensity()                      # additive
+        >>> link.ata().maturity(max_cv=0.15)      # stability detection
         """
-        from .ata import ATA
+        from .link import Link
 
-        return ATA._from_triangle(self)
-
-    def intensity(self) -> "Intensity":
-        """ED intensity factor diagnostic.
-
-        Returns an :class:`Intensity` result with per-link
-        WLS-estimated intensities ``g_k = E[ΔL / C^P]``, their
-        standard errors, residual sigma^2, and the per-link cohort
-        count.
-
-        Pairs with :meth:`ata` (the multiplicative ATA-side factor
-        diagnostic). ED has no maturity-point analogue: at long
-        development, ``g_k`` decays toward zero, which makes CV /
-        RSE structurally ill-behaved (not by instability).
-
-        Examples
-        --------
-        >>> tri = lr.Experience(df).triangle(group_var="coverage")
-        >>> intf = tri.intensity()
-        >>> intf.df
-        """
-        from .intensity import Intensity
-
-        return Intensity._from_triangle(self)
+        return Link._from_triangle(self)
 
     def detect_regime(
         self,

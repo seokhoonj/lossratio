@@ -24,7 +24,7 @@ from .cl import _build_loss_matrix
 from .ed import _build_premium_matrix
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from .link import Link
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ class Intensity:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Experience(df).triangle(group_var="coverage")
-    >>> intf = tri.intensity()
+    >>> intf = tri.link().intensity()
     >>> intf.df              # diagnostic table
     """
 
@@ -178,16 +178,16 @@ class Intensity:
         self._dev_unit: str
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle") -> "Intensity":
+    def _from_link(cls, link: "Link") -> "Intensity":
         self = cls.__new__(cls)
-        self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
-        self._dev_unit = triangle._dev_unit
+        self._output_type = link._output_type
+        self._group_var = link._group_var
+        self._cohort_var = link._cohort_var
+        self._dev_var = link._dev_var
+        self._dev_unit = link._dev_unit
 
-        tri_df = triangle._df
-        group_var = triangle._group_var
+        tri_df = link._tri_df
+        group_var = link._group_var
 
         if group_var is None:
             loss_obs, _, _ = _build_loss_matrix(tri_df)

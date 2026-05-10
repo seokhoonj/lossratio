@@ -23,8 +23,8 @@ from .cl import _build_loss_matrix, _fit_mack
 from .maturity import _compute_cv_rse
 
 if TYPE_CHECKING:
+    from .link import Link
     from .maturity import Maturity
-    from .triangle import Triangle
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ class ATA:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Experience(df).triangle(group_var="coverage")
-    >>> ata = tri.ata()
+    >>> ata = tri.link().ata()
     >>> ata.df
     """
 
@@ -142,16 +142,16 @@ class ATA:
         self._dev_unit: str
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle") -> "ATA":
+    def _from_link(cls, link: "Link") -> "ATA":
         self = cls.__new__(cls)
-        self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
-        self._dev_unit = triangle._dev_unit
+        self._output_type = link._output_type
+        self._group_var = link._group_var
+        self._cohort_var = link._cohort_var
+        self._dev_var = link._dev_var
+        self._dev_unit = link._dev_unit
 
-        tri_df = triangle._df
-        group_var = triangle._group_var
+        tri_df = link._tri_df
+        group_var = link._group_var
 
         if group_var is None:
             loss_obs, _, _ = _build_loss_matrix(tri_df)

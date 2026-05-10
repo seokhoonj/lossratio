@@ -30,18 +30,22 @@ Working components:
   exposure-driven, and stage-adaptive loss-ratio projection
   (`fit(triangle)` → `CLFit` / `EDFit` / `LRFit` with `summary()`,
   `df` projection frame, and per-cohort SE / CV).
-- `Triangle.maturity()` — detects the development period at which
-  age-to-age factors stabilise (returns a `Maturity` result).
+- `Triangle.link()` — builds the long-format `Link` table (one row
+  per cohort × adjacent dev pair). Method chain `tri.link().ata()` /
+  `tri.link().intensity()` returns paired factor-level diagnostics
+  (multiplicative ATA factors, additive ED intensities). Add
+  `.maturity(...)` after `.ata()` to detect the development period
+  at which age-to-age factors stabilise.
 - `Triangle.detect_regime()` — detects structural shifts across the
   cohort sequence via E-Divisive or Ward hierarchical clustering
   (returns a `Regime` result).
 - `Backtest` — calendar-diagonal hold-out backtest of any of the
   above estimators (returns a `BacktestFit` with per-cell, by-dev,
-  and by-diagonal AEG summaries).
+  and by-diagonal A/E Error summaries — `ae_err = actual /
+  predicted - 1`).
 
 Not yet ported from the R sibling: `Calendar` / `Total`
-aggregations, the intermediate `Link` object, and the
-`Convergence` diagnostic.
+aggregations and the `Convergence` diagnostic.
 
 ## Quick Start
 
@@ -73,7 +77,7 @@ reg.breakpoints      # [datetime.date(2025, 7, 1)]
 #    The last 6 diagonals are masked, the estimator is refitted on the
 #    remaining cells, and the projection is compared with actual loss.
 bt = lr.Backtest(estimator=lr.LR(), holdout=6).fit(tri)
-bt.diag_summary      # actual vs predicted vs AEG by calendar diagonal
+bt.diag_summary      # A/E Error (mean/median/wt) by calendar diagonal
 ```
 
 To plug in your own data, build a long-format frame with these

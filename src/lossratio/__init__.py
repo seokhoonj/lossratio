@@ -13,6 +13,7 @@ from .datasets import load_experience
 from .ed import ED, EDFit
 from .experience import Experience
 from .intensity import Intensity
+from .link import Link
 from .lr import LR, LRFit
 from .maturity import Maturity
 from .regime import Regime
@@ -32,6 +33,7 @@ __all__ = [
     "Intensity",
     "LR",
     "LRFit",
+    "Link",
     "Maturity",
     "Regime",
     "Triangle",

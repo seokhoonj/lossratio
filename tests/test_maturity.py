@@ -1,4 +1,4 @@
-"""Tests for ATA maturity detection (`tri.maturity()`)."""
+"""Tests for ATA maturity detection (`tri.link().ata().maturity()`)."""
 
 import polars as pl
 import pytest
@@ -73,13 +73,13 @@ def _date(s: str) -> pl.Expr:
 
 def test_maturity_returns_atamaturity():
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     assert isinstance(mat, lr.Maturity)
 
 
 def test_maturity_diagnostic_columns():
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     df = mat.to_polars()
     # Maturity now builds on top of ATA factor diagnostic, so its
     # df carries the full ATA schema (`f`, `sigma2`, `cv`, `rse`,
@@ -91,7 +91,7 @@ def test_maturity_diagnostic_columns():
 
 def test_maturity_repr():
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     text = repr(mat)
     assert "Maturity" in text
     assert "max_cv" in text
@@ -105,21 +105,21 @@ def test_maturity_repr():
 def test_maturity_stable_data_finds_k_star_at_one():
     """When every link is perfectly stable (CV=0, RSE=0), k_star=1."""
     tri = lr.Experience(_stable_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     assert mat.k_star == 1
 
 
 def test_maturity_strict_thresholds_no_detection():
     """Set thresholds tighter than any observed CV/RSE → k_star=None."""
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity(max_cv=1e-9, max_rse=1e-9, min_run=2)
+    mat = tri.link().ata().maturity(max_cv=1e-9, max_rse=1e-9, min_run=2)
     assert mat.k_star is None
 
 
 def test_maturity_loose_thresholds_finds_k_star():
     """Generous thresholds: k_star should be the first link."""
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
+    mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # With min_run=2 we need 2 consecutive stable links — first available is k=1
     assert mat.k_star == 1
 
@@ -128,7 +128,7 @@ def test_maturity_m_consecutive_required():
     """With m larger than the number of links, no detection possible."""
     tri = lr.Experience(_polars_input()).triangle()
     # n_links = 4. min_run=5 cannot be satisfied.
-    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=5)
+    mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=5)
     assert mat.k_star is None
 
 
@@ -139,7 +139,7 @@ def test_maturity_m_consecutive_required():
 
 def test_maturity_f_matches_cl_factors():
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     cl_fit = lr.CL().fit(tri)
 
     mat_f = mat.to_polars().sort("dev")["f"].to_list()
@@ -159,7 +159,7 @@ def test_maturity_cv_first_link_hand_check():
     CV = sd / mean
     """
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     cv = mat.to_polars().sort("dev")["cv"].to_list()
     # CV is positive (some spread)
     assert cv[0] is not None
@@ -170,7 +170,7 @@ def test_maturity_rse_link_with_one_observation_is_null():
     """Link 4 has n_k=1, sigma^2_k=0 unless tail rule applies; RSE may
     be null (no SE estimate for a single observation)."""
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     df = mat.to_polars().sort("dev")
     rse_link_4 = df["rse"].to_list()[3]
     # With Mack tail rule, sigma^2_4 may be set > 0, so rse_link_4 may
@@ -187,7 +187,7 @@ def test_maturity_rse_link_with_one_observation_is_null():
 def test_maturity_with_group_var():
     df = _polars_input().with_columns(pl.lit("SUR").alias("coverage"))
     tri = lr.Experience(df).triangle(group_var="coverage")
-    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
+    mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
 
     assert "coverage" in mat.to_polars().columns
     # k_star is a dict per group when group_var present
@@ -204,7 +204,7 @@ def test_maturity_per_group_independent():
         ]
     )
     tri = lr.Experience(df_grouped).triangle(group_var="coverage")
-    mat = tri.maturity(max_cv=10.0, max_rse=10.0, min_run=2)
+    mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # Same data in each group → same k_star
     assert mat.k_star == {"A": 1, "B": 1}
 
@@ -218,7 +218,7 @@ def test_maturity_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_polars_input().to_pandas())
     tri = lr.Experience(df).triangle()
-    mat = tri.maturity()
+    mat = tri.link().ata().maturity()
     assert isinstance(mat.df, pd.DataFrame)
     assert isinstance(mat.summary(), pd.DataFrame)
 
@@ -230,7 +230,7 @@ def test_maturity_pandas_input_mirror():
 
 def test_maturity_thresholds_stored():
     tri = lr.Experience(_polars_input()).triangle()
-    mat = tri.maturity(max_cv=0.2, max_rse=0.1, min_run=3)
+    mat = tri.link().ata().maturity(max_cv=0.2, max_rse=0.1, min_run=3)
     assert mat.max_cv == 0.2
     assert mat.max_rse == 0.1
     assert mat.min_run == 3

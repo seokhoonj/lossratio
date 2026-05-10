@@ -54,20 +54,20 @@ def _tri_grouped():
 
 def test_intensity_returns_intensity_result():
     tri = _tri()
-    intf = tri.intensity()
-    assert isinstance(intf, lr.Intensity)
+    intensity = tri.link().intensity()
+    assert isinstance(intensity, lr.Intensity)
 
 
 def test_intensity_repr_no_group():
-    intf = _tri().intensity()
-    text = repr(intf)
+    intensity = _tri().link().intensity()
+    text = repr(intensity)
     assert "Intensity" in text
     assert "links" in text
 
 
 def test_intensity_repr_grouped():
-    intf = _tri_grouped().intensity()
-    text = repr(intf)
+    intensity = _tri_grouped().link().intensity()
+    text = repr(intensity)
     assert "Intensity" in text
     assert "groups" in text
 
@@ -78,20 +78,20 @@ def test_intensity_repr_grouped():
 
 
 def test_intensity_df_columns_no_group():
-    intf = _tri().intensity()
-    assert set(intf.df.columns) >= {"dev", "g", "g_se", "sigma2", "n_obs"}
+    intensity = _tri().link().intensity()
+    assert set(intensity.df.columns) >= {"dev", "g", "g_se", "sigma2", "n_obs"}
 
 
 def test_intensity_df_columns_with_group():
-    intf = _tri_grouped().intensity()
-    assert set(intf.df.columns) >= {
+    intensity = _tri_grouped().link().intensity()
+    assert set(intensity.df.columns) >= {
         "coverage", "dev", "g", "g_se", "sigma2", "n_obs",
     }
 
 
 def test_intensity_df_n_links_equals_n_devs_minus_one():
-    intf = _tri().intensity()
-    df = intf.df
+    intensity = _tri().link().intensity()
+    df = intensity.df
     # toy input has 5 dev periods → 4 links
     assert df.shape[0] == 4
     assert sorted(df["dev"].to_list()) == [1, 2, 3, 4]
@@ -103,8 +103,8 @@ def test_intensity_df_n_links_equals_n_devs_minus_one():
 
 
 def test_intensity_g_is_finite_for_nontrivial_links():
-    intf = _tri().intensity()
-    df = intf.df
+    intensity = _tri().link().intensity()
+    df = intensity.df
     # links 1..3 have at least 2 cohorts contributing → g should be finite
     for k, g in zip(df["dev"].to_list(), df["g"].to_list()):
         if k <= 3:
@@ -112,21 +112,21 @@ def test_intensity_g_is_finite_for_nontrivial_links():
 
 
 def test_intensity_g_se_nonneg_when_present():
-    intf = _tri().intensity()
-    for v in intf.df["g_se"].to_list():
+    intensity = _tri().link().intensity()
+    for v in intensity.df["g_se"].to_list():
         assert v is None or v >= 0.0
 
 
 def test_intensity_sigma2_nonneg_when_present():
-    intf = _tri().intensity()
-    for v in intf.df["sigma2"].to_list():
+    intensity = _tri().link().intensity()
+    for v in intensity.df["sigma2"].to_list():
         assert v is None or v >= 0.0
 
 
 def test_intensity_n_obs_decreasing_with_dev():
     """As dev grows, fewer cohorts contribute (triangular structure)."""
-    intf = _tri().intensity()
-    df = intf.df.sort("dev")
+    intensity = _tri().link().intensity()
+    df = intensity.df.sort("dev")
     counts = df["n_obs"].to_list()
     # toy: dev=1 has 4 links, dev=2 has 3, dev=3 has 2, dev=4 has 1
     assert counts == [4, 3, 2, 1]
@@ -140,9 +140,9 @@ def test_intensity_n_obs_decreasing_with_dev():
 def test_intensity_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_input().to_pandas())
-    intf = lr.Experience(df).triangle().intensity()
-    assert isinstance(intf.df, pd.DataFrame)
-    assert isinstance(intf.summary(), pd.DataFrame)
+    intensity = lr.Experience(df).triangle().link().intensity()
+    assert isinstance(intensity.df, pd.DataFrame)
+    assert isinstance(intensity.summary(), pd.DataFrame)
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +159,8 @@ def test_intensity_per_group_independent():
         ]
     )
     tri = lr.Experience(df_grouped).triangle(group_var="coverage")
-    intf = tri.intensity()
-    df = intf.df
+    intensity = tri.link().intensity()
+    df = intensity.df
     a_g = df.filter(pl.col("coverage") == "A").sort("dev")["g"].to_list()
     b_g = df.filter(pl.col("coverage") == "B").sort("dev")["g"].to_list()
     assert a_g == b_g

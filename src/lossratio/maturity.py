@@ -1,4 +1,10 @@
-"""ATA maturity detection."""
+"""ATA maturity detection.
+
+``Maturity`` is a *post-processing* step that operates on top of an
+ATA factor diagnostic (:class:`ATA`). Use :meth:`ATA.maturity` to
+construct one. ``Triangle`` no longer carries a ``.maturity()``
+shortcut — call ``triangle.link().ata().maturity(...)``.
+"""
 
 from __future__ import annotations
 
@@ -9,29 +15,33 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_loss_matrix, _fit_mack
+from .cl import _fit_mack
 
 if TYPE_CHECKING:
     from .ata import ATA
-    from .triangle import Triangle
+
+
+@dataclass
+class _MaturityResult:
+    """Internal single-group maturity detection result.
+
+    Used by :mod:`lr` (stage-adaptive method) to locate the
+    ED-to-CL switch point. End users get the public
+    :class:`Maturity` (built via :meth:`ATA.maturity`).
+    """
+
+    f_k: np.ndarray
+    sigma2_k: np.ndarray
+    cv_k: np.ndarray
+    rse_k: np.ndarray
+    stable_k: np.ndarray
+    k_star: int | None
+    n_devs: int
 
 
 # ---------------------------------------------------------------------------
 # Internal computation
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class _MaturityResult:
-    """Single-group maturity detection result."""
-
-    f_k: np.ndarray         # (n_links,)
-    sigma2_k: np.ndarray    # (n_links,)
-    cv_k: np.ndarray        # (n_links,)  CV of individual link factors
-    rse_k: np.ndarray       # (n_links,)  RSE of pooled f_k
-    stable_k: np.ndarray    # (n_links,)  bool
-    k_star: int | None      # 1-indexed dev where stability begins
-    n_devs: int
 
 
 def _compute_cv_rse(
@@ -101,6 +111,11 @@ def _compute_maturity(
     max_rse: float,
     min_run: int,
 ) -> _MaturityResult:
+    """Internal: compute factor stats + stability flags + k_star.
+
+    Used by :mod:`lr` for the stage-adaptive method's switch point.
+    The public path is ``triangle.link().ata().maturity(...)``.
+    """
     mack = _fit_mack(loss_obs)
     cv_k, rse_k = _compute_cv_rse(loss_obs, mack.f_k, mack.sigma2_k)
     stable_k = np.zeros(len(cv_k), dtype=bool)
@@ -117,50 +132,6 @@ def _compute_maturity(
         k_star=k_star,
         n_devs=loss_obs.shape[1],
     )
-
-
-def _diagnostic_to_df(
-    result: _MaturityResult,
-    group_var: str | None,
-    group_value: Any | None,
-) -> pl.DataFrame:
-    """Convert a maturity result into a long-format diagnostic DataFrame."""
-    rows = []
-    for k in range(len(result.f_k)):
-        row: dict[str, Any] = {}
-        if group_var is not None:
-            row[group_var] = group_value
-        row["dev"] = k + 1
-        row["f"] = float(result.f_k[k]) if not np.isnan(result.f_k[k]) else None
-        row["sigma2"] = (
-            float(result.sigma2_k[k])
-            if not np.isnan(result.sigma2_k[k])
-            else None
-        )
-        row["cv"] = (
-            float(result.cv_k[k]) if not np.isnan(result.cv_k[k]) else None
-        )
-        row["rse"] = (
-            float(result.rse_k[k]) if not np.isnan(result.rse_k[k]) else None
-        )
-        row["stable"] = bool(result.stable_k[k])
-        rows.append(row)
-    return pl.DataFrame(rows)
-
-
-def _kstar_to_df(
-    result: _MaturityResult,
-    group_var: str | None,
-    group_value: Any | None,
-) -> pl.DataFrame:
-    """One-row summary DataFrame for the detected k_star."""
-    row: dict[str, Any] = {}
-    if group_var is not None:
-        row[group_var] = group_value
-    row["k_star"] = result.k_star
-    row["n_links"] = len(result.f_k)
-    row["n_stable_links"] = int(result.stable_k.sum())
-    return pl.DataFrame([row])
 
 
 # ---------------------------------------------------------------------------
@@ -208,9 +179,8 @@ class Maturity:
         min_run: int,
     ) -> "Maturity":
         """Build Maturity by applying stability thresholds on top of an
-        existing ATA factor diagnostic. This is the canonical
-        constructor — :meth:`Triangle.maturity` is a thin shortcut
-        that calls ``triangle.ata().maturity()``.
+        existing ATA factor diagnostic. The user-facing chain is
+        ``triangle.link().ata().maturity(...)``.
         """
         self = cls.__new__(cls)
         self._output_type = ata._output_type
@@ -267,23 +237,6 @@ class Maturity:
         self._kstar_df = kstar_df
         return self
 
-    @classmethod
-    def _from_triangle(
-        cls,
-        triangle: "Triangle",
-        max_cv: float,
-        max_rse: float,
-        min_run: int,
-    ) -> "Maturity":
-        """Backward-compat shortcut: build ATA factor diagnostic on the
-        triangle, then apply maturity thresholds. Equivalent to
-        ``triangle.ata().maturity(...)``.
-        """
-        return triangle.ata().maturity(
-            max_cv=max_cv,
-            max_rse=max_rse,
-            min_run=min_run,
-        )
 
     @property
     def df(self):

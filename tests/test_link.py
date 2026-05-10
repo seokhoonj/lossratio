@@ -1,0 +1,165 @@
+"""Tests for Triangle.link() and the Link result class."""
+
+from __future__ import annotations
+
+import polars as pl
+import pytest
+
+import lossratio as lr
+
+
+def _toy_input() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "cym": [
+                "2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
+                "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
+                "2024-03-01", "2024-04-01", "2024-05-01",
+                "2024-04-01", "2024-05-01",
+                "2024-05-01",
+            ],
+            "uym": [
+                "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01",
+                "2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01",
+                "2024-03-01", "2024-03-01", "2024-03-01",
+                "2024-04-01", "2024-04-01",
+                "2024-05-01",
+            ],
+            "loss_incr": [
+                100.0, 100.0, 120.0, 100.0, 80.0,
+                150.0, 130.0, 160.0, 130.0,
+                120.0, 130.0, 130.0,
+                180.0, 190.0,
+                200.0,
+            ],
+            "premium_incr": [100.0] * 15,
+        }
+    )
+
+
+def _tri():
+    return lr.Experience(_toy_input()).triangle()
+
+
+def _tri_grouped():
+    df = _toy_input().with_columns(pl.lit("SUR").alias("coverage"))
+    return lr.Experience(df).triangle(group_var="coverage")
+
+
+# ---------------------------------------------------------------------------
+# Class shape
+# ---------------------------------------------------------------------------
+
+
+def test_link_returns_link():
+    link = _tri().link()
+    assert isinstance(link, lr.Link)
+
+
+def test_link_repr_no_group():
+    link = _tri().link()
+    text = repr(link)
+    assert "Link" in text
+    assert "links" in text
+    assert "dual-mode" in text
+
+
+def test_link_repr_grouped():
+    link = _tri_grouped().link()
+    text = repr(link)
+    assert "groups" in text
+
+
+# ---------------------------------------------------------------------------
+# DataFrame schema
+# ---------------------------------------------------------------------------
+
+
+def test_link_df_has_ata_columns():
+    link = _tri().link()
+    cols = set(link.df.columns)
+    assert {
+        "cohort", "ata_from", "ata_to", "ata_link",
+        "loss_from", "loss_to", "loss_delta", "ata",
+    } <= cols
+
+
+def test_link_df_has_premium_columns_in_dual_mode():
+    link = _tri().link()
+    cols = set(link.df.columns)
+    # Triangle from Experience always carries premium → dual-mode
+    assert {
+        "premium_from", "premium_to", "premium_delta", "intensity",
+    } <= cols
+
+
+def test_link_df_grouped_has_group_var():
+    link = _tri_grouped().link()
+    assert "coverage" in link.df.columns
+
+
+# ---------------------------------------------------------------------------
+# Per-cell math sanity
+# ---------------------------------------------------------------------------
+
+
+def test_link_ata_equals_loss_to_over_loss_from():
+    link = _tri().link()
+    df = link.df
+    for r in df.iter_rows(named=True):
+        if r["loss_from"] is not None and r["loss_from"] > 0:
+            assert r["ata"] == pytest.approx(r["loss_to"] / r["loss_from"])
+
+
+def test_link_intensity_equals_loss_delta_over_premium_from():
+    link = _tri().link()
+    df = link.df
+    for r in df.iter_rows(named=True):
+        if r["premium_from"] is not None and r["premium_from"] > 0:
+            assert r["intensity"] == pytest.approx(
+                (r["loss_to"] - r["loss_from"]) / r["premium_from"]
+            )
+
+
+# ---------------------------------------------------------------------------
+# Method chain
+# ---------------------------------------------------------------------------
+
+
+def test_link_ata_returns_ata():
+    ata = _tri().link().ata()
+    assert isinstance(ata, lr.ATA)
+
+
+def test_link_intensity_returns_intensity():
+    intensity = _tri().link().intensity()
+    assert isinstance(intensity, lr.Intensity)
+
+
+def test_link_ata_then_maturity_returns_maturity():
+    mat = _tri().link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
+    assert isinstance(mat, lr.Maturity)
+
+
+def test_link_build_once_summarise_twice():
+    """Same Link should produce identical ATA / Intensity results
+    each time it's queried."""
+    link = _tri().link()
+    a1 = link.ata().df.sort("dev")["f"].to_list()
+    a2 = link.ata().df.sort("dev")["f"].to_list()
+    i1 = link.intensity().df.sort("dev")["g"].to_list()
+    i2 = link.intensity().df.sort("dev")["g"].to_list()
+    assert a1 == a2
+    assert i1 == i2
+
+
+# ---------------------------------------------------------------------------
+# Output type mirroring
+# ---------------------------------------------------------------------------
+
+
+def test_link_pandas_input_mirror():
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(_toy_input().to_pandas())
+    link = lr.Experience(df).triangle().link()
+    assert isinstance(link.df, pd.DataFrame)

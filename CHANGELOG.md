@@ -10,25 +10,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.1.dev7] — 2026-05-10
 
 ### Added
-- **`Triangle.ata()`** returning :class:`ATA`: per-link ATA factor
-  diagnostic ``f_k = E[C^L_{k+1} / C^L_k]`` with cross-cohort CV,
-  relative standard error, residual sigma^2, and per-link cohort
-  count.
-- **`Triangle.intensity()`** returning :class:`Intensity`: per-link
-  WLS-estimated ED intensities ``g_k = E[ΔL / C^P]`` with standard
-  errors, residual sigma^2, and per-link cohort count. ED has no
-  maturity-point analogue (g_k decays to zero, breaking CV/RSE);
-  see the class docstring.
+- **`Triangle.link()`** returning :class:`Link`: long-format link
+  table — one row per (cohort, adjacent dev pair) — with per-cell
+  ``ata`` and (in dual mode) per-cell ``intensity``. Mirrors R's
+  ``Link`` data class.
+- :class:`Link` has methods :meth:`Link.ata` and
+  :meth:`Link.intensity` for paired factor-level diagnostics, plus
+  ``.df`` for the raw long-format table.
+- :class:`ATA` (per-link Mack-pooled ``f_k``, cross-cohort CV, RSE,
+  sigma^2, n_obs) and :class:`Intensity` (per-link WLS ``g_k``,
+  ``g_se``, sigma^2, n_obs) result classes, exposed via
+  ``Link.ata()`` / ``Link.intensity()``. ED has no maturity-point
+  analogue (g_k decays to zero, breaking CV/RSE).
 
-``ATA`` and ``Intensity`` are *factor-level* diagnostics paired
-across the two model families. ``Maturity`` is a *separate*
-detection step that operates on top of the ATA factor diagnostic to
-locate the stability point ``k_star``. Conceptually:
+The single canonical chain for factor-level diagnostics:
 
-* ``Triangle.ata()`` ↔ ``Triangle.intensity()`` — paired factor diagnostics
-* ``Triangle.maturity()`` — ATA-side stability detection (no ED counterpart)
+```python
+tri.link()                          # → Link
+   .ata()                           # → ATA       (multiplicative)
+   .intensity()                     # → Intensity (additive)
+   .ata().maturity(max_cv=0.15)     # → Maturity  (stability detection)
+```
 
 ### Changed (R-parity, breaking)
+- **Removed** `Triangle.ata()`, `Triangle.intensity()`, and
+  `Triangle.maturity()` shortcut methods. Use the explicit chain
+  via ``triangle.link()`` (see above). Rationale: a single
+  canonical path makes the dependency structure explicit (Maturity
+  is a post-processing step *on top of* the ATA factor diagnostic;
+  ATA and Intensity are paired factor diagnostics derived from the
+  shared :class:`Link` intermediate). "Build once, summarise twice"
+  is now naturally available — call ``link.ata()`` and
+  ``link.intensity()`` on the same ``Link`` without recomputing.
+
+  *Migration*: replace
+  - ``tri.ata(...)`` → ``tri.link().ata(...)``
+  - ``tri.intensity(...)`` → ``tri.link().intensity(...)``
+  - ``tri.maturity(...)`` → ``tri.link().ata().maturity(...)``
+
 - `BacktestFit.aeg` property renamed to **`BacktestFit.ae_err`** and
   the underlying formula switched from a literal `actual - predicted`
   gap to the standard A/E convention

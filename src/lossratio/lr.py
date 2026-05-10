@@ -286,7 +286,7 @@ class LR:
 
     * ``"sa"`` (default): stage-adaptive — exposure-driven (ED) before
       the maturity point ``k*``, chain ladder (CL) after. Maturity is
-      detected internally per group via ``Triangle.maturity`` style
+      detected internally per group via the ATA factor diagnostic
       thresholds (``max_cv``, ``max_rse``, ``min_run``). Falls back to
       ED throughout when maturity is not detected.
     * ``"ed"``: ED projection only (additive, exposure-anchored).
