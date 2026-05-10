@@ -144,7 +144,7 @@ columns and pass it to `lr.Triangle(df, group_var=...)`:
 The shipped `lr.load_experience()` dataset already includes `dev_m`
 for convenience. Coarser granularities (`dev_q`, `dev_s`, `dev_a` —
 quarterly, semi-annual, annual) can be derived via
-`add_experience_period(df)`, which produces the full 12-column
+`derive_grain_columns(df)`, which produces the full 12-column
 enrichment (`uy_a/uy_s/uy_q/uy_m`, `cy_a/cy_s/cy_q/cy_m`,
 `dev_a/dev_s/dev_q/dev_m`). Pass `grain="Q"` / `"S"` / `"A"` to
 `Triangle()` to aggregate at a coarser grain (default `"auto"`

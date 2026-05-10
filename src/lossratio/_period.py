@@ -341,3 +341,139 @@ def count_periods(
     else:
         raise ValueError(f"Unknown grain: {grain!r}")
     return elap.cast(pl.Int64)
+
+
+# ---------------------------------------------------------------------------
+# User-facing: derive M/Q/S/A grain columns from monthly source
+# ---------------------------------------------------------------------------
+
+
+def derive_grain_columns(df: Any) -> Any:
+    """Derive monthly / quarterly / semi-annual / annual grain columns.
+
+    Given a long-format frame with monthly source columns (``uy_m``,
+    ``cy_m``), derive the coarser-grain siblings (``uy_q`` / ``uy_s`` /
+    ``uy_a``, ``cy_q`` / ``cy_s`` / ``cy_a``) plus the development
+    indices (``dev_m`` / ``dev_q`` / ``dev_s`` / ``dev_a``) so the
+    same frame can be aggregated at any of the four grains.
+
+    This is an *optional* utility — :class:`Triangle` already derives
+    the single grain it needs internally. Use this when you want one
+    enriched frame that can be re-aggregated at multiple grains, or
+    for exploratory plots.
+
+    Letter-suffix family: ``_m`` / ``_q`` / ``_s`` / ``_a`` = monthly /
+    quarterly / semi-annual / annual.
+
+    The 12 grain columns (4 grains × 3 axes) are:
+
+    * Underwriting period (Date, from ``uy_m``):
+      ``uy_a``, ``uy_s``, ``uy_q``, ``uy_m``.
+    * Calendar period (Date, from ``cy_m``):
+      ``cy_a``, ``cy_s``, ``cy_q``, ``cy_m``.
+    * Development period (Int, derived from ``uy_m`` and ``cy_m``):
+      ``dev_a``, ``dev_s``, ``dev_q``, ``dev_m``.
+
+    ``dev_s`` and ``dev_q`` are *not* simple groupings of ``dev_m`` —
+    they are aligned to calendar S / Q boundaries so that underwriting
+    cohorts in (say) Q1 vs Q2 are compared on a consistent cumulative
+    development basis.
+
+    Parameters
+    ----------
+    df
+        A ``polars.DataFrame`` or ``pandas.DataFrame`` with both
+        ``uy_m`` and ``cy_m``.
+
+    Returns
+    -------
+    DataFrame
+        The same DataFrame type as input, with the additional grain
+        columns appended.
+
+    Raises
+    ------
+    ValueError
+        If ``uy_m`` or ``cy_m`` is missing.
+    """
+    # Late imports to avoid a circular dependency at module load time
+    # (experience.py imports from _io, _io is loaded eagerly).
+    from ._io import detect_input_type, mirror_output, to_polars
+
+    output_type = detect_input_type(df)
+    df_pl = to_polars(df)
+
+    cols = set(df_pl.columns)
+    if "uy_m" not in cols or "cy_m" not in cols:
+        raise ValueError(
+            "derive_grain_columns requires both 'uy_m' and 'cy_m' columns."
+        )
+
+    # Coerce uy_m / cy_m to Date (no-op if already Date).
+    df_pl = df_pl.with_columns(
+        pl.col("uy_m").cast(pl.Date),
+        pl.col("cy_m").cast(pl.Date),
+    )
+
+    # Underwriting grain Dates: uy_a / uy_s / uy_q.
+    df_pl = df_pl.with_columns(
+        pl.date(pl.col("uy_m").dt.year(), 1, 1).alias("uy_a"),
+        pl.date(
+            pl.col("uy_m").dt.year(),
+            pl.when(pl.col("uy_m").dt.month() <= 6).then(1).otherwise(7),
+            1,
+        ).alias("uy_s"),
+        pl.date(
+            pl.col("uy_m").dt.year(),
+            ((pl.col("uy_m").dt.month() - 1) // 3) * 3 + 1,
+            1,
+        ).alias("uy_q"),
+    )
+
+    # Calendar grain Dates: cy_a / cy_s / cy_q.
+    df_pl = df_pl.with_columns(
+        pl.date(pl.col("cy_m").dt.year(), 1, 1).alias("cy_a"),
+        pl.date(
+            pl.col("cy_m").dt.year(),
+            pl.when(pl.col("cy_m").dt.month() <= 6).then(1).otherwise(7),
+            1,
+        ).alias("cy_s"),
+        pl.date(
+            pl.col("cy_m").dt.year(),
+            ((pl.col("cy_m").dt.month() - 1) // 3) * 3 + 1,
+            1,
+        ).alias("cy_q"),
+    )
+
+    # Development indices (Int): dev_m, dev_q, dev_s, dev_a.
+    # S / Q indices are 0-based grain indices within the calendar year:
+    #   uy_s_idx ∈ {0, 1}    (0 = S1, 1 = S2)
+    #   uy_q_idx ∈ {0, 1, 2, 3}  (0 = Q1, ..., 3 = Q4)
+    uy_s_idx = (pl.col("uy_m").dt.month() - 1) // 6
+    cy_s_idx = (pl.col("cy_m").dt.month() - 1) // 6
+    uy_q_idx = (pl.col("uy_m").dt.month() - 1) // 3
+    cy_q_idx = (pl.col("cy_m").dt.month() - 1) // 3
+
+    df_pl = df_pl.with_columns(
+        (
+            (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 12
+            + (pl.col("cy_m").dt.month() - pl.col("uy_m").dt.month())
+            + 1
+        ).cast(pl.Int64).alias("dev_m"),
+    )
+
+    df_pl = df_pl.with_columns(
+        (((pl.col("dev_m") - 1) // 12) + 1).cast(pl.Int64).alias("dev_a"),
+        (
+            (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 2
+            + (cy_s_idx - uy_s_idx)
+            + 1
+        ).cast(pl.Int64).alias("dev_s"),
+        (
+            (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 4
+            + (cy_q_idx - uy_q_idx)
+            + 1
+        ).cast(pl.Int64).alias("dev_q"),
+    )
+
+    return mirror_output(df_pl, output_type)

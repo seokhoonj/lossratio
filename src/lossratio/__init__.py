@@ -6,12 +6,13 @@ References:
 * R package documentation: https://seokhoonj.github.io/lossratio/
 """
 
+from ._period import derive_grain_columns
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .cl import CL, CLFit
 from .datasets import load_experience, make_experience
 from .ed import ED, EDFit
-from .experience import add_experience_period, validate_experience
+from .experience import validate_experience
 from .intensity import Intensity
 from .link import Link
 from .lr import LR, LRFit
@@ -37,7 +38,7 @@ __all__ = [
     "Regime",
     "Triangle",
     "__version__",
-    "add_experience_period",
+    "derive_grain_columns",
     "load_experience",
     "make_experience",
     "validate_experience",

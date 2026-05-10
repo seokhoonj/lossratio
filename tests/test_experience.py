@@ -1,4 +1,4 @@
-"""Tests for the validate_experience() and add_experience_period() helpers.
+"""Tests for the validate_experience() and derive_grain_columns() helpers.
 
 These module-level functions replace the former ``Experience`` data class.
 They are pure DataFrame transforms: input type (polars / pandas) is mirrored
@@ -75,7 +75,7 @@ def test_validate_experience_wrong_input_type():
 
 
 # ---------------------------------------------------------------------------
-# add_experience_period: derived period columns
+# derive_grain_columns: derived period columns
 # ---------------------------------------------------------------------------
 
 
@@ -94,22 +94,22 @@ def _period_input() -> pl.DataFrame:
     )
 
 
-def test_add_experience_period_polars_returns_polars():
-    out = lr.add_experience_period(_period_input())
+def test_derive_grain_columns_polars_returns_polars():
+    out = lr.derive_grain_columns(_period_input())
     assert isinstance(out, pl.DataFrame)
 
 
-def test_add_experience_period_pandas_returns_pandas():
+def test_derive_grain_columns_pandas_returns_pandas():
     pd = pytest.importorskip("pandas")
     out_pl = _period_input()
     df = out_pl.to_pandas()
-    out = lr.add_experience_period(df)
+    out = lr.derive_grain_columns(df)
     assert isinstance(out, pd.DataFrame)
 
 
-def test_add_experience_period_columns_present():
+def test_derive_grain_columns_columns_present():
     """Derived columns are uy/cy/dev x a/s/q/m (12 columns total)."""
-    out = lr.add_experience_period(_period_input())
+    out = lr.derive_grain_columns(_period_input())
     cols = set(out.columns)
     assert {
         "uy_a", "uy_s", "uy_q", "uy_m",
@@ -118,9 +118,9 @@ def test_add_experience_period_columns_present():
     } <= cols
 
 
-def test_add_experience_period_dev_m_calc():
+def test_derive_grain_columns_dev_m_calc():
     """dev_m = (cy_m_year - uy_m_year) * 12 + (cy_m_month - uy_m_month) + 1."""
-    out = lr.add_experience_period(_period_input())
+    out = lr.derive_grain_columns(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
     # Row 0: uy_m = 2024-01, cy_m = 2024-03 -> dev_m = 0*12 + (3 - 1) + 1 = 3
@@ -129,9 +129,9 @@ def test_add_experience_period_dev_m_calc():
     assert out["dev_m"].to_list() == [3, 3, 3]
 
 
-def test_add_experience_period_dev_q_calc():
+def test_derive_grain_columns_dev_q_calc():
     """Quarter elapsed: same calendar-anchored logic."""
-    out = lr.add_experience_period(_period_input())
+    out = lr.derive_grain_columns(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
     # Row 0: uy_m = 2024-01 (Q1), cy_m = 2024-03 (Q1) -> dev_q = 1
@@ -140,9 +140,9 @@ def test_add_experience_period_dev_q_calc():
     assert out["dev_q"].to_list() == [1, 1, 1]
 
 
-def test_add_experience_period_uy_a_first_of_year():
+def test_derive_grain_columns_uy_a_first_of_year():
     """uy_a is the first day of the underwriting year."""
-    out = lr.add_experience_period(_period_input())
+    out = lr.derive_grain_columns(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
     actual = out["uy_a"].to_list()

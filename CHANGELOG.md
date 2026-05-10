@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Renamed `add_experience_period(df)` to `derive_grain_columns(df)`
+  and moved it from `lossratio.experience` to `lossratio._period`.
+  The new name is honest about the function's role: it *derives*
+  the M / Q / S / A grain sibling columns (`uy_a` / `uy_s` / `uy_q`,
+  `cy_a` / `cy_s` / `cy_q`, `dev_a` / `dev_s` / `dev_q`) from the
+  monthly source columns (`uy_m` / `cy_m`), rather than just adding
+  arbitrary "period" variables. Public API remains a single
+  top-level import: `from lossratio import derive_grain_columns`.
+
+  Migration: `lr.add_experience_period(df)` → `lr.derive_grain_columns(df)`.
+  The function signature and behavior are unchanged.
+
+### Internal
+
+- The `lossratio.experience` module now only hosts
+  `validate_experience`. Grain derivation moved next to its
+  domain-neutral peers in `lossratio._period`.
+
 ## [0.0.1.dev9] — 2026-05-11
 
 ### Breaking

@@ -1,22 +1,23 @@
-"""Experience data validation and period-variable enrichment.
+"""Experience data validation.
 
 The package's input data convention is the actuarial experience table:
 one row per (cohort, calendar) cell with per-period loss and premium.
 
-This module exposes two module-level functions:
+This module exposes one module-level function:
 
 * :func:`validate_experience` — check required columns are present and
   coercible to the expected types; return the same DataFrame type as
   input (pandas in -> pandas out, polars in -> polars out).
-* :func:`add_experience_period` — derive the standard 12 period
-  variables (``uy_a``, ``uy_s``, ``uy_q``, ``uy_m``, ``cy_a``, ``cy_s``,
-  ``cy_q``, ``cy_m``, ``dev_a``, ``dev_s``, ``dev_q``, ``dev_m``) from
-  the source ``uy_m`` / ``cy_m`` columns. Same input mirroring.
+
+For deriving the M / Q / S / A grain sibling columns
+(``uy_a`` / ``uy_s`` / ``uy_q``, ``cy_a`` / ``cy_s`` / ``cy_q``,
+``dev_a`` / ``dev_s`` / ``dev_q``) from a monthly source frame, see
+:func:`lossratio.derive_grain_columns` (in :mod:`lossratio._period`).
 
 There is intentionally no ``Experience`` *class*. Wrapping a polars
 DataFrame in a class blocks natural ``df.filter(...)`` workflows.
 :class:`Triangle` accepts a plain DataFrame directly and runs
-validation + enrichment in its ``__init__``.
+validation + the single-grain enrichment it needs in its ``__init__``.
 """
 
 from __future__ import annotations
@@ -81,110 +82,3 @@ def validate_experience(df: Any) -> Any:
     return mirror_output(df_pl, output_type)
 
 
-def add_experience_period(df: Any) -> Any:
-    """Add the standard 12 period variables to an experience DataFrame.
-
-    Derives underwriting / calendar / development period variables from
-    the source ``uy_m`` and ``cy_m`` columns. Mirrors the R package's
-    :func:`add_experience_period`.
-
-    The 12 derived columns (4 grains × 3 axes) are:
-
-    * Underwriting period (Date, from ``uy_m``):
-      ``uy_a``, ``uy_s``, ``uy_q``, ``uy_m``.
-    * Calendar period (Date, from ``cy_m``):
-      ``cy_a``, ``cy_s``, ``cy_q``, ``cy_m``.
-    * Development period (Int, derived from ``uy_m`` and ``cy_m``):
-      ``dev_a``, ``dev_s``, ``dev_q``, ``dev_m``.
-
-    Half-year (``_s``) and quarter (``_q``) development indices are
-    *not* simple grouped versions of ``dev_m`` -- they are aligned to
-    calendar boundaries so that underwriting cohorts in (say) Q1 vs Q2
-    are compared on a consistent cumulative development basis.
-
-    Parameters
-    ----------
-    df
-        A ``polars.DataFrame`` or ``pandas.DataFrame`` with both
-        ``uy_m`` and ``cy_m``.
-
-    Returns
-    -------
-    DataFrame
-        The same DataFrame type as input, with the additional period
-        columns appended.
-    """
-    output_type = detect_input_type(df)
-    df_pl = to_polars(df)
-
-    cols = set(df_pl.columns)
-    if "uy_m" not in cols or "cy_m" not in cols:
-        raise ValueError(
-            "add_experience_period requires both 'uy_m' and 'cy_m' columns."
-        )
-
-    # Coerce uy_m / cy_m to Date (no-op if already Date).
-    df_pl = df_pl.with_columns(
-        pl.col("uy_m").cast(pl.Date),
-        pl.col("cy_m").cast(pl.Date),
-    )
-
-    # Underwriting period: uy_a, uy_s, uy_q (uy_m already present).
-    df_pl = df_pl.with_columns(
-        pl.date(pl.col("uy_m").dt.year(), 1, 1).alias("uy_a"),
-        pl.date(
-            pl.col("uy_m").dt.year(),
-            pl.when(pl.col("uy_m").dt.month() <= 6).then(1).otherwise(7),
-            1,
-        ).alias("uy_s"),
-        pl.date(
-            pl.col("uy_m").dt.year(),
-            ((pl.col("uy_m").dt.month() - 1) // 3) * 3 + 1,
-            1,
-        ).alias("uy_q"),
-    )
-
-    # Calendar period: cy_a, cy_s, cy_q (cy_m already present).
-    df_pl = df_pl.with_columns(
-        pl.date(pl.col("cy_m").dt.year(), 1, 1).alias("cy_a"),
-        pl.date(
-            pl.col("cy_m").dt.year(),
-            pl.when(pl.col("cy_m").dt.month() <= 6).then(1).otherwise(7),
-            1,
-        ).alias("cy_s"),
-        pl.date(
-            pl.col("cy_m").dt.year(),
-            ((pl.col("cy_m").dt.month() - 1) // 3) * 3 + 1,
-            1,
-        ).alias("cy_q"),
-    )
-
-    # Development period (Int): dev_m, dev_q, dev_s, dev_a.
-    uy_half = (pl.col("uy_m").dt.month() - 1) // 6
-    cy_half = (pl.col("cy_m").dt.month() - 1) // 6
-    uy_q = (pl.col("uy_m").dt.month() - 1) // 3
-    cy_q = (pl.col("cy_m").dt.month() - 1) // 3
-
-    df_pl = df_pl.with_columns(
-        (
-            (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 12
-            + (pl.col("cy_m").dt.month() - pl.col("uy_m").dt.month())
-            + 1
-        ).cast(pl.Int64).alias("dev_m"),
-    )
-
-    df_pl = df_pl.with_columns(
-        (((pl.col("dev_m") - 1) // 12) + 1).cast(pl.Int64).alias("dev_a"),
-        (
-            (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 2
-            + (cy_half - uy_half)
-            + 1
-        ).cast(pl.Int64).alias("dev_s"),
-        (
-            (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 4
-            + (cy_q - uy_q)
-            + 1
-        ).cast(pl.Int64).alias("dev_q"),
-    )
-
-    return mirror_output(df_pl, output_type)
