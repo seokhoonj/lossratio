@@ -153,7 +153,7 @@ class Regime:
     K : int
         Development-period window.
     cohort_var : str
-        Original cohort variable name (e.g. ``"uym"``).
+        Original cohort variable name (e.g. ``"uy_m"``).
     breakpoints : list
         Cohort values at which a new regime starts (excluding the first
         cohort).

@@ -19,7 +19,7 @@ from .maturity import Maturity
 from .regime import Regime
 from .triangle import Triangle
 
-__version__ = "0.0.1.dev8"
+__version__ = "0.0.1.dev9"
 
 __all__ = [
     "ATA",

@@ -14,8 +14,8 @@ import lossratio as lr
 def _polars_input() -> pl.DataFrame:
     return pl.DataFrame(
         {
-            "cym":          ["2024-01-01", "2024-02-01"],
-            "uym":          ["2024-01-01", "2024-01-01"],
+            "cy_m":         ["2024-01-01", "2024-02-01"],
+            "uy_m":         ["2024-01-01", "2024-01-01"],
             "loss_incr":    [100.0, 150.0],
             "premium_incr": [200.0, 250.0],
         }
@@ -33,8 +33,8 @@ def test_validate_experience_polars_returns_polars():
     assert isinstance(out, pl.DataFrame)
     assert out.height == 2
     # Date columns coerced
-    assert out["cym"].dtype == pl.Date
-    assert out["uym"].dtype == pl.Date
+    assert out["cy_m"].dtype == pl.Date
+    assert out["uy_m"].dtype == pl.Date
     # Numeric columns coerced
     assert out["loss_incr"].dtype == pl.Float64
     assert out["premium_incr"].dtype == pl.Float64
@@ -44,8 +44,8 @@ def test_validate_experience_pandas_returns_pandas():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(
         {
-            "cym":          ["2024-01-01", "2024-02-01"],
-            "uym":          ["2024-01-01", "2024-01-01"],
+            "cy_m":         ["2024-01-01", "2024-02-01"],
+            "uy_m":         ["2024-01-01", "2024-01-01"],
             "loss_incr":    [100.0, 150.0],
             "premium_incr": [200.0, 250.0],
         }
@@ -59,10 +59,10 @@ def test_validate_experience_pandas_returns_pandas():
 def test_validate_experience_missing_required_column():
     df = pl.DataFrame(
         {
-            "cym":          ["2024-01-01"],
+            "cy_m":         ["2024-01-01"],
             "loss_incr":    [100.0],
             "premium_incr": [200.0],
-            # missing uym
+            # missing uy_m
         }
     )
     with pytest.raises(ValueError, match="Missing required columns"):
@@ -80,17 +80,17 @@ def test_validate_experience_wrong_input_type():
 
 
 def _period_input() -> pl.DataFrame:
-    """uym / cym pairs spanning a few months for derived-period checks."""
+    """uy_m / cy_m pairs spanning a few months for derived-period checks."""
     return pl.DataFrame(
         {
-            "uym":          ["2024-01-15", "2024-04-15", "2024-07-15"],
-            "cym":          ["2024-03-15", "2024-06-15", "2024-09-15"],
+            "uy_m":         ["2024-01-15", "2024-04-15", "2024-07-15"],
+            "cy_m":         ["2024-03-15", "2024-06-15", "2024-09-15"],
             "loss_incr":    [10.0, 20.0, 30.0],
             "premium_incr": [100.0, 100.0, 100.0],
         }
     ).with_columns(
-        pl.col("uym").cast(pl.Date),
-        pl.col("cym").cast(pl.Date),
+        pl.col("uy_m").cast(pl.Date),
+        pl.col("cy_m").cast(pl.Date),
     )
 
 
@@ -108,24 +108,24 @@ def test_add_experience_period_pandas_returns_pandas():
 
 
 def test_add_experience_period_columns_present():
-    """Derived columns are uy/uyh/uyq, cy/cyh/cyq, dev_y/dev_h/dev_q/dev_m."""
+    """Derived columns are uy/cy/dev x a/s/q/m (12 columns total)."""
     out = lr.add_experience_period(_period_input())
     cols = set(out.columns)
     assert {
-        "uy", "uyh", "uyq",
-        "cy", "cyh", "cyq",
-        "dev_y", "dev_h", "dev_q", "dev_m",
+        "uy_a", "uy_s", "uy_q", "uy_m",
+        "cy_a", "cy_s", "cy_q", "cy_m",
+        "dev_a", "dev_s", "dev_q", "dev_m",
     } <= cols
 
 
 def test_add_experience_period_dev_m_calc():
-    """dev_m = (cym_year - uym_year) * 12 + (cym_month - uym_month) + 1."""
+    """dev_m = (cy_m_year - uy_m_year) * 12 + (cy_m_month - uy_m_month) + 1."""
     out = lr.add_experience_period(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    # Row 0: uym = 2024-01, cym = 2024-03 -> dev_m = 0*12 + (3 - 1) + 1 = 3
-    # Row 1: uym = 2024-04, cym = 2024-06 -> dev_m = 0*12 + (6 - 4) + 1 = 3
-    # Row 2: uym = 2024-07, cym = 2024-09 -> dev_m = 0*12 + (9 - 7) + 1 = 3
+    # Row 0: uy_m = 2024-01, cy_m = 2024-03 -> dev_m = 0*12 + (3 - 1) + 1 = 3
+    # Row 1: uy_m = 2024-04, cy_m = 2024-06 -> dev_m = 0*12 + (6 - 4) + 1 = 3
+    # Row 2: uy_m = 2024-07, cy_m = 2024-09 -> dev_m = 0*12 + (9 - 7) + 1 = 3
     assert out["dev_m"].to_list() == [3, 3, 3]
 
 
@@ -134,17 +134,16 @@ def test_add_experience_period_dev_q_calc():
     out = lr.add_experience_period(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    # Row 0: uym = 2024-01 (Q1), cym = 2024-03 (Q1) -> dev_q = 1
-    # Row 1: uym = 2024-04 (Q2), cym = 2024-06 (Q2) -> dev_q = 1
-    # Row 2: uym = 2024-07 (Q3), cym = 2024-09 (Q3) -> dev_q = 1
+    # Row 0: uy_m = 2024-01 (Q1), cy_m = 2024-03 (Q1) -> dev_q = 1
+    # Row 1: uy_m = 2024-04 (Q2), cy_m = 2024-06 (Q2) -> dev_q = 1
+    # Row 2: uy_m = 2024-07 (Q3), cy_m = 2024-09 (Q3) -> dev_q = 1
     assert out["dev_q"].to_list() == [1, 1, 1]
 
 
-def test_add_experience_period_uy_first_of_year():
-    """uy is the first day of the underwriting year."""
+def test_add_experience_period_uy_a_first_of_year():
+    """uy_a is the first day of the underwriting year."""
     out = lr.add_experience_period(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    expected_uy = [pl.lit("2024-01-01").cast(pl.Date)] * 3
-    actual = out["uy"].to_list()
+    actual = out["uy_a"].to_list()
     assert all(d.isoformat() == "2024-01-01" for d in actual)

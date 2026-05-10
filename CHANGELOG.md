@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1.dev9] — 2026-05-11
+
+### Breaking
+
+- Renamed raw experience column letter family from M/Q/H/Y (Month /
+  Quarter / Half / Year) to **M/Q/S/A** (Month / Quarter / Semi-annual
+  / Annual). The latter is a `-ly` adverb word family that avoids
+  conflict with pandas' `H = hour` convention. New shipped column
+  names: `coverage, uy_m, cy_m, dev_m, loss_incr, premium_incr`
+  (previously `uym, cym`). `add_experience_period(df)` now derives
+  the full 12-column enrichment: `uy_a/uy_s/uy_q/uy_m`,
+  `cy_a/cy_s/cy_q/cy_m`, `dev_a/dev_s/dev_q/dev_m`. All `uy_*` and
+  `cy_*` are Date; all `dev_*` are integer counts.
+
+- New `grain` argument on `Triangle()` (replaces `granularity`):
+  values `"auto"` (default — auto-detect from data spacing), `"M"`,
+  `"Q"`, `"S"`, `"A"`. Single-letter codes mirror the column suffix
+  (`grain="Q"` ↔ `dev_q` / `cy_q` / `uy_q`). `tri.grain` property
+  returns the active code.
+
+- Triangle now auto-coerces `cohort_var` / `cym_var` to Date,
+  accepting integer (`yyyy` / `yyyymm` / `yyyymmdd`), ISO string
+  (`"YYYY-MM-DD"`, `"YYYY/MM/DD"`, `"YYYYMMDD"`, with optional
+  `HH:MM:SS` time suffix), or existing Date / Datetime. Auto-detects
+  input grain from value spacing; `grain` arg can request a coarser
+  view (validated — cannot decompose).
+
+  Migration:
+    Before (dev8): lr.Triangle(df, granularity="quarter")
+    After  (dev9): lr.Triangle(df, grain="Q")
+
+  Date-coercion + grain inference are exposed as reusable helpers
+  in `lossratio._period` (`coerce_cols_to_date`, `infer_grain`,
+  `validate_grain`, `resolve_grain`, `floor_to_period`,
+  `floor_cols_to_period`, `count_periods`, `GRAIN_ORDER`).
+
 ## [0.0.1.dev8] — 2026-05-10
 
 ### Breaking

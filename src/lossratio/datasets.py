@@ -98,7 +98,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        Columns ``coverage`` (str), ``uym`` (str, ISO date), ``cym``
+        Columns ``coverage`` (str), ``uy_m`` (str, ISO date), ``cy_m``
         (str, ISO date), ``dev_m`` (int), ``loss_incr`` (float),
         ``premium_incr`` (float). Pass directly to :class:`Triangle`
         with ``group_var="coverage"``.
@@ -121,13 +121,13 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
             )
 
             cy_u, cm_u = divmod(ci, 12)
-            uym = _ymd(2024 + cy_u, cm_u + 1)
+            uy_m = _ymd(2024 + cy_u, cm_u + 1)
 
             for k in range(_K):
                 if ci + k > _MAX_CYM_IDX:
                     break
                 cy_c, cm_c = divmod(ci + k, 12)
-                cym = _ymd(2024 + cy_c, cm_c + 1)
+                cy_m = _ymd(2024 + cy_c, cm_c + 1)
 
                 incr_premium = prem_base * (1.0 + rng.normal(0.0, 0.05))
                 incr_premium = max(incr_premium, 0.0)
@@ -138,8 +138,8 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                 records.append(
                     {
                         "coverage":     coverage,
-                        "uym":          uym,
-                        "cym":          cym,
+                        "uy_m":         uy_m,
+                        "cy_m":         cy_m,
                         "dev_m":        k + 1,
                         "loss_incr":    incr_loss,
                         "premium_incr": incr_premium,

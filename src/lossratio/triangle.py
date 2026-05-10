@@ -6,59 +6,30 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from ._period import (
+    coerce_cols_to_date,
+    count_periods,
+    floor_cols_to_period,
+    infer_grain,
+    resolve_grain,
+)
 from ._io import detect_input_type, mirror_output, to_polars
-from .experience import REQUIRED_COLS
 
 if TYPE_CHECKING:
     from .link import Link
     from .regime import Regime
 
 
-_VALID_DEV_VARS = {"dev_m", "dev_q", "dev_h", "dev_y"}
-_DEV_VAR_TO_TYPE = {
-    "dev_m": "month",
-    "dev_q": "quarter",
-    "dev_h": "half",
-    "dev_y": "year",
+# Required value columns (cohort/cym are checked separately by name).
+_REQUIRED_VALUE_COLS = ("loss_incr", "premium_incr")
+
+# Triangle-specific: standard dev column name per grain code.
+_GRAIN_TO_DEV_VAR = {
+    "M": "dev_m",
+    "Q": "dev_q",
+    "S": "dev_s",
+    "A": "dev_a",
 }
-
-
-def _compute_dev(
-    df: pl.DataFrame,
-    cohort_var: str,
-    cym_var: str,
-    dev_var: str,
-) -> pl.DataFrame:
-    """Add a numeric dev column derived from cohort_var and cym_var."""
-    dev_type = _DEV_VAR_TO_TYPE.get(dev_var)
-    if dev_type == "month":
-        elap = (
-            (pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year()) * 12
-            + (pl.col(cym_var).dt.month() - pl.col(cohort_var).dt.month())
-            + 1
-        )
-    elif dev_type == "quarter":
-        elap = (
-            (pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year()) * 4
-            + ((pl.col(cym_var).dt.month() - 1) // 3
-               - (pl.col(cohort_var).dt.month() - 1) // 3)
-            + 1
-        )
-    elif dev_type == "half":
-        elap = (
-            (pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year()) * 2
-            + ((pl.col(cym_var).dt.month() - 1) // 6
-               - (pl.col(cohort_var).dt.month() - 1) // 6)
-            + 1
-        )
-    elif dev_type == "year":
-        elap = pl.col(cym_var).dt.year() - pl.col(cohort_var).dt.year() + 1
-    else:
-        raise ValueError(
-            f"dev_var must be one of {sorted(_VALID_DEV_VARS)}, got {dev_var!r}"
-        )
-
-    return df.with_columns(elap.cast(pl.Int64).alias("_dev_temp"))
 
 
 class Triangle:
@@ -66,10 +37,20 @@ class Triangle:
 
     A Triangle is built by aggregating a raw experience DataFrame
     (polars or pandas) over ``group_var`` (optional), cohort, and
-    development period. Validation and type coercion of the required
-    experience columns are performed inline -- there is no separate
-    ``Experience`` wrapper class. Users who want an explicit validation
-    step can call :func:`validate_experience` first.
+    development period.
+
+    Input flexibility:
+
+    - ``cohort_var`` / ``calendar_var`` columns can be ``Date``,
+      ``Datetime``, integer (yyyy / yyyymm / yyyymmdd auto-detected),
+      or ISO string ("YYYY-MM-DD", "YYYY/MM/DD", "YYYYMMDD",
+      with optional " HH:MM:SS" time suffix).
+    - Granularity ("month" / "quarter" / "half" / "year") is
+      auto-detected from cohort_var date spacing. Override via
+      ``granularity`` arg to view at a coarser granularity (e.g.,
+      monthly data viewed quarterly).
+    - Requested granularity must be at least as coarse as input
+      (no decomposition: yearly input cannot be viewed monthly).
 
     The resulting frame has columns:
 
@@ -84,7 +65,7 @@ class Triangle:
     Cumulative is the unmarked default; per-period values carry an
     ``_incr`` (incremental) suffix.
 
-    Original column names (e.g. ``"uym"`` for cohort_var) are kept
+    Original column names (e.g. ``"uy_m"`` for cohort_var) are kept
     as instance attributes for downstream plotting.
     """
 
@@ -92,20 +73,15 @@ class Triangle:
         self,
         df: "pl.DataFrame | Any",
         group_var: str | None = None,
-        cohort_var: str = "uym",
-        dev_var: str = "dev_m",
-        cym_var: str = "cym",
+        cohort_var: str = "uy_m",
+        calendar_var: str = "cy_m",
+        grain: str = "auto",
     ) -> None:
-        if dev_var not in _VALID_DEV_VARS:
-            raise ValueError(
-                f"dev_var must be one of {sorted(_VALID_DEV_VARS)}, got {dev_var!r}"
-            )
-
         self._output_type = detect_input_type(df)
         df_pl = to_polars(df)
 
-        # Validate required columns (experience schema + cohort/cym/group).
-        required = set(REQUIRED_COLS) | {cohort_var, cym_var}
+        # Required: cohort_var, calendar_var, value cols, and group_var if set.
+        required = {cohort_var, calendar_var, *_REQUIRED_VALUE_COLS}
         if group_var is not None:
             required.add(group_var)
         missing = required - set(df_pl.columns)
@@ -115,18 +91,30 @@ class Triangle:
                 f"Required: {sorted(required)}"
             )
 
-        # Coerce required experience types inline.
+        # Coerce cohort_var, calendar_var to Date (Date/Datetime/Int/String).
+        df_pl = coerce_cols_to_date(df_pl, [cohort_var, calendar_var])
         df_pl = df_pl.with_columns(
-            pl.col(cohort_var).cast(pl.Date),
-            pl.col(cym_var).cast(pl.Date),
             pl.col("loss_incr").cast(pl.Float64),
             pl.col("premium_incr").cast(pl.Float64),
         )
 
-        # Compute dev index (1, 2, ...) per cohort
-        df_pl = _compute_dev(df_pl, cohort_var, cym_var, dev_var)
+        # Auto-detect input grain; resolve "auto" or validate explicit value.
+        input_grain = infer_grain(df_pl[cohort_var])
+        grain = resolve_grain(input_grain, grain)
 
-        # Aggregate per-period values by (group_var, cohort, dev)
+        # Bin to requested grain (no-op if grain == input).
+        if grain != input_grain:
+            df_pl = floor_cols_to_period(
+                df_pl, [cohort_var, calendar_var], grain
+            )
+
+        # Compute integer dev (1, 2, ...) at requested grain.
+        df_pl = df_pl.with_columns(
+            count_periods(pl.col(cohort_var), pl.col(calendar_var), grain)
+            .alias("_dev_temp")
+        )
+
+        # Aggregate per-period values by (group_var, cohort, dev).
         agg_keys: list[str] = []
         if group_var is not None:
             agg_keys.append(group_var)
@@ -141,7 +129,7 @@ class Triangle:
             .sort(agg_keys)
         )
 
-        # Cumulative sums within (group, cohort) — cumulative is default name
+        # Cumulative sums within (group, cohort) — cumulative is default name.
         cum_keys: list[str] = []
         if group_var is not None:
             cum_keys.append(group_var)
@@ -155,10 +143,10 @@ class Triangle:
             (pl.col("loss_incr") / pl.col("premium_incr")).alias("lr_incr"),
         )
 
-        # Rename to standard column names: cohort_var -> cohort, _dev_temp -> dev
+        # Rename to standard column names: cohort_var -> cohort, _dev_temp -> dev.
         agg = agg.rename({cohort_var: "cohort", "_dev_temp": "dev"})
 
-        # Reorder columns: cum-first paired
+        # Reorder columns: cum-first paired.
         ordered = []
         if group_var is not None:
             ordered.append(group_var)
@@ -173,7 +161,8 @@ class Triangle:
         self._df = agg
         self._group_var = group_var
         self._cohort_var = cohort_var
-        self._dev_var = dev_var
+        self._grain = grain
+        self._dev_var = _GRAIN_TO_DEV_VAR[grain]
 
     @property
     def df(self):
@@ -203,21 +192,21 @@ class Triangle:
 
     @property
     def cohort_var(self) -> str:
-        """Original cohort variable name (e.g. 'uym')."""
+        """Original cohort variable name (e.g. 'uy_m')."""
         return self._cohort_var
 
     @property
     def dev_var(self) -> str:
-        """Development variable name (e.g. 'dev_m')."""
+        """Standard dev column name for the grain (e.g. 'dev_m')."""
         return self._dev_var
 
     @property
-    def dev_type(self) -> str:
-        """Development granularity ('month', 'quarter', 'half', 'year').
+    def grain(self) -> str:
+        """Triangle grain code: ``"M"`` / ``"Q"`` / ``"S"`` / ``"A"``.
 
-        Derived from ``dev_var`` on each access — not stored.
+        Mirrors the standard column suffix (``"M"`` ↔ ``dev_m``, etc.).
         """
-        return _DEV_VAR_TO_TYPE[self._dev_var]
+        return self._grain
 
     @classmethod
     def _from_masked(cls, original: "Triangle", masked_df: pl.DataFrame) -> "Triangle":
@@ -232,6 +221,7 @@ class Triangle:
         tri._output_type = original._output_type
         tri._group_var = original._group_var
         tri._cohort_var = original._cohort_var
+        tri._grain = original._grain
         tri._dev_var = original._dev_var
         return tri
 
@@ -277,49 +267,7 @@ class Triangle:
     ) -> "Regime":
         """Detect structural regime shifts across underwriting cohorts.
 
-        Each cohort is treated as a feature vector (the chosen
-        ``loss_var`` over development periods 1, ..., K). The ordered
-        sequence is tested for structural shifts using one of two
-        methods:
-
-        * ``"e_divisive"`` — E-Divisive (Matteson & James 2014).
-          Multivariate non-parametric divisive change-point detection
-          with permutation significance. Number of regimes is
-          determined by ``sig_level``.
-        * ``"hclust"`` — Ward hierarchical clustering on the
-          standardised cohort matrix, cut at ``n_regimes`` clusters.
-          Ignores time ordering — useful as a sanity check.
-
-        Parameters
-        ----------
-        loss_var
-            Trajectory variable. Default ``"lr"`` (cumulative loss
-            ratio).
-        K
-            Common development-period window. Cohorts with fewer than
-            ``K`` observed periods are dropped.
-        method
-            ``"e_divisive"`` (default) or ``"hclust"``.
-        n_regimes
-            Required for ``method="hclust"``. Ignored for
-            ``method="e_divisive"`` (auto-detected via permutation
-            testing).
-        sig_level
-            Significance threshold for E-Divisive. Default ``0.05``.
-        R
-            Number of permutations per significance test. Default
-            ``999``.
-        min_size
-            Minimum cohort count on either side of any candidate split.
-            Default ``3``.
-        seed
-            Optional integer seed for reproducible permutations.
-
-        Returns
-        -------
-        Regime
-            Result with per-cohort regime labels, breakpoints, and
-            metadata.
+        See :class:`Regime` for full description.
         """
         from .regime import Regime
 
@@ -342,7 +290,7 @@ class Triangle:
             bits.append(f"{n_groups} groups")
         n_cohorts = self._df["cohort"].n_unique()
         n_devs = self._df["dev"].n_unique()
-        bits.append(f"{n_cohorts} cohorts x {n_devs} devs")
+        bits.append(f"{n_cohorts} cohorts x {n_devs} devs ({self._grain})")
         return f"<Triangle: {', '.join(bits)}>"
 
     def __len__(self) -> int:

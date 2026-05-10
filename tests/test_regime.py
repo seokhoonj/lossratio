@@ -99,8 +99,8 @@ def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
             lr_val = base + rng.normal(0, 0.05)
             rows.append(
                 {
-                    "cym": cohort_date,
-                    "uym": cohort_date,
+                    "cy_m": cohort_date,
+                    "uy_m": cohort_date,
                     "loss_incr": lr_val * 100.0,
                     "premium_incr": 100.0,
                 }
@@ -122,8 +122,8 @@ def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
             lr_val = base + rng.normal(0, 0.05)
             rows2.append(
                 {
-                    "uym": cohort_dates[c_idx],
-                    "cym": cohort_dates[c_idx]
+                    "uy_m": cohort_dates[c_idx],
+                    "cy_m": cohort_dates[c_idx]
                     + pl.duration(days=30 * (k - 1)).map_elements(
                         lambda x: x, return_dtype=pl.Duration
                     ).item()
@@ -156,8 +156,8 @@ def _toy_input(n_cohorts: int = 30, K: int = 12, shift_at: int = 15) -> pl.DataF
             lr_val = max(0.0, base + rng.normal(0, 0.05))
             rows.append(
                 {
-                    "cym": u,
-                    "uym": u,
+                    "cy_m": u,
+                    "uy_m": u,
                     "_dev_target": k,
                     "loss_incr": lr_val * 100.0,
                     "premium_incr": 100.0,
@@ -172,14 +172,14 @@ def test_detect_regime_e_divisive_finds_shift():
     # sets cym = uym, so dev = 1 only. We need cym to advance. Build
     # cym by adding (k-1) months to uym.
     df = df.with_columns(
-        pl.col("uym").cast(pl.Date),
-        pl.col("cym").cast(pl.Date),
+        pl.col("uy_m").cast(pl.Date),
+        pl.col("cy_m").cast(pl.Date),
     )
     df = df.with_columns(
         # cym = uym + (_dev_target - 1) months — emulate dev periods
-        pl.col("uym").dt.offset_by(
+        pl.col("uy_m").dt.offset_by(
             pl.format("{}mo", pl.col("_dev_target") - 1)
-        ).alias("cym")
+        ).alias("cy_m")
     ).drop("_dev_target")
 
     tri = lr.Triangle(df)
@@ -197,13 +197,13 @@ def test_detect_regime_e_divisive_finds_shift():
 def test_detect_regime_hclust():
     df = _toy_input(n_cohorts=30, K=12, shift_at=15)
     df = df.with_columns(
-        pl.col("uym").cast(pl.Date),
-        pl.col("cym").cast(pl.Date),
+        pl.col("uy_m").cast(pl.Date),
+        pl.col("cy_m").cast(pl.Date),
     )
     df = df.with_columns(
-        pl.col("uym").dt.offset_by(
+        pl.col("uy_m").dt.offset_by(
             pl.format("{}mo", pl.col("_dev_target") - 1)
-        ).alias("cym")
+        ).alias("cy_m")
     ).drop("_dev_target")
 
     tri = lr.Triangle(df)
@@ -217,13 +217,13 @@ def test_detect_regime_hclust():
 def test_detect_regime_invalid_method_raises():
     df = _toy_input(n_cohorts=30, K=12, shift_at=15)
     df = df.with_columns(
-        pl.col("uym").cast(pl.Date),
-        pl.col("cym").cast(pl.Date),
+        pl.col("uy_m").cast(pl.Date),
+        pl.col("cy_m").cast(pl.Date),
     )
     df = df.with_columns(
-        pl.col("uym").dt.offset_by(
+        pl.col("uy_m").dt.offset_by(
             pl.format("{}mo", pl.col("_dev_target") - 1)
-        ).alias("cym")
+        ).alias("cy_m")
     ).drop("_dev_target")
 
     tri = lr.Triangle(df)
@@ -234,13 +234,13 @@ def test_detect_regime_invalid_method_raises():
 def test_detect_regime_low_K_raises():
     df = _toy_input(n_cohorts=30, K=12, shift_at=15)
     df = df.with_columns(
-        pl.col("uym").cast(pl.Date),
-        pl.col("cym").cast(pl.Date),
+        pl.col("uy_m").cast(pl.Date),
+        pl.col("cy_m").cast(pl.Date),
     )
     df = df.with_columns(
-        pl.col("uym").dt.offset_by(
+        pl.col("uy_m").dt.offset_by(
             pl.format("{}mo", pl.col("_dev_target") - 1)
-        ).alias("cym")
+        ).alias("cy_m")
     ).drop("_dev_target")
 
     tri = lr.Triangle(df)

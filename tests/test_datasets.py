@@ -9,7 +9,7 @@ def test_load_experience_shape():
     df = lr.load_experience()
     # 4 coverages x triangular cells (36+35+...+1 per coverage) = 2664
     assert df.height == 2664
-    assert df.columns == ["coverage", "uym", "cym", "dev_m", "loss_incr", "premium_incr"]
+    assert df.columns == ["coverage", "uy_m", "cy_m", "dev_m", "loss_incr", "premium_incr"]
     assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]
 
 

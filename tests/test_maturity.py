@@ -10,14 +10,14 @@ def _polars_input() -> pl.DataFrame:
     """5-cohort, 5-dev experience data (same as CL/ED tests)."""
     return pl.DataFrame(
         {
-            "cym": [
+            "cy_m": [
                 "2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
                 "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
                 "2024-03-01", "2024-04-01", "2024-05-01",
                 "2024-04-01", "2024-05-01",
                 "2024-05-01",
             ],
-            "uym": [
+            "uy_m": [
                 "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01",
                 "2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01",
                 "2024-03-01", "2024-03-01", "2024-03-01",
@@ -54,8 +54,8 @@ def _stable_input() -> pl.DataFrame:
             prev_closs = 100 * (2 ** (di - 1)) if di > 0 else 0
             inc_loss = target_closs - prev_closs
             rows.append({
-                "cym": cym,
-                "uym": uym,
+                "cy_m": cym,
+                "uy_m": uym,
                 "loss_incr": float(inc_loss),
                 "premium_incr": 100.0,
             })

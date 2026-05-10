@@ -10,7 +10,7 @@ def _exp_input() -> pl.DataFrame:
     """Three-cohort, three-dev sample experience data."""
     return pl.DataFrame(
         {
-            "cym": [
+            "cy_m": [
                 # cohort 2024-01: dev months 1, 2, 3
                 "2024-01-01", "2024-02-01", "2024-03-01",
                 # cohort 2024-02: dev months 1, 2
@@ -18,7 +18,7 @@ def _exp_input() -> pl.DataFrame:
                 # cohort 2024-03: dev month 1
                 "2024-03-01",
             ],
-            "uym": [
+            "uy_m": [
                 "2024-01-01", "2024-01-01", "2024-01-01",
                 "2024-02-01", "2024-02-01",
                 "2024-03-01",
@@ -75,8 +75,8 @@ def test_triangle_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(
         {
-            "cym":          ["2024-01-01", "2024-02-01"],
-            "uym":          ["2024-01-01", "2024-01-01"],
+            "cy_m":         ["2024-01-01", "2024-02-01"],
+            "uy_m":         ["2024-01-01", "2024-01-01"],
             "loss_incr":    [10.0, 20.0],
             "premium_incr": [100.0, 100.0],
         }
@@ -86,17 +86,17 @@ def test_triangle_pandas_input_mirror():
     assert isinstance(tri.df, pd.DataFrame)
 
 
-def test_triangle_invalid_dev_var():
+def test_triangle_invalid_grain():
     df = _exp_input()
-    with pytest.raises(ValueError, match="dev_var"):
-        lr.Triangle(df, dev_var="dev_decade")
+    with pytest.raises(ValueError, match="grain"):
+        lr.Triangle(df, grain="decade")
 
 
 def test_triangle_metadata():
-    tri = lr.Triangle(_exp_input(), group_var=None, cohort_var="uym", dev_var="dev_m")
-    assert tri.cohort_var == "uym"
+    tri = lr.Triangle(_exp_input(), group_var=None, cohort_var="uy_m")
+    assert tri.cohort_var == "uy_m"
     assert tri.dev_var == "dev_m"
-    assert tri.dev_type == "month"
+    assert tri.grain == "M"
     assert tri.group_var is None
 
 

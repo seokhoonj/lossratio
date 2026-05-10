@@ -22,8 +22,9 @@ pip install lossratio[pandas]      # add pandas / pyarrow support
 Working components:
 
 - `Triangle` — cohort × dev aggregation. Accepts a long-format
-  experience frame (`cym`, `uym`, `loss_incr`, `premium_incr`) and
-  validates schema + adds derived period columns inline. Cumulative is
+  experience frame (`uy_m`, `cy_m`, `dev_m`, `loss_incr`,
+  `premium_incr`) and validates schema + adds derived period columns
+  inline. (`dev_m` is auto-derived from `uy_m` and `cy_m` if absent.) Cumulative is
   the unmarked default (`loss`, `premium`, `lr`); per-period values
   carry an `_incr` suffix.
 - `CL`, `ED`, `LR` — sklearn-style estimators for chain ladder,
@@ -60,7 +61,7 @@ df = lr.load_experience()
 df.head(3)
 #> shape: (3, 6)
 #> ┌──────────┬────────────┬────────────┬───────┬───────────────┬──────────────┐
-#> │ coverage ┆ uym        ┆ cym        ┆ dev_m ┆ loss_incr     ┆ premium_incr │
+#> │ coverage ┆ uy_m       ┆ cy_m       ┆ dev_m ┆ loss_incr     ┆ premium_incr │
 #> ╞══════════╪════════════╪════════════╪═══════╪═══════════════╪══════════════╡
 #> │ CI       ┆ 2024-01-01 ┆ 2024-01-01 ┆ 1     ┆ 1.2562e7      ┆ 1.8836e7     │
 #> │ CI       ┆ 2024-01-01 ┆ 2024-02-01 ┆ 2     ┆ 651602.511522 ┆ 1.7699e7     │
@@ -130,17 +131,24 @@ To analyse multiple coverages jointly, drop the upfront filter; every
 estimator and detector then fits per group, with `coverage` already
 labelling each output row.
 
-To plug in your own data, build a long-format frame with at least
-these columns and pass it to `lr.Triangle(df, group_var=...)`:
+To plug in your own data, build a long-format frame with these
+columns and pass it to `lr.Triangle(df, group_var=...)`:
 
-- `uym` (date) — underwriting year-month (cohort)
-- `cym` (date) — calendar year-month
+- `uy_m` (date) — underwriting year-month (cohort)
+- `cy_m` (date) — calendar year-month
+- `dev_m` (int, optional) — development month; auto-derived from
+  `uy_m` and `cy_m` if absent
 - `loss_incr` (numeric) — per-period claim amount
 - `premium_incr` (numeric) — per-period premium
 
-`dev_m` (development month, integer) is derived inline from `uym`
-and `cym` if absent. The shipped `lr.load_experience()` dataset
-includes `dev_m` for convenience.
+The shipped `lr.load_experience()` dataset already includes `dev_m`
+for convenience. Coarser granularities (`dev_q`, `dev_s`, `dev_a` —
+quarterly, semi-annual, annual) can be derived via
+`add_experience_period(df)`, which produces the full 12-column
+enrichment (`uy_a/uy_s/uy_q/uy_m`, `cy_a/cy_s/cy_q/cy_m`,
+`dev_a/dev_s/dev_q/dev_m`). Pass `grain="Q"` / `"S"` / `"A"` to
+`Triangle()` to aggregate at a coarser grain (default `"auto"`
+detects from data spacing).
 
 `Triangle` also accepts an optional `group_var` (coverage, product,
 age band, ...) — each estimator and detector then fits per group.
