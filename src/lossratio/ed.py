@@ -34,6 +34,25 @@ class _EDResult:
     sigma2_g_k: np.ndarray       # (n_devs - 1,)
     f_p_k: np.ndarray            # (n_devs - 1,) — premium chain ladder factors
     sigma2_f_p_k: np.ndarray     # (n_devs - 1,) — premium chain ladder sigma^2
+    sum_premium_k: np.ndarray    # (n_devs - 1,) — per-link sum of premium_from over the ED fit subset (Var(g_k) denom; matches R's `.mack_g_var`)
+
+
+def _mack_g_var(result: _EDResult) -> np.ndarray:
+    """Mack-style WLS variance of the ED intensity g_k.
+
+    Returns a per-link array of `sigma^2_g_k / sum_j C^P_{j,k}`, the
+    Var(g_hat_k) estimator from Mack's (1999) alpha-family generalization
+    applied to the ED additive model with alpha = 1. Mirrors R's
+    `.mack_g_var()` (`R/ed.R`). Same WLS form as `_mack_f_var` -- the
+    "Mack" name reflects shared mathematical machinery, not chain ladder
+    specifically. NaN where the denom is zero (unfittable link).
+    """
+    sigma2 = result.sigma2_g_k
+    denom = result.sum_premium_k
+    out = np.full_like(sigma2, np.nan)
+    mask = (denom > 0) & np.isfinite(sigma2)
+    out[mask] = sigma2[mask] / denom[mask]
+    return out
 
 
 def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
@@ -117,34 +136,38 @@ def _fit_ed(
                     )
 
     # 4. SE on projected loss (additive accumulation of process + parameter
-    #    variance for the ED phase, alpha = 1)
+    #    variance for the ED phase, alpha = 1). Sequential along dev,
+    #    vectorized across cohorts.
     se_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    for i in range(n_cohorts):
-        # last observed dev for cohort i
-        last_obs = -1
-        for k in range(n_devs - 1, -1, -1):
-            if not np.isnan(loss_obs[i, k]):
-                last_obs = k
-                break
-        if last_obs < 0 or last_obs >= n_devs - 1:
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs,
+        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+    var_proc = np.zeros(n_cohorts, dtype=np.float64)
+    var_param = np.zeros(n_cohorts, dtype=np.float64)
+
+    for k in range(n_devs - 1):
+        active = eligible & (last_obs <= k)
+        if not active.any():
             continue
-
-        var_proc = 0.0
-        var_param = 0.0
-        for k in range(last_obs, n_devs - 1):
-            ck = premium_proj[i, k]
-            if np.isnan(ck) or ck <= 0 or sum_premium_k[k] <= 0:
-                continue
-            # Process: increment is sigma^2_g_k * C^P_{i,k}^alpha (alpha = 1)
-            var_proc += sigma2_g_k[k] * ck
-            # Parameter: increment is (C^P_{i,k})^2 * Var(ĝ_k)
-            #            with Var(ĝ_k) = sigma^2_g_k / sum_j C^P_{j,k}
-            g_var = sigma2_g_k[k] / sum_premium_k[k]
-            var_param += ck ** 2 * g_var
-
-            total = var_proc + var_param
-            if total >= 0:
-                se_proj[i, k + 1] = float(np.sqrt(total))
+        if sum_premium_k[k] <= 0 or not np.isfinite(sigma2_g_k[k]):
+            continue
+        pk = premium_proj[:, k]
+        pos = active & ~np.isnan(pk) & (pk > 0)
+        if not pos.any():
+            continue
+        # Process: sigma^2_g_k * C^P_{i,k}^alpha (alpha = 1)
+        var_proc[pos] = var_proc[pos] + sigma2_g_k[k] * pk[pos]
+        # Parameter: (C^P_{i,k})^2 * Var(g_hat_k), Var(g_hat_k) = sigma^2_g_k / sum
+        g_var_k = sigma2_g_k[k] / sum_premium_k[k]
+        var_param[pos] = var_param[pos] + (pk[pos] ** 2) * g_var_k
+        total = var_proc + var_param
+        sp = pos & (total >= 0)
+        se_proj[sp, k + 1] = np.sqrt(total[sp])
 
     return _EDResult(
         n_devs=n_devs,
@@ -157,6 +180,7 @@ def _fit_ed(
         sigma2_g_k=sigma2_g_k,
         f_p_k=f_p_k,
         sigma2_f_p_k=sigma2_f_p_k,
+        sum_premium_k=sum_premium_k,
     )
 
 

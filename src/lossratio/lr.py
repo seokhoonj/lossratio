@@ -9,8 +9,8 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_loss_matrix, _fit_mack
-from .ed import _build_premium_matrix, _fit_ed
+from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
+from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
 from .maturity import _compute_maturity
 
 if TYPE_CHECKING:
@@ -81,66 +81,73 @@ def _fit_sa(
     f_k = cl_result.f_k
     sigma2_f_k = cl_result.sigma2_k
 
-    # Per-link cohort sums for parameter variance terms
-    sum_premium_k = np.zeros(n_links)
-    sum_loss_k = np.zeros(n_links)
-    for k in range(n_links):
-        premium_col = premium_obs[:, k]
-        sum_premium_k[k] = float(premium_col[~np.isnan(premium_col)].sum())
-        loss_col = loss_obs[:, k]
-        sum_loss_k[k] = float(loss_col[~np.isnan(loss_col)].sum())
+    # Per-link parameter variance estimators (Mack-style WLS):
+    #   Var(f_k) = sigma2_f_k / sum_loss_k    (CL phase, mirrors R `.mack_f_var`)
+    #   Var(g_k) = sigma2_g_k / sum_premium_k (ED phase, mirrors R `.mack_g_var`)
+    # Computed once outside the cohort loop. NaN where the link is
+    # unfittable; treated as a zero param-variance contribution in the
+    # cohort accumulation below.
+    var_f_k = _mack_f_var(cl_result)
+    var_g_k = _mack_g_var(ed_result)
 
     loss_proj = loss_obs.copy()
     se_loss = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
 
-    # Project per cohort
-    for i in range(n_cohorts):
-        # last observed dev for cohort i
-        last_obs = -1
-        for k in range(n_devs - 1, -1, -1):
-            if not np.isnan(loss_obs[i, k]):
-                last_obs = k
-                break
-        if last_obs < 0 or last_obs >= n_devs - 1:
+    # Per-cohort last observed dev (rightmost finite index in loss_obs).
+    # -1 marks cohorts with no observation at all.
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs,
+        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+
+    # var_acc[i] = cumulative variance of C^L_{i, current_k} for cohort i.
+    var_acc = np.zeros(n_cohorts, dtype=np.float64)
+
+    # Sequential walk along the dev axis (var_acc recursion forces this).
+    # Cohort axis is fully vectorized at each step.
+    for k in range(n_devs - 1):
+        active = eligible & (last_obs <= k)
+        if not active.any():
             continue
 
-        var_acc = 0.0
-        for k in range(last_obs, n_devs - 1):
-            # Link k goes from dev (k+1) to dev (k+2). The target dev of
-            # this link is k + 2 (= ata_to). Use ED while target dev
-            # < k_star, CL when >= k_star.
-            target_dev = k + 2
-            ck = loss_proj[i, k]
-            premium_k = premium_proj[i, k]
+        target_dev = k + 2  # ata_to of link k
+        ck = loss_proj[:, k]
+        pk = premium_proj[:, k]
 
-            if target_dev < k_star:
-                # ED phase: additive
-                if not np.isnan(premium_k) and premium_k > 0:
-                    loss_proj[i, k + 1] = ck + g_k[k] * premium_k
-                if (
-                    not np.isnan(premium_k) and premium_k > 0 and sum_premium_k[k] > 0
-                ):
-                    var_proc_inc = sigma2_g_k[k] * premium_k
-                    g_var = sigma2_g_k[k] / sum_premium_k[k] if sum_premium_k[k] > 0 else 0.0
-                    var_param_inc = (premium_k ** 2) * g_var
-                    var_acc = var_acc + var_proc_inc + var_param_inc
-            else:
-                # CL phase: multiplicative
-                if not np.isnan(ck) and ck > 0:
-                    loss_proj[i, k + 1] = f_k[k] * ck
-                if (
-                    not np.isnan(ck) and ck > 0
-                    and f_k[k] > 0 and sum_loss_k[k] > 0
-                ):
-                    # Mack: increment to var_acc
-                    # SE^2(C_{k+1}) recursion: var multiplies by f^2 + new
-                    var_acc = (f_k[k] ** 2) * var_acc + sigma2_f_k[k] * (ck + (ck ** 2) / sum_loss_k[k])
+        if target_dev < k_star:
+            # ED phase: additive
+            pos = active & ~np.isnan(pk) & (pk > 0)
+            if pos.any():
+                loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
+                if not np.isnan(var_g_k[k]):
+                    var_acc[pos] = (
+                        var_acc[pos]
+                        + sigma2_g_k[k] * pk[pos]
+                        + (pk[pos] ** 2) * var_g_k[k]
+                    )
+        else:
+            # CL phase: multiplicative Mack recursion
+            #   var_acc_new = f^2 * var_acc_prev
+            #               + sigma^2_f * C       (process)
+            #               + C^2 * Var(f_hat)    (parameter)
+            pos = active & ~np.isnan(ck) & (ck > 0)
+            if pos.any():
+                loss_proj[pos, k + 1] = f_k[k] * ck[pos]
+                if f_k[k] > 0 and not np.isnan(var_f_k[k]):
+                    var_acc[pos] = (
+                        (f_k[k] ** 2) * var_acc[pos]
+                        + sigma2_f_k[k] * ck[pos]
+                        + (ck[pos] ** 2) * var_f_k[k]
+                    )
 
-            ck1 = loss_proj[i, k + 1]
-            if not np.isnan(ck1) and var_acc >= 0:
-                # ED and CL phases share the same final SE formula —
-                # var_acc is already in the absolute scale of C_{k+1}.
-                se_loss[i, k + 1] = float(np.sqrt(var_acc))
+        # Record SE on cells we just projected (var_acc is at scale of C_{k+1}).
+        ck1 = loss_proj[:, k + 1]
+        se_pos = active & ~np.isnan(ck1) & (var_acc >= 0)
+        se_loss[se_pos, k + 1] = np.sqrt(var_acc[se_pos])
 
     return loss_proj, se_loss
 

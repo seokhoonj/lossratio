@@ -37,6 +37,23 @@ class _MackResult:
     se_proj: np.ndarray     # (n_cohorts, n_devs) -- Mack SE on projected cells
     f_k: np.ndarray         # (n_devs - 1,)
     sigma2_k: np.ndarray    # (n_devs - 1,)
+    sum_col_k: np.ndarray   # (n_devs - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
+
+
+def _mack_f_var(result: _MackResult) -> np.ndarray:
+    """Mack-style WLS variance of the chain ladder factor f_k.
+
+    Returns a per-link array of `sigma^2_k / sum_j C^L_{j,k}`, the
+    Var(f_hat_k) estimator from Mack (1993) for alpha = 1. Mirrors R's
+    `.mack_f_var()` (`R/cl.R`). NaN where the denom is zero (unfittable
+    link); caller decides how to handle.
+    """
+    sigma2 = result.sigma2_k
+    denom = result.sum_col_k
+    out = np.full_like(sigma2, np.nan)
+    mask = (denom > 0) & np.isfinite(sigma2)
+    out[mask] = sigma2[mask] / denom[mask]
+    return out
 
 
 def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
@@ -121,31 +138,43 @@ def _fit_mack(
             if np.isnan(loss_proj[i, k]) and not np.isnan(loss_proj[i, k - 1]):
                 loss_proj[i, k] = loss_proj[i, k - 1] * f_k[k - 1]
 
-    # Mack SE on projected ultimate (per cohort, per projected dev)
+    # Mack SE on projected ultimate (per cohort, per projected dev).
+    # Mack 1993 product form:
+    #   SE^2(C_{i,K}) = C_{i,K}^2 * sum_{k=last_obs}^{K-1}
+    #                    sigma^2_k / f_k^2 * (1 / C_{i,k} + 1 / sum_j C_{j,k})
+    # Sequential along dev (var_acc accumulates), vectorized across cohorts.
     se_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    for i in range(n_cohorts):
-        # Last observed dev for cohort i
-        last_obs = -1
-        for k in range(n_devs - 1, -1, -1):
-            if not np.isnan(loss_obs[i, k]):
-                last_obs = k
-                break
-        if last_obs < 0 or last_obs >= n_devs - 1:
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs,
+        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+    var_acc = np.zeros(n_cohorts, dtype=np.float64)
+
+    for k in range(n_devs - 1):
+        active = eligible & (last_obs <= k)
+        if not active.any():
             continue
-
-        # Cumulative variance from last_obs forward (Mack 1993, eq. for MSE)
-        # SE^2(C_{i,K}) = C_{i,K}^2 * sum_{k=last_obs}^{K-1}
-        #     sigma^2_k / f_k^2 * (1/C_{i,k} + 1/sum_j C_{j,k})
-        var_acc = 0.0
-        for k in range(last_obs, n_devs - 1):
-            ck = loss_proj[i, k]
-            if ck <= 0 or f_k[k] == 0 or sum_col_k[k] == 0:
-                continue
-            var_acc += (sigma2_k[k] / (f_k[k] ** 2)) * (1.0 / ck + 1.0 / sum_col_k[k])
-
-            ck1 = loss_proj[i, k + 1]
-            if ck1 > 0 and var_acc >= 0:
-                se_proj[i, k + 1] = float(np.sqrt(ck1 ** 2 * var_acc))
+        if (
+            sum_col_k[k] == 0
+            or not np.isfinite(sigma2_k[k])
+            or f_k[k] == 0
+            or not np.isfinite(f_k[k])
+        ):
+            continue
+        ck = loss_proj[:, k]
+        pos = active & ~np.isnan(ck) & (ck > 0)
+        if not pos.any():
+            continue
+        var_acc[pos] = var_acc[pos] + (sigma2_k[k] / (f_k[k] ** 2)) * (
+            1.0 / ck[pos] + 1.0 / sum_col_k[k]
+        )
+        ck1 = loss_proj[:, k + 1]
+        sp = pos & ~np.isnan(ck1) & (ck1 > 0) & (var_acc >= 0)
+        se_proj[sp, k + 1] = np.sqrt((ck1[sp] ** 2) * var_acc[sp])
 
     return _MackResult(
         cohorts=[],  # filled by caller (with cohort identifiers)
@@ -155,6 +184,7 @@ def _fit_mack(
         se_proj=se_proj,
         f_k=f_k,
         sigma2_k=sigma2_k,
+        sum_col_k=sum_col_k,
     )
 
 

@@ -209,13 +209,8 @@ def test_lr_sa_summary_matches_r():
     lr_fit = lr.LR(method="sa").fit(tri)
     py = lr_fit.summary().sort(["cohort"])
 
-    # Point estimates (lr_ult, lr_latest) match exactly. `se_lr` /
-    # `cv_lr` use a projection-level cumulative variance recursion
-    # that drifts from R's by a few percent — a separate algorithmic
-    # alignment item from the link-level sigma extrapolation just
-    # unified here. Tracked as a follow-up.
     common = [
-        c for c in ["lr_ult", "lr_latest"]
+        c for c in ["lr_ult", "lr_latest", "se_lr", "cv_lr"]
         if c in r.columns and c in py.columns
     ]
     if not common:
