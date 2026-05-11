@@ -57,9 +57,12 @@ def _count_link_obs(loss_obs: np.ndarray) -> np.ndarray:
     return n_obs_k
 
 
-def _compute_ata_factor(loss_obs: np.ndarray) -> _ATAResult:
+def _compute_ata_factor(
+    loss_obs: np.ndarray,
+    sigma_method: str = "locf",
+) -> _ATAResult:
     """Compute per-link ATA factor diagnostic (no stability detection)."""
-    mack = _fit_mack(loss_obs)
+    mack = _fit_mack(loss_obs, sigma_method=sigma_method)
     cv_k, rse_k = _compute_cv_rse(loss_obs, mack.f_k, mack.sigma2_k)
     n_obs_k = _count_link_obs(loss_obs)
     return _ATAResult(
@@ -141,7 +144,7 @@ class ATA:
         self._dev_var: str
 
     @classmethod
-    def _from_link(cls, link: "Link") -> "ATA":
+    def _from_link(cls, link: "Link", sigma_method: str = "locf") -> "ATA":
         self = cls.__new__(cls)
         self._output_type = link._output_type
         self._group_var = link._group_var
@@ -153,7 +156,7 @@ class ATA:
 
         if group_var is None:
             loss_obs, _, _ = _build_loss_matrix(tri_df)
-            result = _compute_ata_factor(loss_obs)
+            result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
             diag_df = _diagnostic_to_df(
                 result, group_var=None, group_value=None
             )
@@ -165,7 +168,7 @@ class ATA:
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
                 loss_obs, _, _ = _build_loss_matrix(sub)
-                result = _compute_ata_factor(loss_obs)
+                result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
                 diag_parts.append(
                     _diagnostic_to_df(
                         result, group_var=group_var, group_value=g

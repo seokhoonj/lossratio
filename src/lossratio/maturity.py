@@ -79,7 +79,13 @@ def _compute_cv_rse(
         #   n_k >= 2, sigma^2 > 0  -> RSE = sqrt(sigma^2 / sum_j C_j) / f_k
         #   n_k >= 2, sigma^2 == 0 -> perfectly stable estimate, RSE = 0
         #   n_k <  2               -> insufficient samples, leave NaN
-        sum_col = float(col_k[~np.isnan(col_k)].sum())
+        #
+        # The denominator must match the cohorts that actually contributed
+        # to f_k: those with both c_k > 0 and c_{k+1} finite (R's lm fit
+        # uses the same subset). Summing all finite c_k would understate
+        # SE and bias rse downward.
+        fit_mask = mask & (col_k > 0)
+        sum_col = float(col_k[fit_mask].sum())
         if n_k >= 2 and sum_col > 0 and f_k[k] > 0:
             if sigma2_k[k] > 0:
                 f_se = np.sqrt(sigma2_k[k] / sum_col)

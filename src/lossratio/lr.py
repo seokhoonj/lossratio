@@ -54,6 +54,7 @@ def _fit_sa(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     k_star: int,
+    sigma_method: str = "locf",
     # k_star is the target dev (= ata_to) of the first stable link.
     # ED phase: target dev < k_star; CL phase: target dev >= k_star.
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -68,15 +69,15 @@ def _fit_sa(
     n_links = n_devs - 1
 
     # Premium chain ladder (for premium projection)
-    premium_mack = _fit_mack(premium_obs)
+    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
     premium_proj = premium_mack.loss_proj
 
     # ED parameters (g_k, sigma^2_g_k) and CL parameters (f_k, sigma^2_f_k)
-    ed_result = _fit_ed(loss_obs, premium_obs)
+    ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
     g_k = ed_result.g_k
     sigma2_g_k = ed_result.sigma2_g_k
 
-    cl_result = _fit_mack(loss_obs)
+    cl_result = _fit_mack(loss_obs, sigma_method=sigma_method)
     f_k = cl_result.f_k
     sigma2_f_k = cl_result.sigma2_k
 
@@ -152,23 +153,24 @@ def _fit_lr(
     max_rse: float,
     min_run: int,
     alpha: float,
+    sigma_method: str = "locf",
 ) -> _LRResult:
     """Single-group LR fit. Always returns cumulative loss_proj, premium_proj,
     lr_proj, plus SE on loss/lr."""
     n_devs = loss_obs.shape[1]
 
     # Premium chain ladder (always — needed for premium_proj and SE on lr)
-    premium_mack = _fit_mack(premium_obs)
+    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
     premium_proj = premium_mack.loss_proj
 
     k_star: int | None = None
 
     if method == "cl":
-        cl_result = _fit_mack(loss_obs)
+        cl_result = _fit_mack(loss_obs, sigma_method=sigma_method)
         loss_proj = cl_result.loss_proj
         se_loss = cl_result.se_proj
     elif method == "ed":
-        ed_result = _fit_ed(loss_obs, premium_obs)
+        ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
         loss_proj = ed_result.loss_proj
         se_loss = ed_result.se_proj
     elif method == "sa":
@@ -177,11 +179,13 @@ def _fit_lr(
         k_star = mat.k_star
         if k_star is None:
             # Fall back to ED throughout if maturity not detected
-            ed_result = _fit_ed(loss_obs, premium_obs)
+            ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
             loss_proj = ed_result.loss_proj
             se_loss = ed_result.se_proj
         else:
-            loss_proj, se_loss = _fit_sa(loss_obs, premium_obs, k_star)
+            loss_proj, se_loss = _fit_sa(
+                loss_obs, premium_obs, k_star, sigma_method=sigma_method
+            )
     else:
         raise ValueError(
             f"method must be one of {_VALID_METHODS}, got {method!r}"
@@ -313,6 +317,7 @@ class LR:
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
+        sigma_method: str = "locf",
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -322,11 +327,18 @@ class LR:
             raise NotImplementedError(
                 f"alpha={alpha} not yet implemented; only alpha=1 is supported"
             )
+        from ._sigma import VALID_SIGMA_METHODS
+        if sigma_method not in VALID_SIGMA_METHODS:
+            raise ValueError(
+                f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
+                f"got {sigma_method!r}"
+            )
         self.method = method
         self.alpha = alpha
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run
+        self.sigma_method = sigma_method
 
     def fit(self, triangle: "Triangle") -> "LRFit":
         """Fit the LR estimator on a Triangle."""
@@ -385,6 +397,7 @@ class LRFit:
                 estimator.max_rse,
                 estimator.min_run,
                 estimator.alpha,
+                sigma_method=estimator.sigma_method,
             )
             long_df = _result_to_long_df(
                 result, cohorts, group_var=None, group_value=None

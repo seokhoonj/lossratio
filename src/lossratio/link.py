@@ -176,22 +176,36 @@ class Link:
         """Long-format link table in the original input format."""
         return mirror_output(self._df, self._output_type)
 
-    def ata(self) -> "ATA":
+    def ata(self, sigma_method: str = "locf") -> "ATA":
         """ATA factor diagnostic on this link.
 
         Aggregates the per-cell ``ata`` column across cohorts via
         Mack pooling, returning per-link f, sigma2, cv, rse, n_obs.
+
+        Parameters
+        ----------
+        sigma_method
+            Tail-sigma extrapolation method when the last link has only
+            one contributing cohort. One of ``"locf"`` (default, most
+            conservative), ``"min_last2"``, ``"loglinear"``.
         """
         from .ata import ATA
 
-        return ATA._from_link(self)
+        return ATA._from_link(self, sigma_method=sigma_method)
 
-    def intensity(self) -> "Intensity":
+    def intensity(self, sigma_method: str = "locf") -> "Intensity":
         """ED intensity diagnostic on this link.
 
         Requires the Link to be in dual mode (source Triangle has a
         ``premium`` column). Aggregates the per-cell ``intensity``
         column via WLS, returning per-link g, g_se, sigma2, n_obs.
+
+        Parameters
+        ----------
+        sigma_method
+            Tail-sigma extrapolation method when the last link has
+            only one contributing cohort. One of ``"locf"`` (default,
+            most conservative), ``"min_last2"``, ``"loglinear"``.
         """
         if not self._has_premium:
             raise ValueError(
@@ -202,7 +216,7 @@ class Link:
             )
         from .intensity import Intensity
 
-        return Intensity._from_link(self)
+        return Intensity._from_link(self, sigma_method=sigma_method)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

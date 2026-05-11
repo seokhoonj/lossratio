@@ -132,20 +132,28 @@ def test_cl_sigma2_first_three_links_positive():
     assert sigma2[2] > 0
 
 
-def test_cl_sigma2_last_link_uses_mack_tail():
-    """Link 4 has n_k = 1, so sigma^2_4 is set via Mack's tail rule."""
+def test_cl_sigma2_last_link_uses_locf_tail():
+    """Link 4 has n_k = 1, so sigma^2_4 is filled by the tail
+    extrapolation. With the default sigma_method = "locf" the last
+    finite positive sigma2 is carried forward."""
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     fk = fit._fk_df.sort("dev")
     sigma2 = fk["sigma2"].to_list()
     s2 = sigma2[3]
     assert s2 is not None
     assert s2 > 0
-    # Mack: min(sigma_{k-1}^2 / sigma_{k-2}, min(sigma_{k-1}, sigma_{k-2}))
-    expected = min(
-        sigma2[2] ** 2 / sigma2[1],
-        min(sigma2[2], sigma2[1]),
-    )
+    # locf: most recent finite positive sigma2 — sigma2[2]
+    expected = sigma2[2]
     assert s2 == pytest.approx(expected, rel=1e-6)
+
+
+def test_cl_sigma2_last_link_min_last2():
+    """sigma_method = 'min_last2' falls back to min(s_{k-1}, s_{k-2})."""
+    fit = lr.CL(sigma_method="min_last2").fit(lr.Triangle(_toy_triangle_input()))
+    fk = fit._fk_df.sort("dev")
+    sigma2 = fk["sigma2"].to_list()
+    expected = min(sigma2[2], sigma2[1])
+    assert sigma2[3] == pytest.approx(expected, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------

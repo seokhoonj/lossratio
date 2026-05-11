@@ -53,13 +53,17 @@ def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     return premium, cohorts, max_dev
 
 
-def _fit_ed(loss_obs: np.ndarray, premium_obs: np.ndarray) -> _EDResult:
+def _fit_ed(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str = "locf",
+) -> _EDResult:
     """Fit ED (alpha = 1) on observed loss and premium matrices."""
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
     # 1. Premium chain ladder for exposure projection
-    premium_mack = _fit_mack(premium_obs)
+    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
     f_p_k = premium_mack.f_k
     sigma2_f_p_k = premium_mack.sigma2_k
     premium_proj = premium_mack.loss_proj  # premium filled in via chain ladder
@@ -95,11 +99,11 @@ def _fit_ed(loss_obs: np.ndarray, premium_obs: np.ndarray) -> _EDResult:
         else:
             sigma2_g_k[k] = 0.0
 
-    # Mack-style tail recommendation for the last sigma^2 when n_k = 1
-    if n_links >= 3 and sigma2_g_k[-1] == 0.0:
-        s = sigma2_g_k
-        if s[-2] > 0 and s[-3] > 0:
-            sigma2_g_k[-1] = min(s[-2] ** 2 / s[-3], min(s[-2], s[-3]))
+    # Tail-sigma extrapolation when the last link has n_k = 1.
+    # Delegates to the shared helper so the choice is consistent across
+    # cl / intensity / ed / lr (and parity with R's `sigma_method`).
+    from ._sigma import extrapolate_tail_sigma2
+    sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
 
     # 3. Project loss forward using ED rule:
     #    loss[i, k+1] = loss[i, k] + g_k * premium_proj[i, k]
@@ -270,16 +274,29 @@ class ED:
     >>> fit.summary()
     """
 
-    def __init__(self, alpha: float = 1.0) -> None:
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+    ) -> None:
         if alpha != 1.0:
             raise NotImplementedError(
                 f"alpha={alpha} not yet implemented; only alpha=1 is supported"
             )
+        from ._sigma import VALID_SIGMA_METHODS
+        if sigma_method not in VALID_SIGMA_METHODS:
+            raise ValueError(
+                f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
+                f"got {sigma_method!r}"
+            )
         self.alpha = alpha
+        self.sigma_method = sigma_method
 
     def fit(self, triangle: "Triangle") -> "EDFit":
         """Fit ED chain ladder on a Triangle."""
-        return EDFit._from_triangle(triangle, alpha=self.alpha)
+        return EDFit._from_triangle(
+            triangle, alpha=self.alpha, sigma_method=self.sigma_method
+        )
 
 
 class EDFit:
@@ -306,7 +323,12 @@ class EDFit:
         self.alpha: float
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle", alpha: float = 1.0) -> "EDFit":
+    def _from_triangle(
+        cls,
+        triangle: "Triangle",
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+    ) -> "EDFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._group_var = triangle._group_var
@@ -320,7 +342,7 @@ class EDFit:
         if group_var is None:
             loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
             premium_obs, _cohorts2, _ = _build_premium_matrix(tri_df)
-            result = _fit_ed(loss_obs, premium_obs)
+            result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
                 result, cohorts, group_var=None, group_value=None
             )
@@ -335,7 +357,7 @@ class EDFit:
                 sub = tri_df.filter(pl.col(group_var) == g)
                 loss_obs, cohorts, _ = _build_loss_matrix(sub)
                 premium_obs, _, _ = _build_premium_matrix(sub)
-                result = _fit_ed(loss_obs, premium_obs)
+                result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
                 long_parts.append(
                     _result_to_long_df(
                         result, cohorts, group_var=group_var, group_value=g

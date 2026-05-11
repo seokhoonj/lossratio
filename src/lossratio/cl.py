@@ -61,7 +61,10 @@ def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     return loss, cohorts, max_dev
 
 
-def _fit_mack(loss_obs: np.ndarray) -> _MackResult:
+def _fit_mack(
+    loss_obs: np.ndarray,
+    sigma_method: str = "locf",
+) -> _MackResult:
     """Fit Mack chain ladder (alpha = 1) on an observed loss matrix."""
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
@@ -104,12 +107,12 @@ def _fit_mack(loss_obs: np.ndarray) -> _MackResult:
         else:
             sigma2_k[k] = 0.0
 
-    # Mack's recommendation for the last sigma^2 when only one observation
-    # was available for that link. Requires at least three preceding sigmas.
-    if n_links >= 3 and sigma2_k[-1] == 0.0:
-        s = sigma2_k
-        if s[-2] > 0 and s[-3] > 0:
-            sigma2_k[-1] = min(s[-2] ** 2 / s[-3], min(s[-2], s[-3]))
+    # Tail-sigma extrapolation. When the last link has a single
+    # contributing cohort (n_k = 1), sigma2 is unestimable directly.
+    # Delegate to the shared helper so the choice is consistent
+    # across cl / intensity / lr.
+    from ._sigma import extrapolate_tail_sigma2
+    sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
 
     # Point projection: fill missing cells via f_k
     loss_proj = loss_obs.copy()
@@ -234,16 +237,29 @@ class CL:
     >>> fit.summary()
     """
 
-    def __init__(self, alpha: float = 1.0) -> None:
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+    ) -> None:
         if alpha != 1.0:
             raise NotImplementedError(
                 f"alpha={alpha} not yet implemented; only alpha=1 is supported"
             )
+        from ._sigma import VALID_SIGMA_METHODS
+        if sigma_method not in VALID_SIGMA_METHODS:
+            raise ValueError(
+                f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
+                f"got {sigma_method!r}"
+            )
         self.alpha = alpha
+        self.sigma_method = sigma_method
 
     def fit(self, triangle: "Triangle") -> "CLFit":
         """Fit Mack chain ladder on a Triangle."""
-        return CLFit._from_triangle(triangle, alpha=self.alpha)
+        return CLFit._from_triangle(
+            triangle, alpha=self.alpha, sigma_method=self.sigma_method
+        )
 
 
 class CLFit:
@@ -270,20 +286,26 @@ class CLFit:
         self.alpha: float
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle", alpha: float = 1.0) -> "CLFit":
+    def _from_triangle(
+        cls,
+        triangle: "Triangle",
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+    ) -> "CLFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._group_var = triangle._group_var
         self._cohort_var = triangle._cohort_var
         self._dev_var = triangle._dev_var
         self.alpha = alpha
+        self.sigma_method = sigma_method
 
         tri_df = triangle._df
         group_var = triangle._group_var
 
         if group_var is None:
             loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
-            result = _fit_mack(loss_obs)
+            result = _fit_mack(loss_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
                 result, cohorts, group_var=None, group_value=None
             )
@@ -297,7 +319,7 @@ class CLFit:
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
                 loss_obs, cohorts, _ = _build_loss_matrix(sub)
-                result = _fit_mack(loss_obs)
+                result = _fit_mack(loss_obs, sigma_method=sigma_method)
                 long_parts.append(
                     _result_to_long_df(result, cohorts, group_var=group_var, group_value=g)
                 )

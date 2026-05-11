@@ -173,12 +173,7 @@ def test_ata_factors_match_r():
     assert py.height == r.height, (
         f"ATA link count mismatch: py={py.height} r={r.height}"
     )
-    # Point estimate (f, sigma2, cv) matches; `rse` (= f_se / f) uses a
-    # slightly different SE normalisation between Python (no
-    # finite-sample correction) and R. Follow-up issue tracks aligning
-    # the SE formula; here the comparison covers everything except SE-
-    # derived columns.
-    _compare_numeric(py, r, cols=["f", "sigma2", "cv", "n_obs"])
+    _compare_numeric(py, r, cols=["f", "sigma2", "cv", "rse", "n_obs"])
 
 
 def test_intensity_factors_match_r():
@@ -190,11 +185,7 @@ def test_intensity_factors_match_r():
     assert py.height == r.height, (
         f"intensity link count mismatch: py={py.height} r={r.height}"
     )
-    # `g` point estimate and `n_obs` match. `g_se` and `sigma2`'s last
-    # link drift because Python and R use different small-sample
-    # fallbacks (Python: zero, R: min-of-last-2 extrapolation). Both
-    # are follow-up alignment items.
-    _compare_numeric(py, r, cols=["g", "n_obs"])
+    _compare_numeric(py, r, cols=["g", "g_se", "sigma2", "n_obs"])
 
 
 def test_regime_breakpoints_match_r():
@@ -218,10 +209,15 @@ def test_lr_sa_summary_matches_r():
     lr_fit = lr.LR(method="sa").fit(tri)
     py = lr_fit.summary().sort(["cohort"])
 
-    # Point estimates (lr_ult, lr_latest) match exactly; SE-derived
-    # cols (se_lr, cv_lr) drift slightly due to the same SE-normalisation
-    # divergence as ATA's `rse` — tracked as a follow-up.
-    common = [c for c in ["lr_ult", "lr_latest"] if c in r.columns and c in py.columns]
+    # Point estimates (lr_ult, lr_latest) match exactly. `se_lr` /
+    # `cv_lr` use a projection-level cumulative variance recursion
+    # that drifts from R's by a few percent — a separate algorithmic
+    # alignment item from the link-level sigma extrapolation just
+    # unified here. Tracked as a follow-up.
+    common = [
+        c for c in ["lr_ult", "lr_latest"]
+        if c in r.columns and c in py.columns
+    ]
     if not common:
         pytest.skip("no overlapping summary columns to compare")
     _compare_numeric(py, r, cols=common)

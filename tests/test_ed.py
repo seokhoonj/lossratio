@@ -107,15 +107,27 @@ def test_ed_sigma2_g_k_first_three_links_positive():
     assert sigma2[2] > 0
 
 
-def test_ed_sigma2_g_k_last_link_uses_mack_tail():
+def test_ed_sigma2_g_k_last_link_uses_locf_tail():
+    """Default sigma_method = "locf": the last (unfittable) sigma^2
+    inherits the most recent finite positive value, not Mack's full
+    formula."""
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     params = fit._params_df.sort("dev")
     sigma2 = params["sigma2_g"].to_list()
     s2 = sigma2[3]
     assert s2 is not None
     assert s2 > 0
-    expected = min(sigma2[2] ** 2 / sigma2[1], min(sigma2[2], sigma2[1]))
+    # locf: last finite positive sigma2 carried forward = sigma2[2]
+    expected = sigma2[2]
     assert s2 == pytest.approx(expected, rel=1e-6)
+
+
+def test_ed_sigma2_g_k_last_link_min_last2():
+    fit = lr.ED(sigma_method="min_last2").fit(lr.Triangle(_toy_triangle_input()))
+    params = fit._params_df.sort("dev")
+    sigma2 = params["sigma2_g"].to_list()
+    expected = min(sigma2[2], sigma2[1])
+    assert sigma2[3] == pytest.approx(expected, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------

@@ -46,6 +46,7 @@ class _IntensityResult:
 def _compute_intensity(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
+    sigma_method: str = "locf",
 ) -> _IntensityResult:
     """Per-link WLS intensity estimation.
 
@@ -104,6 +105,24 @@ def _compute_intensity(
         else:
             sigma2_k[k] = 0.0
             g_se_k[k] = 0.0
+
+    # Tail-sigma extrapolation. When the last link has a single
+    # contributing cohort (n_k = 1), sigma2 is unestimable directly.
+    # Delegate to the shared helper so the choice is consistent
+    # across cl / intensity / lr.
+    from ._sigma import extrapolate_tail_sigma2
+    sigma2_k_new = extrapolate_tail_sigma2(sigma2_k, sigma_method)
+    if sigma2_k_new[-1] != sigma2_k[-1]:
+        sigma2_k = sigma2_k_new
+        # Recompute g_se on the filled tail using sum_crp from the same link.
+        k_last = n_links - 1
+        ck_last = premium_obs[:, k_last]
+        dl_last = loss_obs[:, k_last + 1] - loss_obs[:, k_last]
+        mask_last = ~np.isnan(ck_last) & ~np.isnan(dl_last) & (ck_last > 0)
+        if mask_last.any():
+            sum_crp_last = float(ck_last[mask_last].sum())
+            if sum_crp_last > 0 and sigma2_k[-1] > 0:
+                g_se_k[-1] = float(np.sqrt(sigma2_k[-1] / sum_crp_last))
 
     return _IntensityResult(
         g_k=g_k,
@@ -177,7 +196,7 @@ class Intensity:
         self._dev_var: str
 
     @classmethod
-    def _from_link(cls, link: "Link") -> "Intensity":
+    def _from_link(cls, link: "Link", sigma_method: str = "locf") -> "Intensity":
         self = cls.__new__(cls)
         self._output_type = link._output_type
         self._group_var = link._group_var
@@ -190,7 +209,9 @@ class Intensity:
         if group_var is None:
             loss_obs, _, _ = _build_loss_matrix(tri_df)
             premium_obs, _, _ = _build_premium_matrix(tri_df)
-            result = _compute_intensity(loss_obs, premium_obs)
+            result = _compute_intensity(
+                loss_obs, premium_obs, sigma_method=sigma_method
+            )
             diag_df = _diagnostic_to_df(
                 result, group_var=None, group_value=None
             )
@@ -203,7 +224,9 @@ class Intensity:
                 sub = tri_df.filter(pl.col(group_var) == g)
                 loss_obs, _, _ = _build_loss_matrix(sub)
                 premium_obs, _, _ = _build_premium_matrix(sub)
-                result = _compute_intensity(loss_obs, premium_obs)
+                result = _compute_intensity(
+                    loss_obs, premium_obs, sigma_method=sigma_method
+                )
                 diag_parts.append(
                     _diagnostic_to_df(
                         result, group_var=group_var, group_value=g
