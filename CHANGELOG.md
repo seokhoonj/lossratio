@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- `Backtest` gained a `metric: str = "lr"` argument (R parity). It
+  selects the scoring lane on the held-out cells; one of `"lr"`
+  (default), `"loss"`, or `"premium"`. The previous behaviour
+  silently scored `loss_proj` — callers using `Backtest(estimator=
+  lr.CL(), ...)` must now pass `metric="loss"` explicitly to keep
+  the old behaviour. The new default `"lr"` works out of the box
+  for `lr.LR()` and `lr.ED()`.
+
+- Ratio-fit estimators (`lr.LR`, `lr.ED`) only accept
+  `metric="lr"`. Constructing `Backtest(estimator=lr.LR(),
+  metric="loss")` now raises `ValueError` with a hint to use
+  `lr.CL()` directly for non-ratio scoring lanes.
+
+- `ED.fit(...)` output gains a `lr_proj` column (= `loss_proj /
+  premium_proj`), bringing it in line with `LR.fit(...)`. This is
+  what enables the new ratio-fit backtest with `metric="lr"`.
+
+### Internal
+
 - `Maturity.k_star` now reports the *target* dev of the first stable
   link (= `ata_to`) instead of the source dev (= `ata_from`). The
   development region splits as ED = `dev < k_star` and CL = `dev >= k_star`.

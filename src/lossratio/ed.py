@@ -196,6 +196,15 @@ def _result_to_long_df(
                 if not np.isnan(result.se_proj[i, k])
                 else None
             )
+            # lr_proj = loss_proj / premium_proj (cumulative LR projection)
+            if (
+                row["loss_proj"] is not None
+                and row["premium_proj"] is not None
+                and row["premium_proj"] != 0
+            ):
+                row["lr_proj"] = row["loss_proj"] / row["premium_proj"]
+            else:
+                row["lr_proj"] = None
             rows.append(row)
     return pl.DataFrame(rows)
 

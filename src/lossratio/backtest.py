@@ -88,14 +88,40 @@ def _build_masked_df(
     return masked_df, annotated_df
 
 
-def _resolve_predicted_column(fit_df_columns: list[str]) -> str:
-    """Return the projected-loss column name for an LRFit / CLFit / EDFit."""
-    if "loss_proj" in fit_df_columns:
-        return "loss_proj"
-    raise ValueError(
-        "Refitted estimator output has no 'loss_proj' column. "
-        "Backtest currently supports CL / ED / LR."
-    )
+_VALID_METRICS = ("lr", "loss", "premium")
+_METRIC_TO_PROJ_COL = {
+    "lr":      "lr_proj",
+    "loss":    "loss_proj",
+    "premium": "premium_proj",
+}
+
+
+def _is_ratio_fit_estimator(estimator: Any) -> bool:
+    """LR / ED jointly project loss / premium / lr; CL projects a single
+    column. Distinguished by whether the estimator class is a ratio-fit.
+    """
+    # Late import to avoid circular dependency at module load time.
+    from .ed import ED
+    from .lr import LR
+
+    return isinstance(estimator, (LR, ED))
+
+
+def _resolve_predicted_column(metric: str, fit_df_columns: list[str]) -> str:
+    """Map ``metric`` to the projection column expected on the refit's
+    output frame. Raises if the column is missing or metric is invalid.
+    """
+    if metric not in _VALID_METRICS:
+        raise ValueError(
+            f"metric must be one of {_VALID_METRICS}, got {metric!r}"
+        )
+    pred_col = _METRIC_TO_PROJ_COL[metric]
+    if pred_col not in fit_df_columns:
+        raise ValueError(
+            f"Refitted estimator output has no {pred_col!r} column "
+            f"(needed for metric={metric!r})."
+        )
+    return pred_col
 
 
 # ---------------------------------------------------------------------------
@@ -134,15 +160,33 @@ class Backtest:
     >>> bt.diag_summary
     """
 
-    def __init__(self, estimator: Any, holdout: int = 6) -> None:
+    def __init__(
+        self,
+        estimator: Any,
+        holdout: int = 6,
+        metric: str = "lr",
+    ) -> None:
         if holdout < 1:
             raise ValueError(f"holdout must be >= 1, got {holdout}")
         if not hasattr(estimator, "fit"):
             raise TypeError(
                 f"estimator must implement .fit(triangle); got {type(estimator).__name__}"
             )
+        if metric not in _VALID_METRICS:
+            raise ValueError(
+                f"metric must be one of {_VALID_METRICS}, got {metric!r}"
+            )
+        # LR / ED are ratio-fits — only `lr` is a meaningful scoring lane;
+        # use CL directly to backtest the loss or premium projection.
+        if _is_ratio_fit_estimator(estimator) and metric != "lr":
+            raise ValueError(
+                f"estimator is a ratio-fit ({type(estimator).__name__}); "
+                f"only metric='lr' is supported. Use lr.CL() instead to "
+                f"backtest the loss or premium projection directly."
+            )
         self.estimator = estimator
         self.holdout = holdout
+        self.metric = metric
 
     def fit(self, triangle: "Triangle") -> "BacktestFit":
         return BacktestFit._from_triangle(triangle, self)
@@ -203,7 +247,8 @@ class BacktestFit:
         self._refit = refit
 
         refit_df = refit.to_polars()
-        pred_col = _resolve_predicted_column(refit_df.columns)
+        pred_col = _resolve_predicted_column(bt.metric, refit_df.columns)
+        self.metric = bt.metric
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
         keys: list[str] = []
@@ -211,9 +256,12 @@ class BacktestFit:
             keys.append(triangle._group_var)
         keys.extend(["cohort", "dev"])
 
+        # `actual` is the cumulative column on the original Triangle that
+        # corresponds to the chosen scoring lane.
+        actual_col = bt.metric  # "lr" / "loss" / "premium"
         held_out = annotated_df.filter(pl.col("masked")).select(
-            keys + ["calendar_idx", "loss"]
-        ).rename({"loss": "actual"})
+            keys + ["calendar_idx", actual_col]
+        ).rename({actual_col: "actual"})
 
         refit_pred = refit_df.select(keys + [pred_col]).rename({pred_col: "predicted"})
 
