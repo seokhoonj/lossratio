@@ -18,11 +18,14 @@ if TYPE_CHECKING:
 
 
 def _add_calendar_idx(tri_df: pl.DataFrame, group_var: str | None) -> pl.DataFrame:
-    """Add a 0-based calendar index per cell.
+    """Add a 1-based calendar index per cell (R parity).
 
-    Calendar index counts the antidiagonal: ``cohort_idx + (dev - 1)``,
-    where ``cohort_idx`` is the 0-based position of the cohort within
-    its group when sorted by cohort value.
+    Calendar index counts the antidiagonal:
+    ``cohort_idx + dev - 1`` with ``cohort_idx`` the 1-based dense
+    rank of cohort within its group (R's ``frank(..., ties.method =
+    "dense")`` convention). So the oldest cohort at dev = 1 lands on
+    calendar_idx = 1, and the maximum calendar_idx equals the number
+    of cohorts (or, for square-ish triangles, the number of devs).
     """
     sort_keys: list[str] = []
     if group_var is not None:
@@ -33,10 +36,10 @@ def _add_calendar_idx(tri_df: pl.DataFrame, group_var: str | None) -> pl.DataFra
     if group_var is not None:
         over_keys = [group_var]
         cohort_idx_expr = (
-            pl.col("cohort").rank(method="dense").over(over_keys).cast(pl.Int64) - 1
+            pl.col("cohort").rank(method="dense").over(over_keys).cast(pl.Int64)
         )
     else:
-        cohort_idx_expr = pl.col("cohort").rank(method="dense").cast(pl.Int64) - 1
+        cohort_idx_expr = pl.col("cohort").rank(method="dense").cast(pl.Int64)
 
     return tri_df.with_columns(
         cohort_idx_expr.alias("__cohort_idx"),

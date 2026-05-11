@@ -124,6 +124,59 @@ def test_cl_full_matches_r():
 # ---------------------------------------------------------------------------
 
 
+def test_lr_ed_full_matches_r():
+    r = _load("lr_ed_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    py = (
+        lr.LR(method="ed").fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+    )
+    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "lr_proj"])
+
+
+def test_lr_cl_full_matches_r():
+    r = _load("lr_cl_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    py = (
+        lr.LR(method="cl").fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+    )
+    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "lr_proj"])
+
+
+def test_lr_sa_maturity_matches_r():
+    """k* = max(ata_to) from fit_lr$maturity table."""
+    r = _load("lr_sa_maturity")
+    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    fit = lr.LR(method="sa").fit(tri)
+    # R: max(ata_to) per group
+    r_k = int(r["ata_to"].max())
+    py_k = fit.k_star["SUR"]
+    assert py_k == r_k, f"k_star mismatch: py={py_k} r={r_k}"
+
+
+def test_cl_mack_se_matches_r():
+    """Mack-style SE on the chain ladder projection. Python's CL always
+    produces se_proj (no separate 'method' switch), so this also covers
+    the basic / mack split on the R side at the projection level."""
+    r = _load("cl_mack_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    py = (
+        lr.CL().fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+        .rename({"loss_proj": "value_proj"})
+    )
+    _compare_numeric(py, r, cols=["value_proj", "se_proj"])
+
+
+# ---------------------------------------------------------------------------
+# backtest with metric = "lr"
+# ---------------------------------------------------------------------------
+
+
 def test_backtest_lr_ae_err_matches_r():
     """Full row-level parity with R's backtest output.
 
@@ -150,4 +203,38 @@ def test_backtest_lr_ae_err_matches_r():
     _compare_numeric(
         py_common, r_common,
         cols=["value_actual", "value_pred", "ae_err"],
+    )
+
+
+def test_backtest_col_summary_matches_r():
+    """col_summary aggregates by dev."""
+    r = _load("backtest_lr_col_summary").sort(["dev"])
+    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
+    py = bt.col_summary.sort(["dev"])
+
+    keys = ["dev"]
+    py_common = py.join(r.select(keys), on=keys, how="inner").sort(keys)
+    r_common = r.join(py.select(keys), on=keys, how="inner").sort(keys)
+
+    _compare_numeric(
+        py_common, r_common,
+        cols=["ae_err_mean", "ae_err_med", "ae_err_wt"],
+    )
+
+
+def test_backtest_diag_summary_matches_r():
+    """diag_summary aggregates by calendar diagonal."""
+    r = _load("backtest_lr_diag_summary").sort(["calendar_idx"])
+    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
+    py = bt.diag_summary.sort(["calendar_idx"])
+
+    keys = ["calendar_idx"]
+    py_common = py.join(r.select(keys), on=keys, how="inner").sort(keys)
+    r_common = r.join(py.select(keys), on=keys, how="inner").sort(keys)
+
+    _compare_numeric(
+        py_common, r_common,
+        cols=["ae_err_mean", "ae_err_med", "ae_err_wt"],
     )
