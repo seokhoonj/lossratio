@@ -84,25 +84,30 @@ def test_backtest_ae_err_columns():
 
 def test_backtest_ae_err_size_holdout_one():
     """holdout=1 masks the most recent diagonal (5 cells in a 5x5
-    triangular Triangle). Cohort 5 (dev 1 only) becomes unreachable
-    once dev 1 is masked, so its single masked cell is excluded.
+    triangular Triangle). Two effects shrink the reachable set:
 
-    Reachable: 4 cells.
+    1. Cohort 5 (dev 1 only) loses its single anchor when dev 1 is
+       masked, so its single masked cell has no projection.
+    2. The deepest link (dev 4 -> 5) has no fit data on the masked
+       triangle, so the masked fit returns NaN for cohort 1 at dev 5;
+       that cell is dropped too.
+
+    Reachable: 3 cells.
     """
     tri = lr.Triangle(_toy_triangle_input())
     bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
-    assert bt.ae_err.shape[0] == 4
+    assert bt.ae_err.shape[0] == 3
 
 
 def test_backtest_ae_err_size_holdout_two():
     """holdout=2 masks the two most recent diagonals (9 cells). Cohorts
-    4 and 5 (only dev 1 / dev 1-2 observed) lose all anchors and become
-    unreachable. Reachable: 6 cells (cohort 1 dev 4-5, cohort 2 dev 3-4,
-    cohort 3 dev 2-3).
+    4 and 5 lose all anchors. After also dropping cells the masked fit
+    cannot project (unfittable links produce NaN under R-parity NA
+    semantics), 3 cells remain.
     """
     tri = lr.Triangle(_toy_triangle_input())
     bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(tri)
-    assert bt.ae_err.shape[0] == 6
+    assert bt.ae_err.shape[0] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +202,7 @@ def test_backtest_with_ed_estimator():
     bt = lr.Backtest(estimator=lr.ED(), holdout=1).fit(
         lr.Triangle(_toy_triangle_input())
     )
-    assert bt.ae_err.shape[0] == 4
+    assert bt.ae_err.shape[0] == 3
     # ED returns loss_proj; backtest auto-resolves
     assert "predicted" in bt.ae_err.columns
 
@@ -207,14 +212,14 @@ def test_backtest_with_lr_sa_estimator():
         estimator=lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
         holdout=1,
     ).fit(lr.Triangle(_toy_triangle_input()))
-    assert bt.ae_err.shape[0] == 4
+    assert bt.ae_err.shape[0] == 3
 
 
 def test_backtest_with_lr_cl_method():
     bt = lr.Backtest(estimator=lr.LR(method="cl"), holdout=1).fit(
         lr.Triangle(_toy_triangle_input())
     )
-    assert bt.ae_err.shape[0] == 4
+    assert bt.ae_err.shape[0] == 3
 
 
 # ---------------------------------------------------------------------------

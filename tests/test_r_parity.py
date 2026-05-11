@@ -125,14 +125,12 @@ def test_cl_full_matches_r():
 
 
 def test_backtest_lr_ae_err_matches_r():
-    """Parity on cells the R side keeps after `is.finite(value_pred)`.
+    """Full row-level parity with R's backtest output.
 
-    Note: the Python masked-fit can produce finite projections for some
-    deepest-dev cells where the R masked-fit returns NA. The set of cells
-    on which both languages report a value is what we compare; this is
-    the natural overlap and matches R's intent (R drops NA cells before
-    aggregation anyway). The Python-only cells are an intentional
-    algorithmic difference, not a bug — flagged here for visibility.
+    Both languages now use NaN for unfittable links (R-parity sweep on
+    Python's `f_k` default), so the reachable cell set is identical.
+    The defensive intersect-on-(cohort, dev) is kept as a guard against
+    future drift.
     """
     r = _load("backtest_lr_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), group_var="coverage")

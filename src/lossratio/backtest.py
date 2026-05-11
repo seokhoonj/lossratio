@@ -270,7 +270,10 @@ class BacktestFit:
         # so the refit returns NaN at those cells.
         ae_err = (
             held_out.join(refit_pred, on=keys, how="inner")
-            .filter(pl.col("predicted").is_not_null())
+            .filter(
+                pl.col("predicted").is_not_null()
+                & pl.col("predicted").is_finite()
+            )
             .with_columns(
                 pl.when(
                     pl.col("predicted").is_finite() & (pl.col("predicted") != 0)

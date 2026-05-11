@@ -80,8 +80,12 @@ def _fit_mack(loss_obs: np.ndarray) -> _MackResult:
         n_k = int(mask.sum())
 
         if n_k == 0:
-            f_k[k] = 1.0
-            sigma2_k[k] = 0.0
+            # No cohort contributes to this link — f_k is unestimable.
+            # Mark NaN (R parity) so downstream projections, SE, and
+            # CV propagate the "not fit" status honestly rather than
+            # silently using an identity factor.
+            f_k[k] = np.nan
+            sigma2_k[k] = np.nan
             continue
 
         ck_eff = ck[mask]
@@ -90,7 +94,7 @@ def _fit_mack(loss_obs: np.ndarray) -> _MackResult:
         sum_k1 = ck1_eff.sum()
         sum_col_k[k] = sum_k
 
-        f_k[k] = sum_k1 / sum_k if sum_k > 0 else 1.0
+        f_k[k] = sum_k1 / sum_k if sum_k > 0 else np.nan
 
         if n_k >= 2 and f_k[k] != 0:
             indiv = ck1_eff / ck_eff

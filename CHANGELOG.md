@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Chain ladder `f_k` is now `NaN` for unfittable links (no cohort
+  contributes to the link) and propagates `NaN` through all
+  downstream projections, SE, and CV. Previously Python used
+  `f_k = 1.0` (identity) which silently produced flat
+  carry-forward at deepest-dev cells and froze SE / CV at the
+  last fittable step. The new behaviour matches R, Mack 1993, and
+  ChainLadder R package conventions: unfittable = unestimable =
+  NaN. Affects `CL.fit().df.loss_proj`, `LR.fit().df.lr_proj`,
+  `Backtest(...)` row counts (NaN-projected cells are dropped),
+  and any downstream that consumed the implicit flat
+  extrapolation.
+
 - `Backtest` gained a `metric: str = "lr"` argument (R parity). It
   selects the scoring lane on the held-out cells; one of `"lr"`
   (default), `"loss"`, or `"premium"`. The previous behaviour
