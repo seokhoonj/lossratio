@@ -54,10 +54,14 @@ def _fit_sa(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     k_star: int,
+    # k_star is the target dev (= ata_to) of the first stable link.
+    # ED phase: target dev < k_star; CL phase: target dev >= k_star.
 ) -> tuple[np.ndarray, np.ndarray]:
     """Stage-adaptive projection (ED before k*, CL after).
 
-    k_star is 1-indexed dev: link index < k_star uses ED, >= k_star uses CL.
+    k_star = target dev (ata_to) of the first stable link.
+    ED phase: target dev < k_star (= dev of the cell being projected
+    into is below maturity); CL phase: target dev >= k_star.
     Returns (loss_proj, se_loss) — both shape (n_cohorts, n_devs).
     """
     n_cohorts, n_devs = loss_obs.shape
@@ -101,13 +105,14 @@ def _fit_sa(
 
         var_acc = 0.0
         for k in range(last_obs, n_devs - 1):
-            # Link k goes from dev (k+1) to dev (k+2). 1-indexed link
-            # number = k + 1. Use ED while link number < k_star, CL when >= k_star.
-            link_idx = k + 1
+            # Link k goes from dev (k+1) to dev (k+2). The target dev of
+            # this link is k + 2 (= ata_to). Use ED while target dev
+            # < k_star, CL when >= k_star.
+            target_dev = k + 2
             ck = loss_proj[i, k]
             premium_k = premium_proj[i, k]
 
-            if link_idx < k_star:
+            if target_dev < k_star:
                 # ED phase: additive
                 if not np.isnan(premium_k) and premium_k > 0:
                     loss_proj[i, k + 1] = ck + g_k[k] * premium_k
@@ -132,12 +137,9 @@ def _fit_sa(
 
             ck1 = loss_proj[i, k + 1]
             if not np.isnan(ck1) and var_acc >= 0:
-                # For ED phase: total variance = var_acc; SE = sqrt(var_acc)
-                # For CL phase: same (var_acc is already in the absolute scale of C_{k+1})
-                if link_idx < k_star:
-                    se_loss[i, k + 1] = float(np.sqrt(var_acc))
-                else:
-                    se_loss[i, k + 1] = float(np.sqrt(var_acc))
+                # ED and CL phases share the same final SE formula —
+                # var_acc is already in the absolute scale of C_{k+1}.
+                se_loss[i, k + 1] = float(np.sqrt(var_acc))
 
     return loss_proj, se_loss
 

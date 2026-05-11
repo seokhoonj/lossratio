@@ -154,18 +154,17 @@ def test_lr_sa_strict_thresholds_falls_back_to_ed():
     assert sa_df["loss_proj"].to_list() == ed_df["loss_proj"].to_list()
 
 
-def test_lr_sa_kstar_one_matches_cl_projection():
-    """With k_star=1, every link is in CL phase (k+1 >= 1 for all).
-    Wait, link_idx >= k_star means CL phase. With k_star=1 and link_idx
-    starting at 1, all links use CL → SA should match pure CL."""
+def test_lr_sa_kstar_two_matches_cl_projection():
+    """With k_star=2, every link's target dev (>= 2) lies in the CL
+    region (target dev >= k_star), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.CL().fit(tri)
 
-    if sa_fit.k_star == 1:
+    if sa_fit.k_star == 2:
         sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
         cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-        # Both use CL throughout when k_star = 1
+        # Both use CL throughout when k_star = 2 (target dev >= 2 for all links).
         for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
             if a is None or b is None:
                 continue

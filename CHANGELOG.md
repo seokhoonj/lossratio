@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- `Maturity.k_star` now reports the *target* dev of the first stable
+  link (= `ata_to`) instead of the source dev (= `ata_from`). The
+  development region splits as ED = `dev < k_star` and CL = `dev >= k_star`.
+  Mirrors the R sibling's convention sweep. Consumer code comparing
+  against `k_star` should add 1 (or use the new `target_dev` reading).
+  `LRFit.k_star` follows the same convention. Numerical projection
+  output is unchanged — only the index label moved by 1.
+
 ### Added
 
 - `Triangle()` accepts a new `fill_gaps: bool = False` argument

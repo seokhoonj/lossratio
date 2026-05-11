@@ -93,15 +93,19 @@ def _compute_cv_rse(
 def _detect_k_star(stable_k: np.ndarray, min_run: int) -> int | None:
     """First link index k where stable_k[k : k + min_run] are all True.
 
-    Returns the 1-indexed dev value (link source dev), or ``None`` if
-    no such window exists.
+    Returns the *target* dev value of that link (1-indexed; equivalent
+    to ``ata_to`` in R sibling). With this convention the development
+    region splits as ED = ``dev < k_star`` and CL = ``dev >= k_star``.
+
+    Returns ``None`` if no such window exists.
     """
     n_links = len(stable_k)
     if min_run < 1 or n_links < min_run:
         return None
     for k in range(n_links - min_run + 1):
         if bool(np.all(stable_k[k : k + min_run])):
-            return k + 1
+            # link k goes from dev (k+1) -> dev (k+2); target dev = k + 2
+            return k + 2
     return None
 
 

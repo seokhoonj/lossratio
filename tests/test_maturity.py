@@ -102,11 +102,15 @@ def test_maturity_repr():
 # ---------------------------------------------------------------------------
 
 
-def test_maturity_stable_data_finds_k_star_at_one():
-    """When every link is perfectly stable (CV=0, RSE=0), k_star=1."""
+def test_maturity_stable_data_finds_k_star_at_two():
+    """When every link is perfectly stable (CV=0, RSE=0), k_star=2.
+
+    k_star is the target dev (ata_to) of the first stable link; the
+    first link goes from dev 1 to dev 2, so target dev = 2.
+    """
     tri = lr.Triangle(_stable_input())
     mat = tri.link().ata().maturity()
-    assert mat.k_star == 1
+    assert mat.k_star == 2
 
 
 def test_maturity_strict_thresholds_no_detection():
@@ -117,11 +121,14 @@ def test_maturity_strict_thresholds_no_detection():
 
 
 def test_maturity_loose_thresholds_finds_k_star():
-    """Generous thresholds: k_star should be the first link."""
+    """Generous thresholds: k_star should be the target dev of the
+    first stable link.
+    """
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
-    # With min_run=2 we need 2 consecutive stable links — first available is k=1
-    assert mat.k_star == 1
+    # With min_run=2 we need 2 consecutive stable links starting at link 0
+    # (dev 1 -> dev 2). Target dev of that link = 2.
+    assert mat.k_star == 2
 
 
 def test_maturity_m_consecutive_required():
@@ -206,7 +213,7 @@ def test_maturity_per_group_independent():
     tri = lr.Triangle(df_grouped, group_var="coverage")
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # Same data in each group → same k_star
-    assert mat.k_star == {"A": 1, "B": 1}
+    assert mat.k_star == {"A": 2, "B": 2}
 
 
 # ---------------------------------------------------------------------------
