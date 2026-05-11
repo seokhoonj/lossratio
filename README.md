@@ -56,7 +56,7 @@ import lossratio as lr
 
 # Built-in synthetic experience: four coverages (CI / CAN / HOS / SUR),
 # 36 monthly cohorts each, up to 36 dev months. SUR carries one
-# regime shift at 2025-07. We focus on SUR for this walk-through.
+# regime shift at 2024-07. We focus on SUR for this walk-through.
 df = lr.load_experience()
 df.head(3)
 #> shape: (3, 6)

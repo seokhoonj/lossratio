@@ -35,4 +35,4 @@ def test_load_experience_sur_has_regime_break():
     tri = lr.Triangle(df)
     reg = tri.detect_regime(loss_var="lr", K=12)
     assert len(reg.breakpoints) == 1
-    assert reg.breakpoints[0].isoformat() == "2025-07-01"
+    assert reg.breakpoints[0].isoformat() == "2024-07-01"

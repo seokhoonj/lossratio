@@ -11,7 +11,7 @@ Calibration scalars (target LR, premium volume, cell noise CV) per
 coverage were measured once on a real long-term Korean health-
 insurance portfolio and are baked in here as constants so this module
 ships without any real-data dependency. SUR carries a regime shift at
-cohort 18 (2025-07): target LR is scaled by 0.6 to mimic the real
+cohort 18 (2024-07): target LR is scaled by 0.6 to mimic the real
 portfolio's underwriting tightening.
 
 To regenerate the shipped parquet (e.g., after touching the recipe)::
@@ -52,7 +52,7 @@ _CALIB: list[tuple[str, float, float, float, float]] = [
     ("SUR",      1.4291995, 704_738_057, 0.6738675, 0.3589258),
 ]
 
-# Single regime shift on SUR at cohort idx 18 (2025-07): scale target
+# Single regime shift on SUR at cohort idx 18 (2024-07): scale target
 # LR by 0.6 (1.43 -> ~0.86).
 _SHIFTS: dict[str, tuple[int, float]] = {"SUR": (18, 0.60)}
 
@@ -79,11 +79,11 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
 
     Layout:
 
-    * 36 monthly cohorts: 2024-01 to 2026-12.
+    * 36 monthly cohorts: 2023-01 to 2025-12.
     * Up to 36 development months per cohort, jagged triangle shape.
     * Four coverages keyed by ``coverage`` (``CI``, ``CAN``, ``HOS``,
       ``SUR``).
-    * ``SUR`` carries a planted regime shift at cohort 2025-07 (cohort
+    * ``SUR`` carries a planted regime shift at cohort 2024-07 (cohort
       idx 18): target cumulative LR drops to roughly 0.6× the
       pre-break level, reflecting the underwriting tightening in the
       real portfolio. The other three coverages are stable.
@@ -121,13 +121,13 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
             )
 
             cy_u, cm_u = divmod(ci, 12)
-            uy_m = _ymd(2024 + cy_u, cm_u + 1)
+            uy_m = _ymd(2023 + cy_u, cm_u + 1)
 
             for k in range(_K):
                 if ci + k > _MAX_CYM_IDX:
                     break
                 cy_c, cm_c = divmod(ci + k, 12)
-                cy_m = _ymd(2024 + cy_c, cm_c + 1)
+                cy_m = _ymd(2023 + cy_c, cm_c + 1)
 
                 incr_premium = prem_base * (1.0 + rng.normal(0.0, 0.05))
                 incr_premium = max(incr_premium, 0.0)
