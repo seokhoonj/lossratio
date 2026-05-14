@@ -540,7 +540,7 @@ def _resolve_regime(
 
 
 # ---------------------------------------------------------------------------
-# Cohort filter (Phase B — `latest_only` mode only; segment_wise later)
+# Cohort filter + segment annotation
 # ---------------------------------------------------------------------------
 
 
@@ -565,27 +565,188 @@ def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
     )
 
 
+def _segment_id_expr(
+    regime: "Regime",
+    cohort_col: str = "cohort",
+) -> pl.Expr | None:
+    """Build a polars expression that assigns 1-based segment ids to
+    rows based on ``cohort`` and ``regime._changes_df``.
+
+    Implements R's ``findInterval(cohort, sorted_changes) + 1L``: a row
+    earlier than the first change is segment 1, between the k-th and
+    (k+1)-th change is segment k+1, on or after the K-th change is
+    segment K+1.
+
+    For multi-group regimes the expression is built per-group via
+    nested ``when`` chains. Returns ``None`` when the regime has no
+    changes (caller should default everything to segment 1).
+    """
+    if not regime.breakpoints:
+        return None
+
+    changes = regime._changes_df
+    is_multi = regime.groups is not None and regime.groups in changes.columns
+
+    def _single_group_expr(sorted_changes: list[Any]) -> pl.Expr:
+        # cohort >= ch_K  -> K+1
+        # ch_{k-1} <= cohort < ch_k -> k
+        # cohort < ch_1 -> 1
+        expr = pl.lit(1, dtype=pl.Int64)
+        for i, ch in enumerate(sorted_changes, start=2):
+            expr = (
+                pl.when(pl.col(cohort_col) >= ch).then(i).otherwise(expr)
+            )
+        return expr
+
+    if not is_multi:
+        sorted_changes = sorted(regime.breakpoints)
+        return _single_group_expr(sorted_changes)
+
+    # Per-group: build nested when-chain keyed by group value.
+    grp = regime.groups
+    expr = pl.lit(1, dtype=pl.Int64)  # default: groups not in regime → seg 1
+    for grp_val in changes[grp].unique().to_list():
+        sub = changes.filter(pl.col(grp) == grp_val).sort("change")
+        sorted_changes = sub["change"].to_list()
+        grp_expr = _single_group_expr(sorted_changes)
+        expr = pl.when(pl.col(grp) == grp_val).then(grp_expr).otherwise(expr)
+    return expr
+
+
+def _apply_mini_triangle_filter(
+    df: pl.DataFrame,
+    regime: "Regime",
+) -> pl.DataFrame:
+    """Apply the per-segment mini-triangle filter (segment_wise treatment).
+
+    For each (group, segment) cell, keeps rows where
+    ``dev >= max_cal - seg_last + 1`` -- the equal-trapezoid window that
+    limits factor estimation to cells within the segment's own
+    development reach.
+    """
+    grp = regime.groups if regime.groups in df.columns else None
+    rank_keys = [grp] if grp else []
+
+    df = df.with_columns(
+        pl.col("cohort").rank(method="dense").over(rank_keys or pl.lit(1)).cast(pl.Int64).alias("__coh_rank"),
+    )
+    df = df.with_columns(
+        (pl.col("__coh_rank") + pl.col("dev") - 1).alias("__cal_idx"),
+    )
+    df = df.with_columns(
+        pl.col("__cal_idx").max().over(rank_keys or pl.lit(1)).alias("__max_cal"),
+        pl.col("__coh_rank")
+            .max()
+            .over((rank_keys or []) + ["segment_id"])
+            .alias("__seg_last"),
+    )
+    df = df.with_columns(
+        (pl.col("__max_cal") - pl.col("__seg_last") + 1).alias("__dev_min")
+    )
+    df = df.filter(pl.col("dev") >= pl.col("__dev_min")).drop(
+        "__coh_rank", "__cal_idx", "__max_cal", "__seg_last", "__dev_min"
+    )
+    return df
+
+
 def _apply_regime_filter(
     triangle: "Triangle",
     regime: "Regime | None",
 ) -> "Triangle":
-    """Drop cohorts before the regime's cutoff (``latest_only`` mode).
+    """Apply the regime cohort-axis filter to ``triangle``.
 
-    Returns a fresh ``Triangle`` over the surviving cells. When
-    ``regime`` is ``None`` or has no change points, returns the input
-    triangle unchanged.
+    Two treatment modes:
 
-    ``segment_wise`` treatment is recognised as a slot on the Regime
-    but its per-segment factor mechanics are not yet wired -- callers
-    that pass ``treatment="segment_wise"`` will currently see the same
-    ``latest_only`` behaviour (followed by a per-segment phase in a
-    later sweep).
+    - ``"latest_only"`` (default): drops cohorts strictly before the
+      latest change date per group. The output triangle has fewer
+      cohorts; otherwise the schema is unchanged.
+
+    - ``"segment_wise"``: keeps **all** cohorts but tags each cell with
+      a ``segment_id`` column (1-based) and applies the mini-triangle
+      filter (``dev >= max_cal - seg_last + 1`` per segment). The
+      output triangle's ``_df`` carries the ``segment_id`` column;
+      downstream fit workers loop over ``(group, segment_id)`` tuples
+      to estimate per-segment factors.
+
+    When ``regime`` is ``None`` or has no change points, the input
+    triangle is returned unchanged.
     """
     if regime is None or not regime.breakpoints:
         return triangle
 
     from .triangle import Triangle
 
+    if regime.treatment == "segment_wise":
+        df = triangle.to_polars()
+        seg_expr = _segment_id_expr(regime)
+        if seg_expr is None:
+            return triangle
+        df = df.with_columns(seg_expr.alias("segment_id"))
+        df = _apply_mini_triangle_filter(df, regime)
+        return Triangle._from_masked(triangle, df)
+
+    # latest_only (default): drop cohorts strictly before the cutoff.
+    df = triangle.to_polars()
+    cutoff_map = _regime_cutoff_map(regime)
+    if cutoff_map is None:
+        return triangle
+
+    if "__cutoff" in df.columns:  # defensive: should never collide
+        df = df.drop("__cutoff")
+
+    if regime.groups is not None and regime.groups in df.columns:
+        df = df.join(cutoff_map, on=regime.groups, how="left")
+    else:
+        df = df.with_columns(
+            pl.lit(cutoff_map["__cutoff"][0]).alias("__cutoff")
+        )
+
+    df = df.filter(
+        pl.col("__cutoff").is_null() | (pl.col("cohort") >= pl.col("__cutoff"))
+    ).drop("__cutoff")
+
+    return Triangle._from_masked(triangle, df)
+
+
+def _split_into_segment_triangles(
+    triangle: "Triangle",
+    regime: "Regime",
+) -> dict[int, "Triangle"]:
+    """Split a Triangle into per-segment mini-Triangles.
+
+    Used by fit consumers for ``treatment="segment_wise"``: each
+    segment is fit independently. Returns a mapping
+    ``{segment_id: mini_triangle}`` ordered by segment_id ascending.
+    The mini-triangle filter is applied first so each segment's cells
+    obey the equal-trapezoid window.
+
+    Each returned Triangle is built by ``Triangle._from_masked`` and
+    shares metadata (groups / cohort / grain / dev) with the source.
+    The ``segment_id`` column is dropped before the mini-Triangle
+    leaves this helper -- the standard Triangle schema has no such
+    column, so downstream fits treat each piece as a normal Triangle.
+    """
+    from .triangle import Triangle
+
+    if not regime.breakpoints:
+        return {1: triangle}
+
+    df = triangle.to_polars()
+    seg_expr = _segment_id_expr(regime)
+    if seg_expr is None:
+        return {1: triangle}
+    df = df.with_columns(seg_expr.alias("segment_id"))
+    df = _apply_mini_triangle_filter(df, regime)
+
+    out: dict[int, Triangle] = {}
+    for seg_id in sorted(df["segment_id"].unique().to_list()):
+        sub = df.filter(pl.col("segment_id") == seg_id).drop("segment_id")
+        if sub.height == 0:
+            continue
+        out[int(seg_id)] = Triangle._from_masked(triangle, sub)
+    return out
+
+    # latest_only (default)
     df = triangle.to_polars()
     cutoff_map = _regime_cutoff_map(regime)
     if cutoff_map is None:

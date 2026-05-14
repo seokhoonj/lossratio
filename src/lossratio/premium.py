@@ -320,9 +320,21 @@ class PremiumFit:
         estimator: "Premium",
     ) -> "PremiumFit":
         # Resolve + apply premium-side regime filter (cohort-axis cut).
-        from .regime import _apply_regime_filter, _resolve_regime
+        from .regime import (
+            _apply_regime_filter,
+            _resolve_regime,
+            _split_into_segment_triangles,
+        )
 
         regime = _resolve_regime(estimator.regime, triangle)
+
+        if (
+            regime is not None
+            and regime.treatment == "segment_wise"
+            and regime.breakpoints
+        ):
+            return cls._segment_wise_fit(triangle, estimator, regime)
+
         triangle = _apply_regime_filter(triangle, regime)
 
         self = cls.__new__(cls)
@@ -365,6 +377,50 @@ class PremiumFit:
             long_df = pl.concat(parts) if parts else pl.DataFrame()
 
         self._df = long_df
+        return self
+
+    @classmethod
+    def _segment_wise_fit(
+        cls,
+        triangle: "Triangle",
+        estimator: "Premium",
+        regime: Any,
+    ) -> "PremiumFit":
+        """Fit premium projection per regime segment, then concat."""
+        import copy as _copy
+
+        from .regime import _split_into_segment_triangles
+
+        sub_estimator = _copy.copy(estimator)
+        sub_estimator.regime = None
+
+        sub_tris = _split_into_segment_triangles(triangle, regime)
+        if not sub_tris:
+            return cls._from_triangle(triangle, sub_estimator)
+
+        parts: list[pl.DataFrame] = []
+        last_self: PremiumFit | None = None
+        for seg_id, sub_tri in sub_tris.items():
+            sub_fit = cls._from_triangle(sub_tri, sub_estimator)
+            parts.append(
+                sub_fit._df.with_columns(
+                    pl.lit(seg_id, dtype=pl.Int64).alias("segment_id")
+                )
+            )
+            last_self = sub_fit
+
+        assert last_self is not None
+        self = cls.__new__(cls)
+        self._output_type = last_self._output_type
+        self._groups = last_self._groups
+        self._cohort = last_self._cohort
+        self._dev = last_self._dev
+        self.method = estimator.method
+        self.alpha = estimator.alpha
+        self.sigma_method = estimator.sigma_method
+        self.conf_level = estimator.conf_level
+        self.regime = regime
+        self._df = pl.concat(parts, how="diagonal")
         return self
 
     @property

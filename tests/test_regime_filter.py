@@ -188,3 +188,101 @@ def test_backtest_with_lazy_regime_spec_redetects_on_masked():
     detected = bt._refit.loss_fit.regime
     assert detected is not None
     assert detected.method == "e_divisive"
+
+
+# ---------------------------------------------------------------------------
+# Phase C: segment_wise treatment
+# ---------------------------------------------------------------------------
+
+
+def test_segment_wise_filter_annotates_segment_id():
+    """segment_wise mode tags each cell with segment_id and applies the
+    mini-triangle filter (keeps fewer cells than the original)."""
+    tri = _sur_triangle()
+    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    filtered = _apply_regime_filter(tri, r)
+    df = filtered.to_polars()
+    assert "segment_id" in df.columns
+    assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
+    # All cohorts preserved (no cohort drop, unlike latest_only)
+    assert df["cohort"].n_unique() == tri.to_polars()["cohort"].n_unique()
+    # But fewer cells (mini-triangle filter)
+    assert df.height < tri.to_polars().height
+
+
+def test_segment_wise_split_into_mini_triangles():
+    from lossratio.regime import _split_into_segment_triangles
+
+    tri = _sur_triangle()
+    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    segs = _split_into_segment_triangles(tri, r)
+    assert set(segs.keys()) == {1, 2}
+    # Each segment is a stand-alone Triangle (no segment_id column)
+    for seg_id, seg_tri in segs.items():
+        assert isinstance(seg_tri, lr.Triangle)
+        assert "segment_id" not in seg_tri.to_polars().columns
+
+
+def test_segment_wise_fit_emits_segment_id_column():
+    tri = _sur_triangle()
+    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    fit = lr.LR(method="cl", loss_regime=r, premium_regime=r).fit(tri)
+    df = fit.to_polars()
+    assert "segment_id" in df.columns
+    assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
+
+
+def test_segment_wise_lr_ult_differs_between_segments():
+    """The per-segment factor estimation should yield distinct
+    ultimate LRs for early vs late cohorts."""
+    tri = _sur_triangle()
+    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    fit = lr.LR(method="cl", loss_regime=r, premium_regime=r).fit(tri)
+    s = fit.summary()
+    if hasattr(s, "to_polars"):
+        s = s.to_polars()
+    # Cohorts before vs after the change
+    import datetime
+    early = s.filter(pl.col("cohort") < datetime.date(2024, 7, 1))
+    late = s.filter(pl.col("cohort") >= datetime.date(2024, 7, 1))
+    # Both segments produce projections
+    assert early.height > 0
+    assert late.height > 0
+    # SUR data has a regime drop at mid-2024 → early lr > late lr on
+    # average. Use means to avoid late-cohort noise from single-dev
+    # cohorts.
+    early_mean = early["lr_ult"].drop_nulls().mean()
+    late_mean = late["lr_ult"].drop_nulls().mean()
+    assert early_mean > late_mean
+
+
+def test_segment_wise_loss_only():
+    """Loss-side segment_wise works standalone without LR composition."""
+    tri = _sur_triangle()
+    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    fit = lr.Loss(method="cl", regime=r).fit(tri)
+    df = fit.to_polars()
+    assert "segment_id" in df.columns
+    assert fit.regime is r
+
+
+def test_segment_wise_premium_only():
+    tri = _sur_triangle()
+    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    fit = lr.Premium(method="ed", regime=r).fit(tri)
+    df = fit.to_polars()
+    assert "segment_id" in df.columns
+    assert fit.regime is r
+
+
+def test_segment_wise_with_auto_detection():
+    """`loss_regime='auto'` triggers detect_regime; user can opt into
+    segment_wise via regime_spec or by setting treatment after detection."""
+    tri = _sur_triangle()
+    spec = lr.regime_spec(K=12, treatment="segment_wise")
+    fit = lr.LR(method="cl", loss_regime=spec).fit(tri)
+    df = fit.to_polars()
+    # Auto detect on SUR with K=12 should find at least one break
+    # (regime drop is in the data), making segment_wise meaningful.
+    if fit.loss_fit.regime and fit.loss_fit.regime.breakpoints:
+        assert "segment_id" in df.columns

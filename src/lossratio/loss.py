@@ -433,10 +433,26 @@ class LossFit:
         # unfiltered triangle — premium has no loss-side regime semantic;
         # users wanting a premium-side filter compose via LR or pass
         # premium_fit explicitly.
-        from .regime import _apply_regime_filter, _resolve_regime
+        from .regime import (
+            _apply_regime_filter,
+            _resolve_regime,
+            _split_into_segment_triangles,
+        )
 
         original_tri = triangle
         regime = _resolve_regime(estimator.regime, triangle)
+
+        # segment_wise treatment: per-segment factor estimation. Split
+        # the triangle into per-segment mini-Triangles (mini-triangle
+        # filter applied) and recurse with regime=None on each, then
+        # concat the long-format outputs with a `segment_id` annotation.
+        if (
+            regime is not None
+            and regime.treatment == "segment_wise"
+            and regime.breakpoints
+        ):
+            return cls._segment_wise_fit(triangle, estimator, regime)
+
         triangle = _apply_regime_filter(triangle, regime)
 
         self = cls.__new__(cls)
@@ -544,6 +560,76 @@ class LossFit:
 
         self._df = long_df
         self._kstar_df = kstar_df
+        return self
+
+    @classmethod
+    def _segment_wise_fit(
+        cls,
+        triangle: "Triangle",
+        estimator: "Loss",
+        regime: Any,
+    ) -> "LossFit":
+        """Fit loss projection per regime segment, then concat.
+
+        Each segment becomes a mini-Triangle (post mini-triangle
+        filter); the standard single-segment fit runs on it with
+        ``regime=None`` to skip the recursion guard. Outputs are
+        concatenated with a ``segment_id`` column for transparency.
+
+        Late-segment cohorts whose dev range is short cannot project
+        past their segment's max observed dev (factors at later dev
+        are unestimable). A ``Regime.fallback`` knob to extrapolate
+        from neighbouring segments is not yet implemented (R Phase 2C).
+        """
+        import copy as _copy
+
+        from .regime import _split_into_segment_triangles
+
+        sub_estimator = _copy.copy(estimator)
+        sub_estimator.regime = None
+
+        sub_tris = _split_into_segment_triangles(triangle, regime)
+        if not sub_tris:
+            # Defensive fallback — no segments yielded data; behave as
+            # an unfiltered fit.
+            sub_estimator.regime = None
+            return cls._from_triangle(triangle, sub_estimator)
+
+        long_parts: list[pl.DataFrame] = []
+        kstar_parts: list[pl.DataFrame] = []
+        internals_combined: dict[Any, _LossResult] = {}
+        last_self: LossFit | None = None
+        for seg_id, sub_tri in sub_tris.items():
+            sub_fit = cls._from_triangle(sub_tri, sub_estimator)
+            long_parts.append(
+                sub_fit._df.with_columns(pl.lit(seg_id, dtype=pl.Int64).alias("segment_id"))
+            )
+            kstar_parts.append(
+                sub_fit._kstar_df.with_columns(
+                    pl.lit(seg_id, dtype=pl.Int64).alias("segment_id")
+                )
+            )
+            for key, value in sub_fit._internals.items():
+                internals_combined[(seg_id, key)] = value
+            last_self = sub_fit
+
+        # Assemble the composite fit. Metadata comes from any sub-fit
+        # (they all share the parent triangle's group / cohort / dev).
+        assert last_self is not None
+        self = cls.__new__(cls)
+        self._output_type = last_self._output_type
+        self._groups = last_self._groups
+        self._cohort = last_self._cohort
+        self._dev = last_self._dev
+        self.method = estimator.method
+        self.alpha = estimator.alpha
+        self.sigma_method = estimator.sigma_method
+        self.conf_level = estimator.conf_level
+        self.regime = regime
+        self.premium_fit = last_self.premium_fit
+        self._internals = internals_combined
+        self._df = pl.concat(long_parts, how="diagonal")
+        self._kstar_df = pl.concat(kstar_parts, how="diagonal")
         return self
 
     @property
