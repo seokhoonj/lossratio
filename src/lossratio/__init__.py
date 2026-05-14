@@ -9,6 +9,7 @@ References:
 from ._period import derive_grain_columns
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
+from .calendar import Calendar, as_calendar
 from .cl import CL, CLFit
 from .datasets import load_experience, make_experience
 from .ed import ED, EDFit
@@ -20,6 +21,7 @@ from .lr import LR, LRFit
 from .maturity import Maturity
 from .premium import Premium, PremiumFit
 from .regime import Regime
+from .total import Total, as_total
 from .triangle import Triangle
 
 __version__ = "0.0.1.dev10"
@@ -30,6 +32,7 @@ __all__ = [
     "BacktestFit",
     "CL",
     "CLFit",
+    "Calendar",
     "ED",
     "EDFit",
     "Intensity",
@@ -42,8 +45,11 @@ __all__ = [
     "Premium",
     "PremiumFit",
     "Regime",
+    "Total",
     "Triangle",
     "__version__",
+    "as_calendar",
+    "as_total",
     "derive_grain_columns",
     "load_experience",
     "make_experience",

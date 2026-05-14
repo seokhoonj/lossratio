@@ -343,6 +343,34 @@ def count_periods(
     return elap.cast(pl.Int64)
 
 
+def add_periods(
+    start_expr: pl.Expr,
+    n_periods_expr: pl.Expr,
+    grain: str,
+) -> pl.Expr:
+    """Date arithmetic: ``start + (n_periods - 1) * grain_step``.
+
+    1-indexed inverse of :func:`count_periods`. Used to synthesize a
+    calendar column from ``cohort + dev`` at a known grain.
+
+    Examples (grain="M", n=1 -> same period, n=2 -> next period):
+
+    - start=2024-01-01, n=1 -> 2024-01-01
+    - start=2024-01-01, n=13 -> 2025-01-01
+    """
+    if grain in ("M", "Q", "S"):
+        step = {"M": 1, "Q": 3, "S": 6}[grain]
+        total_months = (
+            start_expr.dt.year() * 12
+            + (start_expr.dt.month() - 1)
+            + (n_periods_expr - 1) * step
+        )
+        return pl.date(total_months // 12, total_months % 12 + 1, 1)
+    if grain == "A":
+        return pl.date(start_expr.dt.year() + (n_periods_expr - 1), 1, 1)
+    raise ValueError(f"Unknown grain: {grain!r}")
+
+
 # ---------------------------------------------------------------------------
 # User-facing: derive M/Q/S/A grain columns from monthly source
 # ---------------------------------------------------------------------------
