@@ -420,7 +420,12 @@ class PremiumFit:
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
-        self._df = pl.concat(parts, how="diagonal")
+        combined = pl.concat(parts, how="diagonal")
+        # Match R fit_premium $full shape: full cohort × dev grid.
+        from .loss import _expand_to_full_grid
+        self._df = _expand_to_full_grid(
+            combined, triangle, self._groups, last_self._cohort
+        )
         return self
 
     @property

@@ -387,19 +387,22 @@ class LRFit:
             pl.col("dev").max().alias("latest"),
         )
 
+        # segment_wise fits produce trailing null cells past each
+        # segment's reach (R parity), so "ultimate" must look at the
+        # last non-null projection per cohort, not the last row.
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("loss_ult"),
-                pl.col("premium_proj").last().alias("premium_ult"),
-                pl.col("lr_proj").last().alias("lr_ult"),
-                pl.col("loss_total_se").last().alias("loss_total_se"),
-                pl.col("loss_total_cv").last().alias("loss_total_cv"),
-                pl.col("lr_se").last().alias("lr_se"),
-                pl.col("lr_cv").last().alias("lr_cv"),
-                pl.col("lr_ci_lower").last().alias("lr_ci_lower"),
-                pl.col("lr_ci_upper").last().alias("lr_ci_upper"),
+                pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
+                pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
+                pl.col("lr_proj").drop_nulls().last().alias("lr_ult"),
+                pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
+                pl.col("loss_total_cv").drop_nulls().last().alias("loss_total_cv"),
+                pl.col("lr_se").drop_nulls().last().alias("lr_se"),
+                pl.col("lr_cv").drop_nulls().last().alias("lr_cv"),
+                pl.col("lr_ci_lower").drop_nulls().last().alias("lr_ci_lower"),
+                pl.col("lr_ci_upper").drop_nulls().last().alias("lr_ci_upper"),
             )
         )
 

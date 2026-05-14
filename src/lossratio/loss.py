@@ -66,6 +66,128 @@ class _LossResult:
     maturity_from: int | None
 
 
+def _expand_to_full_grid(
+    df: pl.DataFrame,
+    triangle: "Triangle",
+    groups: str | None,
+    cohort_col: str,
+) -> pl.DataFrame:
+    """Expand a segment_wise fit output onto the parent triangle's full
+    ``(groups?, cohort, dev)`` projection grid (R parity).
+
+    Three concerns the join handles:
+
+    1. **Grid shape**: the Cartesian product of every cohort and every
+       dev seen in the parent triangle (R's ``CJ(cohort, dev)``).
+       Cells outside any segment's reach stay null on projection
+       columns — same as R's "segment cannot project here" outcome.
+
+    2. **Observed values**: pre-mini-triangle cells (which the
+       per-segment fit dropped) are repopulated from the parent
+       triangle's ``loss`` / ``premium`` / ``lr`` columns. R's
+       ``$full`` shows ``loss_obs == loss_proj`` on observed cells
+       regardless of which segment they live in; matching that
+       requires re-attaching the originals after the split fit.
+
+    3. **Increments**: ``loss_incr_proj`` / ``premium_incr_proj`` /
+       ``lr_incr_proj`` are recomputed from the now-complete
+       cumulative columns via per-cohort
+       ``cumulative - cumulative.shift(1)``. The per-segment fits
+       produced increments only within each mini-triangle's reach,
+       which gives the wrong "first cell" value for cohorts whose
+       mini-triangle starts at a non-1 dev.
+    """
+    tri_df = triangle.to_polars()
+    cohorts_df = tri_df.select("cohort").unique().sort("cohort")
+    devs_df = (
+        tri_df.select("dev")
+        .unique()
+        .sort("dev")
+        .with_columns(pl.col("dev").cast(pl.Int64))
+    )
+
+    if groups is not None and groups in tri_df.columns:
+        groups_df = tri_df.select(groups).unique().sort(groups)
+        full_grid = (
+            groups_df.join(cohorts_df, how="cross")
+            .join(devs_df, how="cross")
+            .sort([groups, "cohort", "dev"])
+        )
+        keys = [groups, "cohort", "dev"]
+    else:
+        full_grid = cohorts_df.join(devs_df, how="cross").sort(["cohort", "dev"])
+        keys = ["cohort", "dev"]
+
+    # Cast df.dev to match grid for clean join
+    if "dev" in df.columns and df.schema["dev"] != pl.Int64:
+        df = df.with_columns(pl.col("dev").cast(pl.Int64))
+
+    out = full_grid.join(df, on=keys, how="left").sort(keys)
+
+    # Re-attach observed values from the parent triangle. Where the
+    # parent has observations, treat them as both `loss_obs` /
+    # `premium_obs` AND `loss_proj` / `premium_proj` (observed cells
+    # need no projection).
+    parent_keep = [c for c in ("loss", "premium", "lr") if c in tri_df.columns]
+    parent_view = tri_df.select(keys + parent_keep).with_columns(
+        pl.col("dev").cast(pl.Int64)
+    )
+    out = out.join(parent_view, on=keys, how="left", suffix="_parent")
+
+    def _coalesce_obs(parent_col: str, obs_col: str, proj_col: str) -> list[pl.Expr]:
+        if parent_col not in tri_df.columns:
+            return []
+        exprs = []
+        if obs_col in out.columns:
+            exprs.append(
+                pl.coalesce(pl.col(obs_col), pl.col(parent_col)).alias(obs_col)
+            )
+        if proj_col in out.columns:
+            exprs.append(
+                pl.coalesce(pl.col(proj_col), pl.col(parent_col)).alias(proj_col)
+            )
+        return exprs
+
+    coalesce_exprs = (
+        _coalesce_obs("loss", "loss_obs", "loss_proj")
+        + _coalesce_obs("premium", "premium_obs", "premium_proj")
+    )
+    if coalesce_exprs:
+        out = out.with_columns(coalesce_exprs)
+
+    # Drop parent helper columns
+    out = out.drop([c for c in parent_keep if c in out.columns])
+
+    # Re-derive segment_id for cells where the segment fit had no row
+    # (mini-tri-dropped observed cells). Each cohort belongs to exactly
+    # one segment; the existing segment_id values for that cohort
+    # propagate to the rest of its row group.
+    if "segment_id" in out.columns:
+        over_keys = ([groups] if groups else []) + ["cohort"]
+        out = out.with_columns(
+            pl.col("segment_id").forward_fill().over(over_keys)
+        ).with_columns(
+            pl.col("segment_id").backward_fill().over(over_keys)
+        )
+
+    # Recompute increments from the now-complete cumulative columns.
+    incr_pairs = [
+        ("loss_proj", "loss_incr_proj"),
+        ("premium_proj", "premium_incr_proj"),
+        ("lr_proj", "lr_incr_proj"),
+    ]
+    over_keys = ([groups] if groups else []) + ["cohort"]
+    incr_exprs = [
+        (pl.col(cum) - pl.col(cum).shift(1).over(over_keys)).alias(incr)
+        for cum, incr in incr_pairs
+        if cum in out.columns and incr in out.columns
+    ]
+    if incr_exprs:
+        out = out.with_columns(incr_exprs)
+
+    return out
+
+
 def _safe_div(a, b):
     if b is None or b == 0 or a is None:
         return None
@@ -628,7 +750,17 @@ class LossFit:
         self.regime = regime
         self.premium_fit = last_self.premium_fit
         self._internals = internals_combined
-        self._df = pl.concat(long_parts, how="diagonal")
+
+        combined = pl.concat(long_parts, how="diagonal")
+
+        # Expand to the full parent (group?, cohort, dev) grid so the
+        # output shape matches R's fit_loss / fit_lr `$full`. Cells past
+        # each segment's reach stay as null (no factor extrapolation
+        # without a fallback knob — R Phase 2C parity).
+        self._df = _expand_to_full_grid(
+            combined, triangle, self._groups, last_self._cohort
+        )
+
         self._kstar_df = pl.concat(kstar_parts, how="diagonal")
         return self
 
