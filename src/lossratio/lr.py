@@ -1,351 +1,162 @@
-"""Loss-ratio (LR) estimator: SA / ED / CL methods unified."""
+"""Loss-ratio (LR) composition layer.
+
+:class:`LR` is the composition layer over :class:`Loss` and
+:class:`Premium`. It delegates loss-side projection to :class:`Loss`,
+retrieves the embedded :class:`PremiumFit`, and composes the loss-ratio
+point + variance via the delta method.
+
+Python sibling of R ``fit_lr()`` (see ``R/lr.R``).
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
+from scipy.stats import norm
 
 from ._io import mirror_output
-from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
-from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
-from .maturity import _compute_maturity
+from ._sigma import VALID_SIGMA_METHODS
+from .loss import Loss, LossFit
+from .premium import PremiumFit
 
 if TYPE_CHECKING:
     from .triangle import Triangle
 
 
 _VALID_METHODS = ("sa", "ed", "cl")
-
-
-# ---------------------------------------------------------------------------
-# Internal LR computation (per group)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _LRResult:
-    """Single-group LR fit result."""
-
-    n_devs: int
-    loss_obs: np.ndarray
-    premium_obs: np.ndarray
-    loss_proj: np.ndarray         # cumulative projected loss
-    premium_proj: np.ndarray     # cumulative projected premium
-    lr_proj: np.ndarray           # loss_proj / premium_proj
-    se_loss: np.ndarray           # SE on loss_proj
-    se_lr: np.ndarray             # SE on lr_proj (= se_loss / premium_proj)
-    cv_lr: np.ndarray             # se_lr / lr_proj
-    method: str
-    k_star: int | None            # for SA; None for CL/ED
-
-
-def _safe_div(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Element-wise division with NaN where denominator is 0/NaN."""
-    out = np.full_like(a, np.nan, dtype=np.float64)
-    mask = (~np.isnan(a)) & (~np.isnan(b)) & (b != 0)
-    out[mask] = a[mask] / b[mask]
-    return out
-
-
-def _fit_sa(
-    loss_obs: np.ndarray,
-    premium_obs: np.ndarray,
-    k_star: int,
-    sigma_method: str = "locf",
-    # k_star is the target dev (= ata_to) of the first stable link.
-    # ED phase: target dev < k_star; CL phase: target dev >= k_star.
-) -> tuple[np.ndarray, np.ndarray]:
-    """Stage-adaptive projection (ED before k*, CL after).
-
-    k_star = target dev (ata_to) of the first stable link.
-    ED phase: target dev < k_star (= dev of the cell being projected
-    into is below maturity); CL phase: target dev >= k_star.
-    Returns (loss_proj, se_loss) — both shape (n_cohorts, n_devs).
-    """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
-
-    # Premium chain ladder (for premium projection)
-    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
-    premium_proj = premium_mack.loss_proj
-
-    # ED parameters (g_k, sigma^2_g_k) and CL parameters (f_k, sigma^2_f_k)
-    ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
-    g_k = ed_result.g_k
-    sigma2_g_k = ed_result.sigma2_g_k
-
-    cl_result = _fit_mack(loss_obs, sigma_method=sigma_method)
-    f_k = cl_result.f_k
-    sigma2_f_k = cl_result.sigma2_k
-
-    # Per-link parameter variance estimators (Mack-style WLS):
-    #   Var(f_k) = sigma2_f_k / sum_loss_k    (CL phase, mirrors R `.mack_f_var`)
-    #   Var(g_k) = sigma2_g_k / sum_premium_k (ED phase, mirrors R `.mack_g_var`)
-    # Computed once outside the cohort loop. NaN where the link is
-    # unfittable; treated as a zero param-variance contribution in the
-    # cohort accumulation below.
-    var_f_k = _mack_f_var(cl_result)
-    var_g_k = _mack_g_var(ed_result)
-
-    loss_proj = loss_obs.copy()
-    se_loss = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-
-    # Per-cohort last observed dev (rightmost finite index in loss_obs).
-    # -1 marks cohorts with no observation at all.
-    obs_mask = ~np.isnan(loss_obs)
-    has_obs = obs_mask.any(axis=1)
-    last_obs = np.where(
-        has_obs,
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
-        -1,
-    )
-    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
-
-    # var_acc[i] = cumulative variance of C^L_{i, current_k} for cohort i.
-    var_acc = np.zeros(n_cohorts, dtype=np.float64)
-
-    # Sequential walk along the dev axis (var_acc recursion forces this).
-    # Cohort axis is fully vectorized at each step.
-    for k in range(n_devs - 1):
-        active = eligible & (last_obs <= k)
-        if not active.any():
-            continue
-
-        target_dev = k + 2  # ata_to of link k
-        ck = loss_proj[:, k]
-        pk = premium_proj[:, k]
-
-        if target_dev < k_star:
-            # ED phase: additive
-            pos = active & ~np.isnan(pk) & (pk > 0)
-            if pos.any():
-                loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
-                if not np.isnan(var_g_k[k]):
-                    var_acc[pos] = (
-                        var_acc[pos]
-                        + sigma2_g_k[k] * pk[pos]
-                        + (pk[pos] ** 2) * var_g_k[k]
-                    )
-        else:
-            # CL phase: multiplicative Mack recursion
-            #   var_acc_new = f^2 * var_acc_prev
-            #               + sigma^2_f * C       (process)
-            #               + C^2 * Var(f_hat)    (parameter)
-            pos = active & ~np.isnan(ck) & (ck > 0)
-            if pos.any():
-                loss_proj[pos, k + 1] = f_k[k] * ck[pos]
-                if f_k[k] > 0 and not np.isnan(var_f_k[k]):
-                    var_acc[pos] = (
-                        (f_k[k] ** 2) * var_acc[pos]
-                        + sigma2_f_k[k] * ck[pos]
-                        + (ck[pos] ** 2) * var_f_k[k]
-                    )
-
-        # Record SE on cells we just projected (var_acc is at scale of C_{k+1}).
-        ck1 = loss_proj[:, k + 1]
-        se_pos = active & ~np.isnan(ck1) & (var_acc >= 0)
-        se_loss[se_pos, k + 1] = np.sqrt(var_acc[se_pos])
-
-    return loss_proj, se_loss
-
-
-def _fit_lr(
-    loss_obs: np.ndarray,
-    premium_obs: np.ndarray,
-    method: str,
-    max_cv: float,
-    max_rse: float,
-    min_run: int,
-    alpha: float,
-    sigma_method: str = "locf",
-) -> _LRResult:
-    """Single-group LR fit. Always returns cumulative loss_proj, premium_proj,
-    lr_proj, plus SE on loss/lr."""
-    n_devs = loss_obs.shape[1]
-
-    # Premium chain ladder (always — needed for premium_proj and SE on lr)
-    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
-    premium_proj = premium_mack.loss_proj
-
-    k_star: int | None = None
-
-    if method == "cl":
-        cl_result = _fit_mack(loss_obs, sigma_method=sigma_method)
-        loss_proj = cl_result.loss_proj
-        se_loss = cl_result.se_proj
-    elif method == "ed":
-        ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
-        loss_proj = ed_result.loss_proj
-        se_loss = ed_result.se_proj
-    elif method == "sa":
-        # Detect maturity and project hybrid
-        mat = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
-        k_star = mat.k_star
-        if k_star is None:
-            # Fall back to ED throughout if maturity not detected
-            ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
-            loss_proj = ed_result.loss_proj
-            se_loss = ed_result.se_proj
-        else:
-            loss_proj, se_loss = _fit_sa(
-                loss_obs, premium_obs, k_star, sigma_method=sigma_method
-            )
-    else:
-        raise ValueError(
-            f"method must be one of {_VALID_METHODS}, got {method!r}"
-        )
-
-    lr_proj = _safe_div(loss_proj, premium_proj)
-    se_lr = _safe_div(se_loss, premium_proj)
-    cv_lr = _safe_div(se_lr, lr_proj)
-
-    return _LRResult(
-        n_devs=n_devs,
-        loss_obs=loss_obs,
-        premium_obs=premium_obs,
-        loss_proj=loss_proj,
-        premium_proj=premium_proj,
-        lr_proj=lr_proj,
-        se_loss=se_loss,
-        se_lr=se_lr,
-        cv_lr=cv_lr,
-        method=method,
-        k_star=k_star,
-    )
-
-
-def _result_to_long_df(
-    result: _LRResult,
-    cohorts: list,
-    group_var: str | None,
-    group_value: Any | None,
-) -> pl.DataFrame:
-    """Convert an LR result into a long-format polars DataFrame."""
-    rows = []
-    for i in range(len(cohorts)):
-        for k in range(result.n_devs):
-            row: dict[str, Any] = {}
-            if group_var is not None:
-                row[group_var] = group_value
-            row["cohort"] = cohorts[i]
-            row["dev"] = k + 1
-            row["loss"] = (
-                float(result.loss_obs[i, k])
-                if not np.isnan(result.loss_obs[i, k])
-                else None
-            )
-            row["premium"] = (
-                float(result.premium_obs[i, k])
-                if not np.isnan(result.premium_obs[i, k])
-                else None
-            )
-            row["loss_proj"] = (
-                float(result.loss_proj[i, k])
-                if not np.isnan(result.loss_proj[i, k])
-                else None
-            )
-            row["premium_proj"] = (
-                float(result.premium_proj[i, k])
-                if not np.isnan(result.premium_proj[i, k])
-                else None
-            )
-            row["lr_proj"] = (
-                float(result.lr_proj[i, k])
-                if not np.isnan(result.lr_proj[i, k])
-                else None
-            )
-            row["se_loss"] = (
-                float(result.se_loss[i, k])
-                if not np.isnan(result.se_loss[i, k])
-                else None
-            )
-            row["se_lr"] = (
-                float(result.se_lr[i, k])
-                if not np.isnan(result.se_lr[i, k])
-                else None
-            )
-            row["cv_lr"] = (
-                float(result.cv_lr[i, k])
-                if not np.isnan(result.cv_lr[i, k])
-                else None
-            )
-            rows.append(row)
-    return pl.DataFrame(rows, infer_schema_length=None)
-
-
-def _kstar_to_df(
-    result: _LRResult,
-    group_var: str | None,
-    group_value: Any | None,
-) -> pl.DataFrame:
-    row: dict[str, Any] = {}
-    if group_var is not None:
-        row[group_var] = group_value
-    row["k_star"] = result.k_star
-    row["method"] = result.method
-    return pl.DataFrame([row])
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+_VALID_PREMIUM_METHODS = ("cl", "ed")
+_VALID_SE_METHODS = ("fixed", "delta")
 
 
 class LR:
-    """Loss-ratio estimator with method = ``"sa"`` / ``"ed"`` / ``"cl"``.
+    """Loss-ratio estimator (composition over :class:`Loss` + :class:`Premium`).
 
-    * ``"sa"`` (default): stage-adaptive — exposure-driven (ED) before
-      the maturity point ``k*``, chain ladder (CL) after. Maturity is
-      detected internally per group via the ATA factor diagnostic
-      thresholds (``max_cv``, ``max_rse``, ``min_run``). Falls back to
-      ED throughout when maturity is not detected.
-    * ``"ed"``: ED projection only (additive, exposure-anchored).
-    * ``"cl"``: Mack chain ladder projection only (multiplicative on
-      cumulative loss).
+    Parameters
+    ----------
+    method
+        Loss projection method: ``"sa"`` (default), ``"ed"``, or
+        ``"cl"``. See :class:`Loss`.
+    loss_alpha
+        Variance-structure exponent for the loss fit. Default ``1``.
+    loss_regime_break
+        Loss-side regime break (not yet implemented in Python).
+    premium_method
+        One of ``"cl"`` (default) or ``"ed"``. Forwarded to
+        :class:`Premium`.
+    premium_alpha
+        Variance-structure exponent for the premium fit. Default ``1``.
+    premium_regime_break
+        Premium-side regime break (not yet implemented in Python).
+    sigma_method
+        ``"locf"`` (default), ``"min_last2"``, or ``"loglinear"``.
+    se_method
+        How ``lr_se`` is computed:
 
-    The premium triangle is always projected forward via chain ladder
-    on cumulative risk premium.
-
-    Examples
-    --------
-    >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
-    >>> fit = lr.LR(method="sa").fit(tri)
-    >>> fit.summary()
+        * ``"fixed"`` (default): premium treated as fixed —
+          ``lr_se = loss_total_se / premium``.
+        * ``"delta"``: full delta method including premium uncertainty
+          and the loss-premium correlation ``rho``.
+    rho
+        Loss-premium correlation in (-1, 1). Used only when
+        ``se_method = "delta"``. Default ``0.95``.
+    conf_level
+        Confidence level for ``lr_ci_lower`` / ``lr_ci_upper``. Default
+        ``0.95``.
+    bootstrap
+        Not yet implemented in Python; must be ``False`` (default).
     """
 
     def __init__(
         self,
         method: str = "sa",
-        alpha: float = 1.0,
+        loss_alpha: float = 1.0,
+        loss_regime_break: Any = None,
+        premium_method: str = "cl",
+        premium_alpha: float = 1.0,
+        premium_regime_break: Any = None,
+        sigma_method: str = "locf",
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
-        sigma_method: str = "locf",
+        se_method: str = "fixed",
+        rho: float = 0.95,
+        conf_level: float = 0.95,
+        bootstrap: bool = False,
+        B: int = 1000,
+        seed: int | None = None,
+        # backwards-compat alias for loss_alpha (pre-Phase-5 callers)
+        alpha: float | None = None,
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
             )
-        if alpha != 1.0:
-            raise NotImplementedError(
-                f"alpha={alpha} not yet implemented; only alpha=1 is supported"
+        if premium_method not in _VALID_PREMIUM_METHODS:
+            raise ValueError(
+                f"premium_method must be one of {_VALID_PREMIUM_METHODS}, "
+                f"got {premium_method!r}"
             )
-        from ._sigma import VALID_SIGMA_METHODS
+        if se_method not in _VALID_SE_METHODS:
+            raise ValueError(
+                f"se_method must be one of {_VALID_SE_METHODS}, "
+                f"got {se_method!r}"
+            )
         if sigma_method not in VALID_SIGMA_METHODS:
             raise ValueError(
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
                 f"got {sigma_method!r}"
             )
+        if alpha is not None:
+            # legacy callers: alpha == loss_alpha
+            loss_alpha = float(alpha)
+        if loss_alpha != 1.0:
+            raise NotImplementedError(
+                f"loss_alpha={loss_alpha} not yet implemented; "
+                f"only alpha=1 is supported"
+            )
+        if premium_alpha != 1.0:
+            raise NotImplementedError(
+                f"premium_alpha={premium_alpha} not yet implemented; "
+                f"only alpha=1 is supported"
+            )
+        if loss_regime_break is not None or premium_regime_break is not None:
+            raise NotImplementedError(
+                "regime_break not yet implemented in LR (Python)"
+            )
+        if not (-1 < rho < 1):
+            raise ValueError(f"rho must be in (-1, 1), got {rho!r}")
+        if not (0.0 < conf_level < 1.0):
+            raise ValueError(
+                f"conf_level must be in (0, 1), got {conf_level!r}"
+            )
+        if bootstrap:
+            raise NotImplementedError(
+                "bootstrap not yet implemented in LR (Python)"
+            )
+
         self.method = method
-        self.alpha = alpha
+        self.loss_alpha = loss_alpha
+        self.loss_regime_break = loss_regime_break
+        self.premium_method = premium_method
+        self.premium_alpha = premium_alpha
+        self.premium_regime_break = premium_regime_break
+        self.sigma_method = sigma_method
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run
-        self.sigma_method = sigma_method
+        self.se_method = se_method
+        self.rho = rho
+        self.conf_level = conf_level
+        self.bootstrap = bootstrap
+        self.B = B
+        self.seed = seed
+
+    # alias for backwards compatibility with code reading `.alpha`
+    @property
+    def alpha(self) -> float:
+        return self.loss_alpha
 
     def fit(self, triangle: "Triangle") -> "LRFit":
         """Fit the LR estimator on a Triangle."""
@@ -358,25 +169,34 @@ class LRFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns
-        ``[group_var?, cohort, dev, loss, premium, loss_proj, premium_proj,
-        lr_proj, se_loss, se_lr, cv_lr]``.
+        Long-format triangle with columns ``[group_var?, cohort, dev,
+        loss_obs, loss_proj, loss_incr_proj, premium_obs, premium_proj,
+        premium_incr_proj, loss_*_se, loss_total_cv, loss_ci_*, lr_proj,
+        lr_incr_proj, lr_se, lr_cv, lr_ci_lower, lr_ci_upper]`` (plus
+        ``premium_total_se`` / ``premium_total_cv`` when
+        ``se_method="delta"``).
     method : str
-        The fitting method used (``"sa"``, ``"ed"``, or ``"cl"``).
-    k_star :
+        ``"sa"``, ``"ed"``, or ``"cl"``.
+    mat_k :
         Detected maturity for ``"sa"`` (single value or dict per group).
-        ``None`` for ``"ed"`` / ``"cl"``.
+    loss_fit, premium_fit :
+        The embedded :class:`LossFit` and :class:`PremiumFit`.
     """
 
     def __init__(self) -> None:
         self._df: pl.DataFrame
-        self._kstar_df: pl.DataFrame
         self._output_type: str
         self._group_var: str | None
         self._cohort_var: str
         self._dev_var: str
         self.method: str
-        self.alpha: float
+        self.loss_alpha: float
+        self.premium_alpha: float
+        self.se_method: str
+        self.rho: float
+        self.conf_level: float
+        self.loss_fit: LossFit
+        self.premium_fit: PremiumFit
 
     @classmethod
     def _from_triangle(
@@ -388,60 +208,140 @@ class LRFit:
         self._cohort_var = triangle._cohort_var
         self._dev_var = triangle._dev_var
         self.method = estimator.method
-        self.alpha = estimator.alpha
+        self.loss_alpha = estimator.loss_alpha
+        self.premium_alpha = estimator.premium_alpha
+        self.se_method = estimator.se_method
+        self.rho = estimator.rho
+        self.conf_level = estimator.conf_level
 
-        tri_df = triangle._df
-        group_var = triangle._group_var
+        # 1) delegate loss-side projection to Loss --------------------------
+        loss_fit = Loss(
+            method=estimator.method,
+            alpha=estimator.loss_alpha,
+            sigma_method=estimator.sigma_method,
+            premium_method=estimator.premium_method,
+            premium_alpha=estimator.premium_alpha,
+            max_cv=estimator.max_cv,
+            max_rse=estimator.max_rse,
+            min_run=estimator.min_run,
+            conf_level=estimator.conf_level,
+        ).fit(triangle)
+        self.loss_fit = loss_fit
+        self.premium_fit = loss_fit.premium_fit
 
-        if group_var is None:
-            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
-            premium_obs, _, _ = _build_premium_matrix(tri_df)
-            result = _fit_lr(
-                loss_obs,
-                premium_obs,
-                estimator.method,
-                estimator.max_cv,
-                estimator.max_rse,
-                estimator.min_run,
-                estimator.alpha,
-                sigma_method=estimator.sigma_method,
+        full = loss_fit._df.clone()
+
+        # 2) join premium SE columns for delta method ----------------------
+        if estimator.se_method == "delta":
+            pf_df = self.premium_fit._df
+            keys = []
+            if self._group_var is not None:
+                keys.append(self._group_var)
+            keys += ["cohort", "dev"]
+            pf_keep = pf_df.select(
+                keys + ["premium_total_se", "premium_total_cv"]
             )
-            long_df = _result_to_long_df(
-                result, cohorts, group_var=None, group_value=None
+            full = full.join(pf_keep, on=keys, how="left")
+
+        # 3) LR point projection -------------------------------------------
+        full = full.with_columns(
+            pl.when(
+                pl.col("loss_proj").is_not_null()
+                & pl.col("premium_proj").is_not_null()
+                & (pl.col("premium_proj") != 0.0)
             )
-            kstar_df = _kstar_to_df(result, group_var=None, group_value=None)
+            .then(pl.col("loss_proj") / pl.col("premium_proj"))
+            .otherwise(None)
+            .alias("lr_proj"),
+            pl.when(
+                pl.col("loss_incr_proj").is_not_null()
+                & pl.col("premium_incr_proj").is_not_null()
+                & (pl.col("premium_incr_proj") > 0.0)
+            )
+            .then(pl.col("loss_incr_proj") / pl.col("premium_incr_proj"))
+            .otherwise(None)
+            .alias("lr_incr_proj"),
+        )
+
+        # 4) lr_se via fixed-premium or delta method -----------------------
+        if estimator.se_method == "fixed":
+            full = full.with_columns(
+                pl.when(
+                    pl.col("loss_total_se").is_not_null()
+                    & pl.col("premium_proj").is_not_null()
+                    & (pl.col("premium_proj") != 0.0)
+                )
+                .then(pl.col("loss_total_se") / pl.col("premium_proj"))
+                .otherwise(None)
+                .alias("lr_se")
+            )
         else:
-            long_parts: list[pl.DataFrame] = []
-            kstar_parts: list[pl.DataFrame] = []
-            group_values = (
-                tri_df[group_var].unique(maintain_order=True).to_list()
-            )
-            for g in group_values:
-                sub = tri_df.filter(pl.col(group_var) == g)
-                loss_obs, cohorts, _ = _build_loss_matrix(sub)
-                premium_obs, _, _ = _build_premium_matrix(sub)
-                result = _fit_lr(
-                    loss_obs,
-                    premium_obs,
-                    estimator.method,
-                    estimator.max_cv,
-                    estimator.max_rse,
-                    estimator.min_run,
-                    estimator.alpha,
-                )
-                long_parts.append(
-                    _result_to_long_df(
-                        result, cohorts, group_var=group_var, group_value=g
+            # delta: Var(L/P) ~ (SE_L / P)^2 + (L * SE_P / P^2)^2
+            #                   - 2 rho L SE_L SE_P / P^3
+            rho = estimator.rho
+            full = full.with_columns(
+                (
+                    (pl.col("loss_total_se") / pl.col("premium_proj")) ** 2
+                    + (
+                        pl.col("loss_proj")
+                        * pl.col("premium_total_se")
+                        / (pl.col("premium_proj") ** 2)
                     )
+                    ** 2
+                    - 2
+                    * rho
+                    * pl.col("loss_proj")
+                    * pl.col("loss_total_se")
+                    * pl.col("premium_total_se")
+                    / (pl.col("premium_proj") ** 3)
+                ).alias("_var_lr")
+            )
+            full = full.with_columns(
+                pl.when(
+                    pl.col("loss_proj").is_not_null()
+                    & pl.col("premium_proj").is_not_null()
+                    & (pl.col("premium_proj") > 0.0)
+                    & pl.col("loss_total_se").is_not_null()
+                    & pl.col("premium_total_se").is_not_null()
                 )
-                kstar_parts.append(
-                    _kstar_to_df(result, group_var=group_var, group_value=g)
-                )
-            long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
-            kstar_df = pl.concat(kstar_parts) if kstar_parts else pl.DataFrame()
+                .then(pl.col("_var_lr").clip(lower_bound=0.0).sqrt())
+                .otherwise(None)
+                .alias("lr_se")
+            ).drop("_var_lr")
 
-        self._df = long_df
-        self._kstar_df = kstar_df
+        # 5) lr_cv + analytical CI -----------------------------------------
+        z_alpha = float(norm.ppf((1 + estimator.conf_level) / 2))
+        full = full.with_columns(
+            pl.when(
+                pl.col("lr_proj").is_not_null()
+                & (pl.col("lr_proj") != 0.0)
+                & pl.col("lr_se").is_not_null()
+            )
+            .then(pl.col("lr_se") / pl.col("lr_proj").abs())
+            .otherwise(None)
+            .alias("lr_cv"),
+        )
+        full = full.with_columns(
+            pl.when(
+                pl.col("lr_proj").is_not_null() & pl.col("lr_se").is_not_null()
+            )
+            .then(
+                pl.max_horizontal(
+                    pl.lit(0.0),
+                    pl.col("lr_proj") - z_alpha * pl.col("lr_se"),
+                )
+            )
+            .otherwise(None)
+            .alias("lr_ci_lower"),
+            pl.when(
+                pl.col("lr_proj").is_not_null() & pl.col("lr_se").is_not_null()
+            )
+            .then(pl.col("lr_proj") + z_alpha * pl.col("lr_se"))
+            .otherwise(None)
+            .alias("lr_ci_upper"),
+        )
+
+        self._df = full
         return self
 
     @property
@@ -449,23 +349,9 @@ class LRFit:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def k_star(self):
-        """Detected maturity point for SA. None for ED/CL.
-
-        Returns ``None`` (no group_var) or ``dict[group_value, int | None]``
-        when group_var is set.
-        """
-        if self.method != "sa":
-            return None
-        if self._group_var is None:
-            row = self._kstar_df.row(0, named=True)
-            return row["k_star"]
-        return dict(
-            zip(
-                self._kstar_df[self._group_var].to_list(),
-                self._kstar_df["k_star"].to_list(),
-            )
-        )
+    def mat_k(self):
+        """Detected maturity (delegated to LossFit)."""
+        return self.loss_fit.mat_k
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
@@ -474,14 +360,14 @@ class LRFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort summary: ultimate loss / lr and uncertainty."""
+        """Per-cohort ultimate loss, premium, and LR."""
         df = self._df
         keys: list[str] = []
         if self._group_var is not None:
             keys.append(self._group_var)
         keys.append("cohort")
 
-        observed = df.filter(pl.col("loss").is_not_null())
+        observed = df.filter(pl.col("loss_obs").is_not_null())
         latest = observed.group_by(keys).agg(
             pl.col("dev").max().alias("latest"),
         )
@@ -493,8 +379,12 @@ class LRFit:
                 pl.col("loss_proj").last().alias("loss_ult"),
                 pl.col("premium_proj").last().alias("premium_ult"),
                 pl.col("lr_proj").last().alias("lr_ult"),
-                pl.col("se_lr").last().alias("se_lr"),
-                pl.col("cv_lr").last().alias("cv_lr"),
+                pl.col("loss_total_se").last().alias("loss_total_se"),
+                pl.col("loss_total_cv").last().alias("loss_total_cv"),
+                pl.col("lr_se").last().alias("lr_se"),
+                pl.col("lr_cv").last().alias("lr_cv"),
+                pl.col("lr_ci_lower").last().alias("lr_ci_lower"),
+                pl.col("lr_ci_upper").last().alias("lr_ci_upper"),
             )
         )
 
@@ -508,7 +398,7 @@ class LRFit:
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._group_var is not None:
-            n_groups = self._kstar_df.height
+            n_groups = self._df[self._group_var].n_unique()
             return (
                 f"<LRFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"

@@ -110,10 +110,10 @@ def test_cl_full_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    # CL in R produces value_proj; in Python it's loss_proj. Compare by
-    # name on Python; map the R column by content.
+    # Python's CL emits target_proj (worker generic); R fixture uses
+    # value_proj. Map Python's column to the R fixture name.
     _compare_numeric(
-        py.rename({"loss_proj": "value_proj"}),
+        py.rename({"target_proj": "value_proj"}),
         r,
         cols=["value_proj"],
     )
@@ -153,12 +153,12 @@ def test_lr_sa_maturity_matches_r():
     fit = lr.LR(method="sa").fit(tri)
     # R: max(ata_to) per group
     r_k = int(r["ata_to"].max())
-    py_k = fit.k_star["SUR"]
-    assert py_k == r_k, f"k_star mismatch: py={py_k} r={r_k}"
+    py_k = fit.mat_k["SUR"]
+    assert py_k == r_k, f"mat_k mismatch: py={py_k} r={r_k}"
 
 
 def test_ata_factors_match_r():
-    """Per-link ATA factor diagnostic (f, sigma2, cv, rse, n_obs).
+    """Per-link ATA factor diagnostic (f, sigma2, cv, rse, n_cohorts).
 
     R schema keys the table by (ata_from, ata_to, ata_link); Python
     uses a single `dev` column which equals R's `ata_from` (link
@@ -173,11 +173,17 @@ def test_ata_factors_match_r():
     assert py.height == r.height, (
         f"ATA link count mismatch: py={py.height} r={r.height}"
     )
-    _compare_numeric(py, r, cols=["f", "sigma2", "cv", "rse", "n_obs"])
+    # Python now emits `n_cohorts`; the R fixture parquet predates the
+    # `n_obs -> n_cohorts` rename, so map Python's column for comparison.
+    _compare_numeric(
+        py.rename({"n_cohorts": "n_obs"}),
+        r,
+        cols=["f", "sigma2", "cv", "rse", "n_obs"],
+    )
 
 
 def test_intensity_factors_match_r():
-    """Per-link ED intensity diagnostic (g, g_se, sigma2, n_obs)."""
+    """Per-link ED intensity diagnostic (g, g_se, sigma2, n_cohorts)."""
     r = _load("intensity_selected").sort(["ata_from"])
     tri = lr.Triangle(_exp_sur(), group_var="coverage")
     py = tri.link().intensity().df.sort(["dev"])
@@ -185,7 +191,11 @@ def test_intensity_factors_match_r():
     assert py.height == r.height, (
         f"intensity link count mismatch: py={py.height} r={r.height}"
     )
-    _compare_numeric(py, r, cols=["g", "g_se", "sigma2", "n_obs"])
+    _compare_numeric(
+        py.rename({"n_cohorts": "n_obs"}),
+        r,
+        cols=["g", "g_se", "sigma2", "n_obs"],
+    )
 
 
 def test_regime_breakpoints_match_r():
@@ -220,15 +230,15 @@ def test_lr_sa_summary_matches_r():
 
 def test_cl_mack_se_matches_r():
     """Mack-style SE on the chain ladder projection. Python's CL always
-    produces se_proj (no separate 'method' switch), so this also covers
-    the basic / mack split on the R side at the projection level."""
+    produces target_total_se (no separate 'method' switch), so this also
+    covers the basic / mack split on the R side at the projection level."""
     r = _load("cl_mack_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), group_var="coverage")
     py = (
         lr.CL().fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
-        .rename({"loss_proj": "value_proj"})
+        .rename({"target_proj": "value_proj", "target_total_se": "se_proj"})
     )
     _compare_numeric(py, r, cols=["value_proj", "se_proj"])
 
@@ -251,7 +261,7 @@ def test_backtest_lr_ae_err_matches_r():
     bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
     py_aligned = (
         bt.ae_err
-        .rename({"actual": "value_actual", "predicted": "value_pred"})
+        .rename({"actual": "value_actual", "expected": "value_pred"})
         .sort(["cohort", "dev"])
     )
 

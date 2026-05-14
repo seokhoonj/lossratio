@@ -79,13 +79,13 @@ def test_intensity_repr_grouped():
 
 def test_intensity_df_columns_no_group():
     intensity = _tri().link().intensity()
-    assert set(intensity.df.columns) >= {"dev", "g", "g_se", "sigma2", "n_obs"}
+    assert set(intensity.df.columns) >= {"dev", "g", "g_se", "sigma2", "n_cohorts"}
 
 
 def test_intensity_df_columns_with_group():
     intensity = _tri_grouped().link().intensity()
     assert set(intensity.df.columns) >= {
-        "coverage", "dev", "g", "g_se", "sigma2", "n_obs",
+        "coverage", "dev", "g", "g_se", "sigma2", "n_cohorts",
     }
 
 
@@ -127,7 +127,7 @@ def test_intensity_n_obs_decreasing_with_dev():
     """As dev grows, fewer cohorts contribute (triangular structure)."""
     intensity = _tri().link().intensity()
     df = intensity.df.sort("dev")
-    counts = df["n_obs"].to_list()
+    counts = df["n_cohorts"].to_list()
     # toy: dev=1 has 4 links, dev=2 has 3, dev=3 has 2, dev=4 has 1
     assert counts == [4, 3, 2, 1]
 

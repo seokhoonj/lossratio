@@ -135,14 +135,16 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                 noise = math.exp(rng.normal(0.0, math.log(1.0 + cell_cv)))
                 incr_loss = incr_premium * eff_target * weights[k] * _K * noise
 
+                # Real-world premium / loss are recorded in won (integer);
+                # round to match that convention.
                 records.append(
                     {
                         "coverage":     coverage,
                         "uy_m":         uy_m,
                         "cy_m":         cy_m,
                         "dev_m":        k + 1,
-                        "loss_incr":    incr_loss,
-                        "premium_incr": incr_premium,
+                        "loss_incr":    round(incr_loss),
+                        "premium_incr": round(incr_premium),
                     }
                 )
 

@@ -65,9 +65,12 @@ def test_lr_output_columns():
         lr.Triangle(_toy_triangle_input())
     )
     expected = {
-        "cohort", "dev", "loss", "premium",
+        "cohort", "dev", "loss_obs", "premium_obs",
         "loss_proj", "premium_proj", "lr_proj",
-        "se_loss", "se_lr", "cv_lr",
+        "loss_incr_proj", "premium_incr_proj", "lr_incr_proj",
+        "loss_total_se", "lr_se", "lr_cv",
+        "lr_ci_lower", "lr_ci_upper",
+        "loss_ci_lower", "loss_ci_upper",
     }
     assert set(fit.to_polars().columns) >= expected
 
@@ -93,7 +96,7 @@ def test_lr_cl_method_matches_cl_fit():
     lr_df = lr_fit.to_polars().sort(["cohort", "dev"])
 
     # Cumulative loss projections must match
-    assert cl_df["loss_proj"].to_list() == lr_df["loss_proj"].to_list()
+    assert cl_df["target_proj"].to_list() == lr_df["loss_proj"].to_list()
 
 
 def test_lr_cl_lr_proj_equals_loss_div_exposure():
@@ -125,7 +128,8 @@ def test_lr_ed_method_matches_ed_fit():
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
     lr_df = lr_fit.to_polars().sort(["cohort", "dev"])
 
-    assert ed_df["loss_proj"].to_list() == lr_df["loss_proj"].to_list()
+    # ED worker output uses generic ``target_*`` column names.
+    assert ed_df["target_proj"].to_list() == lr_df["loss_proj"].to_list()
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +138,11 @@ def test_lr_ed_method_matches_ed_fit():
 
 
 def test_lr_sa_with_loose_thresholds_detects_kstar_early():
-    """With loose thresholds, k_star should be detected (e.g., 1)."""
+    """With loose thresholds, mat_k should be detected (e.g., 1)."""
     fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
         lr.Triangle(_toy_triangle_input())
     )
-    assert fit.k_star is not None
+    assert fit.mat_k is not None
 
 
 def test_lr_sa_strict_thresholds_falls_back_to_ed():
@@ -148,24 +152,24 @@ def test_lr_sa_strict_thresholds_falls_back_to_ed():
     sa_fit = lr.LR(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
     ed_fit = lr.ED().fit(tri)
 
-    assert sa_fit.k_star is None
+    assert sa_fit.mat_k is None
     sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
-    assert sa_df["loss_proj"].to_list() == ed_df["loss_proj"].to_list()
+    assert sa_df["loss_proj"].to_list() == ed_df["target_proj"].to_list()
 
 
 def test_lr_sa_kstar_two_matches_cl_projection():
-    """With k_star=2, every link's target dev (>= 2) lies in the CL
-    region (target dev >= k_star), so SA reduces to pure CL."""
+    """With mat_k=2, every link's target dev (>= 2) lies in the CL
+    region (target dev >= mat_k), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.CL().fit(tri)
 
-    if sa_fit.k_star == 2:
+    if sa_fit.mat_k == 2:
         sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
         cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-        # Both use CL throughout when k_star = 2 (target dev >= 2 for all links).
-        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
+        # Both use CL throughout when mat_k = 2 (target dev >= 2 for all links).
+        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["target_proj"].to_list()):
             if a is None or b is None:
                 continue
             assert a == pytest.approx(b)
@@ -187,8 +191,10 @@ def test_lr_summary_columns():
         "loss_ult",
         "premium_ult",
         "lr_ult",
-        "se_lr",
-        "cv_lr",
+        "lr_se",
+        "lr_cv",
+        "lr_ci_lower",
+        "lr_ci_upper",
     }
     assert summary.height == 5
 
@@ -241,8 +247,8 @@ def test_lr_sa_kstar_per_group_dict():
     fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0).fit(
         lr.Triangle(df, group_var="coverage")
     )
-    assert isinstance(fit.k_star, dict)
-    assert "SUR" in fit.k_star
+    assert isinstance(fit.mat_k, dict)
+    assert "SUR" in fit.mat_k
 
 
 # ---------------------------------------------------------------------------

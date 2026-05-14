@@ -162,11 +162,11 @@ def test_cl_sigma2_last_link_min_last2():
 
 
 def test_cl_projection_observed_cells_unchanged():
-    """loss_proj equals loss in observed cells."""
+    """target_proj equals target_obs in observed cells."""
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    observed = df.filter(pl.col("loss").is_not_null())
-    diffs = (observed["loss_proj"] - observed["loss"]).abs()
+    observed = df.filter(pl.col("target_obs").is_not_null())
+    diffs = (observed["target_proj"] - observed["target_obs"]).abs()
     assert diffs.max() == pytest.approx(0.0)
 
 
@@ -177,7 +177,7 @@ def test_cl_projection_propagates_via_f_k():
     fk = fit._fk_df.sort("dev")["f"].to_list()
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
-    loss_proj = cohort_5["loss_proj"].to_list()
+    loss_proj = cohort_5["target_proj"].to_list()
     assert loss_proj[0] == 200.0
     assert loss_proj[1] == pytest.approx(200.0 * fk[0])
     assert loss_proj[2] == pytest.approx(200.0 * fk[0] * fk[1])
@@ -195,9 +195,9 @@ def test_cl_projection_propagates_via_f_k():
 def test_cl_se_observed_cells_null():
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    observed = df.filter(pl.col("loss").is_not_null())
+    observed = df.filter(pl.col("target_obs").is_not_null())
     # Observed cells have no projection SE
-    assert observed["se_proj"].null_count() == observed.height
+    assert observed["target_total_se"].null_count() == observed.height
 
 
 def test_cl_se_proj_positive_for_projected_cells():
@@ -206,9 +206,9 @@ def test_cl_se_proj_positive_for_projected_cells():
     via Mack's tail rule)."""
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    projected = df.filter(pl.col("loss").is_null())
+    projected = df.filter(pl.col("target_obs").is_null())
     # Every projected cell carries a numeric SE
-    se_values = projected["se_proj"].to_list()
+    se_values = projected["target_total_se"].to_list()
     assert all(v is not None and v > 0 for v in se_values)
 
 
@@ -218,7 +218,7 @@ def test_cl_se_grows_with_distance_from_observed():
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
-    se = cohort_5["se_proj"].to_list()
+    se = cohort_5["target_total_se"].to_list()
     # se[0] is None (observed). se[1..4] are projected, monotonically
     # non-decreasing in absolute terms because variance accumulates.
     se_proj_only = [v for v in se if v is not None]

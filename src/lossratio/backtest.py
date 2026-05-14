@@ -92,11 +92,6 @@ def _build_masked_df(
 
 
 _VALID_METRICS = ("lr", "loss", "premium")
-_METRIC_TO_PROJ_COL = {
-    "lr":      "lr_proj",
-    "loss":    "loss_proj",
-    "premium": "premium_proj",
-}
 
 
 def _is_ratio_fit_estimator(estimator: Any) -> bool:
@@ -110,21 +105,40 @@ def _is_ratio_fit_estimator(estimator: Any) -> bool:
     return isinstance(estimator, (LR, ED))
 
 
-def _resolve_predicted_column(metric: str, fit_df_columns: list[str]) -> str:
-    """Map ``metric`` to the projection column expected on the refit's
-    output frame. Raises if the column is missing or metric is invalid.
+def _resolve_expected_column(
+    metric: str, fit_df_columns: list[str], refit: Any
+) -> str:
+    """Map ``metric`` to the projection column on the refit output frame.
+
+    Post-Phase-4b workers emit generic ``target_proj`` columns (CL: loss
+    side; ED: target = loss, plus ``lr_proj`` as a downstream quantity).
+    LR keeps legacy ``loss_proj`` / ``premium_proj`` / ``lr_proj``.
     """
     if metric not in _VALID_METRICS:
         raise ValueError(
             f"metric must be one of {_VALID_METRICS}, got {metric!r}"
         )
-    pred_col = _METRIC_TO_PROJ_COL[metric]
-    if pred_col not in fit_df_columns:
-        raise ValueError(
-            f"Refitted estimator output has no {pred_col!r} column "
-            f"(needed for metric={metric!r})."
-        )
-    return pred_col
+
+    # LR estimator: legacy column names still emitted.
+    legacy = {"lr": "lr_proj", "loss": "loss_proj", "premium": "premium_proj"}
+    if legacy[metric] in fit_df_columns:
+        return legacy[metric]
+
+    # New worker schema (CL / ED): target_proj corresponds to the
+    # estimator's `target` role. Use lr_proj for ratio metric on ED.
+    if metric == "lr" and "lr_proj" in fit_df_columns:
+        return "lr_proj"
+    target = getattr(refit, "target", None)
+    if metric == target and "target_proj" in fit_df_columns:
+        return "target_proj"
+    exposure = getattr(refit, "exposure", None)
+    if metric == exposure and "exposure_proj" in fit_df_columns:
+        return "exposure_proj"
+
+    raise ValueError(
+        f"Refitted estimator output has no column for metric={metric!r}. "
+        f"Available: {fit_df_columns}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +154,7 @@ class Backtest:
     compares the projection to the original observed values on the
     held-out cells. The cell-level metric (``ae_err``, "A/E Error")
     follows the standard actuarial A/E convention,
-    ``ae_err = actual / predicted - 1``, where positive values mark
+    ``ae_err = actual / expected - 1``, where positive values mark
     cells where the model under-projected (actual exceeded the
     projection) and negative values mark over-projection.
 
@@ -202,13 +216,13 @@ class BacktestFit:
     ----------
     ae_err : DataFrame
         Per-cell hold-out comparison
-        ``[group_var?, cohort, dev, calendar_idx, actual, predicted, ae_err]``.
-        ``ae_err = actual / predicted - 1`` (signed relative error;
+        ``[group_var?, cohort, dev, calendar_idx, actual, expected, ae_err]``.
+        ``ae_err = actual / expected - 1`` (signed relative error;
         positive = under-projection, negative = over-projection).
     col_summary : DataFrame
         Aggregated by dev:
         ``[group_var?, dev, n, ae_err_mean, ae_err_med, ae_err_wt]``.
-        ``ae_err_wt = sum(actual - predicted) / sum(predicted)`` is the
+        ``ae_err_wt = sum(actual - expected) / sum(expected)`` is the
         exposure-weighted pooled A/E - 1.
     diag_summary : DataFrame
         Aggregated by calendar_idx with the same statistics as
@@ -250,7 +264,7 @@ class BacktestFit:
         self._refit = refit
 
         refit_df = refit.to_polars()
-        pred_col = _resolve_predicted_column(bt.metric, refit_df.columns)
+        exp_col = _resolve_expected_column(bt.metric, refit_df.columns, refit)
         self.metric = bt.metric
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
@@ -266,24 +280,25 @@ class BacktestFit:
             keys + ["calendar_idx", actual_col]
         ).rename({actual_col: "actual"})
 
-        refit_pred = refit_df.select(keys + [pred_col]).rename({pred_col: "predicted"})
+        refit_exp = refit_df.select(keys + [exp_col]).rename({exp_col: "expected"})
 
         # Drop unreachable cells: cohorts whose observations are wholly
         # within the held-out diagonals have no anchor for projection,
         # so the refit returns NaN at those cells.
         ae_err = (
-            held_out.join(refit_pred, on=keys, how="inner")
+            held_out.join(refit_exp, on=keys, how="inner")
             .filter(
-                pl.col("predicted").is_not_null()
-                & pl.col("predicted").is_finite()
+                pl.col("expected").is_not_null()
+                & pl.col("expected").is_finite()
             )
             .with_columns(
+                (pl.col("actual") - pl.col("expected")).alias("aeg"),
                 pl.when(
-                    pl.col("predicted").is_finite() & (pl.col("predicted") != 0)
+                    pl.col("expected").is_finite() & (pl.col("expected") != 0)
                 )
-                .then(pl.col("actual") / pl.col("predicted") - 1)
+                .then(pl.col("actual") / pl.col("expected") - 1)
                 .otherwise(None)
-                .alias("ae_err")
+                .alias("ae_err"),
             )
         )
         self._ae_err = ae_err.sort(keys + ["calendar_idx"])
@@ -299,11 +314,13 @@ class BacktestFit:
             ae_err.group_by(col_keys)
             .agg(
                 pl.len().alias("n"),
+                pl.col("aeg").mean().alias("aeg_mean"),
+                pl.col("aeg").median().alias("aeg_med"),
                 pl.col("ae_err").mean().alias("ae_err_mean"),
                 pl.col("ae_err").median().alias("ae_err_med"),
                 (
-                    (pl.col("actual") - pl.col("predicted")).sum()
-                    / pl.col("predicted").sum()
+                    (pl.col("actual") - pl.col("expected")).sum()
+                    / pl.col("expected").sum()
                 ).alias("ae_err_wt"),
             )
             .sort(col_keys)
@@ -318,11 +335,13 @@ class BacktestFit:
             ae_err.group_by(diag_keys)
             .agg(
                 pl.len().alias("n"),
+                pl.col("aeg").mean().alias("aeg_mean"),
+                pl.col("aeg").median().alias("aeg_med"),
                 pl.col("ae_err").mean().alias("ae_err_mean"),
                 pl.col("ae_err").median().alias("ae_err_med"),
                 (
-                    (pl.col("actual") - pl.col("predicted")).sum()
-                    / pl.col("predicted").sum()
+                    (pl.col("actual") - pl.col("expected")).sum()
+                    / pl.col("expected").sum()
                 ).alias("ae_err_wt"),
             )
             .sort(diag_keys)

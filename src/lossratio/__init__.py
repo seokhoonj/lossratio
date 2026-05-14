@@ -15,12 +15,14 @@ from .ed import ED, EDFit
 from .experience import validate_experience
 from .intensity import Intensity
 from .link import Link
+from .loss import Loss, LossFit
 from .lr import LR, LRFit
 from .maturity import Maturity
+from .premium import Premium, PremiumFit
 from .regime import Regime
 from .triangle import Triangle
 
-__version__ = "0.0.1.dev9"
+__version__ = "0.0.1.dev10"
 
 __all__ = [
     "ATA",
@@ -34,7 +36,11 @@ __all__ = [
     "LR",
     "LRFit",
     "Link",
+    "Loss",
+    "LossFit",
     "Maturity",
+    "Premium",
+    "PremiumFit",
     "Regime",
     "Triangle",
     "__version__",

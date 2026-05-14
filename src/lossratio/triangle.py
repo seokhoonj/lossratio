@@ -272,15 +272,21 @@ class Triangle:
         tri._dev_var = original._dev_var
         return tri
 
-    def link(self) -> "Link":
+    def link(
+        self,
+        target: str = "loss",
+        exposure: str | None = "premium",
+        weight: str | None = None,
+        min_denom: float = 0.0,
+        drop_invalid: bool = False,
+    ) -> "Link":
         """Build the long-format link table.
 
         Returns a :class:`Link` data class — one row per (cohort,
         adjacent dev pair) — that exposes the per-cell ATA factor
-        and (when the source Triangle has a premium column) the
-        per-cell ED intensity. Diagnostic methods :meth:`Link.ata`
-        and :meth:`Link.intensity` aggregate across cohorts to
-        per-link summaries.
+        and (when ``exposure`` is supplied) the per-cell ED intensity.
+        Diagnostic methods :meth:`Link.ata` and :meth:`Link.intensity`
+        aggregate across cohorts to per-link summaries.
 
         ``tri.link()`` is the single canonical entry point for
         factor-level diagnostics. The chains:
@@ -289,17 +295,40 @@ class Triangle:
         - ``tri.link().intensity()``              → :class:`Intensity`
         - ``tri.link().ata().maturity(...)``      → :class:`Maturity`
 
+        Parameters
+        ----------
+        target
+            Cumulative metric used as the link numerator. One of
+            ``"loss"``, ``"premium"``, ``"lr"``. Default ``"loss"``.
+        exposure
+            Optional cumulative metric for the ED exposure anchor.
+            Default ``"premium"``. Pass ``None`` for ATA-only mode.
+        weight
+            Optional WLS weight column (cannot combine with exposure).
+        min_denom
+            Minimum denominator required to compute ``ata`` /
+            ``intensity``. Default ``0``.
+        drop_invalid
+            If ``True``, rows with non-finite ``ata`` (single-var) or
+            ``intensity`` (dual-var) are dropped. Default ``False``.
+
         Examples
         --------
         >>> tri = lr.Triangle(df, group_var="coverage")
-        >>> link = tri.link()
-        >>> link.ata()                            # multiplicative
-        >>> link.intensity()                      # additive
-        >>> link.ata().maturity(max_cv=0.15)      # stability detection
+        >>> link = tri.link()                          # target='loss', exposure='premium'
+        >>> link = tri.link(target='loss')             # ATA-only
+        >>> link.ata().maturity(max_cv=0.15)
         """
         from .link import Link
 
-        return Link._from_triangle(self)
+        return Link._from_triangle(
+            self,
+            target=target,
+            exposure=exposure,
+            weight=weight,
+            min_denom=min_denom,
+            drop_invalid=drop_invalid,
+        )
 
     def detect_regime(
         self,

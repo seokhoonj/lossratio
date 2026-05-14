@@ -8,7 +8,7 @@ squares on each cohort×link pair.
 Unlike maturity, ED has no "stable point" concept — :math:`g_k` decays
 toward zero at long development, which makes CV / RSE structurally
 ill-behaved. ``Intensity`` therefore reports diagnostic quantities
-only; there is no ``k_star`` detection.
+only; there is no ``mat_k`` detection.
 """
 
 from __future__ import annotations
@@ -20,8 +20,7 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_loss_matrix
-from .ed import _build_premium_matrix
+from .cl import _build_value_matrix
 
 if TYPE_CHECKING:
     from .link import Link
@@ -154,7 +153,7 @@ def _diagnostic_to_df(
             if not np.isnan(result.sigma2_k[k])
             else None
         )
-        row["n_obs"] = int(result.n_obs_k[k])
+        row["n_cohorts"] = int(result.n_obs_k[k])
         rows.append(row)
     return pl.DataFrame(rows)
 
@@ -170,7 +169,7 @@ class Intensity:
     Per-development-link estimates of the exposure-driven intensity
     ``g_k = E[ΔL / C^P]``, with standard errors and residual sigma.
     Parallel to :class:`Maturity` for the multiplicative ATA side, but
-    *without* a ``k_star`` detection: in ED, ``g_k`` decays toward zero
+    *without* a ``mat_k`` detection: in ED, ``g_k`` decays toward zero
     at long development, which makes CV / RSE diagnostics ill-behaved
     by construction (not by instability).
 
@@ -206,9 +205,16 @@ class Intensity:
         tri_df = link._tri_df
         group_var = link._group_var
 
+        target_col = link._target
+        exposure_col = link._exposure
+        if exposure_col is None:
+            raise ValueError(
+                "Intensity requires the source Link to have `exposure` set."
+            )
+
         if group_var is None:
-            loss_obs, _, _ = _build_loss_matrix(tri_df)
-            premium_obs, _, _ = _build_premium_matrix(tri_df)
+            loss_obs, _, _ = _build_value_matrix(tri_df, target_col)
+            premium_obs, _, _ = _build_value_matrix(tri_df, exposure_col)
             result = _compute_intensity(
                 loss_obs, premium_obs, sigma_method=sigma_method
             )
@@ -222,8 +228,8 @@ class Intensity:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                loss_obs, _, _ = _build_loss_matrix(sub)
-                premium_obs, _, _ = _build_premium_matrix(sub)
+                loss_obs, _, _ = _build_value_matrix(sub, target_col)
+                premium_obs, _, _ = _build_value_matrix(sub, exposure_col)
                 result = _compute_intensity(
                     loss_obs, premium_obs, sigma_method=sigma_method
                 )
@@ -244,7 +250,7 @@ class Intensity:
 
     def summary(self):
         """Alias for :attr:`df`. Provided for parity with
-        :meth:`Maturity.summary`; ED has no separate ``k_star``
+        :meth:`Maturity.summary`; ED has no separate ``mat_k``
         summary because there is no maturity concept."""
         return mirror_output(self._df, self._output_type)
 

@@ -19,7 +19,7 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_loss_matrix, _fit_mack
+from .cl import _build_value_matrix, _fit_mack
 from .maturity import _compute_cv_rse
 
 if TYPE_CHECKING:
@@ -99,7 +99,7 @@ def _diagnostic_to_df(
         row["rse"] = (
             float(result.rse_k[k]) if not np.isnan(result.rse_k[k]) else None
         )
-        row["n_obs"] = int(result.n_obs_k[k])
+        row["n_cohorts"] = int(result.n_obs_k[k])
         rows.append(row)
     return pl.DataFrame(rows)
 
@@ -120,7 +120,7 @@ class ATA:
 
     For stability-point detection on top of these diagnostics, see
     :class:`Maturity` (which threshold-filters CV / RSE and locates a
-    ``k_star``).
+    ``mat_k``).
 
     Properties
     ----------
@@ -155,7 +155,7 @@ class ATA:
         group_var = link._group_var
 
         if group_var is None:
-            loss_obs, _, _ = _build_loss_matrix(tri_df)
+            loss_obs, _, _ = _build_value_matrix(tri_df, link._target)
             result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
             diag_df = _diagnostic_to_df(
                 result, group_var=None, group_value=None
@@ -167,7 +167,7 @@ class ATA:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                loss_obs, _, _ = _build_loss_matrix(sub)
+                loss_obs, _, _ = _build_value_matrix(sub, link._target)
                 result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
                 diag_parts.append(
                     _diagnostic_to_df(

@@ -78,7 +78,7 @@ def test_backtest_ae_err_columns():
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.ae_err.columns) >= {
-        "cohort", "dev", "calendar_idx", "actual", "predicted", "ae_err",
+        "cohort", "dev", "calendar_idx", "actual", "expected", "ae_err",
     }
 
 
@@ -138,19 +138,19 @@ def test_backtest_predicted_is_finite_for_all_held_cells():
     bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
-    for v in bt.ae_err["predicted"].to_list():
+    for v in bt.ae_err["expected"].to_list():
         assert v is not None
 
 
 def test_backtest_ae_err_equals_relative_error():
-    """ae_err = actual / predicted - 1 (signed relative error)."""
+    """ae_err = actual / expected - 1 (signed relative error)."""
     bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     df = bt.ae_err
     for actual, pred, err in zip(
         df["actual"].to_list(),
-        df["predicted"].to_list(),
+        df["expected"].to_list(),
         df["ae_err"].to_list(),
     ):
         if pred is None or pred == 0:
@@ -204,7 +204,7 @@ def test_backtest_with_ed_estimator():
     )
     assert bt.ae_err.shape[0] == 3
     # ED returns loss_proj; backtest auto-resolves
-    assert "predicted" in bt.ae_err.columns
+    assert "expected" in bt.ae_err.columns
 
 
 def test_backtest_with_lr_sa_estimator():

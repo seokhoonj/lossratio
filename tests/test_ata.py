@@ -79,13 +79,13 @@ def test_ata_repr_grouped():
 
 def test_ata_df_columns_no_group():
     ata = _tri().link().ata()
-    assert set(ata.df.columns) >= {"dev", "f", "sigma2", "cv", "rse", "n_obs"}
+    assert set(ata.df.columns) >= {"dev", "f", "sigma2", "cv", "rse", "n_cohorts"}
 
 
 def test_ata_df_columns_with_group():
     ata = _tri_grouped().link().ata()
     assert set(ata.df.columns) >= {
-        "coverage", "dev", "f", "sigma2", "cv", "rse", "n_obs",
+        "coverage", "dev", "f", "sigma2", "cv", "rse", "n_cohorts",
     }
 
 
@@ -115,7 +115,7 @@ def test_ata_n_obs_decreasing_with_dev():
     """As dev grows, fewer cohorts contribute (triangular structure)."""
     ata = _tri().link().ata()
     df = ata.df.sort("dev")
-    counts = df["n_obs"].to_list()
+    counts = df["n_cohorts"].to_list()
     # toy: dev=1 has 4 links, dev=2 has 3, dev=3 has 2, dev=4 has 1
     assert counts == [4, 3, 2, 1]
 

@@ -56,26 +56,36 @@ def _mack_f_var(result: _MackResult) -> np.ndarray:
     return out
 
 
-def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Convert a single-group Triangle subset into a loss matrix.
+def _build_value_matrix(
+    df: pl.DataFrame, value_col: str = "loss"
+) -> tuple[np.ndarray, list, int]:
+    """Convert a single-group Triangle subset into a value matrix.
 
-    Rows are cohorts (sorted), columns are dev = 1..max_dev.
+    Rows are cohorts (sorted), columns are dev = 1..max_dev. The
+    column to extract is ``value_col`` (typically ``"loss"`` or
+    ``"premium"``).
     """
     df = df.sort(["cohort", "dev"])
     cohorts = df["cohort"].unique(maintain_order=True).to_list()
     n_cohorts = len(cohorts)
     max_dev = int(df["dev"].max())
 
-    loss = np.full((n_cohorts, max_dev), np.nan, dtype=np.float64)
+    mat = np.full((n_cohorts, max_dev), np.nan, dtype=np.float64)
     cohort_index = {c: i for i, c in enumerate(cohorts)}
 
     for row in df.iter_rows(named=True):
         i = cohort_index[row["cohort"]]
         k = row["dev"] - 1
         if 0 <= k < max_dev:
-            loss[i, k] = row["loss"]
+            mat[i, k] = row[value_col]
 
-    return loss, cohorts, max_dev
+    return mat, cohorts, max_dev
+
+
+# Backward-compat alias (some internal callers still use the old name).
+def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
+    """Legacy alias: extract the ``loss`` column. Prefer ``_build_value_matrix``."""
+    return _build_value_matrix(df, value_col="loss")
 
 
 def _fit_mack(
@@ -194,9 +204,35 @@ def _result_to_long_df(
     group_var: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
-    """Convert a Mack result into a long-format polars DataFrame."""
+    """Convert a Mack result into a long-format polars DataFrame.
+
+    Schema (post-Phase-4b, generic worker):
+      ``[group_var?, cohort, dev,
+         target_obs, target_proj, target_incr_proj,
+         target_proc_se2, target_param_se2, target_total_se2,
+         target_proc_se,  target_param_se,  target_total_se,
+         target_proc_cv,  target_param_cv,  target_total_cv]``.
+    """
     n_cohorts = len(cohorts)
     n_devs = result.n_devs
+
+    # Precompute incremental projection and SE decomposition arrays.
+    # For CL, the only variance component shipped by _fit_mack is
+    # `se_proj` (= sqrt of total variance after Mack's product form).
+    # Process / parameter splits are not exposed individually; we keep
+    # them aligned with the total so downstream consumers see a
+    # consistent target_* schema.
+    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    total_se = result.se_proj
+    incr_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    for i in range(n_cohorts):
+        prev = 0.0
+        for k in range(n_devs):
+            v = result.loss_proj[i, k]
+            if not np.isnan(v):
+                incr_proj[i, k] = v - prev
+                prev = v
 
     out_rows = []
     for i in range(n_cohorts):
@@ -206,24 +242,47 @@ def _result_to_long_df(
                 row[group_var] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
-            row["loss"] = (
-                float(result.loss_obs[i, k])
-                if not np.isnan(result.loss_obs[i, k])
-                else None
+
+            ts = total_se[i, k]
+            ts_val = float(ts) if not np.isnan(ts) else None
+
+            obs = result.loss_obs[i, k]
+            proj = result.loss_proj[i, k]
+            incr = incr_proj[i, k]
+
+            row["target_obs"] = float(obs) if not np.isnan(obs) else None
+            row["target_proj"] = float(proj) if not np.isnan(proj) else None
+            row["target_incr_proj"] = (
+                float(incr) if not np.isnan(incr) else None
             )
-            row["loss_proj"] = (
-                float(result.loss_proj[i, k])
-                if not np.isnan(result.loss_proj[i, k])
-                else None
+
+            # CL: only total Mack SE is exposed; proc/param splits not
+            # available from _fit_mack's product-form recursion. Report
+            # NaN for the breakdown columns and the total in the totals
+            # column, plus CV from total.
+            row["target_proc_se2"] = None
+            row["target_param_se2"] = None
+            row["target_total_se2"] = (
+                ts_val * ts_val if ts_val is not None else None
             )
-            row["se_proj"] = (
-                float(result.se_proj[i, k])
-                if not np.isnan(result.se_proj[i, k])
-                else None
-            )
+            row["target_proc_se"] = None
+            row["target_param_se"] = None
+            row["target_total_se"] = ts_val
+
+            cv = None
+            if (
+                row["target_proj"] is not None
+                and row["target_proj"] != 0
+                and ts_val is not None
+            ):
+                cv = ts_val / row["target_proj"]
+            row["target_proc_cv"] = None
+            row["target_param_cv"] = None
+            row["target_total_cv"] = cv
+
             out_rows.append(row)
 
-    return pl.DataFrame(out_rows)
+    return pl.DataFrame(out_rows, infer_schema_length=None)
 
 
 def _factors_to_df(
@@ -285,10 +344,31 @@ class CL:
         self.alpha = alpha
         self.sigma_method = sigma_method
 
-    def fit(self, triangle: "Triangle") -> "CLFit":
-        """Fit Mack chain ladder on a Triangle."""
+    def fit(
+        self,
+        triangle: "Triangle",
+        target: str = "loss",
+        weight: str | None = None,
+    ) -> "CLFit":
+        """Fit Mack chain ladder on a Triangle.
+
+        Parameters
+        ----------
+        triangle
+            Source :class:`Triangle`.
+        target
+            Cumulative metric to project. One of ``"loss"``,
+            ``"premium"``, ``"lr"``. Default ``"loss"``.
+        weight
+            Optional column for WLS weights (currently reserved; the
+            Mack core fit uses volume weighting by default).
+        """
         return CLFit._from_triangle(
-            triangle, alpha=self.alpha, sigma_method=self.sigma_method
+            triangle,
+            alpha=self.alpha,
+            sigma_method=self.sigma_method,
+            target=target,
+            weight=weight,
         )
 
 
@@ -321,6 +401,8 @@ class CLFit:
         triangle: "Triangle",
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        target: str = "loss",
+        weight: str | None = None,
     ) -> "CLFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
@@ -329,13 +411,21 @@ class CLFit:
         self._dev_var = triangle._dev_var
         self.alpha = alpha
         self.sigma_method = sigma_method
+        self.target = target
+        self.weight = weight
 
         tri_df = triangle._df
         group_var = triangle._group_var
 
+        if target not in tri_df.columns:
+            raise ValueError(
+                f"`target={target!r}` column missing from Triangle. "
+                f"Available columns: {tri_df.columns}"
+            )
+
         if group_var is None:
-            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
-            result = _fit_mack(loss_obs, sigma_method=sigma_method)
+            value_obs, cohorts, _ = _build_value_matrix(tri_df, target)
+            result = _fit_mack(value_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
                 result, cohorts, group_var=None, group_value=None
             )
@@ -348,8 +438,8 @@ class CLFit:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                loss_obs, cohorts, _ = _build_loss_matrix(sub)
-                result = _fit_mack(loss_obs, sigma_method=sigma_method)
+                value_obs, cohorts, _ = _build_value_matrix(sub, target)
+                result = _fit_mack(value_obs, sigma_method=sigma_method)
                 long_parts.append(
                     _result_to_long_df(result, cohorts, group_var=group_var, group_value=g)
                 )
@@ -380,7 +470,7 @@ class CLFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort summary: ultimate cumulative loss, SE, and CV.
+        """Per-cohort summary: ultimate target value, SE, and CV.
 
         Returned as a polars DataFrame regardless of input type — the
         summary is a small diagnostic table and is best inspected
@@ -393,10 +483,10 @@ class CLFit:
         keys.append("cohort")
 
         # Latest observed dev per cohort (NaN-aware)
-        observed = df.filter(pl.col("loss").is_not_null())
+        observed = df.filter(pl.col("target_obs").is_not_null())
         latest = observed.group_by(keys).agg(
             pl.col("dev").max().alias("latest"),
-            pl.col("loss").last().alias("latest_observed_loss"),
+            pl.col("target_obs").last().alias("latest_observed_loss"),
         )
 
         # Ultimate (max dev) per cohort
@@ -404,8 +494,8 @@ class CLFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("ultimate"),
-                pl.col("se_proj").last().alias("se_ultimate"),
+                pl.col("target_proj").last().alias("ultimate"),
+                pl.col("target_total_se").last().alias("se_ultimate"),
             )
         )
 

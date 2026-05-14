@@ -83,7 +83,7 @@ def test_maturity_diagnostic_columns():
     df = mat.to_polars()
     # Maturity now builds on top of ATA factor diagnostic, so its
     # df carries the full ATA schema (`f`, `sigma2`, `cv`, `rse`,
-    # `n_obs`) plus the maturity-specific `stable` column.
+    # `n_cohorts`) plus the maturity-specific `stable` column.
     assert set(df.columns) >= {"dev", "f", "sigma2", "cv", "rse", "stable"}
     # n_links = n_devs - 1 = 4
     assert df.height == 4
@@ -98,37 +98,37 @@ def test_maturity_repr():
 
 
 # ---------------------------------------------------------------------------
-# k_star detection
+# mat_k detection
 # ---------------------------------------------------------------------------
 
 
 def test_maturity_stable_data_finds_k_star_at_two():
-    """When every link is perfectly stable (CV=0, RSE=0), k_star=2.
+    """When every link is perfectly stable (CV=0, RSE=0), mat_k=2.
 
-    k_star is the target dev (ata_to) of the first stable link; the
+    mat_k is the target dev (ata_to) of the first stable link; the
     first link goes from dev 1 to dev 2, so target dev = 2.
     """
     tri = lr.Triangle(_stable_input())
     mat = tri.link().ata().maturity()
-    assert mat.k_star == 2
+    assert mat.mat_k == 2
 
 
 def test_maturity_strict_thresholds_no_detection():
-    """Set thresholds tighter than any observed CV/RSE → k_star=None."""
+    """Set thresholds tighter than any observed CV/RSE → mat_k=None."""
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=1e-9, max_rse=1e-9, min_run=2)
-    assert mat.k_star is None
+    assert mat.mat_k is None
 
 
 def test_maturity_loose_thresholds_finds_k_star():
-    """Generous thresholds: k_star should be the target dev of the
+    """Generous thresholds: mat_k should be the target dev of the
     first stable link.
     """
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # With min_run=2 we need 2 consecutive stable links starting at link 0
     # (dev 1 -> dev 2). Target dev of that link = 2.
-    assert mat.k_star == 2
+    assert mat.mat_k == 2
 
 
 def test_maturity_m_consecutive_required():
@@ -136,7 +136,7 @@ def test_maturity_m_consecutive_required():
     tri = lr.Triangle(_polars_input())
     # n_links = 4. min_run=5 cannot be satisfied.
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=5)
-    assert mat.k_star is None
+    assert mat.mat_k is None
 
 
 # ---------------------------------------------------------------------------
@@ -197,9 +197,9 @@ def test_maturity_with_group_var():
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
 
     assert "coverage" in mat.to_polars().columns
-    # k_star is a dict per group when group_var present
-    assert isinstance(mat.k_star, dict)
-    assert "SUR" in mat.k_star
+    # mat_k is a dict per group when group_var present
+    assert isinstance(mat.mat_k, dict)
+    assert "SUR" in mat.mat_k
 
 
 def test_maturity_per_group_independent():
@@ -212,8 +212,8 @@ def test_maturity_per_group_independent():
     )
     tri = lr.Triangle(df_grouped, group_var="coverage")
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
-    # Same data in each group → same k_star
-    assert mat.k_star == {"A": 2, "B": 2}
+    # Same data in each group → same mat_k
+    assert mat.mat_k == {"A": 2, "B": 2}
 
 
 # ---------------------------------------------------------------------------

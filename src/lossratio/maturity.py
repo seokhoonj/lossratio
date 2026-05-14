@@ -35,7 +35,7 @@ class _MaturityResult:
     cv_k: np.ndarray
     rse_k: np.ndarray
     stable_k: np.ndarray
-    k_star: int | None
+    mat_k: int | None
     n_devs: int
 
 
@@ -101,7 +101,7 @@ def _detect_k_star(stable_k: np.ndarray, min_run: int) -> int | None:
 
     Returns the *target* dev value of that link (1-indexed; equivalent
     to ``ata_to`` in R sibling). With this convention the development
-    region splits as ED = ``dev < k_star`` and CL = ``dev >= k_star``.
+    region splits as ED = ``dev < mat_k`` and CL = ``dev >= mat_k``.
 
     Returns ``None`` if no such window exists.
     """
@@ -121,7 +121,7 @@ def _compute_maturity(
     max_rse: float,
     min_run: int,
 ) -> _MaturityResult:
-    """Internal: compute factor stats + stability flags + k_star.
+    """Internal: compute factor stats + stability flags + mat_k.
 
     Used by :mod:`lr` for the stage-adaptive method's switch point.
     The public path is ``triangle.link().ata().maturity(...)``.
@@ -132,14 +132,14 @@ def _compute_maturity(
     for k in range(len(cv_k)):
         if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):
             stable_k[k] = (cv_k[k] < max_cv) and (rse_k[k] < max_rse)
-    k_star = _detect_k_star(stable_k, min_run)
+    mat_k = _detect_k_star(stable_k, min_run)
     return _MaturityResult(
         f_k=mack.f_k,
         sigma2_k=mack.sigma2_k,
         cv_k=cv_k,
         rse_k=rse_k,
         stable_k=stable_k,
-        k_star=k_star,
+        mat_k=mat_k,
         n_devs=loss_obs.shape[1],
     )
 
@@ -162,7 +162,7 @@ class Maturity:
     df : DataFrame
         Per-link diagnostic table:
         ``[group_var?, dev, f, sigma2, cv, rse, stable]``.
-    k_star :
+    mat_k :
         Detected maturity dev. Returns ``None`` (no group_var) or a dict
         ``{group_value: k_star_or_None}`` (group_var set). ``None`` value
         means stability was not reached within the observation window.
@@ -211,11 +211,11 @@ class Maturity:
 
         if self._group_var is None:
             stable_arr = diag_df["stable"].to_numpy()
-            k_star = _detect_k_star(stable_arr, min_run)
+            mat_k = _detect_k_star(stable_arr, min_run)
             kstar_df = pl.DataFrame(
                 [
                     {
-                        "k_star": k_star,
+                        "mat_k": mat_k,
                         "n_links": int(len(stable_arr)),
                         "n_stable_links": int(stable_arr.sum()),
                     }
@@ -228,11 +228,11 @@ class Maturity:
             ):
                 sub = diag_df.filter(pl.col(self._group_var) == g)
                 stable_arr = sub["stable"].to_numpy()
-                k_star = _detect_k_star(stable_arr, min_run)
+                mat_k = _detect_k_star(stable_arr, min_run)
                 kstar_rows.append(
                     {
                         self._group_var: g,
-                        "k_star": k_star,
+                        "mat_k": mat_k,
                         "n_links": int(len(stable_arr)),
                         "n_stable_links": int(stable_arr.sum()),
                     }
@@ -252,7 +252,7 @@ class Maturity:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def k_star(self):
+    def mat_k(self):
         """Detected maturity point.
 
         If the source Triangle has no ``group_var``, returns an ``int``
@@ -260,16 +260,16 @@ class Maturity:
         """
         if self._group_var is None:
             row = self._kstar_df.row(0, named=True)
-            return row["k_star"]
+            return row["mat_k"]
         return dict(
             zip(
                 self._kstar_df[self._group_var].to_list(),
-                self._kstar_df["k_star"].to_list(),
+                self._kstar_df["mat_k"].to_list(),
             )
         )
 
     def summary(self):
-        """One-row-per-group summary of detected k_star."""
+        """One-row-per-group summary of detected mat_k."""
         return mirror_output(self._kstar_df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
@@ -283,6 +283,6 @@ class Maturity:
             f"max_cv={self.max_cv}, max_rse={self.max_rse}, m={self.min_run}"
         )
         if self._group_var is None:
-            return f"<Maturity: k_star={self.k_star} ({thresh})>"
+            return f"<Maturity: mat_k={self.mat_k} ({thresh})>"
         n_groups = self._kstar_df.height
         return f"<Maturity: {n_groups} groups ({thresh})>"

@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.1.dev10] - 2026-05-14
+
+### Breaking -- R parity column / slot renames
+
+- `n_obs` -> `n_cohorts` (ATA and Intensity factor summary columns).
+- `predicted` -> `expected` in `Backtest.ae_err` cell-level table and
+  in `col_summary` / `diag_summary` aggregates. Matches the actuarial
+  A/E (Actual / Expected) convention used on the R side.
+- `k_star` -> `mat_k` everywhere it appeared as a slot, attribute,
+  or property (`Maturity.k_star`, `LossFit.k_star`, `LRFit.k_star`,
+  fixture dictionaries). The math symbol $k^*$ survives in
+  docstrings, but no longer as a Python identifier.
+
+### Added
+
+- `Backtest.ae_err` now carries the raw signed gap as a separate
+  `aeg` column (`actual - expected`), alongside the relative error
+  `ae_err = actual / expected - 1`. Both column families flow
+  through to `col_summary` / `diag_summary` (`aeg_mean`, `aeg_med`,
+  `ae_err_mean`, `ae_err_med`, `ae_err_wt`).
+
+### Notes
+
+- All renames match R lossratio's recent BREAKING sweep so the two
+  siblings share one schema again. The R fixture parquet files in
+  `tests/fixtures/` still reflect the *pre-rename* schema; the
+  parity tests apply small rename maps (e.g. `n_cohorts` ->
+  `n_obs`) for backward compatibility until the fixtures are
+  refreshed from the new R version.
+- `detect_convergence` (R's recent multi-criterion redesign),
+  `Calendar` / `Total` classes, and the `regime_at` /
+  `maturity_at` factory helpers are not yet ported -- they
+  remain on the parity backlog for a subsequent release.
+
 ## [Unreleased]
 
 ### Breaking

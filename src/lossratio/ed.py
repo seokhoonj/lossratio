@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
-from .cl import _build_loss_matrix, _fit_mack
+from .cl import _build_loss_matrix, _build_value_matrix, _fit_mack
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -56,20 +56,11 @@ def _mack_g_var(result: _EDResult) -> np.ndarray:
 
 
 def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Build premium matrix: rows = cohorts (sorted), cols = dev 1..max_dev."""
-    df = df.sort(["cohort", "dev"])
-    cohorts = df["cohort"].unique(maintain_order=True).to_list()
-    n_cohorts = len(cohorts)
-    max_dev = int(df["dev"].max())
+    """Legacy alias: extract the ``premium`` column.
 
-    premium = np.full((n_cohorts, max_dev), np.nan, dtype=np.float64)
-    cohort_index = {c: i for i, c in enumerate(cohorts)}
-    for row in df.iter_rows(named=True):
-        i = cohort_index[row["cohort"]]
-        k = row["dev"] - 1
-        if 0 <= k < max_dev:
-            premium[i, k] = row["premium"]
-    return premium, cohorts, max_dev
+    Prefer ``cl._build_value_matrix(df, value_col)`` for new code.
+    """
+    return _build_value_matrix(df, value_col="premium")
 
 
 def _fit_ed(
@@ -190,51 +181,155 @@ def _result_to_long_df(
     group_var: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
-    """Convert an ED result into a long-format polars DataFrame."""
+    """Convert an ED result into a long-format DataFrame.
+
+    Schema (post-Phase-4b, generic worker):
+      ``[group_var?, cohort, dev,
+         target_obs, target_proj, target_incr_proj,
+         exposure_obs, exposure_proj, exposure_incr_proj,
+         target_proc_se2, target_param_se2, target_total_se2,
+         target_proc_se,  target_param_se,  target_total_se,
+         target_proc_cv,  target_param_cv,  target_total_cv,
+         lr_proj]``.
+    """
+    n_cohorts = len(cohorts)
+    n_devs = result.n_devs
+
+    # Per-cohort proc / param variance decomposition (ED additive form).
+    g_k = result.g_k
+    sigma2_g_k = result.sigma2_g_k
+    sum_premium_k = result.sum_premium_k
+
+    # Var(g_hat_k) = sigma2_g_k / sum_premium_k.
+    var_g_k = np.full_like(sigma2_g_k, np.nan)
+    pos_denom = (sum_premium_k > 0) & np.isfinite(sigma2_g_k)
+    var_g_k[pos_denom] = sigma2_g_k[pos_denom] / sum_premium_k[pos_denom]
+
+    proc_se2 = np.zeros((n_cohorts, n_devs), dtype=np.float64)
+    param_se2 = np.zeros((n_cohorts, n_devs), dtype=np.float64)
+    obs_mask = ~np.isnan(result.loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs,
+        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+    for i in range(n_cohorts):
+        lo = last_obs[i]
+        if lo < 0:
+            continue
+        for k in range(lo, n_devs - 1):
+            e = result.premium_proj[i, k]
+            if not np.isfinite(e) or e <= 0:
+                proc_se2[i, k + 1] = proc_se2[i, k]
+                param_se2[i, k + 1] = param_se2[i, k]
+                continue
+            s2 = sigma2_g_k[k]
+            vg = var_g_k[k]
+            proc_prev = proc_se2[i, k]
+            param_prev = param_se2[i, k]
+            proc_se2[i, k + 1] = proc_prev + (s2 if np.isfinite(s2) else 0.0) * e
+            param_se2[i, k + 1] = (
+                param_prev + (vg if np.isfinite(vg) else 0.0) * (e ** 2)
+            )
+
+    # Mask observed cells: SE columns are only meaningful on projected cells.
+    for i in range(n_cohorts):
+        for k in range(n_devs):
+            if obs_mask[i, k]:
+                proc_se2[i, k] = np.nan
+                param_se2[i, k] = np.nan
+
+    # Incremental projections (target + exposure)
+    target_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    exposure_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    for i in range(n_cohorts):
+        prev_t = 0.0
+        prev_e = 0.0
+        for k in range(n_devs):
+            t = result.loss_proj[i, k]
+            e = result.premium_proj[i, k]
+            if not np.isnan(t):
+                target_incr[i, k] = t - prev_t
+                prev_t = t
+            if not np.isnan(e):
+                exposure_incr[i, k] = e - prev_e
+                prev_e = e
+
     rows = []
-    for i in range(len(cohorts)):
-        for k in range(result.n_devs):
+    for i in range(n_cohorts):
+        for k in range(n_devs):
             row: dict[str, Any] = {}
             if group_var is not None:
                 row[group_var] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
-            row["loss"] = (
-                float(result.loss_obs[i, k])
-                if not np.isnan(result.loss_obs[i, k])
-                else None
+
+            t_obs = result.loss_obs[i, k]
+            t_proj = result.loss_proj[i, k]
+            t_inc = target_incr[i, k]
+            e_obs = result.premium_obs[i, k]
+            e_proj = result.premium_proj[i, k]
+            e_inc = exposure_incr[i, k]
+
+            row["target_obs"] = float(t_obs) if not np.isnan(t_obs) else None
+            row["target_proj"] = float(t_proj) if not np.isnan(t_proj) else None
+            row["target_incr_proj"] = (
+                float(t_inc) if not np.isnan(t_inc) else None
             )
-            row["loss_proj"] = (
-                float(result.loss_proj[i, k])
-                if not np.isnan(result.loss_proj[i, k])
-                else None
+            row["exposure_obs"] = float(e_obs) if not np.isnan(e_obs) else None
+            row["exposure_proj"] = (
+                float(e_proj) if not np.isnan(e_proj) else None
             )
-            row["premium"] = (
-                float(result.premium_obs[i, k])
-                if not np.isnan(result.premium_obs[i, k])
-                else None
+            row["exposure_incr_proj"] = (
+                float(e_inc) if not np.isnan(e_inc) else None
             )
-            row["premium_proj"] = (
-                float(result.premium_proj[i, k])
-                if not np.isnan(result.premium_proj[i, k])
-                else None
+
+            ps2 = proc_se2[i, k]
+            qs2 = param_se2[i, k]
+            ts2 = (
+                (ps2 if np.isfinite(ps2) else 0.0)
+                + (qs2 if np.isfinite(qs2) else 0.0)
+                if (np.isfinite(ps2) or np.isfinite(qs2))
+                else np.nan
             )
-            row["se_proj"] = (
-                float(result.se_proj[i, k])
-                if not np.isnan(result.se_proj[i, k])
-                else None
+            row["target_proc_se2"] = float(ps2) if np.isfinite(ps2) else None
+            row["target_param_se2"] = float(qs2) if np.isfinite(qs2) else None
+            row["target_total_se2"] = float(ts2) if np.isfinite(ts2) else None
+            row["target_proc_se"] = (
+                float(np.sqrt(ps2)) if np.isfinite(ps2) and ps2 >= 0 else None
             )
-            # lr_proj = loss_proj / premium_proj (cumulative LR projection)
+            row["target_param_se"] = (
+                float(np.sqrt(qs2)) if np.isfinite(qs2) and qs2 >= 0 else None
+            )
+            row["target_total_se"] = (
+                float(np.sqrt(ts2)) if np.isfinite(ts2) and ts2 >= 0 else None
+            )
+
+            def _cv(numer):
+                if (
+                    numer is None
+                    or row["target_proj"] is None
+                    or row["target_proj"] == 0
+                ):
+                    return None
+                return numer / row["target_proj"]
+
+            row["target_proc_cv"] = _cv(row["target_proc_se"])
+            row["target_param_cv"] = _cv(row["target_param_se"])
+            row["target_total_cv"] = _cv(row["target_total_se"])
+
+            # lr_proj = target_proj / exposure_proj
             if (
-                row["loss_proj"] is not None
-                and row["premium_proj"] is not None
-                and row["premium_proj"] != 0
+                row["target_proj"] is not None
+                and row["exposure_proj"] is not None
+                and row["exposure_proj"] != 0
             ):
-                row["lr_proj"] = row["loss_proj"] / row["premium_proj"]
+                row["lr_proj"] = row["target_proj"] / row["exposure_proj"]
             else:
                 row["lr_proj"] = None
             rows.append(row)
-    return pl.DataFrame(rows)
+    return pl.DataFrame(rows, infer_schema_length=None)
 
 
 def _params_to_df(
@@ -316,10 +411,30 @@ class ED:
         self.alpha = alpha
         self.sigma_method = sigma_method
 
-    def fit(self, triangle: "Triangle") -> "EDFit":
-        """Fit ED chain ladder on a Triangle."""
+    def fit(
+        self,
+        triangle: "Triangle",
+        target: str = "loss",
+        exposure: str = "premium",
+    ) -> "EDFit":
+        """Fit ED on a Triangle.
+
+        Parameters
+        ----------
+        triangle
+            Source :class:`Triangle`.
+        target
+            Cumulative metric to project (numerator). Default ``"loss"``.
+        exposure
+            Cumulative metric used as exposure anchor (denominator).
+            Default ``"premium"``.
+        """
         return EDFit._from_triangle(
-            triangle, alpha=self.alpha, sigma_method=self.sigma_method
+            triangle,
+            alpha=self.alpha,
+            sigma_method=self.sigma_method,
+            target=target,
+            exposure=exposure,
         )
 
 
@@ -352,6 +467,8 @@ class EDFit:
         triangle: "Triangle",
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        target: str = "loss",
+        exposure: str = "premium",
     ) -> "EDFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
@@ -359,13 +476,24 @@ class EDFit:
         self._cohort_var = triangle._cohort_var
         self._dev_var = triangle._dev_var
         self.alpha = alpha
+        self.target = target
+        self.exposure = exposure
 
         tri_df = triangle._df
         group_var = triangle._group_var
 
+        if target not in tri_df.columns:
+            raise ValueError(
+                f"`target={target!r}` column missing from Triangle."
+            )
+        if exposure not in tri_df.columns:
+            raise ValueError(
+                f"`exposure={exposure!r}` column missing from Triangle."
+            )
+
         if group_var is None:
-            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
-            premium_obs, _cohorts2, _ = _build_premium_matrix(tri_df)
+            loss_obs, cohorts, _ = _build_value_matrix(tri_df, target)
+            premium_obs, _cohorts2, _ = _build_value_matrix(tri_df, exposure)
             result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
                 result, cohorts, group_var=None, group_value=None
@@ -379,8 +507,8 @@ class EDFit:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(group_var) == g)
-                loss_obs, cohorts, _ = _build_loss_matrix(sub)
-                premium_obs, _, _ = _build_premium_matrix(sub)
+                loss_obs, cohorts, _ = _build_value_matrix(sub, target)
+                premium_obs, _, _ = _build_value_matrix(sub, exposure)
                 result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
                 long_parts.append(
                     _result_to_long_df(
@@ -414,25 +542,25 @@ class EDFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort summary: ultimate cumulative loss, SE, and CV."""
+        """Per-cohort summary: ultimate target value, SE, and CV."""
         df = self._df
         keys: list[str] = []
         if self._group_var is not None:
             keys.append(self._group_var)
         keys.append("cohort")
 
-        observed = df.filter(pl.col("loss").is_not_null())
+        observed = df.filter(pl.col("target_obs").is_not_null())
         latest = observed.group_by(keys).agg(
             pl.col("dev").max().alias("latest"),
-            pl.col("loss").last().alias("latest_observed_loss"),
+            pl.col("target_obs").last().alias("latest_observed_loss"),
         )
 
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("ultimate"),
-                pl.col("se_proj").last().alias("se_ultimate"),
+                pl.col("target_proj").last().alias("ultimate"),
+                pl.col("target_total_se").last().alias("se_ultimate"),
             )
         )
 

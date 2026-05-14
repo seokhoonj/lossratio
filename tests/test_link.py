@@ -80,16 +80,16 @@ def test_link_df_has_ata_columns():
     cols = set(link.df.columns)
     assert {
         "cohort", "ata_from", "ata_to", "ata_link",
-        "loss_from", "loss_to", "loss_delta", "ata",
+        "target_from", "target_to", "target_delta", "ata",
     } <= cols
 
 
 def test_link_df_has_premium_columns_in_dual_mode():
     link = _tri().link()
     cols = set(link.df.columns)
-    # Triangle from Experience always carries premium → dual-mode
+    # Triangle.link() default carries exposure='premium' → dual-mode
     assert {
-        "premium_from", "premium_to", "premium_delta", "intensity",
+        "exposure_from", "exposure_to", "exposure_delta", "intensity",
     } <= cols
 
 
@@ -107,17 +107,17 @@ def test_link_ata_equals_loss_to_over_loss_from():
     link = _tri().link()
     df = link.df
     for r in df.iter_rows(named=True):
-        if r["loss_from"] is not None and r["loss_from"] > 0:
-            assert r["ata"] == pytest.approx(r["loss_to"] / r["loss_from"])
+        if r["target_from"] is not None and r["target_from"] > 0:
+            assert r["ata"] == pytest.approx(r["target_to"] / r["target_from"])
 
 
 def test_link_intensity_equals_loss_delta_over_premium_from():
     link = _tri().link()
     df = link.df
     for r in df.iter_rows(named=True):
-        if r["premium_from"] is not None and r["premium_from"] > 0:
+        if r["exposure_from"] is not None and r["exposure_from"] > 0:
             assert r["intensity"] == pytest.approx(
-                (r["loss_to"] - r["loss_from"]) / r["premium_from"]
+                (r["target_to"] - r["target_from"]) / r["exposure_from"]
             )
 
 
