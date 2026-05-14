@@ -1,0 +1,613 @@
+"""Loss projection dispatcher (sa / ed / cl).
+
+``Loss`` is the role-specific loss-side dispatcher. It owns the loss
+projection only — premium projection is delegated to :class:`Premium`,
+and loss-ratio composition (with delta method) is handled by
+:class:`LR`.
+
+Output columns use the role-specific ``loss_*`` naming. The full table
+also carries ``premium_*`` columns (taken from the embedded
+``PremiumFit``) so downstream LR composition has everything in one
+place.
+
+Python sibling of R ``fit_loss()`` (see ``R/loss.R``).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+import polars as pl
+from scipy.stats import norm
+
+from ._io import mirror_output
+from ._sigma import VALID_SIGMA_METHODS
+from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
+from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
+from .maturity import _compute_maturity
+from .premium import Premium, PremiumFit
+
+if TYPE_CHECKING:
+    from .triangle import Triangle
+
+
+_VALID_METHODS = ("sa", "ed", "cl")
+_VALID_PREMIUM_METHODS = ("cl", "ed")
+
+
+# ---------------------------------------------------------------------------
+# Internal: per-group SA / ED / CL projection (loss + variance decomposition)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _LossResult:
+    """Single-group loss fit result."""
+
+    n_devs: int
+    loss_obs: np.ndarray
+    loss_proj: np.ndarray
+    proc_se: np.ndarray
+    param_se: np.ndarray
+    total_se: np.ndarray
+    premium_obs: np.ndarray
+    premium_proj: np.ndarray
+    mat_k: int | None
+    # internal parameters retained for LR bootstrap reuse
+    g_selected: np.ndarray
+    g_sigma2: np.ndarray
+    g_var: np.ndarray
+    f_selected: np.ndarray
+    f_sigma2: np.ndarray
+    f_var: np.ndarray
+    last_obs: np.ndarray
+    maturity_from: int | None
+
+
+def _safe_div(a, b):
+    if b is None or b == 0 or a is None:
+        return None
+    return a / b
+
+
+def _fit_loss_single(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    premium_proj_from_fit: np.ndarray,
+    method: str,
+    sigma_method: str,
+    max_cv: float,
+    max_rse: float,
+    min_run: int,
+) -> _LossResult:
+    """Project cumulative loss + decompose variance (process / parameter).
+
+    ``premium_proj_from_fit`` is the premium projection from
+    ``PremiumFit`` (so the loss recursion uses the dispatcher's premium
+    projection, not an inline Mack call). Both share the same point
+    estimate so this is a no-op numerically but preserves the
+    composition layering.
+    """
+    n_cohorts, n_devs = loss_obs.shape
+    n_links = n_devs - 1
+
+    # ED parameters
+    ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
+    g_k = ed_result.g_k
+    sigma2_g_k = ed_result.sigma2_g_k
+    var_g_k = _mack_g_var(ed_result)
+
+    # CL parameters
+    cl_result = _fit_mack(loss_obs, sigma_method=sigma_method)
+    f_k = cl_result.f_k
+    sigma2_f_k = cl_result.sigma2_k
+    var_f_k = _mack_f_var(cl_result)
+
+    # Maturity (only for SA)
+    mat_k: int | None = None
+    if method == "sa":
+        mat = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
+        mat_k = mat.mat_k
+
+    # Switch threshold: target dev < mat = ED phase; target dev >= mat = CL.
+    if method == "sa":
+        if mat_k is None:
+            mat_threshold = float("inf")  # fall back to ED throughout
+        else:
+            mat_threshold = float(mat_k)
+    elif method == "ed":
+        mat_threshold = float("inf")
+    else:  # cl
+        mat_threshold = 0.0
+
+    loss_proj = loss_obs.copy()
+    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs_idx = np.where(
+        has_obs,
+        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+    eligible = (last_obs_idx >= 0) & (last_obs_idx < n_devs - 1)
+
+    proc_acc = np.zeros(n_cohorts, dtype=np.float64)
+    param_acc = np.zeros(n_cohorts, dtype=np.float64)
+
+    for k in range(n_links):
+        active = eligible & (last_obs_idx <= k)
+        if not active.any():
+            continue
+
+        target_dev = k + 2  # link from dev (k+1) to dev (k+2)
+        ck = loss_proj[:, k]
+        pk = premium_proj_from_fit[:, k]
+
+        if target_dev < mat_threshold:
+            # ED phase: additive
+            pos = active & ~np.isnan(pk) & (pk > 0)
+            if pos.any():
+                if np.isfinite(g_k[k]):
+                    loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
+                if np.isfinite(sigma2_g_k[k]):
+                    proc_acc[pos] = proc_acc[pos] + sigma2_g_k[k] * pk[pos]
+                if np.isfinite(var_g_k[k]):
+                    param_acc[pos] = (
+                        param_acc[pos] + (pk[pos] ** 2) * var_g_k[k]
+                    )
+        else:
+            # CL phase: multiplicative
+            pos = active & ~np.isnan(ck) & (ck > 0)
+            if pos.any():
+                if np.isfinite(f_k[k]):
+                    loss_proj[pos, k + 1] = f_k[k] * ck[pos]
+                    proc_acc[pos] = (f_k[k] ** 2) * proc_acc[pos]
+                    param_acc[pos] = (f_k[k] ** 2) * param_acc[pos]
+                if np.isfinite(sigma2_f_k[k]):
+                    proc_acc[pos] = proc_acc[pos] + sigma2_f_k[k] * ck[pos]
+                if np.isfinite(var_f_k[k]):
+                    param_acc[pos] = (
+                        param_acc[pos] + (ck[pos] ** 2) * var_f_k[k]
+                    )
+
+        ck1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(ck1)
+        proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
+        param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
+        total_se[sp, k + 1] = np.sqrt(
+            np.maximum(proc_acc[sp] + param_acc[sp], 0)
+        )
+
+    # mask SE on observed cells (no projection uncertainty there)
+    proc_se[obs_mask] = np.nan
+    param_se[obs_mask] = np.nan
+    total_se[obs_mask] = np.nan
+
+    return _LossResult(
+        n_devs=n_devs,
+        loss_obs=loss_obs,
+        loss_proj=loss_proj,
+        proc_se=proc_se,
+        param_se=param_se,
+        total_se=total_se,
+        premium_obs=premium_obs,
+        premium_proj=premium_proj_from_fit,
+        mat_k=mat_k,
+        g_selected=g_k,
+        g_sigma2=sigma2_g_k,
+        g_var=var_g_k,
+        f_selected=f_k,
+        f_sigma2=sigma2_f_k,
+        f_var=var_f_k,
+        last_obs=last_obs_idx,
+        maturity_from=mat_k,
+    )
+
+
+def _loss_long_df(
+    result: _LossResult,
+    cohorts: list,
+    pf_sub: pl.DataFrame,
+    group_var: str | None,
+    group_value: Any | None,
+    conf_level: float,
+) -> pl.DataFrame:
+    """Assemble long-format DataFrame for one group's loss fit.
+
+    ``pf_sub`` is the matching PremiumFit slice (same group) — used to
+    pull ``premium_*`` columns straight through onto the loss output.
+    """
+    z_alpha = float(norm.ppf((1 + conf_level) / 2))
+
+    # Build index by (cohort, dev) into pf_sub for lookup
+    pf_rows = pf_sub.to_dicts() if pf_sub.height else []
+    pf_idx: dict[tuple[Any, int], dict[str, Any]] = {
+        (r["cohort"], r["dev"]): r for r in pf_rows
+    }
+
+    out_rows: list[dict[str, Any]] = []
+    for i in range(len(cohorts)):
+        prev_loss_proj: float | None = None
+        for k in range(result.n_devs):
+            row: dict[str, Any] = {}
+            if group_var is not None:
+                row[group_var] = group_value
+            row["cohort"] = cohorts[i]
+            row["dev"] = k + 1
+
+            lo = result.loss_obs[i, k]
+            lp = result.loss_proj[i, k]
+            proc = result.proc_se[i, k]
+            par = result.param_se[i, k]
+            tot = result.total_se[i, k]
+
+            row["loss_obs"] = float(lo) if not np.isnan(lo) else None
+            row["loss_proj"] = float(lp) if not np.isnan(lp) else None
+            if row["loss_proj"] is None:
+                row["loss_incr_proj"] = None
+            elif prev_loss_proj is None:
+                row["loss_incr_proj"] = row["loss_proj"]
+            else:
+                row["loss_incr_proj"] = row["loss_proj"] - prev_loss_proj
+            prev_loss_proj = row["loss_proj"]
+
+            # premium_* — copied from PremiumFit slice
+            pf_row = pf_idx.get((cohorts[i], k + 1), {})
+            row["premium_obs"] = pf_row.get("premium_obs")
+            row["premium_proj"] = pf_row.get("premium_proj")
+            row["premium_incr_proj"] = pf_row.get("premium_incr_proj")
+
+            row["loss_proc_se"] = float(proc) if not np.isnan(proc) else None
+            row["loss_param_se"] = float(par) if not np.isnan(par) else None
+            row["loss_total_se"] = float(tot) if not np.isnan(tot) else None
+            row["loss_total_cv"] = (
+                row["loss_total_se"] / abs(row["loss_proj"])
+                if row["loss_total_se"] is not None
+                and row["loss_proj"] not in (None, 0.0)
+                else None
+            )
+
+            if (
+                row["loss_total_se"] is not None
+                and row["loss_proj"] is not None
+            ):
+                lci = row["loss_proj"] - z_alpha * row["loss_total_se"]
+                row["loss_ci_lower"] = max(0.0, lci)
+                row["loss_ci_upper"] = (
+                    row["loss_proj"] + z_alpha * row["loss_total_se"]
+                )
+            else:
+                row["loss_ci_lower"] = None
+                row["loss_ci_upper"] = None
+
+            out_rows.append(row)
+
+    return pl.DataFrame(out_rows, infer_schema_length=None)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+class Loss:
+    """Loss projection dispatcher (``"sa"`` / ``"ed"`` / ``"cl"``).
+
+    Parameters
+    ----------
+    method
+        Projection method:
+
+        * ``"sa"`` (default): stage-adaptive — ED before maturity, CL
+          after. Maturity is detected internally per group.
+        * ``"ed"``: pure ED for all dev periods.
+        * ``"cl"``: pure Mack chain ladder.
+    alpha
+        Variance-structure exponent for the loss fit. Default ``1``.
+    sigma_method
+        Sigma extrapolation: ``"locf"`` (default), ``"min_last2"``, or
+        ``"loglinear"``.
+    premium_fit
+        Optional pre-built :class:`PremiumFit`. When ``None`` (default),
+        :class:`Loss` constructs one internally using ``premium_method``
+        and ``premium_alpha``.
+    premium_method
+        One of ``"cl"`` (default) or ``"ed"``. Used only when
+        ``premium_fit`` is ``None``.
+    premium_alpha
+        Variance-structure exponent for the premium fit. Default ``1``.
+    conf_level
+        Confidence level for analytical CI on ``loss_proj``. Default
+        ``0.95``.
+    """
+
+    def __init__(
+        self,
+        method: str = "sa",
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+        premium_fit: PremiumFit | None = None,
+        premium_method: str = "cl",
+        premium_alpha: float = 1.0,
+        max_cv: float = 0.15,
+        max_rse: float = 0.05,
+        min_run: int = 2,
+        conf_level: float = 0.95,
+    ) -> None:
+        if method not in _VALID_METHODS:
+            raise ValueError(
+                f"method must be one of {_VALID_METHODS}, got {method!r}"
+            )
+        if premium_method not in _VALID_PREMIUM_METHODS:
+            raise ValueError(
+                f"premium_method must be one of {_VALID_PREMIUM_METHODS}, "
+                f"got {premium_method!r}"
+            )
+        if alpha != 1.0:
+            raise NotImplementedError(
+                f"alpha={alpha} not yet implemented; only alpha=1 is supported"
+            )
+        if premium_alpha != 1.0:
+            raise NotImplementedError(
+                f"premium_alpha={premium_alpha} not yet implemented; "
+                f"only alpha=1 is supported"
+            )
+        if sigma_method not in VALID_SIGMA_METHODS:
+            raise ValueError(
+                f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
+                f"got {sigma_method!r}"
+            )
+        if not (0.0 < conf_level < 1.0):
+            raise ValueError(
+                f"conf_level must be in (0, 1), got {conf_level!r}"
+            )
+        if premium_fit is not None and not isinstance(premium_fit, PremiumFit):
+            raise TypeError(
+                "premium_fit must be a PremiumFit instance or None"
+            )
+        self.method = method
+        self.alpha = alpha
+        self.sigma_method = sigma_method
+        self.premium_fit = premium_fit
+        self.premium_method = premium_method
+        self.premium_alpha = premium_alpha
+        self.max_cv = max_cv
+        self.max_rse = max_rse
+        self.min_run = min_run
+        self.conf_level = conf_level
+
+    def fit(self, triangle: "Triangle") -> "LossFit":
+        """Fit the loss projection on a Triangle."""
+        return LossFit._from_triangle(triangle, self)
+
+
+class LossFit:
+    """Result of a loss projection fit.
+
+    Properties
+    ----------
+    df : DataFrame
+        Long-format triangle with columns ``[group_var?, cohort, dev,
+        loss_obs, loss_proj, loss_incr_proj, premium_obs, premium_proj,
+        premium_incr_proj, loss_proc_se, loss_param_se, loss_total_se,
+        loss_total_cv, loss_ci_lower, loss_ci_upper]``.
+    method : str
+        ``"sa"``, ``"ed"``, or ``"cl"``.
+    mat_k :
+        Detected maturity for ``"sa"`` (None elsewhere).
+    premium_fit :
+        The embedded :class:`PremiumFit` used for premium projection.
+    """
+
+    def __init__(self) -> None:
+        self._df: pl.DataFrame
+        self._kstar_df: pl.DataFrame
+        self._output_type: str
+        self._group_var: str | None
+        self._cohort_var: str
+        self._dev_var: str
+        self.method: str
+        self.alpha: float
+        self.sigma_method: str
+        self.conf_level: float
+        self.premium_fit: PremiumFit
+
+    @classmethod
+    def _from_triangle(
+        cls,
+        triangle: "Triangle",
+        estimator: "Loss",
+    ) -> "LossFit":
+        self = cls.__new__(cls)
+        self._output_type = triangle._output_type
+        self._group_var = triangle._group_var
+        self._cohort_var = triangle._cohort_var
+        self._dev_var = triangle._dev_var
+        self.method = estimator.method
+        self.alpha = estimator.alpha
+        self.sigma_method = estimator.sigma_method
+        self.conf_level = estimator.conf_level
+
+        # 1) resolve PremiumFit ------------------------------------------------
+        if estimator.premium_fit is not None:
+            pf = estimator.premium_fit
+        else:
+            pf = Premium(
+                method=estimator.premium_method,
+                alpha=estimator.premium_alpha,
+                sigma_method=estimator.sigma_method,
+                conf_level=estimator.conf_level,
+            ).fit(triangle)
+        self.premium_fit = pf
+        pf_df = pf._df
+
+        tri_df = triangle._df
+        group_var = triangle._group_var
+
+        # internal-params dict; not exposed to user but kept for LR bootstrap
+        self._internals: dict[Any, _LossResult] = {}
+
+        if group_var is None:
+            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
+            premium_obs, _, _ = _build_premium_matrix(tri_df)
+            # premium_proj from PremiumFit (cohort, dev) -> value
+            premium_proj_mat = _premium_proj_matrix(pf_df, cohorts, loss_obs.shape[1])
+            result = _fit_loss_single(
+                loss_obs,
+                premium_obs,
+                premium_proj_mat,
+                estimator.method,
+                estimator.sigma_method,
+                estimator.max_cv,
+                estimator.max_rse,
+                estimator.min_run,
+            )
+            long_df = _loss_long_df(
+                result,
+                cohorts,
+                pf_df,
+                None,
+                None,
+                estimator.conf_level,
+            )
+            kstar_df = pl.DataFrame(
+                [{"mat_k": result.mat_k, "method": estimator.method}]
+            )
+            self._internals[None] = result
+        else:
+            long_parts: list[pl.DataFrame] = []
+            kstar_rows: list[dict[str, Any]] = []
+            for g in (
+                tri_df[group_var].unique(maintain_order=True).to_list()
+            ):
+                sub = tri_df.filter(pl.col(group_var) == g)
+                pf_sub = pf_df.filter(pl.col(group_var) == g)
+                loss_obs, cohorts, _ = _build_loss_matrix(sub)
+                premium_obs, _, _ = _build_premium_matrix(sub)
+                premium_proj_mat = _premium_proj_matrix(
+                    pf_sub, cohorts, loss_obs.shape[1]
+                )
+                result = _fit_loss_single(
+                    loss_obs,
+                    premium_obs,
+                    premium_proj_mat,
+                    estimator.method,
+                    estimator.sigma_method,
+                    estimator.max_cv,
+                    estimator.max_rse,
+                    estimator.min_run,
+                )
+                long_parts.append(
+                    _loss_long_df(
+                        result,
+                        cohorts,
+                        pf_sub,
+                        group_var,
+                        g,
+                        estimator.conf_level,
+                    )
+                )
+                kstar_rows.append(
+                    {
+                        group_var: g,
+                        "mat_k": result.mat_k,
+                        "method": estimator.method,
+                    }
+                )
+                self._internals[g] = result
+            long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
+            kstar_df = (
+                pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
+            )
+
+        self._df = long_df
+        self._kstar_df = kstar_df
+        return self
+
+    @property
+    def df(self):
+        return mirror_output(self._df, self._output_type)
+
+    @property
+    def mat_k(self):
+        """Detected maturity for SA (None for ED/CL)."""
+        if self.method != "sa":
+            return None
+        if self._group_var is None:
+            row = self._kstar_df.row(0, named=True)
+            return row["mat_k"]
+        return dict(
+            zip(
+                self._kstar_df[self._group_var].to_list(),
+                self._kstar_df["mat_k"].to_list(),
+            )
+        )
+
+    def to_polars(self) -> pl.DataFrame:
+        return self._df
+
+    def to_pandas(self):
+        return self._df.to_pandas()
+
+    def summary(self) -> pl.DataFrame:
+        """Per-cohort ultimate loss, SE, and CV."""
+        df = self._df
+        keys: list[str] = []
+        if self._group_var is not None:
+            keys.append(self._group_var)
+        keys.append("cohort")
+
+        ultimate = (
+            df.sort(keys + ["dev"])
+            .group_by(keys)
+            .agg(
+                pl.col("loss_proj").last().alias("ultimate"),
+                pl.col("loss_total_se").last().alias("se_ultimate"),
+                pl.col("loss_total_cv").last().alias("cv_ultimate"),
+            )
+            .sort(keys)
+        )
+        return mirror_output(ultimate, self._output_type)
+
+    @property
+    def n_rows(self) -> int:
+        return self._df.height
+
+    def __repr__(self) -> str:
+        n_rows = self._df.height
+        if self._group_var is not None:
+            n_groups = self._kstar_df.height
+            return (
+                f"<LossFit(method={self.method!r}): "
+                f"{n_groups} groups, {n_rows} rows>"
+            )
+        return f"<LossFit(method={self.method!r}): {n_rows} rows>"
+
+
+def _premium_proj_matrix(
+    pf_sub: pl.DataFrame,
+    cohorts: list,
+    n_devs: int,
+) -> np.ndarray:
+    """Reshape PremiumFit slice into a (n_cohorts, n_devs) array of
+    ``premium_proj`` values (NaN where missing).
+    """
+    out = np.full((len(cohorts), n_devs), np.nan, dtype=np.float64)
+    if pf_sub.height == 0:
+        return out
+    cohort_index = {c: i for i, c in enumerate(cohorts)}
+    for row in pf_sub.iter_rows(named=True):
+        i = cohort_index.get(row["cohort"])
+        if i is None:
+            continue
+        k = row["dev"] - 1
+        if 0 <= k < n_devs:
+            val = row.get("premium_proj")
+            if val is not None:
+                out[i, k] = float(val)
+    return out
