@@ -229,7 +229,7 @@ def test_backtest_with_lr_cl_method():
 
 def test_backtest_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    tri = lr.Triangle(df, group_var="coverage")
+    tri = lr.Triangle(df, groups="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
     assert "coverage" in bt.ae_err.columns
     assert "coverage" in bt.col_summary.columns
@@ -243,7 +243,7 @@ def test_backtest_per_group_independent():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Triangle(df_grouped, group_var="coverage")
+    tri = lr.Triangle(df_grouped, groups="coverage")
     bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
     ae_err = bt.ae_err
     a_err = ae_err.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])

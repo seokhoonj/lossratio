@@ -213,7 +213,7 @@ def _loss_long_df(
     result: _LossResult,
     cohorts: list,
     pf_sub: pl.DataFrame,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
     conf_level: float,
 ) -> pl.DataFrame:
@@ -235,8 +235,8 @@ def _loss_long_df(
         prev_loss_proj: float | None = None
         for k in range(result.n_devs):
             row: dict[str, Any] = {}
-            if group_var is not None:
-                row[group_var] = group_value
+            if groups is not None:
+                row[groups] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
 
@@ -392,7 +392,7 @@ class LossFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns ``[group_var?, cohort, dev,
+        Long-format triangle with columns ``[groups?, cohort, dev,
         loss_obs, loss_proj, loss_incr_proj, premium_obs, premium_proj,
         premium_incr_proj, loss_proc_se, loss_param_se, loss_total_se,
         loss_total_cv, loss_ci_lower, loss_ci_upper]``.
@@ -408,9 +408,9 @@ class LossFit:
         self._df: pl.DataFrame
         self._kstar_df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self.method: str
         self.alpha: float
         self.sigma_method: str
@@ -425,9 +425,9 @@ class LossFit:
     ) -> "LossFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
@@ -447,12 +447,12 @@ class LossFit:
         pf_df = pf._df
 
         tri_df = triangle._df
-        group_var = triangle._group_var
+        groups = triangle._groups
 
         # internal-params dict; not exposed to user but kept for LR bootstrap
         self._internals: dict[Any, _LossResult] = {}
 
-        if group_var is None:
+        if groups is None:
             loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
             premium_obs, _, _ = _build_premium_matrix(tri_df)
             # premium_proj from PremiumFit (cohort, dev) -> value
@@ -483,10 +483,10 @@ class LossFit:
             long_parts: list[pl.DataFrame] = []
             kstar_rows: list[dict[str, Any]] = []
             for g in (
-                tri_df[group_var].unique(maintain_order=True).to_list()
+                tri_df[groups].unique(maintain_order=True).to_list()
             ):
-                sub = tri_df.filter(pl.col(group_var) == g)
-                pf_sub = pf_df.filter(pl.col(group_var) == g)
+                sub = tri_df.filter(pl.col(groups) == g)
+                pf_sub = pf_df.filter(pl.col(groups) == g)
                 loss_obs, cohorts, _ = _build_loss_matrix(sub)
                 premium_obs, _, _ = _build_premium_matrix(sub)
                 premium_proj_mat = _premium_proj_matrix(
@@ -507,14 +507,14 @@ class LossFit:
                         result,
                         cohorts,
                         pf_sub,
-                        group_var,
+                        groups,
                         g,
                         estimator.conf_level,
                     )
                 )
                 kstar_rows.append(
                     {
-                        group_var: g,
+                        groups: g,
                         "mat_k": result.mat_k,
                         "method": estimator.method,
                     }
@@ -538,12 +538,12 @@ class LossFit:
         """Detected maturity for SA (None for ED/CL)."""
         if self.method != "sa":
             return None
-        if self._group_var is None:
+        if self._groups is None:
             row = self._kstar_df.row(0, named=True)
             return row["mat_k"]
         return dict(
             zip(
-                self._kstar_df[self._group_var].to_list(),
+                self._kstar_df[self._groups].to_list(),
                 self._kstar_df["mat_k"].to_list(),
             )
         )
@@ -558,8 +558,8 @@ class LossFit:
         """Per-cohort ultimate loss, SE, and CV."""
         df = self._df
         keys: list[str] = []
-        if self._group_var is not None:
-            keys.append(self._group_var)
+        if self._groups is not None:
+            keys.append(self._groups)
         keys.append("cohort")
 
         ultimate = (
@@ -580,7 +580,7 @@ class LossFit:
 
     def __repr__(self) -> str:
         n_rows = self._df.height
-        if self._group_var is not None:
+        if self._groups is not None:
             n_groups = self._kstar_df.height
             return (
                 f"<LossFit(method={self.method!r}): "

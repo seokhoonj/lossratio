@@ -220,7 +220,7 @@ def test_lr_summary_fully_observed_cohort():
 def test_lr_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     fit = lr.LR(method="cl").fit(
-        lr.Triangle(df, group_var="coverage")
+        lr.Triangle(df, groups="coverage")
     )
     assert "coverage" in fit.to_polars().columns
 
@@ -234,7 +234,7 @@ def test_lr_groups_fitted_independently():
         ]
     )
     fit = lr.LR(method="cl").fit(
-        lr.Triangle(df_grouped, group_var="coverage")
+        lr.Triangle(df_grouped, groups="coverage")
     )
     df = fit.to_polars().sort(["coverage", "cohort", "dev"])
     a_loss = df.filter(pl.col("coverage") == "A")["loss_proj"].to_list()
@@ -245,7 +245,7 @@ def test_lr_groups_fitted_independently():
 def test_lr_sa_kstar_per_group_dict():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0).fit(
-        lr.Triangle(df, group_var="coverage")
+        lr.Triangle(df, groups="coverage")
     )
     assert isinstance(fit.mat_k, dict)
     assert "SUR" in fit.mat_k

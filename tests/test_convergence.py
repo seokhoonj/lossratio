@@ -138,7 +138,7 @@ def test_detect_convergence_validation_errors():
 
 
 def test_detect_convergence_multi_group():
-    tri = lr.Triangle(lr.load_experience(), group_var="coverage")
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
     conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
     # Multi-group: detection succeeds (dispersion collapsed via median
     # across groups). conv_k may be None depending on data, but the

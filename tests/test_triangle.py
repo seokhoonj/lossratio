@@ -66,9 +66,9 @@ def test_triangle_with_group():
     df = _exp_input().with_columns(
         pl.lit("SUR").alias("coverage"),
     )
-    tri = lr.Triangle(df, group_var="coverage")
+    tri = lr.Triangle(df, groups="coverage")
     assert "coverage" in tri.columns
-    assert tri.group_var == "coverage"
+    assert tri.groups == "coverage"
 
 
 def test_triangle_pandas_input_mirror():
@@ -93,11 +93,11 @@ def test_triangle_invalid_grain():
 
 
 def test_triangle_metadata():
-    tri = lr.Triangle(_exp_input(), group_var=None, cohort_var="uy_m")
-    assert tri.cohort_var == "uy_m"
-    assert tri.dev_var == "dev_m"
+    tri = lr.Triangle(_exp_input(), groups=None, cohort="uy_m")
+    assert tri.cohort == "uy_m"
+    assert tri.dev == "dev_m"
     assert tri.grain == "M"
-    assert tri.group_var is None
+    assert tri.groups is None
 
 
 def test_triangle_repr():

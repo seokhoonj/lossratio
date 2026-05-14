@@ -44,7 +44,7 @@ def _tri():
 
 def _tri_grouped():
     df = _toy_input().with_columns(pl.lit("SUR").alias("coverage"))
-    return lr.Triangle(df, group_var="coverage")
+    return lr.Triangle(df, groups="coverage")
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ def test_ata_per_group_independent():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Triangle(df_grouped, group_var="coverage")
+    tri = lr.Triangle(df_grouped, groups="coverage")
     ata = tri.link().ata()
     df = ata.df
     a_f = df.filter(pl.col("coverage") == "A").sort("dev")["f"].to_list()

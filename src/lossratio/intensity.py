@@ -134,15 +134,15 @@ def _compute_intensity(
 
 def _diagnostic_to_df(
     result: _IntensityResult,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert an intensity result into a long-format diagnostic DataFrame."""
     rows = []
     for k in range(len(result.g_k)):
         row: dict[str, Any] = {}
-        if group_var is not None:
-            row[group_var] = group_value
+        if groups is not None:
+            row[groups] = group_value
         row["dev"] = k + 1
         row["g"] = float(result.g_k[k]) if not np.isnan(result.g_k[k]) else None
         row["g_se"] = (
@@ -177,12 +177,12 @@ class Intensity:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[group_var?, dev, g, g_se, sigma2, n_obs]``.
+        ``[groups?, dev, g, g_se, sigma2, n_obs]``.
 
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> intf = tri.link().intensity()
     >>> intf.df              # diagnostic table
     """
@@ -190,20 +190,20 @@ class Intensity:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
 
     @classmethod
     def _from_link(cls, link: "Link", sigma_method: str = "locf") -> "Intensity":
         self = cls.__new__(cls)
         self._output_type = link._output_type
-        self._group_var = link._group_var
-        self._cohort_var = link._cohort_var
-        self._dev_var = link._dev_var
+        self._groups = link._groups
+        self._cohort = link._cohort
+        self._dev = link._dev
 
         tri_df = link._tri_df
-        group_var = link._group_var
+        groups = link._groups
 
         target_col = link._target
         exposure_col = link._exposure
@@ -212,22 +212,22 @@ class Intensity:
                 "Intensity requires the source Link to have `exposure` set."
             )
 
-        if group_var is None:
+        if groups is None:
             loss_obs, _, _ = _build_value_matrix(tri_df, target_col)
             premium_obs, _, _ = _build_value_matrix(tri_df, exposure_col)
             result = _compute_intensity(
                 loss_obs, premium_obs, sigma_method=sigma_method
             )
             diag_df = _diagnostic_to_df(
-                result, group_var=None, group_value=None
+                result, groups=None, group_value=None
             )
         else:
             diag_parts: list[pl.DataFrame] = []
             group_values = (
-                tri_df[group_var].unique(maintain_order=True).to_list()
+                tri_df[groups].unique(maintain_order=True).to_list()
             )
             for g in group_values:
-                sub = tri_df.filter(pl.col(group_var) == g)
+                sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, _, _ = _build_value_matrix(sub, target_col)
                 premium_obs, _, _ = _build_value_matrix(sub, exposure_col)
                 result = _compute_intensity(
@@ -235,7 +235,7 @@ class Intensity:
                 )
                 diag_parts.append(
                     _diagnostic_to_df(
-                        result, group_var=group_var, group_value=g
+                        result, groups=groups, group_value=g
                     )
                 )
             diag_df = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
@@ -261,9 +261,9 @@ class Intensity:
         return self._df.to_pandas()
 
     def __repr__(self) -> str:
-        if self._group_var is None:
+        if self._groups is None:
             n_links = self._df.height
             return f"<Intensity: {n_links} links>"
-        n_groups = self._df[self._group_var].n_unique()
+        n_groups = self._df[self._groups].n_unique()
         n_links = self._df.height // max(n_groups, 1)
         return f"<Intensity: {n_groups} groups, {n_links} links each>"

@@ -163,10 +163,10 @@ class Maturity:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[group_var?, dev, f, sigma2, cv, rse, stable]``.
+        ``[groups?, dev, f, sigma2, cv, rse, stable]``.
     mat_k :
-        Detected maturity dev. Returns ``None`` (no group_var) or a dict
-        ``{group_value: k_star_or_None}`` (group_var set). ``None`` value
+        Detected maturity dev. Returns ``None`` (no groups) or a dict
+        ``{group_value: k_star_or_None}`` (groups set). ``None`` value
         means stability was not reached within the observation window.
     """
 
@@ -174,9 +174,9 @@ class Maturity:
         self._df: pl.DataFrame
         self._kstar_df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self.max_cv: float
         self.max_rse: float
         self.min_run: int
@@ -195,9 +195,9 @@ class Maturity:
         """
         self = cls.__new__(cls)
         self._output_type = ata._output_type
-        self._group_var = ata._group_var
-        self._cohort_var = ata._cohort_var
-        self._dev_var = ata._dev_var
+        self._groups = ata._groups
+        self._cohort = ata._cohort
+        self._dev = ata._dev
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run
@@ -211,7 +211,7 @@ class Maturity:
             ).alias("stable")
         )
 
-        if self._group_var is None:
+        if self._groups is None:
             stable_arr = diag_df["stable"].to_numpy()
             mat_k = _detect_k_star(stable_arr, min_run)
             kstar_df = pl.DataFrame(
@@ -226,14 +226,14 @@ class Maturity:
         else:
             kstar_rows: list[dict[str, Any]] = []
             for g in (
-                diag_df[self._group_var].unique(maintain_order=True).to_list()
+                diag_df[self._groups].unique(maintain_order=True).to_list()
             ):
-                sub = diag_df.filter(pl.col(self._group_var) == g)
+                sub = diag_df.filter(pl.col(self._groups) == g)
                 stable_arr = sub["stable"].to_numpy()
                 mat_k = _detect_k_star(stable_arr, min_run)
                 kstar_rows.append(
                     {
-                        self._group_var: g,
+                        self._groups: g,
                         "mat_k": mat_k,
                         "n_links": int(len(stable_arr)),
                         "n_stable_links": int(stable_arr.sum()),
@@ -266,23 +266,23 @@ class Maturity:
         self.max_cv = float("nan")
         self.max_rse = float("nan")
         self.min_run = 0
-        self._cohort_var = ""
-        self._dev_var = ""
+        self._cohort = ""
+        self._dev = ""
 
         n = len(change)
         if groups:
-            group_var = next(iter(groups))
-            group_values = list(groups[group_var])
+            group_col = next(iter(groups))
+            group_values = list(groups[group_col])
             kstar_df = pl.DataFrame(
                 {
-                    group_var: group_values,
+                    group_col: group_values,
                     "mat_k": change,
                     "n_links": [0] * n,
                     "n_stable_links": [0] * n,
                 }
             )
         else:
-            group_var = None
+            group_col = None
             kstar_df = pl.DataFrame(
                 {
                     "mat_k": change,
@@ -291,7 +291,7 @@ class Maturity:
                 }
             )
 
-        self._group_var = group_var
+        self._groups = group_col
         self._df = pl.DataFrame()
         self._kstar_df = kstar_df
         return self
@@ -305,15 +305,15 @@ class Maturity:
     def mat_k(self):
         """Detected maturity point.
 
-        If the source Triangle has no ``group_var``, returns an ``int``
+        If the source Triangle has no ``groups``, returns an ``int``
         or ``None``. Otherwise returns ``dict[group_value, int | None]``.
         """
-        if self._group_var is None:
+        if self._groups is None:
             row = self._kstar_df.row(0, named=True)
             return row["mat_k"]
         return dict(
             zip(
-                self._kstar_df[self._group_var].to_list(),
+                self._kstar_df[self._groups].to_list(),
                 self._kstar_df["mat_k"].to_list(),
             )
         )
@@ -332,7 +332,7 @@ class Maturity:
         thresh = (
             f"max_cv={self.max_cv}, max_rse={self.max_rse}, m={self.min_run}"
         )
-        if self._group_var is None:
+        if self._groups is None:
             return f"<Maturity: mat_k={self.mat_k} ({thresh})>"
         n_groups = self._kstar_df.height
         return f"<Maturity: {n_groups} groups ({thresh})>"

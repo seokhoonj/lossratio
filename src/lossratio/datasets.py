@@ -101,7 +101,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
         Columns ``coverage`` (str), ``uy_m`` (str, ISO date), ``cy_m``
         (str, ISO date), ``dev_m`` (int), ``loss_incr`` (float),
         ``premium_incr`` (float). Pass directly to :class:`Triangle`
-        with ``group_var="coverage"``.
+        with ``groups="coverage"``.
     """
     rng = np.random.default_rng(seed)
     weights = _make_weights()

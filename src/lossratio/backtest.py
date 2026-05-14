@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _add_calendar_idx(tri_df: pl.DataFrame, group_var: str | None) -> pl.DataFrame:
+def _add_calendar_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
     """Add a 1-based calendar index per cell (R parity).
 
     Calendar index counts the antidiagonal:
@@ -28,13 +28,13 @@ def _add_calendar_idx(tri_df: pl.DataFrame, group_var: str | None) -> pl.DataFra
     of cohorts (or, for square-ish triangles, the number of devs).
     """
     sort_keys: list[str] = []
-    if group_var is not None:
-        sort_keys.append(group_var)
+    if groups is not None:
+        sort_keys.append(groups)
     sort_keys.append("cohort")
 
     over_keys: list[str] | None
-    if group_var is not None:
-        over_keys = [group_var]
+    if groups is not None:
+        over_keys = [groups]
         cohort_idx_expr = (
             pl.col("cohort").rank(method="dense").over(over_keys).cast(pl.Int64)
         )
@@ -51,7 +51,7 @@ def _add_calendar_idx(tri_df: pl.DataFrame, group_var: str | None) -> pl.DataFra
 def _build_masked_df(
     tri_df: pl.DataFrame,
     holdout: int,
-    group_var: str | None,
+    groups: str | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Mask the most recent ``holdout`` calendar diagonals.
 
@@ -63,14 +63,14 @@ def _build_masked_df(
     * ``mask_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
     """
-    df = _add_calendar_idx(tri_df, group_var)
+    df = _add_calendar_idx(tri_df, groups)
 
     # Determine the calendar-diagonal cutoff per group
-    if group_var is not None:
-        max_per_group = df.group_by(group_var).agg(
+    if groups is not None:
+        max_per_group = df.group_by(groups).agg(
             pl.col("calendar_idx").max().alias("__max_cal")
         )
-        df = df.join(max_per_group, on=group_var, how="left")
+        df = df.join(max_per_group, on=groups, how="left")
     else:
         max_cal = int(df["calendar_idx"].max())
         df = df.with_columns(pl.lit(max_cal).alias("__max_cal"))
@@ -170,7 +170,7 @@ class Backtest:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6).fit(tri)
     >>> bt.ae_err
     >>> bt.col_summary
@@ -216,12 +216,12 @@ class BacktestFit:
     ----------
     ae_err : DataFrame
         Per-cell hold-out comparison
-        ``[group_var?, cohort, dev, calendar_idx, actual, expected, ae_err]``.
+        ``[groups?, cohort, dev, calendar_idx, actual, expected, ae_err]``.
         ``ae_err = actual / expected - 1`` (signed relative error;
         positive = under-projection, negative = over-projection).
     col_summary : DataFrame
         Aggregated by dev:
-        ``[group_var?, dev, n, ae_err_mean, ae_err_med, ae_err_wt]``.
+        ``[groups?, dev, n, ae_err_mean, ae_err_med, ae_err_wt]``.
         ``ae_err_wt = sum(actual - expected) / sum(expected)`` is the
         exposure-weighted pooled A/E - 1.
     diag_summary : DataFrame
@@ -237,7 +237,7 @@ class BacktestFit:
         self._diag_summary: pl.DataFrame
         self._refit: Any
         self._output_type: str
-        self._group_var: str | None
+        self._groups: str | None
         self.holdout: int
         self.estimator: Any
 
@@ -247,13 +247,13 @@ class BacktestFit:
 
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
+        self._groups = triangle._groups
         self.holdout = bt.holdout
         self.estimator = bt.estimator
 
         # 1. Mask the most recent calendar diagonals
         masked_df, annotated_df = _build_masked_df(
-            triangle._df, bt.holdout, triangle._group_var
+            triangle._df, bt.holdout, triangle._groups
         )
 
         # 2. Build a masked Triangle (same metadata, masked cells)
@@ -269,8 +269,8 @@ class BacktestFit:
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
         keys: list[str] = []
-        if triangle._group_var is not None:
-            keys.append(triangle._group_var)
+        if triangle._groups is not None:
+            keys.append(triangle._groups)
         keys.extend(["cohort", "dev"])
 
         # `actual` is the cumulative column on the original Triangle that
@@ -306,8 +306,8 @@ class BacktestFit:
         # 5. Summaries — mean / median / weighted A/E - 1 per dev or
         #    per calendar diagonal.
         col_keys: list[str] = []
-        if triangle._group_var is not None:
-            col_keys.append(triangle._group_var)
+        if triangle._groups is not None:
+            col_keys.append(triangle._groups)
         col_keys.append("dev")
 
         self._col_summary = (
@@ -327,8 +327,8 @@ class BacktestFit:
         )
 
         diag_keys: list[str] = []
-        if triangle._group_var is not None:
-            diag_keys.append(triangle._group_var)
+        if triangle._groups is not None:
+            diag_keys.append(triangle._groups)
         diag_keys.append("calendar_idx")
 
         self._diag_summary = (

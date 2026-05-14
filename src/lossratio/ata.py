@@ -77,15 +77,15 @@ def _compute_ata_factor(
 
 def _diagnostic_to_df(
     result: _ATAResult,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert an ATA factor result into a long-format diagnostic DataFrame."""
     rows = []
     for k in range(len(result.f_k)):
         row: dict[str, Any] = {}
-        if group_var is not None:
-            row[group_var] = group_value
+        if groups is not None:
+            row[groups] = group_value
         row["dev"] = k + 1
         row["f"] = float(result.f_k[k]) if not np.isnan(result.f_k[k]) else None
         row["sigma2"] = (
@@ -126,12 +126,12 @@ class ATA:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[group_var?, dev, f, sigma2, cv, rse, n_obs]``.
+        ``[groups?, dev, f, sigma2, cv, rse, n_obs]``.
 
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> ata = tri.link().ata()
     >>> ata.df
     """
@@ -139,39 +139,39 @@ class ATA:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
 
     @classmethod
     def _from_link(cls, link: "Link", sigma_method: str = "locf") -> "ATA":
         self = cls.__new__(cls)
         self._output_type = link._output_type
-        self._group_var = link._group_var
-        self._cohort_var = link._cohort_var
-        self._dev_var = link._dev_var
+        self._groups = link._groups
+        self._cohort = link._cohort
+        self._dev = link._dev
 
         tri_df = link._tri_df
-        group_var = link._group_var
+        groups = link._groups
 
-        if group_var is None:
+        if groups is None:
             loss_obs, _, _ = _build_value_matrix(tri_df, link._target)
             result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
             diag_df = _diagnostic_to_df(
-                result, group_var=None, group_value=None
+                result, groups=None, group_value=None
             )
         else:
             diag_parts: list[pl.DataFrame] = []
             group_values = (
-                tri_df[group_var].unique(maintain_order=True).to_list()
+                tri_df[groups].unique(maintain_order=True).to_list()
             )
             for g in group_values:
-                sub = tri_df.filter(pl.col(group_var) == g)
+                sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, _, _ = _build_value_matrix(sub, link._target)
                 result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
                 diag_parts.append(
                     _diagnostic_to_df(
-                        result, group_var=group_var, group_value=g
+                        result, groups=groups, group_value=g
                     )
                 )
             diag_df = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
@@ -229,9 +229,9 @@ class ATA:
         return self._df.to_pandas()
 
     def __repr__(self) -> str:
-        if self._group_var is None:
+        if self._groups is None:
             n_links = self._df.height
             return f"<ATA: {n_links} links>"
-        n_groups = self._df[self._group_var].n_unique()
+        n_groups = self._df[self._groups].n_unique()
         n_links = self._df.height // max(n_groups, 1)
         return f"<ATA: {n_groups} groups, {n_links} links each>"

@@ -11,7 +11,7 @@ import lossratio as lr
 def _sample_triangle(group: bool = True) -> lr.Triangle:
     exp = lr.load_experience().filter(pl.col("coverage").is_in(["SUR", "CI"]))
     if group:
-        return lr.Triangle(exp, group_var="coverage")
+        return lr.Triangle(exp, groups="coverage")
     return lr.Triangle(exp.filter(pl.col("coverage") == "SUR"))
 
 

@@ -43,7 +43,7 @@ def _tri():
 
 def _tri_grouped():
     df = _toy_input().with_columns(pl.lit("SUR").alias("coverage"))
-    return lr.Triangle(df, group_var="coverage")
+    return lr.Triangle(df, groups="coverage")
 
 
 # ---------------------------------------------------------------------------

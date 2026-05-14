@@ -169,7 +169,7 @@ class LRFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns ``[group_var?, cohort, dev,
+        Long-format triangle with columns ``[groups?, cohort, dev,
         loss_obs, loss_proj, loss_incr_proj, premium_obs, premium_proj,
         premium_incr_proj, loss_*_se, loss_total_cv, loss_ci_*, lr_proj,
         lr_incr_proj, lr_se, lr_cv, lr_ci_lower, lr_ci_upper]`` (plus
@@ -186,9 +186,9 @@ class LRFit:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self.method: str
         self.loss_alpha: float
         self.premium_alpha: float
@@ -204,9 +204,9 @@ class LRFit:
     ) -> "LRFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
         self.method = estimator.method
         self.loss_alpha = estimator.loss_alpha
         self.premium_alpha = estimator.premium_alpha
@@ -235,8 +235,8 @@ class LRFit:
         if estimator.se_method == "delta":
             pf_df = self.premium_fit._df
             keys = []
-            if self._group_var is not None:
-                keys.append(self._group_var)
+            if self._groups is not None:
+                keys.append(self._groups)
             keys += ["cohort", "dev"]
             pf_keep = pf_df.select(
                 keys + ["premium_total_se", "premium_total_cv"]
@@ -363,8 +363,8 @@ class LRFit:
         """Per-cohort ultimate loss, premium, and LR."""
         df = self._df
         keys: list[str] = []
-        if self._group_var is not None:
-            keys.append(self._group_var)
+        if self._groups is not None:
+            keys.append(self._groups)
         keys.append("cohort")
 
         observed = df.filter(pl.col("loss_obs").is_not_null())
@@ -397,8 +397,8 @@ class LRFit:
 
     def __repr__(self) -> str:
         n_rows = self._df.height
-        if self._group_var is not None:
-            n_groups = self._df[self._group_var].n_unique()
+        if self._groups is not None:
+            n_groups = self._df[self._groups].n_unique()
             return (
                 f"<LRFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"

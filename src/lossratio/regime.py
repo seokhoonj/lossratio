@@ -1,6 +1,6 @@
 """Regime: structural change-point detection across underwriting cohorts.
 
-Each cohort is treated as a feature vector (the chosen ``loss_var`` over
+Each cohort is treated as a feature vector (the chosen ``target`` over
 development periods 1, ..., K). The ordered sequence of cohort vectors
 is then tested for structural shifts using one of two methods:
 
@@ -36,7 +36,7 @@ _VALID_TREATMENTS = ("latest_only", "segment_wise")
 
 def _build_feature_matrix(
     tri_df: pl.DataFrame,
-    loss_var: str,
+    target: str,
     K: int,
 ) -> tuple[np.ndarray, list, list]:
     """Pivot the long-format Triangle into a (n_cohorts, K) feature matrix.
@@ -45,9 +45,9 @@ def _build_feature_matrix(
     and returned in the ``dropped`` list. Cohorts are returned ordered
     by cohort value.
     """
-    if loss_var not in tri_df.columns:
+    if target not in tri_df.columns:
         raise ValueError(
-            f"loss_var={loss_var!r} not found in Triangle columns: "
+            f"target={target!r} not found in Triangle columns: "
             f"{tri_df.columns}"
         )
 
@@ -68,7 +68,7 @@ def _build_feature_matrix(
     # Pivot to wide form: rows = cohort, cols = dev 1..K
     wide = (
         df.filter(pl.col("cohort").is_in(eligible))
-        .pivot(on="dev", index="cohort", values=loss_var)
+        .pivot(on="dev", index="cohort", values=target)
         .sort("cohort")
     )
 
@@ -151,11 +151,11 @@ class Regime:
     ----------
     method : str
         ``"e_divisive"`` or ``"hclust"``.
-    loss_var : str
+    target : str
         Trajectory variable name used.
     K : int
         Development-period window.
-    cohort_var : str
+    cohort : str
         Original cohort variable name (e.g. ``"uy_m"``).
     breakpoints : list
         Cohort values at which a new regime starts (excluding the first
@@ -172,11 +172,11 @@ class Regime:
         self._changes_df: pl.DataFrame
         self._output_type: str
         self.method: str
-        self.loss_var: str
+        self.target: str
         self.K: int
-        self.cohort_var: str
-        self.dev_var: str
-        self.group_var: str | None
+        self.cohort: str
+        self.dev: str
+        self.groups: str | None
         self.breakpoints: list[Any]
         self.n_regimes: int
         self.dropped: list[Any]
@@ -187,7 +187,7 @@ class Regime:
         cls,
         triangle: "Triangle",
         *,
-        loss_var: str = "lr",
+        target: str = "lr",
         K: int = 12,
         method: str = "e_divisive",
         n_regimes: int | None = None,
@@ -211,8 +211,8 @@ class Regime:
         tri_df = triangle.to_polars()
 
         # If grouped, require single group
-        if triangle.group_var is not None:
-            n_groups = tri_df[triangle.group_var].n_unique()
+        if triangle.groups is not None:
+            n_groups = tri_df[triangle.groups].n_unique()
             if n_groups > 1:
                 raise ValueError(
                     f"Triangle has {n_groups} groups; subset to a single "
@@ -220,7 +220,7 @@ class Regime:
                 )
 
         # Build feature matrix
-        mat, cohorts, dropped = _build_feature_matrix(tri_df, loss_var, K)
+        mat, cohorts, dropped = _build_feature_matrix(tri_df, target, K)
         n = len(cohorts)
 
         # Dispatch to method
@@ -259,11 +259,11 @@ class Regime:
         self._changes_df = changes_df
         self._output_type = triangle._output_type
         self.method = method
-        self.loss_var = loss_var
+        self.target = target
         self.K = K
-        self.cohort_var = triangle.cohort_var
-        self.dev_var = triangle.dev_var
-        self.group_var = triangle.group_var
+        self.cohort = triangle.cohort
+        self.dev = triangle.dev
+        self.groups = triangle.groups
         self.breakpoints = breakpoints
         self.n_regimes = int(regime_ids.max()) if n > 0 else 0
         self.dropped = dropped
@@ -276,7 +276,7 @@ class Regime:
         *,
         changes_df: pl.DataFrame,
         treatment: str,
-        group_var: str | None,
+        groups: str | None,
     ) -> "Regime":
         """Construct a Regime by hand (no auto-detection).
 
@@ -292,11 +292,11 @@ class Regime:
         )
         self._output_type = "polars"
         self.method = "manual"
-        self.loss_var = ""
+        self.target = ""
         self.K = 0
-        self.cohort_var = ""
-        self.dev_var = ""
-        self.group_var = group_var
+        self.cohort = ""
+        self.dev = ""
+        self.groups = groups
         self.breakpoints = changes_df["change"].to_list()
         self.n_regimes = 0
         self.dropped = []
@@ -323,7 +323,7 @@ class Regime:
         n_cohorts = self._labels_df.height
         bits = [
             f"method={self.method}",
-            f"loss_var={self.loss_var!r}",
+            f"target={self.target!r}",
             f"K={self.K}",
             f"{n_cohorts} cohorts",
             f"{self.n_regimes} regimes",
@@ -438,16 +438,16 @@ def regime_at(
         schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
     )
 
-    group_var = next(iter(groups)) if groups else None
+    group_col = next(iter(groups)) if groups else None
     return Regime._manual(
         changes_df=changes_df,
         treatment=treatment,
-        group_var=group_var,
+        groups=group_col,
     )
 
 
 def regime_spec(
-    loss_var: str = "lr",
+    target: str = "lr",
     K: int = 12,
     method: str = "e_divisive",
     *,
@@ -471,7 +471,7 @@ def regime_spec(
     """
     def _spec(tri: "Triangle") -> "Regime":
         regime = tri.detect_regime(
-            loss_var=loss_var,
+            target=target,
             K=K,
             method=method,
             n_regimes=n_regimes,

@@ -184,7 +184,7 @@ def test_detect_regime_e_divisive_finds_shift():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        loss_var="lr", K=12, method="e_divisive", min_size=3, R=199, seed=20260509
+        target="lr", K=12, method="e_divisive", min_size=3, R=199, seed=20260509
     )
     assert isinstance(reg, lr.Regime)
     assert reg.method == "e_divisive"
@@ -208,7 +208,7 @@ def test_detect_regime_hclust():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        loss_var="lr", K=12, method="hclust", n_regimes=2
+        target="lr", K=12, method="hclust", n_regimes=2
     )
     assert reg.method == "hclust"
     assert reg.n_regimes == 2

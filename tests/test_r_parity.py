@@ -71,7 +71,7 @@ def _compare_numeric(py_df: pl.DataFrame, r_df: pl.DataFrame, cols: list[str]) -
 def test_triangle_build_matches_r():
     r = _load("triangle_sur").sort(["cohort", "dev"])
     py = (
-        lr.Triangle(_exp_sur(), group_var="coverage")
+        lr.Triangle(_exp_sur(), groups="coverage")
         .to_polars()
         .sort(["cohort", "dev"])
     )
@@ -88,7 +88,7 @@ def test_triangle_build_matches_r():
 
 def test_lr_sa_full_matches_r():
     r = _load("lr_sa_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.LR(method="sa").fit(tri)
         .to_polars()
@@ -104,7 +104,7 @@ def test_lr_sa_full_matches_r():
 
 def test_cl_full_matches_r():
     r = _load("cl_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.CL().fit(tri)
         .to_polars()
@@ -126,7 +126,7 @@ def test_cl_full_matches_r():
 
 def test_lr_ed_full_matches_r():
     r = _load("lr_ed_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.LR(method="ed").fit(tri)
         .to_polars()
@@ -137,7 +137,7 @@ def test_lr_ed_full_matches_r():
 
 def test_lr_cl_full_matches_r():
     r = _load("lr_cl_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.LR(method="cl").fit(tri)
         .to_polars()
@@ -149,7 +149,7 @@ def test_lr_cl_full_matches_r():
 def test_lr_sa_maturity_matches_r():
     """k* = max(ata_to) from fit_lr$maturity table."""
     r = _load("lr_sa_maturity")
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     fit = lr.LR(method="sa").fit(tri)
     # R: max(ata_to) per group
     r_k = int(r["ata_to"].max())
@@ -166,7 +166,7 @@ def test_ata_factors_match_r():
     overlapping link set.
     """
     r = _load("ata_selected").sort(["ata_from"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = tri.link().ata().df.sort(["dev"])
 
     # row-align by dev <-> ata_from
@@ -185,7 +185,7 @@ def test_ata_factors_match_r():
 def test_intensity_factors_match_r():
     """Per-link ED intensity diagnostic (g, g_se, sigma2, n_cohorts)."""
     r = _load("intensity_selected").sort(["ata_from"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = tri.link().intensity().df.sort(["dev"])
 
     assert py.height == r.height, (
@@ -201,7 +201,7 @@ def test_intensity_factors_match_r():
 def test_regime_breakpoints_match_r():
     """detect_regime breakpoints (Date list)."""
     r = _load("regime_breakpoints")
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = tri.detect_regime(K=12, method="e_divisive").breakpoints
 
     r_dates = r["breakpoint"].to_list()
@@ -215,7 +215,7 @@ def test_regime_breakpoints_match_r():
 def test_lr_sa_summary_matches_r():
     """LR(method='sa').summary() — per-cohort projected lr / SE / CV."""
     r = _load("lr_sa_summary").sort(["cohort"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     lr_fit = lr.LR(method="sa").fit(tri)
     py = lr_fit.summary().sort(["cohort"])
 
@@ -233,7 +233,7 @@ def test_cl_mack_se_matches_r():
     produces target_total_se (no separate 'method' switch), so this also
     covers the basic / mack split on the R side at the projection level."""
     r = _load("cl_mack_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.CL().fit(tri)
         .to_polars()
@@ -257,7 +257,7 @@ def test_backtest_lr_ae_err_matches_r():
     future drift.
     """
     r = _load("backtest_lr_ae_err").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
     py_aligned = (
         bt.ae_err
@@ -280,7 +280,7 @@ def test_backtest_lr_ae_err_matches_r():
 def test_backtest_col_summary_matches_r():
     """col_summary aggregates by dev."""
     r = _load("backtest_lr_col_summary").sort(["dev"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
     py = bt.col_summary.sort(["dev"])
 
@@ -297,7 +297,7 @@ def test_backtest_col_summary_matches_r():
 def test_backtest_diag_summary_matches_r():
     """diag_summary aggregates by calendar diagonal."""
     r = _load("backtest_lr_diag_summary").sort(["calendar_idx"])
-    tri = lr.Triangle(_exp_sur(), group_var="coverage")
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
     py = bt.diag_summary.sort(["calendar_idx"])
 

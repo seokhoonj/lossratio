@@ -256,7 +256,7 @@ def test_ed_summary_fully_observed_cohort():
 
 def test_ed_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    fit = lr.ED().fit(lr.Triangle(df, group_var="coverage"))
+    fit = lr.ED().fit(lr.Triangle(df, groups="coverage"))
     assert "coverage" in fit.to_polars().columns
     assert "coverage" in fit._params_df.columns
 
@@ -269,7 +269,7 @@ def test_ed_groups_fitted_independently():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    fit = lr.ED().fit(lr.Triangle(df_grouped, group_var="coverage"))
+    fit = lr.ED().fit(lr.Triangle(df_grouped, groups="coverage"))
     g_A = fit._params_df.filter(pl.col("coverage") == "A").sort("dev")["g"].to_list()
     g_B = fit._params_df.filter(pl.col("coverage") == "B").sort("dev")["g"].to_list()
     assert g_A == g_B

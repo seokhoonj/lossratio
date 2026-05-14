@@ -28,11 +28,11 @@ def _compute_dispersion(
 ) -> pl.DataFrame:
     """Robust cross-cohort dispersion of incremental LR per (group, dev).
 
-    Returns a polars DataFrame with columns ``[group_var?, dev,
+    Returns a polars DataFrame with columns ``[groups?, dev,
     n_cohorts, lr_median, lr_mad, dispersion, flag]``.
     """
     tri_df = triangle.to_polars().filter(pl.col("lr").is_not_null())
-    grp = triangle.group_var
+    grp = triangle.groups
     by_cols = ([grp] if grp is not None else []) + ["dev"]
 
     out = (
@@ -98,7 +98,7 @@ def _extract_portfolio_lr(bt_fit: Any) -> float:
         return float("nan")
 
     keys: list[str] = []
-    gv = getattr(refit, "_group_var", None)
+    gv = getattr(refit, "_groups", None)
     if gv is not None:
         keys.append(gv)
     keys.append("cohort")
@@ -311,7 +311,7 @@ def detect_convergence(
     dispersion = np.full(len(dev_cand), np.nan)
     if dev_cand:
         disp_tbl = _compute_dispersion(triangle, min_n_cohorts=min_n_cohorts)
-        if triangle.group_var is not None:
+        if triangle.groups is not None:
             disp_tbl = (
                 disp_tbl.group_by("dev")
                 .agg(pl.col("dispersion").median().alias("dispersion"))

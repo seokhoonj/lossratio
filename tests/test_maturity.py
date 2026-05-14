@@ -193,11 +193,11 @@ def test_maturity_rse_link_with_one_observation_is_null():
 
 def test_maturity_with_group_var():
     df = _polars_input().with_columns(pl.lit("SUR").alias("coverage"))
-    tri = lr.Triangle(df, group_var="coverage")
+    tri = lr.Triangle(df, groups="coverage")
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
 
     assert "coverage" in mat.to_polars().columns
-    # mat_k is a dict per group when group_var present
+    # mat_k is a dict per group when groups present
     assert isinstance(mat.mat_k, dict)
     assert "SUR" in mat.mat_k
 
@@ -210,7 +210,7 @@ def test_maturity_per_group_independent():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    tri = lr.Triangle(df_grouped, group_var="coverage")
+    tri = lr.Triangle(df_grouped, groups="coverage")
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # Same data in each group → same mat_k
     assert mat.mat_k == {"A": 2, "B": 2}

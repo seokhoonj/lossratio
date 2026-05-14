@@ -46,14 +46,14 @@ class Calendar:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._calendar_var: str
+        self._groups: str | None
+        self._calendar: str
         self._grain: str
 
     @classmethod
     def _from_triangle(cls, triangle: "Triangle") -> "Calendar":
         tri_df = triangle.to_polars()
-        grp = triangle.group_var
+        grp = triangle.groups
         grain = triangle.grain
 
         # Synthesize calendar = cohort + (dev - 1) * grain_step.
@@ -141,8 +141,8 @@ class Calendar:
         self = cls.__new__(cls)
         self._df = ds
         self._output_type = triangle._output_type
-        self._group_var = grp
-        self._calendar_var = "cy_m"  # placeholder; Triangle doesn't retain raw cal name
+        self._groups = grp
+        self._calendar = "cy_m"  # placeholder; Triangle doesn't retain raw cal name
         self._grain = grain
         return self
 
@@ -157,8 +157,8 @@ class Calendar:
         return self._df.to_pandas()
 
     @property
-    def group_var(self) -> str | None:
-        return self._group_var
+    def groups(self) -> str | None:
+        return self._groups
 
     @property
     def grain(self) -> str:
@@ -174,8 +174,8 @@ class Calendar:
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
-        if self._group_var is not None:
-            bits.append(f"{self._df[self._group_var].n_unique()} groups")
+        if self._groups is not None:
+            bits.append(f"{self._df[self._groups].n_unique()} groups")
         bits.append(f"{self._df['calendar'].n_unique()} calendars ({self._grain})")
         return f"<Calendar: {', '.join(bits)}>"
 

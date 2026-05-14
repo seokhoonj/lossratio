@@ -46,7 +46,7 @@ def test_regime_at_with_groups():
         change=["2024-07-01", "2024-10-01"],
         groups={"coverage": ["SUR", "CI"]},
     )
-    assert r.group_var == "coverage"
+    assert r.groups == "coverage"
     changes = r.changes
     assert set(changes.columns) >= {"coverage", "change", "regime_id"}
     assert changes["coverage"].to_list() == ["SUR", "CI"]

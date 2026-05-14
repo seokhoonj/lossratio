@@ -201,13 +201,13 @@ def _fit_mack(
 def _result_to_long_df(
     result: _MackResult,
     cohorts: list,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert a Mack result into a long-format polars DataFrame.
 
     Schema (post-Phase-4b, generic worker):
-      ``[group_var?, cohort, dev,
+      ``[groups?, cohort, dev,
          target_obs, target_proj, target_incr_proj,
          target_proc_se2, target_param_se2, target_total_se2,
          target_proc_se,  target_param_se,  target_total_se,
@@ -238,8 +238,8 @@ def _result_to_long_df(
     for i in range(n_cohorts):
         for k in range(n_devs):
             row: dict[str, Any] = {}
-            if group_var is not None:
-                row[group_var] = group_value
+            if groups is not None:
+                row[groups] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
 
@@ -287,15 +287,15 @@ def _result_to_long_df(
 
 def _factors_to_df(
     result: _MackResult,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert ATA factors to a long-format polars DataFrame."""
     rows = []
     for k, (f, s2) in enumerate(zip(result.f_k, result.sigma2_k)):
         row: dict[str, Any] = {}
-        if group_var is not None:
-            row[group_var] = group_value
+        if groups is not None:
+            row[groups] = group_value
         row["dev"] = k + 1  # link from dev k+1 to dev k+2 (label by source dev)
         row["f"] = float(f) if not np.isnan(f) else None
         row["sigma2"] = float(s2) if not np.isnan(s2) else None
@@ -321,7 +321,7 @@ class CL:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> fit = lr.CL().fit(tri)
     >>> fit.summary()
     """
@@ -379,10 +379,10 @@ class CLFit:
     ----------
     df : DataFrame (polars or pandas, mirroring the source Triangle)
         Long-format triangle with columns
-        ``[group_var (optional), cohort, dev, loss, loss_proj, se_proj]``.
+        ``[groups (optional), cohort, dev, loss, loss_proj, se_proj]``.
     f_k : DataFrame
         Per-link ATA factors and variance parameters
-        (``dev``, ``f``, ``sigma2``); split by group_var if present.
+        (``dev``, ``f``, ``sigma2``); split by groups if present.
     """
 
     def __init__(self) -> None:
@@ -390,9 +390,9 @@ class CLFit:
         self._df: pl.DataFrame
         self._fk_df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self.alpha: float
 
     @classmethod
@@ -406,16 +406,16 @@ class CLFit:
     ) -> "CLFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
         self.alpha = alpha
         self.sigma_method = sigma_method
         self.target = target
         self.weight = weight
 
         tri_df = triangle._df
-        group_var = triangle._group_var
+        groups = triangle._groups
 
         if target not in tri_df.columns:
             raise ValueError(
@@ -423,28 +423,28 @@ class CLFit:
                 f"Available columns: {tri_df.columns}"
             )
 
-        if group_var is None:
+        if groups is None:
             value_obs, cohorts, _ = _build_value_matrix(tri_df, target)
             result = _fit_mack(value_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
-                result, cohorts, group_var=None, group_value=None
+                result, cohorts, groups=None, group_value=None
             )
-            fk_df = _factors_to_df(result, group_var=None, group_value=None)
+            fk_df = _factors_to_df(result, groups=None, group_value=None)
         else:
             long_parts: list[pl.DataFrame] = []
             fk_parts: list[pl.DataFrame] = []
             group_values = (
-                tri_df[group_var].unique(maintain_order=True).to_list()
+                tri_df[groups].unique(maintain_order=True).to_list()
             )
             for g in group_values:
-                sub = tri_df.filter(pl.col(group_var) == g)
+                sub = tri_df.filter(pl.col(groups) == g)
                 value_obs, cohorts, _ = _build_value_matrix(sub, target)
                 result = _fit_mack(value_obs, sigma_method=sigma_method)
                 long_parts.append(
-                    _result_to_long_df(result, cohorts, group_var=group_var, group_value=g)
+                    _result_to_long_df(result, cohorts, groups=groups, group_value=g)
                 )
                 fk_parts.append(
-                    _factors_to_df(result, group_var=group_var, group_value=g)
+                    _factors_to_df(result, groups=groups, group_value=g)
                 )
             long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
             fk_df = pl.concat(fk_parts) if fk_parts else pl.DataFrame()
@@ -478,8 +478,8 @@ class CLFit:
         """
         df = self._df
         keys: list[str] = []
-        if self._group_var is not None:
-            keys.append(self._group_var)
+        if self._groups is not None:
+            keys.append(self._groups)
         keys.append("cohort")
 
         # Latest observed dev per cohort (NaN-aware)
@@ -514,7 +514,7 @@ class CLFit:
 
     def __repr__(self) -> str:
         n_rows = self._df.height
-        if self._group_var is not None:
-            n_groups = self._fk_df[self._group_var].n_unique()
+        if self._groups is not None:
+            n_groups = self._fk_df[self._groups].n_unique()
             return f"<CLFit: {n_groups} groups, {n_rows} rows (alpha={self.alpha})>"
         return f"<CLFit: {n_rows} rows (alpha={self.alpha})>"

@@ -31,7 +31,7 @@ _VALID_TARGETS = ("loss", "premium", "lr")
 
 def _build_link_df(
     tri_df: pl.DataFrame,
-    group_var: str | None,
+    groups: str | None,
     target: str,
     exposure: str | None,
     weight: str | None,
@@ -46,19 +46,19 @@ def _build_link_df(
     ``target_from`` / ``exposure_from`` / ``weight``.
     """
     sort_keys: list[str] = []
-    if group_var is not None:
-        sort_keys.append(group_var)
+    if groups is not None:
+        sort_keys.append(groups)
     sort_keys.extend(["cohort", "dev"])
     df = tri_df.sort(sort_keys)
 
     over_keys: list[str] = []
-    if group_var is not None:
-        over_keys.append(group_var)
+    if groups is not None:
+        over_keys.append(groups)
     over_keys.append("cohort")
 
     base_cols: list[pl.Expr] = []
-    if group_var is not None:
-        base_cols.append(pl.col(group_var))
+    if groups is not None:
+        base_cols.append(pl.col(groups))
     base_cols.extend(
         [
             pl.col("cohort"),
@@ -116,8 +116,8 @@ def _build_link_df(
             out = out.filter(pl.col("ata").is_finite())
 
     col_order: list[str] = []
-    if group_var is not None:
-        col_order.append(group_var)
+    if groups is not None:
+        col_order.append(groups)
     col_order.extend(
         [
             "cohort",
@@ -162,7 +162,7 @@ class Link:
         Long-format link table:
 
         - Always:
-          ``[group_var?, cohort, ata_from, ata_to, ata_link,
+          ``[groups?, cohort, ata_from, ata_to, ata_link,
           target_from, target_to, target_delta, ata]``.
         - When ``exposure`` is set:
           ``[exposure_from, exposure_to, exposure_delta, intensity]``.
@@ -171,7 +171,7 @@ class Link:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> link = tri.link()                              # target='loss', exposure='premium'
     >>> link = tri.link(target="loss")                 # ATA-only
     >>> link = tri.link(target="loss", exposure="premium")
@@ -184,9 +184,9 @@ class Link:
         self._df: pl.DataFrame
         self._tri_df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self._target: str
         self._exposure: str | None
         self._weight: str | None
@@ -203,9 +203,9 @@ class Link:
     ) -> "Link":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
 
         tri_df = triangle._df
 
@@ -244,7 +244,7 @@ class Link:
 
         self._df = _build_link_df(
             tri_df,
-            self._group_var,
+            self._groups,
             target=target,
             exposure=exposure,
             weight=weight,
@@ -327,9 +327,9 @@ class Link:
     def __repr__(self) -> str:
         mode = "dual-mode" if self._exposure is not None else "ATA-only"
         n_links = self._df.height
-        if self._group_var is None:
+        if self._groups is None:
             return f"<Link: {n_links} links, {mode}>"
-        n_groups = self._df[self._group_var].n_unique()
+        n_groups = self._df[self._groups].n_unique()
         return (
             f"<Link: {n_groups} groups, {n_links} total links, {mode}>"
         )

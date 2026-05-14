@@ -178,13 +178,13 @@ def _fit_ed(
 def _result_to_long_df(
     result: _EDResult,
     cohorts: list,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert an ED result into a long-format DataFrame.
 
     Schema (post-Phase-4b, generic worker):
-      ``[group_var?, cohort, dev,
+      ``[groups?, cohort, dev,
          target_obs, target_proj, target_incr_proj,
          exposure_obs, exposure_proj, exposure_incr_proj,
          target_proc_se2, target_param_se2, target_total_se2,
@@ -260,8 +260,8 @@ def _result_to_long_df(
     for i in range(n_cohorts):
         for k in range(n_devs):
             row: dict[str, Any] = {}
-            if group_var is not None:
-                row[group_var] = group_value
+            if groups is not None:
+                row[groups] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
 
@@ -334,15 +334,15 @@ def _result_to_long_df(
 
 def _params_to_df(
     result: _EDResult,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Per-link parameters: g_k, sigma2_g_k, f_p_k, sigma2_f_p_k."""
     rows = []
     for k in range(len(result.g_k)):
         row: dict[str, Any] = {}
-        if group_var is not None:
-            row[group_var] = group_value
+        if groups is not None:
+            row[groups] = group_value
         row["dev"] = k + 1
         row["g"] = float(result.g_k[k]) if not np.isnan(result.g_k[k]) else None
         row["sigma2_g"] = (
@@ -388,7 +388,7 @@ class ED:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> fit = lr.ED().fit(tri)
     >>> fit.summary()
     """
@@ -445,7 +445,7 @@ class EDFit:
     ----------
     df : DataFrame
         Long-format triangle with columns
-        ``[group_var (optional), cohort, dev, loss, loss_proj, premium,
+        ``[groups (optional), cohort, dev, loss, loss_proj, premium,
         premium_proj, se_proj]``.
     g_k : DataFrame
         Per-link ED parameters (``dev``, ``g``, ``sigma2_g``, ``f_p``,
@@ -456,9 +456,9 @@ class EDFit:
         self._df: pl.DataFrame
         self._params_df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self.alpha: float
 
     @classmethod
@@ -472,15 +472,15 @@ class EDFit:
     ) -> "EDFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
         self.alpha = alpha
         self.target = target
         self.exposure = exposure
 
         tri_df = triangle._df
-        group_var = triangle._group_var
+        groups = triangle._groups
 
         if target not in tri_df.columns:
             raise ValueError(
@@ -491,32 +491,32 @@ class EDFit:
                 f"`exposure={exposure!r}` column missing from Triangle."
             )
 
-        if group_var is None:
+        if groups is None:
             loss_obs, cohorts, _ = _build_value_matrix(tri_df, target)
             premium_obs, _cohorts2, _ = _build_value_matrix(tri_df, exposure)
             result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
-                result, cohorts, group_var=None, group_value=None
+                result, cohorts, groups=None, group_value=None
             )
-            params_df = _params_to_df(result, group_var=None, group_value=None)
+            params_df = _params_to_df(result, groups=None, group_value=None)
         else:
             long_parts: list[pl.DataFrame] = []
             params_parts: list[pl.DataFrame] = []
             group_values = (
-                tri_df[group_var].unique(maintain_order=True).to_list()
+                tri_df[groups].unique(maintain_order=True).to_list()
             )
             for g in group_values:
-                sub = tri_df.filter(pl.col(group_var) == g)
+                sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, cohorts, _ = _build_value_matrix(sub, target)
                 premium_obs, _, _ = _build_value_matrix(sub, exposure)
                 result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
                 long_parts.append(
                     _result_to_long_df(
-                        result, cohorts, group_var=group_var, group_value=g
+                        result, cohorts, groups=groups, group_value=g
                     )
                 )
                 params_parts.append(
-                    _params_to_df(result, group_var=group_var, group_value=g)
+                    _params_to_df(result, groups=groups, group_value=g)
                 )
             long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
             params_df = pl.concat(params_parts) if params_parts else pl.DataFrame()
@@ -545,8 +545,8 @@ class EDFit:
         """Per-cohort summary: ultimate target value, SE, and CV."""
         df = self._df
         keys: list[str] = []
-        if self._group_var is not None:
-            keys.append(self._group_var)
+        if self._groups is not None:
+            keys.append(self._groups)
         keys.append("cohort")
 
         observed = df.filter(pl.col("target_obs").is_not_null())
@@ -579,7 +579,7 @@ class EDFit:
 
     def __repr__(self) -> str:
         n_rows = self._df.height
-        if self._group_var is not None:
-            n_groups = self._params_df[self._group_var].n_unique()
+        if self._groups is not None:
+            n_groups = self._params_df[self._groups].n_unique()
             return f"<EDFit: {n_groups} groups, {n_rows} rows (alpha={self.alpha})>"
         return f"<EDFit: {n_rows} rows (alpha={self.alpha})>"

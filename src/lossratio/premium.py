@@ -139,7 +139,7 @@ def _fit_premium_single(
 def _premium_long_df(
     result: _PremiumResult,
     cohorts: list,
-    group_var: str | None,
+    groups: str | None,
     group_value: Any | None,
     conf_level: float,
 ) -> pl.DataFrame:
@@ -150,8 +150,8 @@ def _premium_long_df(
         prev_proj = None
         for k in range(result.n_devs):
             row: dict[str, Any] = {}
-            if group_var is not None:
-                row[group_var] = group_value
+            if groups is not None:
+                row[groups] = group_value
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
 
@@ -240,7 +240,7 @@ class Premium:
     Examples
     --------
     >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, group_var="coverage")
+    >>> tri = lr.Triangle(df, groups="coverage")
     >>> pf = lr.Premium().fit(tri)
     >>> pf.df.columns
     """
@@ -297,7 +297,7 @@ class PremiumFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns ``[group_var?, cohort, dev,
+        Long-format triangle with columns ``[groups?, cohort, dev,
         premium_obs, premium_proj, premium_incr_proj, premium_proc_se,
         premium_param_se, premium_total_se, premium_proc_cv,
         premium_param_cv, premium_total_cv, premium_ci_lower,
@@ -309,9 +309,9 @@ class PremiumFit:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
-        self._cohort_var: str
-        self._dev_var: str
+        self._groups: str | None
+        self._cohort: str
+        self._dev: str
         self.method: str
         self.alpha: float
         self.sigma_method: str
@@ -325,18 +325,18 @@ class PremiumFit:
     ) -> "PremiumFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self._group_var = triangle._group_var
-        self._cohort_var = triangle._cohort_var
-        self._dev_var = triangle._dev_var
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
 
         tri_df = triangle._df
-        group_var = triangle._group_var
+        groups = triangle._groups
 
-        if group_var is None:
+        if groups is None:
             premium_obs, cohorts, _ = _build_premium_matrix(tri_df)
             result = _fit_premium_single(
                 premium_obs, estimator.method, estimator.sigma_method
@@ -347,16 +347,16 @@ class PremiumFit:
         else:
             parts: list[pl.DataFrame] = []
             for g in (
-                tri_df[group_var].unique(maintain_order=True).to_list()
+                tri_df[groups].unique(maintain_order=True).to_list()
             ):
-                sub = tri_df.filter(pl.col(group_var) == g)
+                sub = tri_df.filter(pl.col(groups) == g)
                 premium_obs, cohorts, _ = _build_premium_matrix(sub)
                 result = _fit_premium_single(
                     premium_obs, estimator.method, estimator.sigma_method
                 )
                 parts.append(
                     _premium_long_df(
-                        result, cohorts, group_var, g, estimator.conf_level
+                        result, cohorts, groups, g, estimator.conf_level
                     )
                 )
             long_df = pl.concat(parts) if parts else pl.DataFrame()
@@ -378,8 +378,8 @@ class PremiumFit:
         """Per-cohort ultimate premium, SE, and CV."""
         df = self._df
         keys: list[str] = []
-        if self._group_var is not None:
-            keys.append(self._group_var)
+        if self._groups is not None:
+            keys.append(self._groups)
         keys.append("cohort")
 
         ultimate = (
@@ -400,8 +400,8 @@ class PremiumFit:
 
     def __repr__(self) -> str:
         n_rows = self._df.height
-        if self._group_var is not None:
-            n_groups = self._df[self._group_var].n_unique()
+        if self._groups is not None:
+            n_groups = self._df[self._groups].n_unique()
             return (
                 f"<PremiumFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"

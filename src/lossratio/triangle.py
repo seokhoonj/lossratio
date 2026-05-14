@@ -36,17 +36,17 @@ class Triangle:
     """Cohort x development period aggregated experience data.
 
     A Triangle is built by aggregating a raw experience DataFrame
-    (polars or pandas) over ``group_var`` (optional), cohort, and
+    (polars or pandas) over ``groups`` (optional), cohort, and
     development period.
 
     Input flexibility:
 
-    - ``cohort_var`` / ``calendar_var`` columns can be ``Date``,
+    - ``cohort`` / ``calendar`` columns can be ``Date``,
       ``Datetime``, integer (yyyy / yyyymm / yyyymmdd auto-detected),
       or ISO string ("YYYY-MM-DD", "YYYY/MM/DD", "YYYYMMDD",
       with optional " HH:MM:SS" time suffix).
     - Granularity ("month" / "quarter" / "half" / "year") is
-      auto-detected from cohort_var date spacing. Override via
+      auto-detected from cohort date spacing. Override via
       ``granularity`` arg to view at a coarser granularity (e.g.,
       monthly data viewed quarterly).
     - Requested granularity must be at least as coarse as input
@@ -54,8 +54,8 @@ class Triangle:
 
     The resulting frame has columns:
 
-    * ``group_var`` -- present only if supplied
-    * ``cohort`` -- the underwriting period (renamed from cohort_var)
+    * ``groups`` -- present only if supplied
+    * ``cohort`` -- the underwriting period (renamed from cohort)
     * ``dev`` -- the development index (1, 2, ...) within each cohort
     * ``loss``, ``premium`` -- cumulative sums within each (group, cohort)
     * ``loss_incr``, ``premium_incr`` -- per-period sums per cell
@@ -65,26 +65,26 @@ class Triangle:
     Cumulative is the unmarked default; per-period values carry an
     ``_incr`` (incremental) suffix.
 
-    Original column names (e.g. ``"uy_m"`` for cohort_var) are kept
+    Original column names (e.g. ``"uy_m"`` for cohort) are kept
     as instance attributes for downstream plotting.
     """
 
     def __init__(
         self,
         df: "pl.DataFrame | Any",
-        group_var: str | None = None,
-        cohort_var: str = "uy_m",
-        calendar_var: str = "cy_m",
+        groups: str | None = None,
+        cohort: str = "uy_m",
+        calendar: str = "cy_m",
         grain: str = "auto",
         fill_gaps: bool = False,
     ) -> None:
         self._output_type = detect_input_type(df)
         df_pl = to_polars(df)
 
-        # Required: cohort_var, calendar_var, value cols, and group_var if set.
-        required = {cohort_var, calendar_var, *_REQUIRED_VALUE_COLS}
-        if group_var is not None:
-            required.add(group_var)
+        # Required: cohort, calendar, value cols, and groups if set.
+        required = {cohort, calendar, *_REQUIRED_VALUE_COLS}
+        if groups is not None:
+            required.add(groups)
         missing = required - set(df_pl.columns)
         if missing:
             raise ValueError(
@@ -92,34 +92,34 @@ class Triangle:
                 f"Required: {sorted(required)}"
             )
 
-        # Coerce cohort_var, calendar_var to Date (Date/Datetime/Int/String).
-        df_pl = coerce_cols_to_date(df_pl, [cohort_var, calendar_var])
+        # Coerce cohort, calendar to Date (Date/Datetime/Int/String).
+        df_pl = coerce_cols_to_date(df_pl, [cohort, calendar])
         df_pl = df_pl.with_columns(
             pl.col("loss_incr").cast(pl.Float64),
             pl.col("premium_incr").cast(pl.Float64),
         )
 
         # Auto-detect input grain; resolve "auto" or validate explicit value.
-        input_grain = infer_grain(df_pl[cohort_var])
+        input_grain = infer_grain(df_pl[cohort])
         grain = resolve_grain(input_grain, grain)
 
         # Bin to requested grain (no-op if grain == input).
         if grain != input_grain:
             df_pl = floor_cols_to_period(
-                df_pl, [cohort_var, calendar_var], grain
+                df_pl, [cohort, calendar], grain
             )
 
         # Compute integer dev (1, 2, ...) at requested grain.
         df_pl = df_pl.with_columns(
-            count_periods(pl.col(cohort_var), pl.col(calendar_var), grain)
+            count_periods(pl.col(cohort), pl.col(calendar), grain)
             .alias("_dev_temp")
         )
 
-        # Aggregate per-period values by (group_var, cohort, dev).
+        # Aggregate per-period values by (groups, cohort, dev).
         agg_keys: list[str] = []
-        if group_var is not None:
-            agg_keys.append(group_var)
-        agg_keys.extend([cohort_var, "_dev_temp"])
+        if groups is not None:
+            agg_keys.append(groups)
+        agg_keys.extend([cohort, "_dev_temp"])
 
         agg = (
             df_pl.group_by(agg_keys)
@@ -132,7 +132,7 @@ class Triangle:
 
         # Check for non-consecutive dev sequences within each cohort.
         # R parity: build_triangle(fill_gaps = FALSE) raises; TRUE zero-fills.
-        gap_keys = agg_keys[:-1]  # group_var + cohort_var (or cohort_var alone)
+        gap_keys = agg_keys[:-1]  # groups + cohort (or cohort alone)
         gap_summary = (
             agg.group_by(gap_keys)
             .agg(
@@ -178,9 +178,9 @@ class Triangle:
 
         # Cumulative sums within (group, cohort) — cumulative is default name.
         cum_keys: list[str] = []
-        if group_var is not None:
-            cum_keys.append(group_var)
-        cum_keys.append(cohort_var)
+        if groups is not None:
+            cum_keys.append(groups)
+        cum_keys.append(cohort)
 
         agg = agg.with_columns(
             pl.col("loss_incr").cum_sum().over(cum_keys).alias("loss"),
@@ -190,13 +190,13 @@ class Triangle:
             (pl.col("loss_incr") / pl.col("premium_incr")).alias("lr_incr"),
         )
 
-        # Rename to standard column names: cohort_var -> cohort, _dev_temp -> dev.
-        agg = agg.rename({cohort_var: "cohort", "_dev_temp": "dev"})
+        # Rename to standard column names: cohort -> cohort, _dev_temp -> dev.
+        agg = agg.rename({cohort: "cohort", "_dev_temp": "dev"})
 
         # Reorder columns: cum-first paired.
         ordered = []
-        if group_var is not None:
-            ordered.append(group_var)
+        if groups is not None:
+            ordered.append(groups)
         ordered.extend([
             "cohort", "dev",
             "loss", "loss_incr",
@@ -206,10 +206,10 @@ class Triangle:
         agg = agg.select(ordered)
 
         self._df = agg
-        self._group_var = group_var
-        self._cohort_var = cohort_var
+        self._groups = groups
+        self._cohort = cohort
         self._grain = grain
-        self._dev_var = _GRAIN_TO_DEV_VAR[grain]
+        self._dev = _GRAIN_TO_DEV_VAR[grain]
 
     @property
     def df(self):
@@ -233,19 +233,19 @@ class Triangle:
         return self._df.columns
 
     @property
-    def group_var(self) -> str | None:
+    def groups(self) -> str | None:
         """Original group variable name (or None if no grouping)."""
-        return self._group_var
+        return self._groups
 
     @property
-    def cohort_var(self) -> str:
+    def cohort(self) -> str:
         """Original cohort variable name (e.g. 'uy_m')."""
-        return self._cohort_var
+        return self._cohort
 
     @property
-    def dev_var(self) -> str:
+    def dev(self) -> str:
         """Standard dev column name for the grain (e.g. 'dev_m')."""
-        return self._dev_var
+        return self._dev
 
     @property
     def grain(self) -> str:
@@ -266,10 +266,10 @@ class Triangle:
         tri = cls.__new__(cls)
         tri._df = masked_df
         tri._output_type = original._output_type
-        tri._group_var = original._group_var
-        tri._cohort_var = original._cohort_var
+        tri._groups = original._groups
+        tri._cohort = original._cohort
         tri._grain = original._grain
-        tri._dev_var = original._dev_var
+        tri._dev = original._dev
         return tri
 
     def link(
@@ -314,7 +314,7 @@ class Triangle:
 
         Examples
         --------
-        >>> tri = lr.Triangle(df, group_var="coverage")
+        >>> tri = lr.Triangle(df, groups="coverage")
         >>> link = tri.link()                          # target='loss', exposure='premium'
         >>> link = tri.link(target='loss')             # ATA-only
         >>> link.ata().maturity(max_cv=0.15)
@@ -332,7 +332,7 @@ class Triangle:
 
     def detect_regime(
         self,
-        loss_var: str = "lr",
+        target: str = "lr",
         K: int = 12,
         method: str = "e_divisive",
         n_regimes: int | None = None,
@@ -349,7 +349,7 @@ class Triangle:
 
         return Regime._from_triangle(
             self,
-            loss_var=loss_var,
+            target=target,
             K=K,
             method=method,
             n_regimes=n_regimes,
@@ -361,8 +361,8 @@ class Triangle:
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
-        if self._group_var is not None:
-            n_groups = self._df[self._group_var].n_unique()
+        if self._groups is not None:
+            n_groups = self._df[self._groups].n_unique()
             bits.append(f"{n_groups} groups")
         n_cohorts = self._df["cohort"].n_unique()
         n_devs = self._df["dev"].n_unique()

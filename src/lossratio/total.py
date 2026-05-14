@@ -42,12 +42,12 @@ class Total:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._group_var: str | None
+        self._groups: str | None
 
     @classmethod
     def _from_triangle(cls, triangle: "Triangle") -> "Total":
         tri_df = triangle.to_polars()
-        grp = triangle.group_var
+        grp = triangle.groups
 
         agg_exprs = [
             pl.col("cohort").n_unique().alias("n_cohorts"),
@@ -81,7 +81,7 @@ class Total:
         self = cls.__new__(cls)
         self._df = ds
         self._output_type = triangle._output_type
-        self._group_var = grp
+        self._groups = grp
         return self
 
     @property
@@ -95,8 +95,8 @@ class Total:
         return self._df.to_pandas()
 
     @property
-    def group_var(self) -> str | None:
-        return self._group_var
+    def groups(self) -> str | None:
+        return self._groups
 
     @property
     def n_rows(self) -> int:
@@ -114,8 +114,8 @@ class Total:
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
-        if self._group_var is not None:
-            bits.append(f"{self._df[self._group_var].n_unique()} groups")
+        if self._groups is not None:
+            bits.append(f"{self._df[self._groups].n_unique()} groups")
         return f"<Total: {', '.join(bits)}>"
 
     def __len__(self) -> int:

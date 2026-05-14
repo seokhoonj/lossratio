@@ -264,7 +264,7 @@ def test_cl_summary_ultimate_for_fully_observed_cohort():
 
 def test_cl_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    tri = lr.Triangle(df, group_var="coverage")
+    tri = lr.Triangle(df, groups="coverage")
     fit = lr.CL().fit(tri)
     assert "coverage" in fit.to_polars().columns
     assert "coverage" in fit._fk_df.columns
@@ -280,7 +280,7 @@ def test_cl_groups_fitted_independently():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    fit = lr.CL().fit(lr.Triangle(df_grouped, group_var="coverage"))
+    fit = lr.CL().fit(lr.Triangle(df_grouped, groups="coverage"))
     fk_A = fit._fk_df.filter(pl.col("coverage") == "A").sort("dev")["f"].to_list()
     fk_B = fit._fk_df.filter(pl.col("coverage") == "B").sort("dev")["f"].to_list()
     assert fk_A == fk_B
