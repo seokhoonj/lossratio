@@ -26,15 +26,15 @@ class _EDResult:
 
     n_devs: int
     loss_obs: np.ndarray
-    premium_obs: np.ndarray
+    prem_obs: np.ndarray
     loss_proj: np.ndarray
-    premium_proj: np.ndarray
+    prem_proj: np.ndarray
     se_proj: np.ndarray
     g_k: np.ndarray              # (n_devs - 1,)
     sigma2_g_k: np.ndarray       # (n_devs - 1,)
-    f_p_k: np.ndarray            # (n_devs - 1,) — premium chain ladder factors
-    sigma2_f_p_k: np.ndarray     # (n_devs - 1,) — premium chain ladder sigma^2
-    sum_premium_k: np.ndarray    # (n_devs - 1,) — per-link sum of premium_from over the ED fit subset (Var(g_k) denom; matches R's `.mack_g_var`)
+    f_p_k: np.ndarray            # (n_devs - 1,) — prem chain ladder factors
+    sigma2_f_p_k: np.ndarray     # (n_devs - 1,) — prem chain ladder sigma^2
+    sum_prem_k: np.ndarray    # (n_devs - 1,) — per-link sum of prem_from over the ED fit subset (Var(g_k) denom; matches R's `.mack_g_var`)
 
 
 def _mack_g_var(result: _EDResult) -> np.ndarray:
@@ -48,44 +48,44 @@ def _mack_g_var(result: _EDResult) -> np.ndarray:
     specifically. NaN where the denom is zero (unfittable link).
     """
     sigma2 = result.sigma2_g_k
-    denom = result.sum_premium_k
+    denom = result.sum_prem_k
     out = np.full_like(sigma2, np.nan)
     mask = (denom > 0) & np.isfinite(sigma2)
     out[mask] = sigma2[mask] / denom[mask]
     return out
 
 
-def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Legacy alias: extract the ``premium`` column.
+def _build_prem_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
+    """Legacy alias: extract the ``prem`` column.
 
     Prefer ``cl._build_value_matrix(df, value_col)`` for new code.
     """
-    return _build_value_matrix(df, value_col="premium")
+    return _build_value_matrix(df, value_col="prem")
 
 
 def _fit_ed(
     loss_obs: np.ndarray,
-    premium_obs: np.ndarray,
+    prem_obs: np.ndarray,
     sigma_method: str = "locf",
 ) -> _EDResult:
-    """Fit ED (alpha = 1) on observed loss and premium matrices."""
+    """Fit ED (alpha = 1) on observed loss and prem matrices."""
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
     # 1. Premium chain ladder for exposure projection
-    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
-    f_p_k = premium_mack.f_k
-    sigma2_f_p_k = premium_mack.sigma2_k
-    premium_proj = premium_mack.loss_proj  # premium filled in via chain ladder
+    prem_mack = _fit_mack(prem_obs, sigma_method=sigma_method)
+    f_p_k = prem_mack.f_k
+    sigma2_f_p_k = prem_mack.sigma2_k
+    prem_proj = prem_mack.loss_proj  # prem filled in via chain ladder
 
     # 2. ED intensity g_k and sigma^2_g_k
     g_k = np.full(n_links, np.nan, dtype=np.float64)
     sigma2_g_k = np.full(n_links, np.nan, dtype=np.float64)
-    sum_premium_k = np.zeros(n_links, dtype=np.float64)
+    sum_prem_k = np.zeros(n_links, dtype=np.float64)
 
     for k in range(n_links):
         # Δloss[i, k+1] = loss[i, k+1] - loss[i, k] (incremental at dev k+2)
-        ck = premium_obs[:, k]
+        ck = prem_obs[:, k]
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
         # Match R's fit_ed: drop cohorts with exposure_from <= 0.
         mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
@@ -100,7 +100,7 @@ def _fit_ed(
         dl_eff = delta_loss[mask]
         sum_crp = ck_eff.sum()
         sum_loss = dl_eff.sum()
-        sum_premium_k[k] = sum_crp
+        sum_prem_k[k] = sum_crp
         g_k[k] = sum_loss / sum_crp if sum_crp > 0 else 0.0
 
         if n_k >= 2 and sum_crp > 0:
@@ -116,14 +116,14 @@ def _fit_ed(
     sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
 
     # 3. Project loss forward using ED rule:
-    #    loss[i, k+1] = loss[i, k] + g_k * premium_proj[i, k]
+    #    loss[i, k+1] = loss[i, k] + g_k * prem_proj[i, k]
     loss_proj = loss_obs.copy()
     for i in range(n_cohorts):
         for k in range(1, n_devs):
             if np.isnan(loss_proj[i, k]) and not np.isnan(loss_proj[i, k - 1]):
-                if not np.isnan(premium_proj[i, k - 1]):
+                if not np.isnan(prem_proj[i, k - 1]):
                     loss_proj[i, k] = (
-                        loss_proj[i, k - 1] + g_k[k - 1] * premium_proj[i, k - 1]
+                        loss_proj[i, k - 1] + g_k[k - 1] * prem_proj[i, k - 1]
                     )
 
     # 4. SE on projected loss (additive accumulation of process + parameter
@@ -145,16 +145,16 @@ def _fit_ed(
         active = eligible & (last_obs <= k)
         if not active.any():
             continue
-        if sum_premium_k[k] <= 0 or not np.isfinite(sigma2_g_k[k]):
+        if sum_prem_k[k] <= 0 or not np.isfinite(sigma2_g_k[k]):
             continue
-        pk = premium_proj[:, k]
+        pk = prem_proj[:, k]
         pos = active & ~np.isnan(pk) & (pk > 0)
         if not pos.any():
             continue
         # Process: sigma^2_g_k * C^P_{i,k}^alpha (alpha = 1)
         var_proc[pos] = var_proc[pos] + sigma2_g_k[k] * pk[pos]
         # Parameter: (C^P_{i,k})^2 * Var(g_hat_k), Var(g_hat_k) = sigma^2_g_k / sum
-        g_var_k = sigma2_g_k[k] / sum_premium_k[k]
+        g_var_k = sigma2_g_k[k] / sum_prem_k[k]
         var_param[pos] = var_param[pos] + (pk[pos] ** 2) * g_var_k
         total = var_proc + var_param
         sp = pos & (total >= 0)
@@ -163,15 +163,15 @@ def _fit_ed(
     return _EDResult(
         n_devs=n_devs,
         loss_obs=loss_obs,
-        premium_obs=premium_obs,
+        prem_obs=prem_obs,
         loss_proj=loss_proj,
-        premium_proj=premium_proj,
+        prem_proj=prem_proj,
         se_proj=se_proj,
         g_k=g_k,
         sigma2_g_k=sigma2_g_k,
         f_p_k=f_p_k,
         sigma2_f_p_k=sigma2_f_p_k,
-        sum_premium_k=sum_premium_k,
+        sum_prem_k=sum_prem_k,
     )
 
 
@@ -185,7 +185,7 @@ def _result_to_long_df(
 
     Schema (post-Phase-4b, generic worker):
       ``[groups?, cohort, dev,
-         target_obs, target_proj, target_incr_proj,
+         target_obs, target_proj, incr_target_proj,
          exposure_obs, exposure_proj, exposure_incr_proj,
          target_proc_se2, target_param_se2, target_total_se2,
          target_proc_se,  target_param_se,  target_total_se,
@@ -198,12 +198,12 @@ def _result_to_long_df(
     # Per-cohort proc / param variance decomposition (ED additive form).
     g_k = result.g_k
     sigma2_g_k = result.sigma2_g_k
-    sum_premium_k = result.sum_premium_k
+    sum_prem_k = result.sum_prem_k
 
-    # Var(g_hat_k) = sigma2_g_k / sum_premium_k.
+    # Var(g_hat_k) = sigma2_g_k / sum_prem_k.
     var_g_k = np.full_like(sigma2_g_k, np.nan)
-    pos_denom = (sum_premium_k > 0) & np.isfinite(sigma2_g_k)
-    var_g_k[pos_denom] = sigma2_g_k[pos_denom] / sum_premium_k[pos_denom]
+    pos_denom = (sum_prem_k > 0) & np.isfinite(sigma2_g_k)
+    var_g_k[pos_denom] = sigma2_g_k[pos_denom] / sum_prem_k[pos_denom]
 
     proc_se2 = np.zeros((n_cohorts, n_devs), dtype=np.float64)
     param_se2 = np.zeros((n_cohorts, n_devs), dtype=np.float64)
@@ -219,7 +219,7 @@ def _result_to_long_df(
         if lo < 0:
             continue
         for k in range(lo, n_devs - 1):
-            e = result.premium_proj[i, k]
+            e = result.prem_proj[i, k]
             if not np.isfinite(e) or e <= 0:
                 proc_se2[i, k + 1] = proc_se2[i, k]
                 param_se2[i, k + 1] = param_se2[i, k]
@@ -248,7 +248,7 @@ def _result_to_long_df(
         prev_e = 0.0
         for k in range(n_devs):
             t = result.loss_proj[i, k]
-            e = result.premium_proj[i, k]
+            e = result.prem_proj[i, k]
             if not np.isnan(t):
                 target_incr[i, k] = t - prev_t
                 prev_t = t
@@ -268,13 +268,13 @@ def _result_to_long_df(
             t_obs = result.loss_obs[i, k]
             t_proj = result.loss_proj[i, k]
             t_inc = target_incr[i, k]
-            e_obs = result.premium_obs[i, k]
-            e_proj = result.premium_proj[i, k]
+            e_obs = result.prem_obs[i, k]
+            e_proj = result.prem_proj[i, k]
             e_inc = exposure_incr[i, k]
 
             row["target_obs"] = float(t_obs) if not np.isnan(t_obs) else None
             row["target_proj"] = float(t_proj) if not np.isnan(t_proj) else None
-            row["target_incr_proj"] = (
+            row["incr_target_proj"] = (
                 float(t_inc) if not np.isnan(t_inc) else None
             )
             row["exposure_obs"] = float(e_obs) if not np.isnan(e_obs) else None
@@ -377,12 +377,12 @@ class ED:
     from Mack chain ladder's *multiplicative* recursion on cumulative
     loss. Cumulative loss in ED is obtained by summing the projected
     increments; loss ratio is a downstream quantity computed by
-    dividing projected cumulative loss by projected cumulative premium.
+    dividing projected cumulative loss by projected cumulative prem.
 
     Better suited to early development periods of long-term health
     insurance, where age-to-age factors are unstable. The cumulative
-    premium triangle is projected forward using a separate chain
-    ladder fit on `premium` (``f^P_k``), since computing future incremental
+    prem triangle is projected forward using a separate chain
+    ladder fit on `prem` (``f^P_k``), since computing future incremental
     loss requires future C^P values.
 
     Examples
@@ -415,7 +415,7 @@ class ED:
         self,
         triangle: "Triangle",
         target: str = "loss",
-        exposure: str = "premium",
+        exposure: str = "prem",
     ) -> "EDFit":
         """Fit ED on a Triangle.
 
@@ -427,7 +427,7 @@ class ED:
             Cumulative metric to project (numerator). Default ``"loss"``.
         exposure
             Cumulative metric used as exposure anchor (denominator).
-            Default ``"premium"``.
+            Default ``"prem"``.
         """
         return EDFit._from_triangle(
             triangle,
@@ -446,7 +446,7 @@ class EDFit:
     df : DataFrame
         Long-format triangle with columns
         ``[groups (optional), cohort, dev, loss, loss_proj, premium,
-        premium_proj, se_proj]``.
+        prem_proj, se_proj]``.
     g_k : DataFrame
         Per-link ED parameters (``dev``, ``g``, ``sigma2_g``, ``f_p``,
         ``sigma2_f_p``).
@@ -468,7 +468,7 @@ class EDFit:
         alpha: float = 1.0,
         sigma_method: str = "locf",
         target: str = "loss",
-        exposure: str = "premium",
+        exposure: str = "prem",
     ) -> "EDFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
@@ -493,8 +493,8 @@ class EDFit:
 
         if groups is None:
             loss_obs, cohorts, _ = _build_value_matrix(tri_df, target)
-            premium_obs, _cohorts2, _ = _build_value_matrix(tri_df, exposure)
-            result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
+            prem_obs, _cohorts2, _ = _build_value_matrix(tri_df, exposure)
+            result = _fit_ed(loss_obs, prem_obs, sigma_method=sigma_method)
             long_df = _result_to_long_df(
                 result, cohorts, groups=None, group_value=None
             )
@@ -508,8 +508,8 @@ class EDFit:
             for g in group_values:
                 sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, cohorts, _ = _build_value_matrix(sub, target)
-                premium_obs, _, _ = _build_value_matrix(sub, exposure)
-                result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
+                prem_obs, _, _ = _build_value_matrix(sub, exposure)
+                result = _fit_ed(loss_obs, prem_obs, sigma_method=sigma_method)
                 long_parts.append(
                     _result_to_long_df(
                         result, cohorts, groups=groups, group_value=g

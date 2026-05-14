@@ -77,7 +77,7 @@ def test_triangle_build_matches_r():
     )
     _compare_numeric(
         py, r,
-        cols=["loss", "loss_incr", "premium", "premium_incr", "lr", "lr_incr"],
+        cols=["loss", "incr_loss", "prem", "incr_prem", "lr", "incr_lr"],
     )
 
 
@@ -94,7 +94,7 @@ def test_lr_sa_full_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "lr_proj"])
+    _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ def test_lr_ed_full_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "lr_proj"])
+    _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
 
 
 def test_lr_cl_full_matches_r():
@@ -143,7 +143,7 @@ def test_lr_cl_full_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "lr_proj"])
+    _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
 
 
 def test_lr_sa_maturity_matches_r():

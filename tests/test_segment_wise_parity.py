@@ -60,7 +60,7 @@ def _compare(
 
 def _build_triangle() -> lr.Triangle:
     """Reload the SUR-only input that R used and build a Triangle on
-    the same column names (uym / cym / loss_incr / premium_incr)."""
+    the same column names (uym / cym / incr_loss / incr_prem)."""
     raw = _load("segment_wise_input")
     return lr.Triangle(
         raw,
@@ -77,7 +77,7 @@ def _build_triangle() -> lr.Triangle:
 
 def test_segment_wise_lr_cl_full_matches_r():
     """Cell-by-cell comparison of fit_lr's $full projection under
-    segment_wise treatment (both loss + premium sides)."""
+    segment_wise treatment (both loss + prem sides)."""
     r = _load("segment_wise_lr_cl_full").sort(["cohort", "dev"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
@@ -91,7 +91,7 @@ def test_segment_wise_lr_cl_full_matches_r():
 
     # Schema parity check
     for c in ("cohort", "dev", "segment_id",
-              "loss_proj", "premium_proj", "lr_proj"):
+              "loss_proj", "prem_proj", "lr_proj"):
         assert c in py.columns, f"Python missing column {c!r}"
 
     # Segment ids should match exactly per (cohort, dev)
@@ -101,15 +101,15 @@ def test_segment_wise_lr_cl_full_matches_r():
     _compare(
         py, r,
         cols=[
-            "loss_obs", "loss_proj", "loss_incr_proj",
-            "premium_obs", "premium_proj", "premium_incr_proj",
-            "lr_proj", "lr_incr_proj",
+            "loss_obs", "loss_proj", "incr_loss_proj",
+            "prem_obs", "prem_proj", "incr_prem_proj",
+            "lr_proj", "incr_lr_proj",
         ],
     )
 
 
 def test_segment_wise_lr_cl_summary_matches_r():
-    """Per-cohort summary (lr_ult / loss_ult / premium_ult) comparison."""
+    """Per-cohort summary (lr_ult / loss_ult / prem_ult) comparison."""
     r = _load("segment_wise_lr_cl_summary").sort(["cohort"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
@@ -125,7 +125,55 @@ def test_segment_wise_lr_cl_summary_matches_r():
     py = py.sort(["cohort"])
 
     common = [
-        c for c in ("loss_ult", "premium_ult", "lr_ult")
+        c for c in ("loss_ult", "prem_ult", "lr_ult")
+        if c in r.columns and c in py.columns
+    ]
+    assert common, f"no overlapping summary cols; r={r.columns}, py={py.columns}"
+    _compare(py, r, cols=common)
+
+
+def test_segment_wise_lr_ed_full_matches_r():
+    """ED loss method + CL prem method under segment_wise."""
+    r = _load("segment_wise_lr_ed_full").sort(["cohort", "dev"])
+    tri = _build_triangle()
+    reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    fit = lr.LR(
+        method="ed",
+        premium_method="cl",
+        loss_regime=reg,
+        premium_regime=reg,
+    ).fit(tri)
+    py = fit.to_polars().sort(["cohort", "dev"])
+
+    _compare(py, r, cols=["segment_id"], atol=0, rtol=0)
+    _compare(
+        py, r,
+        cols=[
+            "loss_obs", "loss_proj", "incr_loss_proj",
+            "prem_obs", "prem_proj", "incr_prem_proj",
+            "lr_proj", "incr_lr_proj",
+        ],
+    )
+
+
+def test_segment_wise_lr_ed_summary_matches_r():
+    """ED method summary comparison."""
+    r = _load("segment_wise_lr_ed_summary").sort(["cohort"])
+    tri = _build_triangle()
+    reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    fit = lr.LR(
+        method="ed",
+        premium_method="cl",
+        loss_regime=reg,
+        premium_regime=reg,
+    ).fit(tri)
+    py = fit.summary()
+    if hasattr(py, "to_polars"):
+        py = py.to_polars()
+    py = py.sort(["cohort"])
+
+    common = [
+        c for c in ("loss_ult", "prem_ult", "lr_ult")
         if c in r.columns and c in py.columns
     ]
     assert common, f"no overlapping summary cols; r={r.columns}, py={py.columns}"

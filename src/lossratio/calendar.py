@@ -32,7 +32,7 @@ def as_calendar(x: "Triangle") -> "Calendar":
     Returns
     -------
     Calendar
-        Per-group calendar series with ``loss`` / ``premium`` /
+        Per-group calendar series with ``loss`` / ``prem`` /
         ``lr`` cumulative columns plus ``_incr`` per-period siblings
         and within-calendar shares.
     """
@@ -68,11 +68,17 @@ class Calendar:
             agg_keys.append(grp)
         agg_keys.append("calendar")
 
+        # Aggregate Triangle's incrementals to (groups, calendar) and
+        # carry `n_cohorts` -- how many distinct cohorts contributed to
+        # each calendar diagonal cell. Lower calendars: 1 cohort; later
+        # calendars: progressively more, up to the triangle's full
+        # cohort count.
         ds = (
             tri_df.group_by(agg_keys)
             .agg(
-                pl.col("loss_incr").sum(),
-                pl.col("premium_incr").sum(),
+                pl.col("cohort").n_unique().alias("n_cohorts"),
+                pl.col("incr_loss").sum(),
+                pl.col("incr_prem").sum(),
             )
             .sort(agg_keys)
         )
@@ -90,41 +96,41 @@ class Calendar:
                 pl.int_range(1, pl.len() + 1).alias("t")
             )
 
-        # Cumulative loss / premium per group.
+        # Cumulative loss / prem per group.
         cum_keys = [grp] if grp is not None else []
         if cum_keys:
             ds = ds.with_columns(
-                pl.col("loss_incr").cum_sum().over(cum_keys).alias("loss"),
-                pl.col("premium_incr").cum_sum().over(cum_keys).alias("premium"),
+                pl.col("incr_loss").cum_sum().over(cum_keys).alias("loss"),
+                pl.col("incr_prem").cum_sum().over(cum_keys).alias("prem"),
             )
         else:
             ds = ds.with_columns(
-                pl.col("loss_incr").cum_sum().alias("loss"),
-                pl.col("premium_incr").cum_sum().alias("premium"),
+                pl.col("incr_loss").cum_sum().alias("loss"),
+                pl.col("incr_prem").cum_sum().alias("prem"),
             )
 
         # Derived metrics: margin / profit / lr.
         ds = ds.with_columns(
-            (pl.col("premium") - pl.col("loss")).alias("margin"),
-            (pl.col("premium_incr") - pl.col("loss_incr")).alias("margin_incr"),
+            (pl.col("prem") - pl.col("loss")).alias("margin"),
+            (pl.col("incr_prem") - pl.col("incr_loss")).alias("incr_margin"),
         ).with_columns(
             pl.when(pl.col("margin") >= 0).then(pl.lit("pos"))
               .otherwise(pl.lit("neg")).alias("profit"),
-            pl.when(pl.col("margin_incr") >= 0).then(pl.lit("pos"))
-              .otherwise(pl.lit("neg")).alias("profit_incr"),
-            (pl.col("loss") / pl.col("premium")).alias("lr"),
-            (pl.col("loss_incr") / pl.col("premium_incr")).alias("lr_incr"),
+            pl.when(pl.col("incr_margin") >= 0).then(pl.lit("pos"))
+              .otherwise(pl.lit("neg")).alias("incr_profit"),
+            (pl.col("loss") / pl.col("prem")).alias("lr"),
+            (pl.col("incr_loss") / pl.col("incr_prem")).alias("incr_lr"),
         )
 
         # Within-calendar shares (across groups, per calendar cell).
         ds = ds.with_columns(
             (pl.col("loss") / pl.col("loss").sum().over("calendar")).alias("loss_share"),
-            (pl.col("loss_incr") / pl.col("loss_incr").sum().over("calendar"))
-                .alias("loss_incr_share"),
-            (pl.col("premium") / pl.col("premium").sum().over("calendar"))
-                .alias("premium_share"),
-            (pl.col("premium_incr") / pl.col("premium_incr").sum().over("calendar"))
-                .alias("premium_incr_share"),
+            (pl.col("incr_loss") / pl.col("incr_loss").sum().over("calendar"))
+                .alias("incr_loss_share"),
+            (pl.col("prem") / pl.col("prem").sum().over("calendar"))
+                .alias("prem_share"),
+            (pl.col("incr_prem") / pl.col("incr_prem").sum().over("calendar"))
+                .alias("incr_prem_share"),
         )
 
         # Final column order: cum-first paired.
@@ -132,14 +138,14 @@ class Calendar:
         if grp is not None:
             ordered.append(grp)
         ordered.extend([
-            "calendar", "t",
-            "loss", "loss_incr",
-            "premium", "premium_incr",
-            "lr", "lr_incr",
-            "margin", "margin_incr",
-            "profit", "profit_incr",
-            "loss_share", "loss_incr_share",
-            "premium_share", "premium_incr_share",
+            "calendar", "t", "n_cohorts",
+            "loss", "incr_loss",
+            "prem", "incr_prem",
+            "lr", "incr_lr",
+            "margin", "incr_margin",
+            "profit", "incr_profit",
+            "loss_share", "incr_loss_share",
+            "prem_share", "incr_prem_share",
         ])
         ds = ds.select(ordered)
 

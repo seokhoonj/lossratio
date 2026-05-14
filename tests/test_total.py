@@ -26,8 +26,8 @@ def test_total_schema_grouped():
     tot = lr.as_total(tri).to_polars()
     expected = {
         "coverage", "n_cohorts", "sales_start", "sales_end",
-        "loss", "premium", "lr",
-        "loss_share", "premium_share",
+        "loss", "prem", "lr",
+        "loss_share", "prem_share",
     }
     assert set(tot.columns) == expected
     assert tot.height == 2  # SUR + CI
@@ -41,7 +41,7 @@ def test_total_schema_no_group():
 
 
 def test_total_sums_match_triangle():
-    """loss / premium per group must equal triangle's incr sum per group."""
+    """loss / prem per group must equal triangle's incr sum per group."""
     tri = _sample_triangle()
     tri_df = tri.to_polars()
     tot = lr.as_total(tri).to_polars().sort("coverage")
@@ -49,29 +49,29 @@ def test_total_sums_match_triangle():
     direct = (
         tri_df.group_by("coverage")
         .agg(
-            pl.col("loss_incr").sum().alias("loss_d"),
-            pl.col("premium_incr").sum().alias("prem_d"),
+            pl.col("incr_loss").sum().alias("loss_d"),
+            pl.col("incr_prem").sum().alias("prem_d"),
         )
         .sort("coverage")
     )
     for a, b in zip(tot["loss"].to_list(), direct["loss_d"].to_list()):
         assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
-    for a, b in zip(tot["premium"].to_list(), direct["prem_d"].to_list()):
+    for a, b in zip(tot["prem"].to_list(), direct["prem_d"].to_list()):
         assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
 
 
-def test_total_lr_equals_loss_over_premium():
+def test_total_lr_equals_loss_over_prem():
     tri = _sample_triangle()
     tot = lr.as_total(tri).to_polars()
-    for loss, prem, lr_val in zip(tot["loss"], tot["premium"], tot["lr"]):
-        assert lr_val == pytest.approx(loss / prem, rel=1e-12)
+    for loss, premium, lr_val in zip(tot["loss"], tot["prem"], tot["lr"]):
+        assert lr_val == pytest.approx(loss / premium, rel=1e-12)
 
 
 def test_total_shares_sum_to_one():
     tri = _sample_triangle()
     tot = lr.as_total(tri).to_polars()
     assert tot["loss_share"].sum() == pytest.approx(1.0, rel=1e-9, abs=1e-9)
-    assert tot["premium_share"].sum() == pytest.approx(1.0, rel=1e-9, abs=1e-9)
+    assert tot["prem_share"].sum() == pytest.approx(1.0, rel=1e-9, abs=1e-9)
 
 
 def test_total_summary_sorts_by_lr_descending():

@@ -152,10 +152,10 @@ def test_maturity_spec_invocation_yields_maturity():
 
 def test_maturity_spec_lr_path():
     """The spec exposes the link-target dispatch needed for LR maturity:
-    target='lr', exposure=None, weight='premium' is the recipe convergence
+    target='lr', exposure=None, weight='prem' is the recipe convergence
     detection uses internally."""
     tri = _sur_triangle()
-    spec = lr.maturity_spec(target="lr", exposure=None, weight="premium")
+    spec = lr.maturity_spec(target="lr", exposure=None, weight="prem")
     m = spec(tri)
     assert isinstance(m, lr.Maturity)
     assert m.mat_k is not None  # SUR data should yield a mature LR link

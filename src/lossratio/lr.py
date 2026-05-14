@@ -50,26 +50,26 @@ class LR:
         One of ``"cl"`` (default) or ``"ed"``. Forwarded to
         :class:`Premium`.
     premium_alpha
-        Variance-structure exponent for the premium fit. Default ``1``.
+        Variance-structure exponent for the prem fit. Default ``1``.
     premium_regime
         Premium-side regime filter. Same four-type dispatch as
         ``loss_regime``. Defaults to ``None`` (no filter); pass an
-        independent value when the underwriting / premium regime
+        independent value when the underwriting / prem regime
         differs from the loss regime.
     sigma_method
         ``"locf"`` (default), ``"min_last2"``, or ``"loglinear"``.
     se_method
         How ``lr_se`` is computed:
 
-        * ``"fixed"`` (default): premium treated as fixed —
-          ``lr_se = loss_total_se / premium``.
-        * ``"delta"``: full delta method including premium uncertainty
-          and the loss-premium correlation ``rho``.
+        * ``"fixed"`` (default): prem treated as fixed —
+          ``lr_se = loss_total_se / prem``.
+        * ``"delta"``: full delta method including prem uncertainty
+          and the loss-prem correlation ``rho``.
     rho
-        Loss-premium correlation in (-1, 1). Used only when
+        Loss-prem correlation in (-1, 1). Used only when
         ``se_method = "delta"``. Default ``0.95``.
     conf_level
-        Confidence level for ``lr_ci_lower`` / ``lr_ci_upper``. Default
+        Confidence level for ``lr_ci_lo`` / ``lr_ci_hi``. Default
         ``0.95``.
     bootstrap
         Not yet implemented in Python; must be ``False`` (default).
@@ -173,10 +173,10 @@ class LRFit:
     ----------
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
-        loss_obs, loss_proj, loss_incr_proj, premium_obs, premium_proj,
-        premium_incr_proj, loss_*_se, loss_total_cv, loss_ci_*, lr_proj,
-        lr_incr_proj, lr_se, lr_cv, lr_ci_lower, lr_ci_upper]`` (plus
-        ``premium_total_se`` / ``premium_total_cv`` when
+        loss_obs, loss_proj, incr_loss_proj, prem_obs, prem_proj,
+        incr_prem_proj, loss_*_se, loss_total_cv, loss_ci_*, lr_proj,
+        incr_lr_proj, lr_se, lr_cv, lr_ci_lo, lr_ci_hi]`` (plus
+        ``prem_total_se`` / ``prem_total_cv`` when
         ``se_method="delta"``).
     method : str
         ``"sa"``, ``"ed"``, or ``"cl"``.
@@ -217,23 +217,23 @@ class LRFit:
         self.rho = estimator.rho
         self.conf_level = estimator.conf_level
 
-        # 1) build premium fit first so the loss side can see it, allowing
+        # 1) build prem fit first so the loss side can see it, allowing
         # premium_regime to apply independently of loss_regime.
-        prem_fit = Premium(
+        premium_fit = Premium(
             method=estimator.premium_method,
             alpha=estimator.premium_alpha,
             sigma_method=estimator.sigma_method,
             conf_level=estimator.conf_level,
             regime=estimator.premium_regime,
         ).fit(triangle)
-        self.premium_fit = prem_fit
+        self.premium_fit = premium_fit
 
         # 2) delegate loss-side projection to Loss --------------------------
         loss_fit = Loss(
             method=estimator.method,
             alpha=estimator.loss_alpha,
             sigma_method=estimator.sigma_method,
-            premium_fit=prem_fit,
+            premium_fit=premium_fit,
             premium_method=estimator.premium_method,
             premium_alpha=estimator.premium_alpha,
             max_cv=estimator.max_cv,
@@ -246,7 +246,7 @@ class LRFit:
 
         full = loss_fit._df.clone()
 
-        # 2) join premium SE columns for delta method ----------------------
+        # 2) join prem SE columns for delta method ----------------------
         if estimator.se_method == "delta":
             pf_df = self.premium_fit._df
             keys = []
@@ -254,7 +254,7 @@ class LRFit:
                 keys.append(self._groups)
             keys += ["cohort", "dev"]
             pf_keep = pf_df.select(
-                keys + ["premium_total_se", "premium_total_cv"]
+                keys + ["prem_total_se", "prem_total_cv"]
             )
             full = full.join(pf_keep, on=keys, how="left")
 
@@ -262,31 +262,31 @@ class LRFit:
         full = full.with_columns(
             pl.when(
                 pl.col("loss_proj").is_not_null()
-                & pl.col("premium_proj").is_not_null()
-                & (pl.col("premium_proj") != 0.0)
+                & pl.col("prem_proj").is_not_null()
+                & (pl.col("prem_proj") != 0.0)
             )
-            .then(pl.col("loss_proj") / pl.col("premium_proj"))
+            .then(pl.col("loss_proj") / pl.col("prem_proj"))
             .otherwise(None)
             .alias("lr_proj"),
             pl.when(
-                pl.col("loss_incr_proj").is_not_null()
-                & pl.col("premium_incr_proj").is_not_null()
-                & (pl.col("premium_incr_proj") > 0.0)
+                pl.col("incr_loss_proj").is_not_null()
+                & pl.col("incr_prem_proj").is_not_null()
+                & (pl.col("incr_prem_proj") > 0.0)
             )
-            .then(pl.col("loss_incr_proj") / pl.col("premium_incr_proj"))
+            .then(pl.col("incr_loss_proj") / pl.col("incr_prem_proj"))
             .otherwise(None)
-            .alias("lr_incr_proj"),
+            .alias("incr_lr_proj"),
         )
 
-        # 4) lr_se via fixed-premium or delta method -----------------------
+        # 4) lr_se via fixed-prem or delta method -----------------------
         if estimator.se_method == "fixed":
             full = full.with_columns(
                 pl.when(
                     pl.col("loss_total_se").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") != 0.0)
+                    & pl.col("prem_proj").is_not_null()
+                    & (pl.col("prem_proj") != 0.0)
                 )
-                .then(pl.col("loss_total_se") / pl.col("premium_proj"))
+                .then(pl.col("loss_total_se") / pl.col("prem_proj"))
                 .otherwise(None)
                 .alias("lr_se")
             )
@@ -296,28 +296,28 @@ class LRFit:
             rho = estimator.rho
             full = full.with_columns(
                 (
-                    (pl.col("loss_total_se") / pl.col("premium_proj")) ** 2
+                    (pl.col("loss_total_se") / pl.col("prem_proj")) ** 2
                     + (
                         pl.col("loss_proj")
-                        * pl.col("premium_total_se")
-                        / (pl.col("premium_proj") ** 2)
+                        * pl.col("prem_total_se")
+                        / (pl.col("prem_proj") ** 2)
                     )
                     ** 2
                     - 2
                     * rho
                     * pl.col("loss_proj")
                     * pl.col("loss_total_se")
-                    * pl.col("premium_total_se")
-                    / (pl.col("premium_proj") ** 3)
+                    * pl.col("prem_total_se")
+                    / (pl.col("prem_proj") ** 3)
                 ).alias("_var_lr")
             )
             full = full.with_columns(
                 pl.when(
                     pl.col("loss_proj").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") > 0.0)
+                    & pl.col("prem_proj").is_not_null()
+                    & (pl.col("prem_proj") > 0.0)
                     & pl.col("loss_total_se").is_not_null()
-                    & pl.col("premium_total_se").is_not_null()
+                    & pl.col("prem_total_se").is_not_null()
                 )
                 .then(pl.col("_var_lr").clip(lower_bound=0.0).sqrt())
                 .otherwise(None)
@@ -347,13 +347,13 @@ class LRFit:
                 )
             )
             .otherwise(None)
-            .alias("lr_ci_lower"),
+            .alias("lr_ci_lo"),
             pl.when(
                 pl.col("lr_proj").is_not_null() & pl.col("lr_se").is_not_null()
             )
             .then(pl.col("lr_proj") + z_alpha * pl.col("lr_se"))
             .otherwise(None)
-            .alias("lr_ci_upper"),
+            .alias("lr_ci_hi"),
         )
 
         self._df = full
@@ -395,14 +395,14 @@ class LRFit:
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
-                pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
+                pl.col("prem_proj").drop_nulls().last().alias("prem_ult"),
                 pl.col("lr_proj").drop_nulls().last().alias("lr_ult"),
                 pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
                 pl.col("loss_total_cv").drop_nulls().last().alias("loss_total_cv"),
                 pl.col("lr_se").drop_nulls().last().alias("lr_se"),
                 pl.col("lr_cv").drop_nulls().last().alias("lr_cv"),
-                pl.col("lr_ci_lower").drop_nulls().last().alias("lr_ci_lower"),
-                pl.col("lr_ci_upper").drop_nulls().last().alias("lr_ci_upper"),
+                pl.col("lr_ci_lo").drop_nulls().last().alias("lr_ci_lo"),
+                pl.col("lr_ci_hi").drop_nulls().last().alias("lr_ci_hi"),
             )
         )
 

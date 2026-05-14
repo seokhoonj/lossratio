@@ -76,15 +76,15 @@ def _compute_dispersion(
 def _extract_portfolio_lr(bt_fit: Any) -> float:
     """Portfolio-level projected LR from a BacktestFit.
 
-    Computes ``sum(loss_ult) / sum(premium_ult)`` where ``loss_ult`` /
-    ``premium_ult`` are the *latest projected* per-cohort cumulative
-    values (last non-null ``loss_proj`` / ``premium_proj`` sorted by
+    Computes ``sum(loss_ult) / sum(prem_ult)`` where ``loss_ult`` /
+    ``prem_ult`` are the *latest projected* per-cohort cumulative
+    values (last non-null ``loss_proj`` / ``prem_proj`` sorted by
     dev). Using last-non-null is robust when the masked refit's
     projection halts before ``dev_max`` because late ATA factors are
     unestimable (no cohort-pair under the mask).
 
     Returns ``nan`` when no cohorts have a projectable cell or total
-    premium is non-positive.
+    prem is non-positive.
     """
     refit = getattr(bt_fit, "_refit", None)
     if refit is None:
@@ -94,7 +94,7 @@ def _extract_portfolio_lr(bt_fit: Any) -> float:
         return float("nan")
     if not isinstance(df, pl.DataFrame):
         return float("nan")
-    if "loss_proj" not in df.columns or "premium_proj" not in df.columns:
+    if "loss_proj" not in df.columns or "prem_proj" not in df.columns:
         return float("nan")
 
     keys: list[str] = []
@@ -106,19 +106,19 @@ def _extract_portfolio_lr(bt_fit: Any) -> float:
     # Last non-null projection per cohort (sorted by dev).
     ult = (
         df.filter(pl.col("loss_proj").is_not_null()
-                  & pl.col("premium_proj").is_not_null())
+                  & pl.col("prem_proj").is_not_null())
         .sort(keys + ["dev"])
         .group_by(keys, maintain_order=True)
         .agg(
             pl.col("loss_proj").last().alias("loss_ult"),
-            pl.col("premium_proj").last().alias("premium_ult"),
+            pl.col("prem_proj").last().alias("prem_ult"),
         )
     )
     if ult.height == 0:
         return float("nan")
 
     total_loss = ult["loss_ult"].sum()
-    total_exp = ult["premium_ult"].sum()
+    total_exp = ult["prem_ult"].sum()
     if total_exp is None or not np.isfinite(total_exp) or total_exp <= 0:
         return float("nan")
     return float(total_loss) / float(total_exp)
@@ -214,7 +214,7 @@ def detect_convergence(
     # 1. Resolve mat_k from LR-link ATA if not given.
     if mat_k is None:
         mat = (
-            triangle.link(target="lr", exposure=None, weight="premium")
+            triangle.link(target="lr", exposure=None, weight="prem")
             .ata()
             .maturity()
         )

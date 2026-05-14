@@ -24,14 +24,14 @@ def _polars_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss_incr": [
+            "incr_loss": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "premium_incr": [100.0] * 15,
+            "incr_prem": [100.0] * 15,
         }
     )
 
@@ -56,8 +56,8 @@ def _stable_input() -> pl.DataFrame:
             rows.append({
                 "cy_m": cym,
                 "uy_m": uym,
-                "loss_incr": float(inc_loss),
-                "premium_incr": 100.0,
+                "incr_loss": float(inc_loss),
+                "incr_prem": 100.0,
             })
     return pl.DataFrame(rows)
 

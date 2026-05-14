@@ -25,14 +25,14 @@ def _toy_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss_incr": [
+            "incr_loss": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "premium_incr": [100.0] * 15,
+            "incr_prem": [100.0] * 15,
         }
     )
 
@@ -84,10 +84,10 @@ def test_link_df_has_ata_columns():
     } <= cols
 
 
-def test_link_df_has_premium_columns_in_dual_mode():
+def test_link_df_has_prem_columns_in_dual_mode():
     link = _tri().link()
     cols = set(link.df.columns)
-    # Triangle.link() default carries exposure='premium' → dual-mode
+    # Triangle.link() default carries exposure='prem' → dual-mode
     assert {
         "exposure_from", "exposure_to", "exposure_delta", "intensity",
     } <= cols
@@ -111,7 +111,7 @@ def test_link_ata_equals_loss_to_over_loss_from():
             assert r["ata"] == pytest.approx(r["target_to"] / r["target_from"])
 
 
-def test_link_intensity_equals_loss_delta_over_premium_from():
+def test_link_intensity_equals_loss_delta_over_prem_from():
     link = _tri().link()
     df = link.df
     for r in df.iter_rows(named=True):

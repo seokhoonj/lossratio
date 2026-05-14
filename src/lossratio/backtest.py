@@ -57,8 +57,8 @@ def _build_masked_df(
 
     Returns ``(masked_df, mask_df)``:
 
-    * ``masked_df`` has ``loss``, ``loss_incr``, ``premium``,
-      ``premium_incr``, ``lr``, ``lr_incr`` set to ``None`` for cells
+    * ``masked_df`` has ``loss``, ``incr_loss``, ``prem``,
+      ``incr_prem``, ``lr``, ``incr_lr`` set to ``None`` for cells
       whose calendar diagonal is among the top ``holdout``.
     * ``mask_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
@@ -82,7 +82,7 @@ def _build_masked_df(
     masked_df = df.with_columns(
         [
             pl.when(pl.col("masked")).then(None).otherwise(pl.col(c)).alias(c)
-            for c in ("loss", "loss_incr", "premium", "premium_incr", "lr", "lr_incr")
+            for c in ("loss", "incr_loss", "prem", "incr_prem", "lr", "incr_lr")
             if c in df.columns
         ]
     ).drop("__cohort_idx", "__max_cal", "calendar_idx", "masked")
@@ -91,11 +91,11 @@ def _build_masked_df(
     return masked_df, annotated_df
 
 
-_VALID_METRICS = ("lr", "loss", "premium")
+_VALID_METRICS = ("lr", "loss", "prem")
 
 
 def _is_ratio_fit_estimator(estimator: Any) -> bool:
-    """LR / ED jointly project loss / premium / lr; CL projects a single
+    """LR / ED jointly project loss / prem / lr; CL projects a single
     column. Distinguished by whether the estimator class is a ratio-fit.
     """
     # Late import to avoid circular dependency at module load time.
@@ -112,7 +112,7 @@ def _resolve_expected_column(
 
     Post-Phase-4b workers emit generic ``target_proj`` columns (CL: loss
     side; ED: target = loss, plus ``lr_proj`` as a downstream quantity).
-    LR keeps legacy ``loss_proj`` / ``premium_proj`` / ``lr_proj``.
+    LR keeps legacy ``loss_proj`` / ``prem_proj`` / ``lr_proj``.
     """
     if metric not in _VALID_METRICS:
         raise ValueError(
@@ -120,7 +120,7 @@ def _resolve_expected_column(
         )
 
     # LR estimator: legacy column names still emitted.
-    legacy = {"lr": "lr_proj", "loss": "loss_proj", "premium": "premium_proj"}
+    legacy = {"lr": "lr_proj", "loss": "loss_proj", "prem": "prem_proj"}
     if legacy[metric] in fit_df_columns:
         return legacy[metric]
 
@@ -194,12 +194,12 @@ class Backtest:
                 f"metric must be one of {_VALID_METRICS}, got {metric!r}"
             )
         # LR / ED are ratio-fits — only `lr` is a meaningful scoring lane;
-        # use CL directly to backtest the loss or premium projection.
+        # use CL directly to backtest the loss or prem projection.
         if _is_ratio_fit_estimator(estimator) and metric != "lr":
             raise ValueError(
                 f"estimator is a ratio-fit ({type(estimator).__name__}); "
                 f"only metric='lr' is supported. Use lr.CL() instead to "
-                f"backtest the loss or premium projection directly."
+                f"backtest the loss or prem projection directly."
             )
         self.estimator = estimator
         self.holdout = holdout
@@ -275,7 +275,7 @@ class BacktestFit:
 
         # `actual` is the cumulative column on the original Triangle that
         # corresponds to the chosen scoring lane.
-        actual_col = bt.metric  # "lr" / "loss" / "premium"
+        actual_col = bt.metric  # "lr" / "loss" / "prem"
         held_out = annotated_df.filter(pl.col("masked")).select(
             keys + ["calendar_idx", actual_col]
         ).rename({actual_col: "actual"})

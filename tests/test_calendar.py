@@ -25,12 +25,12 @@ def test_calendar_schema_grouped():
     tri = _sample_triangle()
     cal = lr.as_calendar(tri).to_polars()
     expected = {
-        "coverage", "calendar", "t",
-        "loss", "loss_incr", "premium", "premium_incr",
-        "lr", "lr_incr",
-        "margin", "margin_incr", "profit", "profit_incr",
-        "loss_share", "loss_incr_share",
-        "premium_share", "premium_incr_share",
+        "coverage", "calendar", "t", "n_cohorts",
+        "loss", "incr_loss", "prem", "incr_prem",
+        "lr", "incr_lr",
+        "margin", "incr_margin", "profit", "incr_profit",
+        "loss_share", "incr_loss_share",
+        "prem_share", "incr_prem_share",
     }
     assert set(cal.columns) == expected
 
@@ -40,7 +40,7 @@ def test_calendar_schema_no_group():
     cal = lr.as_calendar(tri).to_polars()
     # No group var, no group column in output.
     assert "coverage" not in cal.columns
-    for col in ["calendar", "t", "loss", "premium", "lr"]:
+    for col in ["calendar", "t", "loss", "prem", "lr"]:
         assert col in cal.columns
 
 
@@ -69,25 +69,25 @@ def test_calendar_diagonal_sum_matches_triangle():
     direct = (
         tri_df.group_by(["coverage", "calendar"])
         .agg(
-            pl.col("loss_incr").sum().alias("loss_incr_direct"),
-            pl.col("premium_incr").sum().alias("premium_incr_direct"),
+            pl.col("incr_loss").sum().alias("incr_loss_direct"),
+            pl.col("incr_prem").sum().alias("incr_prem_direct"),
         )
     )
     joined = cal.join(direct, on=["coverage", "calendar"], how="inner")
     for c_left, c_right in [
-        ("loss_incr", "loss_incr_direct"),
-        ("premium_incr", "premium_incr_direct"),
+        ("incr_loss", "incr_loss_direct"),
+        ("incr_prem", "incr_prem_direct"),
     ]:
         for a, b in zip(joined[c_left].to_list(), joined[c_right].to_list()):
             assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
 
 
 def test_calendar_cumulative_consistency():
-    """loss = cumsum(loss_incr) within each group, sorted by calendar."""
+    """loss = cumsum(incr_loss) within each group, sorted by calendar."""
     tri = _sample_triangle()
     cal = lr.as_calendar(tri).to_polars().sort(["coverage", "calendar"])
     for grp, sub in cal.group_by("coverage", maintain_order=True):
-        incr = sub["loss_incr"].to_list()
+        incr = sub["incr_loss"].to_list()
         cum = sub["loss"].to_list()
         running = 0.0
         for v_incr, v_cum in zip(incr, cum):

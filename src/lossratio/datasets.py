@@ -7,7 +7,7 @@ seed 20260501. The generator mirrors R `lossratio`'s
 shift, same recipe — but cell values are NOT bit-identical to R because
 numpy's RNG differs from R's `rnorm` even with the same seed.
 
-Calibration scalars (target LR, premium volume, cell noise CV) per
+Calibration scalars (target LR, prem volume, cell noise CV) per
 coverage were measured once on a real long-term Korean health-
 insurance portfolio and are baked in here as constants so this module
 ships without any real-data dependency. SUR carries a regime shift at
@@ -99,8 +99,8 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     -------
     polars.DataFrame
         Columns ``coverage`` (str), ``uy_m`` (str, ISO date), ``cy_m``
-        (str, ISO date), ``dev_m`` (int), ``loss_incr`` (float),
-        ``premium_incr`` (float). Pass directly to :class:`Triangle`
+        (str, ISO date), ``dev_m`` (int), ``incr_loss`` (float),
+        ``incr_prem`` (float). Pass directly to :class:`Triangle`
         with ``groups="coverage"``.
     """
     rng = np.random.default_rng(seed)
@@ -129,13 +129,13 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                 cy_c, cm_c = divmod(ci + k, 12)
                 cy_m = _ymd(2023 + cy_c, cm_c + 1)
 
-                incr_premium = prem_base * (1.0 + rng.normal(0.0, 0.05))
-                incr_premium = max(incr_premium, 0.0)
+                incr_prem = prem_base * (1.0 + rng.normal(0.0, 0.05))
+                incr_prem = max(incr_prem, 0.0)
 
                 noise = math.exp(rng.normal(0.0, math.log(1.0 + cell_cv)))
-                incr_loss = incr_premium * eff_target * weights[k] * _K * noise
+                incr_loss = incr_prem * eff_target * weights[k] * _K * noise
 
-                # Real-world premium / loss are recorded in won (integer);
+                # Real-world prem / loss are recorded in won (integer);
                 # round to match that convention.
                 records.append(
                     {
@@ -143,8 +143,8 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                         "uy_m":         uy_m,
                         "cy_m":         cy_m,
                         "dev_m":        k + 1,
-                        "loss_incr":    round(incr_loss),
-                        "premium_incr": round(incr_premium),
+                        "incr_loss":    round(incr_loss),
+                        "incr_prem": round(incr_prem),
                     }
                 )
 

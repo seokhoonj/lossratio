@@ -24,14 +24,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss_incr": [
+            "incr_loss": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "premium_incr": [100.0] * 15,
+            "incr_prem": [100.0] * 15,
         }
     )
 
@@ -65,12 +65,12 @@ def test_lr_output_columns():
         lr.Triangle(_toy_triangle_input())
     )
     expected = {
-        "cohort", "dev", "loss_obs", "premium_obs",
-        "loss_proj", "premium_proj", "lr_proj",
-        "loss_incr_proj", "premium_incr_proj", "lr_incr_proj",
+        "cohort", "dev", "loss_obs", "prem_obs",
+        "loss_proj", "prem_proj", "lr_proj",
+        "incr_loss_proj", "incr_prem_proj", "incr_lr_proj",
         "loss_total_se", "lr_se", "lr_cv",
-        "lr_ci_lower", "lr_ci_upper",
-        "loss_ci_lower", "loss_ci_upper",
+        "lr_ci_lo", "lr_ci_hi",
+        "loss_ci_lo", "loss_ci_hi",
     }
     assert set(fit.to_polars().columns) >= expected
 
@@ -106,10 +106,10 @@ def test_lr_cl_lr_proj_equals_loss_div_exposure():
     df = fit.to_polars()
     df_filt = df.filter(
         pl.col("loss_proj").is_not_null()
-        & pl.col("premium_proj").is_not_null()
-        & (pl.col("premium_proj") != 0)
+        & pl.col("prem_proj").is_not_null()
+        & (pl.col("prem_proj") != 0)
     )
-    expected = (df_filt["loss_proj"] / df_filt["premium_proj"]).to_list()
+    expected = (df_filt["loss_proj"] / df_filt["prem_proj"]).to_list()
     actual = df_filt["lr_proj"].to_list()
     for a, b in zip(actual, expected):
         assert a == pytest.approx(b)
@@ -189,12 +189,12 @@ def test_lr_summary_columns():
         "cohort",
         "latest",
         "loss_ult",
-        "premium_ult",
+        "prem_ult",
         "lr_ult",
         "lr_se",
         "lr_cv",
-        "lr_ci_lower",
-        "lr_ci_upper",
+        "lr_ci_lo",
+        "lr_ci_hi",
     }
     assert summary.height == 5
 
@@ -207,8 +207,8 @@ def test_lr_summary_fully_observed_cohort():
     assert summary.height == 1
     # Cohort 2024-01 has all 5 devs observed; loss_ult = 500
     assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
-    # premium_ult = 500 (rp=100 per dev for 5 devs)
-    assert summary["premium_ult"].to_list()[0] == pytest.approx(500.0)
+    # prem_ult = 500 (rp=100 per dev for 5 devs)
+    assert summary["prem_ult"].to_list()[0] == pytest.approx(500.0)
     assert summary["lr_ult"].to_list()[0] == pytest.approx(1.0)
 
 

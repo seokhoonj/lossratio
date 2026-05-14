@@ -16,8 +16,8 @@ def _polars_input() -> pl.DataFrame:
         {
             "cy_m":         ["2024-01-01", "2024-02-01"],
             "uy_m":         ["2024-01-01", "2024-01-01"],
-            "loss_incr":    [100.0, 150.0],
-            "premium_incr": [200.0, 250.0],
+            "incr_loss":    [100.0, 150.0],
+            "incr_prem": [200.0, 250.0],
         }
     )
 
@@ -36,8 +36,8 @@ def test_validate_experience_polars_returns_polars():
     assert out["cy_m"].dtype == pl.Date
     assert out["uy_m"].dtype == pl.Date
     # Numeric columns coerced
-    assert out["loss_incr"].dtype == pl.Float64
-    assert out["premium_incr"].dtype == pl.Float64
+    assert out["incr_loss"].dtype == pl.Float64
+    assert out["incr_prem"].dtype == pl.Float64
 
 
 def test_validate_experience_pandas_returns_pandas():
@@ -46,8 +46,8 @@ def test_validate_experience_pandas_returns_pandas():
         {
             "cy_m":         ["2024-01-01", "2024-02-01"],
             "uy_m":         ["2024-01-01", "2024-01-01"],
-            "loss_incr":    [100.0, 150.0],
-            "premium_incr": [200.0, 250.0],
+            "incr_loss":    [100.0, 150.0],
+            "incr_prem": [200.0, 250.0],
         }
     )
     out = lr.validate_experience(df)
@@ -60,8 +60,8 @@ def test_validate_experience_missing_required_column():
     df = pl.DataFrame(
         {
             "cy_m":         ["2024-01-01"],
-            "loss_incr":    [100.0],
-            "premium_incr": [200.0],
+            "incr_loss":    [100.0],
+            "incr_prem": [200.0],
             # missing uy_m
         }
     )
@@ -85,8 +85,8 @@ def _period_input() -> pl.DataFrame:
         {
             "uy_m":         ["2024-01-15", "2024-04-15", "2024-07-15"],
             "cy_m":         ["2024-03-15", "2024-06-15", "2024-09-15"],
-            "loss_incr":    [10.0, 20.0, 30.0],
-            "premium_incr": [100.0, 100.0, 100.0],
+            "incr_loss":    [10.0, 20.0, 30.0],
+            "incr_prem": [100.0, 100.0, 100.0],
         }
     ).with_columns(
         pl.col("uy_m").cast(pl.Date),

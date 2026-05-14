@@ -127,7 +127,7 @@ def test_lr_loss_regime_filters_loss_cohorts():
     assert fit.loss_fit.regime is r
 
 
-def test_lr_premium_regime_filters_premium_cohorts():
+def test_lr_premium_regime_filters_prem_cohorts():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01")
     fit = lr.LR(method="sa", premium_regime=r).fit(tri)
@@ -151,7 +151,7 @@ def test_lr_loss_regime_lazy_spec():
 
 
 def test_lr_loss_and_premium_regime_independent():
-    """The two regimes apply independently to loss and premium sides."""
+    """The two regimes apply independently to loss and prem sides."""
     tri = _sur_triangle()
     lr_reg = lr.regime_at(change="2024-07-01")
     pr_reg = lr.regime_at(change="2024-10-01")
@@ -266,7 +266,7 @@ def test_segment_wise_loss_only():
     assert fit.regime is r
 
 
-def test_segment_wise_premium_only():
+def test_segment_wise_prem_only():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
     fit = lr.Premium(method="ed", regime=r).fit(tri)

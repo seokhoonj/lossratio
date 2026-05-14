@@ -18,7 +18,7 @@ def _toy_triangle_input() -> pl.DataFrame:
         2024-04: 180, 370
         2024-05: 200
 
-    Risk premium rp is constant 100 per cell, so cumulative premium is
+    Risk prem rp is constant 100 per cell, so cumulative prem is
     100, 200, 300, ... per cohort regardless of dev attained.
     """
     return pl.DataFrame(
@@ -37,14 +37,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-04-01", "2024-04-01",
                 "2024-05-01",
             ],
-            "loss_incr": [
+            "incr_loss": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "premium_incr": [100.0] * 15,
+            "incr_prem": [100.0] * 15,
         }
     )
 
@@ -84,7 +84,7 @@ def test_ed_g_k_first_link_hand_check():
     """At dev 1 -> 2 link, four cohorts contribute (2024-01..04):
 
         Δloss[i,2]:  200-100=100, 280-150=130, 250-120=130, 370-180=190
-        premium[i,1]:    100,         100,         100,         100
+        prem[i,1]:    100,         100,         100,         100
 
         sum Δloss = 100 + 130 + 130 + 190 = 550
         sum premium   = 400
@@ -135,9 +135,9 @@ def test_ed_sigma2_g_k_last_link_min_last2():
 # ---------------------------------------------------------------------------
 
 
-def test_ed_f_p_k_constant_when_premium_constant():
+def test_ed_f_p_k_constant_when_prem_constant():
     """All cohorts have rp=100 in every observed cell, so cumulative
-    premium grows linearly: dev k has premium = 100*k. Then f^P_k = (k+1)/k."""
+    prem grows linearly: dev k has premium = 100*k. Then f^P_k = (k+1)/k."""
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     params = fit._params_df.sort("dev")
     f_p = params["f_p"].to_list()
@@ -184,7 +184,7 @@ def test_ed_projection_uses_additive_rule():
 # ---------------------------------------------------------------------------
 
 
-def test_ed_premium_proj_present_for_all_cells():
+def test_ed_prem_proj_present_for_all_cells():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
     # Every cell has a projected exposure (observed or chain-ladder forecast)

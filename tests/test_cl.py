@@ -56,14 +56,14 @@ def _toy_triangle_input() -> pl.DataFrame:
                 "2024-05-01",
             ],
             # Incremental losses chosen so cumulative matches the docstring
-            "loss_incr": [
+            "incr_loss": [
                 100.0, 100.0, 120.0, 100.0, 80.0,
                 150.0, 130.0, 160.0, 130.0,
                 120.0, 130.0, 130.0,
                 180.0, 190.0,
                 200.0,
             ],
-            "premium_incr": [100.0] * 15,
+            "incr_prem": [100.0] * 15,
         }
     )
 

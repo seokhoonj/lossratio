@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_TARGETS = ("loss", "premium", "lr")
+_VALID_TARGETS = ("loss", "prem", "lr")
 
 
 def _build_link_df(
@@ -172,9 +172,9 @@ class Link:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> link = tri.link()                              # target='loss', exposure='premium'
+    >>> link = tri.link()                              # target='loss', exposure='prem'
     >>> link = tri.link(target="loss")                 # ATA-only
-    >>> link = tri.link(target="loss", exposure="premium")
+    >>> link = tri.link(target="loss", exposure="prem")
     >>> link.ata()         # ATA factor diagnostic
     >>> link.intensity()   # ED intensity diagnostic
     >>> link.df            # raw long-format link table
@@ -196,7 +196,7 @@ class Link:
         cls,
         triangle: "Triangle",
         target: str = "loss",
-        exposure: str | None = "premium",
+        exposure: str | None = "prem",
         weight: str | None = None,
         min_denom: float = 0.0,
         drop_invalid: bool = False,
@@ -274,7 +274,7 @@ class Link:
         return self._weight
 
     @property
-    def _has_premium(self) -> bool:
+    def _has_prem(self) -> bool:
         """Backward-compat alias for dual-mode detection."""
         return self._exposure is not None
 
@@ -312,7 +312,7 @@ class Link:
         if self._exposure is None:
             raise ValueError(
                 "Link.intensity() requires the Link to be built with "
-                "`exposure` set (e.g. exposure='premium')."
+                "`exposure` set (e.g. exposure='prem')."
             )
         from .intensity import Intensity
 

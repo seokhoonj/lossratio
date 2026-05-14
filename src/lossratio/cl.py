@@ -63,7 +63,7 @@ def _build_value_matrix(
 
     Rows are cohorts (sorted), columns are dev = 1..max_dev. The
     column to extract is ``value_col`` (typically ``"loss"`` or
-    ``"premium"``).
+    ``"prem"``).
     """
     df = df.sort(["cohort", "dev"])
     cohorts = df["cohort"].unique(maintain_order=True).to_list()
@@ -208,7 +208,7 @@ def _result_to_long_df(
 
     Schema (post-Phase-4b, generic worker):
       ``[groups?, cohort, dev,
-         target_obs, target_proj, target_incr_proj,
+         target_obs, target_proj, incr_target_proj,
          target_proc_se2, target_param_se2, target_total_se2,
          target_proc_se,  target_param_se,  target_total_se,
          target_proc_cv,  target_param_cv,  target_total_cv]``.
@@ -252,7 +252,7 @@ def _result_to_long_df(
 
             row["target_obs"] = float(obs) if not np.isnan(obs) else None
             row["target_proj"] = float(proj) if not np.isnan(proj) else None
-            row["target_incr_proj"] = (
+            row["incr_target_proj"] = (
                 float(incr) if not np.isnan(incr) else None
             )
 
@@ -358,7 +358,7 @@ class CL:
             Source :class:`Triangle`.
         target
             Cumulative metric to project. One of ``"loss"``,
-            ``"premium"``, ``"lr"``. Default ``"loss"``.
+            ``"prem"``, ``"lr"``. Default ``"loss"``.
         weight
             Optional column for WLS weights (currently reserved; the
             Mack core fit uses volume weighting by default).

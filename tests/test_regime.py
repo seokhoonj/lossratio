@@ -101,8 +101,8 @@ def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
                 {
                     "cy_m": cohort_date,
                     "uy_m": cohort_date,
-                    "loss_incr": lr_val * 100.0,
-                    "premium_incr": 100.0,
+                    "incr_loss": lr_val * 100.0,
+                    "incr_prem": 100.0,
                 }
             )
     df = pl.DataFrame(rows)
@@ -129,8 +129,8 @@ def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
                     ).item()
                     if False
                     else cohort_dates[c_idx],
-                    "loss_incr": lr_val * 100.0,
-                    "premium_incr": 100.0,
+                    "incr_loss": lr_val * 100.0,
+                    "incr_prem": 100.0,
                 }
             )
     return rows2  # placeholder, see _toy_input
@@ -159,8 +159,8 @@ def _toy_input(n_cohorts: int = 30, K: int = 12, shift_at: int = 15) -> pl.DataF
                     "cy_m": u,
                     "uy_m": u,
                     "_dev_target": k,
-                    "loss_incr": lr_val * 100.0,
-                    "premium_incr": 100.0,
+                    "incr_loss": lr_val * 100.0,
+                    "incr_prem": 100.0,
                 }
             )
     return pl.DataFrame(rows)
