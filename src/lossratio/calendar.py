@@ -18,8 +18,10 @@ def as_calendar(x: "Triangle") -> "Calendar":
 
     Each row of the result is one ``(group, calendar)`` cell: the sum
     of all triangle cells lying on the same calendar diagonal. The
-    ``dev`` column carries a sequential 1-based index per group (not a
-    development period).
+    ``t`` column carries a sequential 1-based index per group --
+    time-series convention; intentionally **not** a true development
+    period (``cym - uym``). The Triangle's ``dev`` axis is the place
+    for that.
 
     Parameters
     ----------
@@ -75,14 +77,17 @@ class Calendar:
             .sort(agg_keys)
         )
 
-        # Sequential dev index within each group.
+        # Sequential calendar-period index per group. Named `t`
+        # (time-series convention) rather than `dev` -- the integer is
+        # the rank of the date within its group, not a true
+        # development period.
         if grp is not None:
             ds = ds.with_columns(
-                pl.int_range(1, pl.len() + 1).over(grp).alias("dev")
+                pl.int_range(1, pl.len() + 1).over(grp).alias("t")
             )
         else:
             ds = ds.with_columns(
-                pl.int_range(1, pl.len() + 1).alias("dev")
+                pl.int_range(1, pl.len() + 1).alias("t")
             )
 
         # Cumulative loss / premium per group.
@@ -127,7 +132,7 @@ class Calendar:
         if grp is not None:
             ordered.append(grp)
         ordered.extend([
-            "calendar", "dev",
+            "calendar", "t",
             "loss", "loss_incr",
             "premium", "premium_incr",
             "lr", "lr_incr",

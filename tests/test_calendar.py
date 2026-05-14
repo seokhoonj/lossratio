@@ -25,7 +25,7 @@ def test_calendar_schema_grouped():
     tri = _sample_triangle()
     cal = lr.as_calendar(tri).to_polars()
     expected = {
-        "coverage", "calendar", "dev",
+        "coverage", "calendar", "t",
         "loss", "loss_incr", "premium", "premium_incr",
         "lr", "lr_incr",
         "margin", "margin_incr", "profit", "profit_incr",
@@ -40,16 +40,16 @@ def test_calendar_schema_no_group():
     cal = lr.as_calendar(tri).to_polars()
     # No group var, no group column in output.
     assert "coverage" not in cal.columns
-    for col in ["calendar", "dev", "loss", "premium", "lr"]:
+    for col in ["calendar", "t", "loss", "premium", "lr"]:
         assert col in cal.columns
 
 
-def test_calendar_dev_is_sequential_per_group():
+def test_calendar_t_is_sequential_per_group():
     tri = _sample_triangle()
     cal = lr.as_calendar(tri).to_polars().sort(["coverage", "calendar"])
     for grp, sub in cal.group_by("coverage"):
         n = sub.height
-        assert sub["dev"].to_list() == list(range(1, n + 1))
+        assert sub["t"].to_list() == list(range(1, n + 1))
 
 
 def test_calendar_diagonal_sum_matches_triangle():
