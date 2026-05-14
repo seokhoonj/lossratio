@@ -11,6 +11,7 @@ from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .calendar import Calendar, as_calendar
 from .cl import CL, CLFit
+from .convergence import Convergence, detect_convergence
 from .datasets import load_experience, make_experience
 from .ed import ED, EDFit
 from .experience import validate_experience
@@ -33,6 +34,7 @@ __all__ = [
     "CL",
     "CLFit",
     "Calendar",
+    "Convergence",
     "ED",
     "EDFit",
     "Intensity",
@@ -51,6 +53,7 @@ __all__ = [
     "as_calendar",
     "as_total",
     "derive_grain_columns",
+    "detect_convergence",
     "load_experience",
     "make_experience",
     "validate_experience",
