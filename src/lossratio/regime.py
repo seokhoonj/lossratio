@@ -14,6 +14,8 @@ is then tested for structural shifts using one of two methods:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
+_VALID_TREATMENTS = ("latest_only", "segment_wise")
 
 
 def _build_feature_matrix(
@@ -166,6 +169,7 @@ class Regime:
 
     def __init__(self) -> None:
         self._labels_df: pl.DataFrame
+        self._changes_df: pl.DataFrame
         self._output_type: str
         self.method: str
         self.loss_var: str
@@ -176,6 +180,7 @@ class Regime:
         self.breakpoints: list[Any]
         self.n_regimes: int
         self.dropped: list[Any]
+        self.treatment: str
 
     @classmethod
     def _from_triangle(
@@ -190,10 +195,15 @@ class Regime:
         R: int = 999,
         min_size: int = 3,
         seed: int | None = None,
+        treatment: str = "latest_only",
     ) -> "Regime":
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
+            )
+        if treatment not in _VALID_TREATMENTS:
+            raise ValueError(
+                f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
             )
         if K < 2:
             raise ValueError(f"K must be >= 2, got {K}")
@@ -233,8 +243,20 @@ class Regime:
             }
         )
 
+        # `_changes_df` mirrors R's `Regime$changes` slot: one row per
+        # detected change point. For auto-detected regimes we only know
+        # the change cohort; pre/post statistics are left null.
+        changes_df = pl.DataFrame(
+            {
+                "change": breakpoints,
+                "regime_id": list(range(2, 2 + len(breakpoints))),
+            },
+            schema_overrides={"regime_id": pl.Int64},
+        )
+
         self = cls.__new__(cls)
         self._labels_df = labels_df
+        self._changes_df = changes_df
         self._output_type = triangle._output_type
         self.method = method
         self.loss_var = loss_var
@@ -245,7 +267,46 @@ class Regime:
         self.breakpoints = breakpoints
         self.n_regimes = int(regime_ids.max()) if n > 0 else 0
         self.dropped = dropped
+        self.treatment = treatment
         return self
+
+    @classmethod
+    def _manual(
+        cls,
+        *,
+        changes_df: pl.DataFrame,
+        treatment: str,
+        group_var: str | None,
+    ) -> "Regime":
+        """Construct a Regime by hand (no auto-detection).
+
+        Used by :func:`regime_at` to wrap user-supplied change points.
+        ``changes_df`` carries one row per change point with at least a
+        ``change`` (Date) column plus the group column if any.
+        """
+        self = cls.__new__(cls)
+        self._changes_df = changes_df
+        self._labels_df = pl.DataFrame(
+            {"cohort": [], "regime_id": []},
+            schema={"cohort": pl.Date, "regime_id": pl.Int64},
+        )
+        self._output_type = "polars"
+        self.method = "manual"
+        self.loss_var = ""
+        self.K = 0
+        self.cohort_var = ""
+        self.dev_var = ""
+        self.group_var = group_var
+        self.breakpoints = changes_df["change"].to_list()
+        self.n_regimes = 0
+        self.dropped = []
+        self.treatment = treatment
+        return self
+
+    @property
+    def changes(self):
+        """Detected (or manually specified) change points as a frame."""
+        return mirror_output(self._changes_df, self._output_type)
 
     @property
     def df(self):
@@ -270,3 +331,156 @@ class Regime:
         if self.dropped:
             bits.append(f"{len(self.dropped)} dropped")
         return f"<Regime: {', '.join(bits)}>"
+
+
+# ---------------------------------------------------------------------------
+# Helper factories (R parity: regime_at + regime_spec)
+# ---------------------------------------------------------------------------
+
+
+def _coerce_to_date(value: Any) -> date:
+    """Coerce str / datetime / date to ``datetime.date``."""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"could not parse {value!r} as ISO date (YYYY-MM-DD)"
+            ) from exc
+    raise TypeError(
+        f"expected date / datetime / 'YYYY-MM-DD' str, got {type(value).__name__}"
+    )
+
+
+def regime_at(
+    change: Any,
+    *,
+    groups: Mapping[str, Sequence[Any]] | None = None,
+    treatment: str = "latest_only",
+) -> "Regime":
+    """Build a :class:`Regime` from explicit, user-supplied change points.
+
+    Use this when you already know where the cohort regime shifts (e.g.
+    a policy revision date) and want a *fixed* regime tested across
+    backtest folds. Contrast with :func:`regime_spec`, which defers
+    detection to fit / backtest time so each fold uses change points
+    derived from its own masked training data.
+
+    Parameters
+    ----------
+    change
+        Cohort date(s) where a new regime starts. A single value (str
+        ``"YYYY-MM-DD"`` / ``date`` / ``datetime``) or a sequence of
+        such values.
+    groups
+        Optional mapping ``{column_name: [values]}`` of group columns
+        aligned 1:1 with ``change``. Required when the Triangle is
+        grouped and different groups carry different change points.
+    treatment
+        Regime application mode. ``"latest_only"`` (default) drops
+        cohorts before the most recent change. ``"segment_wise"``
+        (R parity, not yet wired into Python fit / backtest) estimates
+        factors separately per segment.
+
+    Returns
+    -------
+    Regime
+        A manually-constructed Regime suitable for the same 4-type
+        dispatch slots that accept auto-detected Regimes.
+
+    Examples
+    --------
+    >>> regime_at(change="2024-07-01")
+    >>> regime_at(
+    ...     change=["2024-07-01", "2024-10-01"],
+    ...     groups={"coverage": ["SUR", "CI"]},
+    ... )
+    """
+    if treatment not in _VALID_TREATMENTS:
+        raise ValueError(
+            f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
+        )
+
+    if isinstance(change, (str, date, datetime)) or not isinstance(
+        change, Sequence
+    ):
+        change_seq: list[Any] = [change]
+    else:
+        change_seq = list(change)
+    if not change_seq:
+        raise ValueError("`change` must have length >= 1")
+    parsed = [_coerce_to_date(v) for v in change_seq]
+    n = len(parsed)
+
+    groups = dict(groups) if groups else {}
+    for col, vals in groups.items():
+        if not isinstance(vals, Sequence) or isinstance(vals, str):
+            vals = [vals]
+            groups[col] = vals
+        if len(vals) != n:
+            raise ValueError(
+                f"All arguments must have equal length; "
+                f"`change`={n} but `groups[{col!r}]`={len(vals)}"
+            )
+
+    # `regime_id = 2` per row mirrors R's `regime_at()`: each change row
+    # marks "transition into the next regime". The id is not a segment
+    # counter — segment_wise consumers index off `change`, not the id.
+    columns: dict[str, Any] = dict(groups)
+    columns["change"] = parsed
+    columns["regime_id"] = [2] * n
+    changes_df = pl.DataFrame(
+        columns,
+        schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
+    )
+
+    group_var = next(iter(groups)) if groups else None
+    return Regime._manual(
+        changes_df=changes_df,
+        treatment=treatment,
+        group_var=group_var,
+    )
+
+
+def regime_spec(
+    loss_var: str = "lr",
+    K: int = 12,
+    method: str = "e_divisive",
+    *,
+    n_regimes: int | None = None,
+    sig_level: float = 0.05,
+    R: int = 999,
+    min_size: int = 3,
+    seed: int | None = None,
+    treatment: str = "latest_only",
+) -> Callable[["Triangle"], "Regime"]:
+    """Build a lazy regime-detection spec.
+
+    Captures :meth:`Triangle.detect_regime` arguments without running
+    detection. The returned closure is invoked by the consumer
+    (fit / backtest) on its own *internal* triangle -- crucially, inside
+    backtest this is the **masked** training triangle of each fold, so
+    change points never peek at held-out cells.
+
+    Contrast with :func:`regime_at`, which produces an eager Regime
+    fixed at construction time.
+    """
+    def _spec(tri: "Triangle") -> "Regime":
+        regime = tri.detect_regime(
+            loss_var=loss_var,
+            K=K,
+            method=method,
+            n_regimes=n_regimes,
+            sig_level=sig_level,
+            R=R,
+            min_size=min_size,
+            seed=seed,
+        )
+        regime.treatment = treatment
+        return regime
+
+    return _spec

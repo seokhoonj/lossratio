@@ -19,9 +19,9 @@ from .intensity import Intensity
 from .link import Link
 from .loss import Loss, LossFit
 from .lr import LR, LRFit
-from .maturity import Maturity
+from .maturity import Maturity, maturity_at, maturity_spec
 from .premium import Premium, PremiumFit
-from .regime import Regime
+from .regime import Regime, regime_at, regime_spec
 from .total import Total, as_total
 from .triangle import Triangle
 
@@ -54,6 +54,10 @@ __all__ = [
     "as_total",
     "derive_grain_columns",
     "detect_convergence",
+    "maturity_at",
+    "maturity_spec",
+    "regime_at",
+    "regime_spec",
     "load_experience",
     "make_experience",
     "validate_experience",

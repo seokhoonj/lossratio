@@ -8,6 +8,7 @@ shortcut — call ``triangle.link().ata().maturity(...)``.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +20,7 @@ from .cl import _fit_mack
 
 if TYPE_CHECKING:
     from .ata import ATA
+    from .triangle import Triangle
 
 
 @dataclass
@@ -245,6 +247,54 @@ class Maturity:
         self._kstar_df = kstar_df
         return self
 
+    @classmethod
+    def _manual(
+        cls,
+        *,
+        change: list[int],
+        groups: Mapping[str, Sequence[Any]] | None,
+    ) -> "Maturity":
+        """Construct a Maturity by hand (no auto-detection).
+
+        Used by :func:`maturity_at` to wrap a user-supplied ``mat_k``
+        (and optional per-group values). The per-link diagnostic frame
+        is intentionally empty -- there is no factor data behind a
+        manual specification.
+        """
+        self = cls.__new__(cls)
+        self._output_type = "polars"
+        self.max_cv = float("nan")
+        self.max_rse = float("nan")
+        self.min_run = 0
+        self._cohort_var = ""
+        self._dev_var = ""
+
+        n = len(change)
+        if groups:
+            group_var = next(iter(groups))
+            group_values = list(groups[group_var])
+            kstar_df = pl.DataFrame(
+                {
+                    group_var: group_values,
+                    "mat_k": change,
+                    "n_links": [0] * n,
+                    "n_stable_links": [0] * n,
+                }
+            )
+        else:
+            group_var = None
+            kstar_df = pl.DataFrame(
+                {
+                    "mat_k": change,
+                    "n_links": [0] * n,
+                    "n_stable_links": [0] * n,
+                }
+            )
+
+        self._group_var = group_var
+        self._df = pl.DataFrame()
+        self._kstar_df = kstar_df
+        return self
 
     @property
     def df(self):
@@ -286,3 +336,94 @@ class Maturity:
             return f"<Maturity: mat_k={self.mat_k} ({thresh})>"
         n_groups = self._kstar_df.height
         return f"<Maturity: {n_groups} groups ({thresh})>"
+
+
+# ---------------------------------------------------------------------------
+# Helper factories (R parity: maturity_at + maturity_spec)
+# ---------------------------------------------------------------------------
+
+
+def maturity_at(
+    change: int | Sequence[int],
+    *,
+    groups: Mapping[str, Sequence[Any]] | None = None,
+) -> "Maturity":
+    """Build a :class:`Maturity` from an explicit, user-supplied ``mat_k``.
+
+    Use when you want to override auto-detection with a fixed maturity
+    dev across backtest folds. Contrast with :func:`maturity_spec`,
+    which defers detection so each fold uses its own masked training
+    triangle.
+
+    Parameters
+    ----------
+    change
+        Maturity dev (the ``ata_to`` index). A single integer or, when
+        the Triangle is grouped and groups carry different maturities,
+        a sequence aligned 1:1 with ``groups``.
+    groups
+        Optional mapping ``{column_name: [values]}`` of group columns
+        aligned 1:1 with ``change``.
+
+    Examples
+    --------
+    >>> maturity_at(change=6)
+    >>> maturity_at(
+    ...     change=[6, 8],
+    ...     groups={"coverage": ["SUR", "CI"]},
+    ... )
+    """
+    if isinstance(change, (int, np.integer)):
+        change_seq: list[int] = [int(change)]
+    elif isinstance(change, Sequence) and not isinstance(change, str):
+        change_seq = [int(v) for v in change]
+    else:
+        raise TypeError(
+            f"`change` must be int or Sequence[int], got {type(change).__name__}"
+        )
+    if not change_seq:
+        raise ValueError("`change` must have length >= 1")
+    n = len(change_seq)
+
+    groups = dict(groups) if groups else {}
+    for col, vals in groups.items():
+        if not isinstance(vals, Sequence) or isinstance(vals, str):
+            vals = [vals]
+            groups[col] = vals
+        if len(vals) != n:
+            raise ValueError(
+                f"All arguments must have equal length; "
+                f"`change`={n} but `groups[{col!r}]`={len(vals)}"
+            )
+
+    return Maturity._manual(change=change_seq, groups=groups or None)
+
+
+def maturity_spec(
+    target: str = "loss",
+    exposure: str | None = "premium",
+    weight: str | None = None,
+    *,
+    max_cv: float = 0.15,
+    max_rse: float = 0.05,
+    min_run: int = 2,
+) -> Callable[["Triangle"], "Maturity"]:
+    """Build a lazy maturity-detection spec.
+
+    Captures the ``triangle.link(...).ata().maturity(...)`` chain
+    arguments without running detection. The returned closure is
+    invoked by the consumer (fit / backtest) on its own *internal*
+    triangle -- inside backtest this is the **masked** training
+    triangle, so the detected ``mat_k`` never peeks at held-out cells.
+
+    Contrast with :func:`maturity_at`, which produces an eager
+    Maturity fixed at construction time.
+    """
+    def _spec(tri: "Triangle") -> "Maturity":
+        return (
+            tri.link(target=target, exposure=exposure, weight=weight)
+            .ata()
+            .maturity(max_cv=max_cv, max_rse=max_rse, min_run=min_run)
+        )
+
+    return _spec
