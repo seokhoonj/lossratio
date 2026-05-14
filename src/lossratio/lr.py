@@ -19,7 +19,7 @@ from scipy.stats import norm
 from ._io import mirror_output
 from ._sigma import VALID_SIGMA_METHODS
 from .loss import Loss, LossFit
-from .premium import PremiumFit
+from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -40,15 +40,22 @@ class LR:
         ``"cl"``. See :class:`Loss`.
     loss_alpha
         Variance-structure exponent for the loss fit. Default ``1``.
-    loss_regime_break
-        Loss-side regime break (not yet implemented in Python).
+    loss_regime
+        Loss-side regime filter. Four-type dispatch: ``None`` (no
+        filter), :class:`Regime` (eager), ``"auto"`` (auto-detect on
+        the fit triangle), or a callable ``f(tri) -> Regime`` (lazy
+        spec — re-detected per backtest fold). Cohorts strictly
+        before the latest change date are dropped from the loss fit.
     premium_method
         One of ``"cl"`` (default) or ``"ed"``. Forwarded to
         :class:`Premium`.
     premium_alpha
         Variance-structure exponent for the premium fit. Default ``1``.
-    premium_regime_break
-        Premium-side regime break (not yet implemented in Python).
+    premium_regime
+        Premium-side regime filter. Same four-type dispatch as
+        ``loss_regime``. Defaults to ``None`` (no filter); pass an
+        independent value when the underwriting / premium regime
+        differs from the loss regime.
     sigma_method
         ``"locf"`` (default), ``"min_last2"``, or ``"loglinear"``.
     se_method
@@ -72,10 +79,10 @@ class LR:
         self,
         method: str = "sa",
         loss_alpha: float = 1.0,
-        loss_regime_break: Any = None,
+        loss_regime: Any = None,
         premium_method: str = "cl",
         premium_alpha: float = 1.0,
-        premium_regime_break: Any = None,
+        premium_regime: Any = None,
         sigma_method: str = "locf",
         max_cv: float = 0.15,
         max_rse: float = 0.05,
@@ -121,10 +128,6 @@ class LR:
                 f"premium_alpha={premium_alpha} not yet implemented; "
                 f"only alpha=1 is supported"
             )
-        if loss_regime_break is not None or premium_regime_break is not None:
-            raise NotImplementedError(
-                "regime_break not yet implemented in LR (Python)"
-            )
         if not (-1 < rho < 1):
             raise ValueError(f"rho must be in (-1, 1), got {rho!r}")
         if not (0.0 < conf_level < 1.0):
@@ -138,10 +141,10 @@ class LR:
 
         self.method = method
         self.loss_alpha = loss_alpha
-        self.loss_regime_break = loss_regime_break
+        self.loss_regime = loss_regime
         self.premium_method = premium_method
         self.premium_alpha = premium_alpha
-        self.premium_regime_break = premium_regime_break
+        self.premium_regime = premium_regime
         self.sigma_method = sigma_method
         self.max_cv = max_cv
         self.max_rse = max_rse
@@ -214,20 +217,32 @@ class LRFit:
         self.rho = estimator.rho
         self.conf_level = estimator.conf_level
 
-        # 1) delegate loss-side projection to Loss --------------------------
+        # 1) build premium fit first so the loss side can see it, allowing
+        # premium_regime to apply independently of loss_regime.
+        prem_fit = Premium(
+            method=estimator.premium_method,
+            alpha=estimator.premium_alpha,
+            sigma_method=estimator.sigma_method,
+            conf_level=estimator.conf_level,
+            regime=estimator.premium_regime,
+        ).fit(triangle)
+        self.premium_fit = prem_fit
+
+        # 2) delegate loss-side projection to Loss --------------------------
         loss_fit = Loss(
             method=estimator.method,
             alpha=estimator.loss_alpha,
             sigma_method=estimator.sigma_method,
+            premium_fit=prem_fit,
             premium_method=estimator.premium_method,
             premium_alpha=estimator.premium_alpha,
             max_cv=estimator.max_cv,
             max_rse=estimator.max_rse,
             min_run=estimator.min_run,
             conf_level=estimator.conf_level,
+            regime=estimator.loss_regime,
         ).fit(triangle)
         self.loss_fit = loss_fit
-        self.premium_fit = loss_fit.premium_fit
 
         full = loss_fit._df.clone()
 

@@ -53,8 +53,14 @@ def _build_feature_matrix(
 
     df = tri_df.filter(pl.col("dev") <= K)
 
-    # Count observations per cohort
-    counts = df.group_by("cohort").agg(pl.len().alias("n")).sort("cohort")
+    # Count *non-null target* observations per cohort. Counting raw rows
+    # would include cells masked by a backtest hold-out (cells exist with
+    # NaN), giving false eligibility that fails the no-NaN check later.
+    counts = (
+        df.group_by("cohort")
+        .agg(pl.col(target).is_not_null().sum().alias("n"))
+        .sort("cohort")
+    )
     eligible = counts.filter(pl.col("n") >= K)["cohort"].to_list()
     all_cohorts = counts["cohort"].to_list()
     dropped = [c for c in all_cohorts if c not in set(eligible)]
@@ -484,3 +490,119 @@ def regime_spec(
         return regime
 
     return _spec
+
+
+# ---------------------------------------------------------------------------
+# 4-type dispatch resolver (used by fit / backtest)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_regime(
+    regime_input: Any,
+    triangle: "Triangle",
+) -> "Regime | None":
+    """Normalise a regime argument to ``Regime | None``.
+
+    Accepts the four shapes the public API offers:
+
+    - ``None``: no regime filter (returned as-is).
+    - ``"auto"``: run :meth:`Triangle.detect_regime` on ``triangle``.
+    - :class:`Regime`: returned as-is (already eagerly built).
+    - callable ``f(triangle) -> Regime``: invoked on ``triangle``.
+
+    Used by ``LR`` / ``Loss`` / ``Premium`` / ``Backtest`` to flatten
+    user-supplied regime args before the cohort filter runs. When the
+    triangle is a masked backtest fold, the callable / "auto" paths
+    re-detect on the masked data -- the leakage-safe contract.
+    """
+    if regime_input is None:
+        return None
+    if isinstance(regime_input, Regime):
+        return regime_input
+    if isinstance(regime_input, str):
+        if regime_input == "auto":
+            return triangle.detect_regime()
+        raise ValueError(
+            f"regime string sentinel must be 'auto'; got {regime_input!r}"
+        )
+    if callable(regime_input):
+        result = regime_input(triangle)
+        if not isinstance(result, Regime):
+            raise TypeError(
+                f"regime spec callable must return Regime, got "
+                f"{type(result).__name__}"
+            )
+        return result
+    raise TypeError(
+        f"regime must be None / 'auto' / Regime / Callable, got "
+        f"{type(regime_input).__name__}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cohort filter (Phase B — `latest_only` mode only; segment_wise later)
+# ---------------------------------------------------------------------------
+
+
+def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
+    """Per-group ``(group_value, cutoff)`` table.
+
+    For ``latest_only`` treatment the cutoff is the **latest** change
+    point per group -- cohorts strictly before it are dropped. Returns
+    ``None`` when the regime has no change points to apply.
+    """
+    if not regime.breakpoints:
+        return None
+
+    changes = regime._changes_df
+    if regime.groups is None or regime.groups not in changes.columns:
+        cutoff = max(regime.breakpoints)
+        return pl.DataFrame({"__cutoff": [cutoff]}, schema={"__cutoff": pl.Date})
+
+    return (
+        changes.group_by(regime.groups)
+        .agg(pl.col("change").max().alias("__cutoff"))
+    )
+
+
+def _apply_regime_filter(
+    triangle: "Triangle",
+    regime: "Regime | None",
+) -> "Triangle":
+    """Drop cohorts before the regime's cutoff (``latest_only`` mode).
+
+    Returns a fresh ``Triangle`` over the surviving cells. When
+    ``regime`` is ``None`` or has no change points, returns the input
+    triangle unchanged.
+
+    ``segment_wise`` treatment is recognised as a slot on the Regime
+    but its per-segment factor mechanics are not yet wired -- callers
+    that pass ``treatment="segment_wise"`` will currently see the same
+    ``latest_only`` behaviour (followed by a per-segment phase in a
+    later sweep).
+    """
+    if regime is None or not regime.breakpoints:
+        return triangle
+
+    from .triangle import Triangle
+
+    df = triangle.to_polars()
+    cutoff_map = _regime_cutoff_map(regime)
+    if cutoff_map is None:
+        return triangle
+
+    if "__cutoff" in df.columns:  # defensive: should never collide
+        df = df.drop("__cutoff")
+
+    if regime.groups is not None and regime.groups in df.columns:
+        df = df.join(cutoff_map, on=regime.groups, how="left")
+    else:
+        df = df.with_columns(
+            pl.lit(cutoff_map["__cutoff"][0]).alias("__cutoff")
+        )
+
+    df = df.filter(
+        pl.col("__cutoff").is_null() | (pl.col("cohort") >= pl.col("__cutoff"))
+    ).drop("__cutoff")
+
+    return Triangle._from_masked(triangle, df)

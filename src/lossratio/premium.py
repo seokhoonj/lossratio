@@ -250,7 +250,7 @@ class Premium:
         method: str = "ed",
         alpha: float = 1.0,
         sigma_method: str = "locf",
-        regime_break: Any = None,
+        regime: Any = None,
         tail: bool = False,
         conf_level: float = 0.95,
     ) -> None:
@@ -275,14 +275,10 @@ class Premium:
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
-        if regime_break is not None:
-            raise NotImplementedError(
-                "regime_break not yet implemented in Premium (Python)"
-            )
         self.method = method
         self.alpha = alpha
         self.sigma_method = sigma_method
-        self.regime_break = regime_break
+        self.regime = regime
         self.tail = tail
         self.conf_level = conf_level
 
@@ -323,6 +319,12 @@ class PremiumFit:
         triangle: "Triangle",
         estimator: "Premium",
     ) -> "PremiumFit":
+        # Resolve + apply premium-side regime filter (cohort-axis cut).
+        from .regime import _apply_regime_filter, _resolve_regime
+
+        regime = _resolve_regime(estimator.regime, triangle)
+        triangle = _apply_regime_filter(triangle, regime)
+
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._groups = triangle._groups
@@ -332,6 +334,7 @@ class PremiumFit:
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
+        self.regime = regime
 
         tri_df = triangle._df
         groups = triangle._groups

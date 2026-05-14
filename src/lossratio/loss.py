@@ -338,6 +338,7 @@ class Loss:
         max_rse: float = 0.05,
         min_run: int = 2,
         conf_level: float = 0.95,
+        regime: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -380,6 +381,7 @@ class Loss:
         self.max_rse = max_rse
         self.min_run = min_run
         self.conf_level = conf_level
+        self.regime = regime
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the loss projection on a Triangle."""
@@ -423,6 +425,20 @@ class LossFit:
         triangle: "Triangle",
         estimator: "Loss",
     ) -> "LossFit":
+        # Resolve + apply loss-side regime filter. `latest_only` mode
+        # drops cohorts strictly before the latest change date. The
+        # resolver also handles the "auto" sentinel and lazy spec
+        # callables (re-detected on the masked fold inside backtest).
+        # Internal Premium (when not user-supplied) uses the original
+        # unfiltered triangle — premium has no loss-side regime semantic;
+        # users wanting a premium-side filter compose via LR or pass
+        # premium_fit explicitly.
+        from .regime import _apply_regime_filter, _resolve_regime
+
+        original_tri = triangle
+        regime = _resolve_regime(estimator.regime, triangle)
+        triangle = _apply_regime_filter(triangle, regime)
+
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._groups = triangle._groups
@@ -432,6 +448,7 @@ class LossFit:
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
+        self.regime = regime
 
         # 1) resolve PremiumFit ------------------------------------------------
         if estimator.premium_fit is not None:
@@ -442,7 +459,7 @@ class LossFit:
                 alpha=estimator.premium_alpha,
                 sigma_method=estimator.sigma_method,
                 conf_level=estimator.conf_level,
-            ).fit(triangle)
+            ).fit(original_tri)
         self.premium_fit = pf
         pf_df = pf._df
 
