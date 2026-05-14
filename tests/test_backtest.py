@@ -78,7 +78,7 @@ def test_backtest_ae_err_columns():
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.ae_err.columns) >= {
-        "cohort", "dev", "calendar_idx", "actual", "expected", "ae_err",
+        "cohort", "dev", "cal_idx", "actual", "expected", "ae_err",
     }
 
 
@@ -178,7 +178,7 @@ def test_backtest_diag_summary_columns():
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.diag_summary.columns) >= {
-        "calendar_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
+        "cal_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 

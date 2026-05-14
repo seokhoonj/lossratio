@@ -18,10 +18,12 @@ def as_calendar(x: "Triangle") -> "Calendar":
 
     Each row of the result is one ``(group, calendar)`` cell: the sum
     of all triangle cells lying on the same calendar diagonal. The
-    ``t`` column carries a sequential 1-based index per group --
-    time-series convention; intentionally **not** a true development
-    period (``cym - uym``). The Triangle's ``dev`` axis is the place
-    for that.
+    ``cal_idx`` column carries a sequential 1-based index per group
+    (rank of the calendar date within its group). Same column name
+    as :class:`Backtest`'s ``cal_idx`` so the two outputs can join
+    naturally. Intentionally **not** ``dev`` -- in a Calendar the
+    integer is just the date rank, not a true development period
+    (``cym - uym``). The Triangle's ``dev`` axis is the place for that.
 
     Parameters
     ----------
@@ -83,17 +85,18 @@ class Calendar:
             .sort(agg_keys)
         )
 
-        # Sequential calendar-period index per group. Named `t`
-        # (time-series convention) rather than `dev` -- the integer is
-        # the rank of the date within its group, not a true
+        # Sequential calendar-period index per group. Named `cal_idx`
+        # to match the Backtest output's same-named column (rank of the
+        # calendar date within its group). Intentionally NOT `dev` --
+        # in a Calendar this integer is just the date rank, not a true
         # development period.
         if grp is not None:
             ds = ds.with_columns(
-                pl.int_range(1, pl.len() + 1).over(grp).alias("t")
+                pl.int_range(1, pl.len() + 1).over(grp).alias("cal_idx")
             )
         else:
             ds = ds.with_columns(
-                pl.int_range(1, pl.len() + 1).alias("t")
+                pl.int_range(1, pl.len() + 1).alias("cal_idx")
             )
 
         # Cumulative loss / prem per group.
@@ -138,7 +141,7 @@ class Calendar:
         if grp is not None:
             ordered.append(grp)
         ordered.extend([
-            "calendar", "t", "n_cohorts",
+            "calendar", "cal_idx", "n_cohorts",
             "loss", "incr_loss",
             "prem", "incr_prem",
             "lr", "incr_lr",

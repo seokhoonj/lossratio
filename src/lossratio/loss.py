@@ -56,10 +56,10 @@ class _LossResult:
     prem_proj: np.ndarray
     mat_k: int | None
     # internal parameters retained for LR bootstrap reuse
-    g_selected: np.ndarray
+    g_sel: np.ndarray
     g_sigma2: np.ndarray
     g_var: np.ndarray
-    f_selected: np.ndarray
+    f_sel: np.ndarray
     f_sigma2: np.ndarray
     f_var: np.ndarray
     last_obs: np.ndarray
@@ -320,10 +320,10 @@ def _fit_loss_single(
         prem_obs=prem_obs,
         prem_proj=prem_proj_from_fit,
         mat_k=mat_k,
-        g_selected=g_k,
+        g_sel=g_k,
         g_sigma2=sigma2_g_k,
         g_var=var_g_k,
-        f_selected=f_k,
+        f_sel=f_k,
         f_sigma2=sigma2_f_k,
         f_var=var_f_k,
         last_obs=last_obs_idx,

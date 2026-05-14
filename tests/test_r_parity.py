@@ -296,12 +296,12 @@ def test_backtest_col_summary_matches_r():
 
 def test_backtest_diag_summary_matches_r():
     """diag_summary aggregates by calendar diagonal."""
-    r = _load("backtest_lr_diag_summary").sort(["calendar_idx"])
+    r = _load("backtest_lr_diag_summary").sort(["cal_idx"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
-    py = bt.diag_summary.sort(["calendar_idx"])
+    py = bt.diag_summary.sort(["cal_idx"])
 
-    keys = ["calendar_idx"]
+    keys = ["cal_idx"]
     py_common = py.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_common = r.join(py.select(keys), on=keys, how="inner").sort(keys)
 

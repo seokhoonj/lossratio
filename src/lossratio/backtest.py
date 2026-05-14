@@ -17,14 +17,14 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _add_calendar_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
+def _add_cal_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
     """Add a 1-based calendar index per cell (R parity).
 
     Calendar index counts the antidiagonal:
     ``cohort_idx + dev - 1`` with ``cohort_idx`` the 1-based dense
     rank of cohort within its group (R's ``frank(..., ties.method =
     "dense")`` convention). So the oldest cohort at dev = 1 lands on
-    calendar_idx = 1, and the maximum calendar_idx equals the number
+    cal_idx = 1, and the maximum cal_idx equals the number
     of cohorts (or, for square-ish triangles, the number of devs).
     """
     sort_keys: list[str] = []
@@ -44,7 +44,7 @@ def _add_calendar_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
     return tri_df.with_columns(
         cohort_idx_expr.alias("__cohort_idx"),
     ).with_columns(
-        (pl.col("__cohort_idx") + pl.col("dev") - 1).alias("calendar_idx"),
+        (pl.col("__cohort_idx") + pl.col("dev") - 1).alias("cal_idx"),
     )
 
 
@@ -63,20 +63,20 @@ def _build_masked_df(
     * ``mask_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
     """
-    df = _add_calendar_idx(tri_df, groups)
+    df = _add_cal_idx(tri_df, groups)
 
     # Determine the calendar-diagonal cutoff per group
     if groups is not None:
         max_per_group = df.group_by(groups).agg(
-            pl.col("calendar_idx").max().alias("__max_cal")
+            pl.col("cal_idx").max().alias("__max_cal")
         )
         df = df.join(max_per_group, on=groups, how="left")
     else:
-        max_cal = int(df["calendar_idx"].max())
+        max_cal = int(df["cal_idx"].max())
         df = df.with_columns(pl.lit(max_cal).alias("__max_cal"))
 
     df = df.with_columns(
-        (pl.col("calendar_idx") > pl.col("__max_cal") - holdout).alias("masked")
+        (pl.col("cal_idx") > pl.col("__max_cal") - holdout).alias("masked")
     )
 
     masked_df = df.with_columns(
@@ -85,9 +85,9 @@ def _build_masked_df(
             for c in ("loss", "incr_loss", "prem", "incr_prem", "lr", "incr_lr")
             if c in df.columns
         ]
-    ).drop("__cohort_idx", "__max_cal", "calendar_idx", "masked")
+    ).drop("__cohort_idx", "__max_cal", "cal_idx", "masked")
 
-    annotated_df = df.drop("__cohort_idx", "__max_cal")  # keeps calendar_idx + masked
+    annotated_df = df.drop("__cohort_idx", "__max_cal")  # keeps cal_idx + masked
     return masked_df, annotated_df
 
 
@@ -216,7 +216,7 @@ class BacktestFit:
     ----------
     ae_err : DataFrame
         Per-cell hold-out comparison
-        ``[groups?, cohort, dev, calendar_idx, actual, expected, ae_err]``.
+        ``[groups?, cohort, dev, cal_idx, actual, expected, ae_err]``.
         ``ae_err = actual / expected - 1`` (signed relative error;
         positive = under-projection, negative = over-projection).
     col_summary : DataFrame
@@ -225,7 +225,7 @@ class BacktestFit:
         ``ae_err_wt = sum(actual - expected) / sum(expected)`` is the
         exposure-weighted pooled A/E - 1.
     diag_summary : DataFrame
-        Aggregated by calendar_idx with the same statistics as
+        Aggregated by cal_idx with the same statistics as
         ``col_summary``.
     fit :
         The refitted estimator's result (e.g. CLFit / EDFit / LRFit).
@@ -277,7 +277,7 @@ class BacktestFit:
         # corresponds to the chosen scoring lane.
         actual_col = bt.metric  # "lr" / "loss" / "prem"
         held_out = annotated_df.filter(pl.col("masked")).select(
-            keys + ["calendar_idx", actual_col]
+            keys + ["cal_idx", actual_col]
         ).rename({actual_col: "actual"})
 
         refit_exp = refit_df.select(keys + [exp_col]).rename({exp_col: "expected"})
@@ -301,7 +301,7 @@ class BacktestFit:
                 .alias("ae_err"),
             )
         )
-        self._ae_err = ae_err.sort(keys + ["calendar_idx"])
+        self._ae_err = ae_err.sort(keys + ["cal_idx"])
 
         # 5. Summaries — mean / median / weighted A/E - 1 per dev or
         #    per calendar diagonal.
@@ -329,7 +329,7 @@ class BacktestFit:
         diag_keys: list[str] = []
         if triangle._groups is not None:
             diag_keys.append(triangle._groups)
-        diag_keys.append("calendar_idx")
+        diag_keys.append("cal_idx")
 
         self._diag_summary = (
             ae_err.group_by(diag_keys)
