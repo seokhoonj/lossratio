@@ -85,23 +85,23 @@ def test_regime_spec_returns_callable():
 
 def test_regime_spec_invocation_yields_regime():
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=12)
+    spec = lr.regime_spec(window=12)
     r = spec(tri)
     assert isinstance(r, lr.Regime)
     assert r.method == "e_divisive"
-    assert r.K == 12
+    assert r.window == 12
 
 
 def test_regime_spec_propagates_treatment():
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=12, treatment="segment_wise")
+    spec = lr.regime_spec(window=12, treatment="segment_wise")
     r = spec(tri)
     assert r.treatment == "segment_wise"
 
 
 def test_regime_spec_forwards_method():
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=12, method="hclust", n_regimes=2)
+    spec = lr.regime_spec(window=12, method="hclust", n_regimes=2)
     r = spec(tri)
     assert r.method == "hclust"
 

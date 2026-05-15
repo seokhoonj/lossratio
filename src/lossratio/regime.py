@@ -159,8 +159,9 @@ class Regime:
         ``"e_divisive"`` or ``"hclust"``.
     target : str
         Trajectory variable name used.
-    K : int
-        Development-period window.
+    window : int
+        Development-period window length (number of dev cells per cohort
+        used as the feature vector). Mirrors R's ``window`` arg.
     cohort : str
         Original cohort variable name (e.g. ``"uy_m"``).
     breakpoints : list
@@ -169,7 +170,7 @@ class Regime:
     n_regimes : int
         Number of regimes detected.
     dropped : list
-        Cohorts excluded because they had fewer than ``K`` observed
+        Cohorts excluded because they had fewer than ``window`` observed
         development periods.
     """
 
@@ -179,7 +180,7 @@ class Regime:
         self._output_type: str
         self.method: str
         self.target: str
-        self.K: int
+        self.window: int
         self.cohort: str
         self.dev: str
         self.groups: str | None
@@ -194,7 +195,7 @@ class Regime:
         triangle: "Triangle",
         *,
         target: str = "lr",
-        K: int = 12,
+        window: int = 12,
         method: str = "e_divisive",
         n_regimes: int | None = None,
         sig_level: float = 0.05,
@@ -211,8 +212,8 @@ class Regime:
             raise ValueError(
                 f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
             )
-        if K < 2:
-            raise ValueError(f"K must be >= 2, got {K}")
+        if window < 2:
+            raise ValueError(f"window must be >= 2, got {window}")
 
         tri_df = triangle.to_polars()
 
@@ -225,8 +226,9 @@ class Regime:
                     f"group before calling detect_regime()."
                 )
 
-        # Build feature matrix
-        mat, cohorts, dropped = _build_feature_matrix(tri_df, target, K)
+        # Build feature matrix (internal helper still takes the window
+        # value as `K` for math-style brevity inside the loop).
+        mat, cohorts, dropped = _build_feature_matrix(tri_df, target, window)
         n = len(cohorts)
 
         # Dispatch to method
@@ -266,7 +268,7 @@ class Regime:
         self._output_type = triangle._output_type
         self.method = method
         self.target = target
-        self.K = K
+        self.window = window
         self.cohort = triangle.cohort
         self.dev = triangle.dev
         self.groups = triangle.groups
@@ -299,7 +301,7 @@ class Regime:
         self._output_type = "polars"
         self.method = "manual"
         self.target = ""
-        self.K = 0
+        self.window = 0
         self.cohort = ""
         self.dev = ""
         self.groups = groups
@@ -330,7 +332,7 @@ class Regime:
         bits = [
             f"method={self.method}",
             f"target={self.target!r}",
-            f"K={self.K}",
+            f"window={self.window}",
             f"{n_cohorts} cohorts",
             f"{self.n_regimes} regimes",
         ]
@@ -454,7 +456,7 @@ def regime_at(
 
 def regime_spec(
     target: str = "lr",
-    K: int = 12,
+    window: int = 12,
     method: str = "e_divisive",
     *,
     n_regimes: int | None = None,
@@ -478,7 +480,7 @@ def regime_spec(
     def _spec(tri: "Triangle") -> "Regime":
         regime = tri.detect_regime(
             target=target,
-            K=K,
+            window=window,
             method=method,
             n_regimes=n_regimes,
             sig_level=sig_level,

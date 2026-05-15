@@ -333,7 +333,7 @@ class Triangle:
     def detect_regime(
         self,
         target: str = "lr",
-        K: int = 12,
+        window: int = 12,
         method: str = "e_divisive",
         n_regimes: int | None = None,
         sig_level: float = 0.05,
@@ -350,7 +350,7 @@ class Triangle:
         return Regime._from_triangle(
             self,
             target=target,
-            K=K,
+            window=window,
             method=method,
             n_regimes=n_regimes,
             sig_level=sig_level,

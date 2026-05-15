@@ -82,18 +82,18 @@ def test_edivisive_seed_reproducible():
 # ---------------------------------------------------------------------------
 
 
-def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
+def _toy_triangle(n_cohorts: int = 30, window: int = 12, shift_at: int = 15):
     """Build a Triangle with a synthetic regime shift.
 
-    Each cohort has the full K dev periods. The lr trajectory shape is
+    Each cohort has the full window dev periods. The lr trajectory shape is
     a piecewise-constant random vector around two distinct means.
     """
     rng = np.random.default_rng(20260509)
     rows = []
     for c_idx in range(n_cohorts):
         cohort_date = f"2024-{(c_idx % 12) + 1:02d}-01"
-        # Use yearly shifting cohort by month index — but keep K dev rows each
-        for k in range(1, K + 1):
+        # Use yearly shifting cohort by month index — but keep window dev rows each
+        for k in range(1, window + 1):
             # Underlying signal: pre-shift LR ~ 0.5; post-shift LR ~ 1.0
             base = 0.5 if c_idx < shift_at else 1.0
             lr_val = base + rng.normal(0, 0.05)
@@ -117,7 +117,7 @@ def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
     )
     rows2 = []
     for c_idx in range(n_cohorts):
-        for k in range(1, K + 1):
+        for k in range(1, window + 1):
             base = 0.5 if c_idx < shift_at else 1.0
             lr_val = base + rng.normal(0, 0.05)
             rows2.append(
@@ -136,7 +136,7 @@ def _toy_triangle(n_cohorts: int = 30, K: int = 12, shift_at: int = 15):
     return rows2  # placeholder, see _toy_input
 
 
-def _toy_input(n_cohorts: int = 30, K: int = 12, shift_at: int = 15) -> pl.DataFrame:
+def _toy_input(n_cohorts: int = 30, window: int = 12, shift_at: int = 15) -> pl.DataFrame:
     """Build a long-format Experience input with a synthetic regime shift."""
     rng = np.random.default_rng(20260509)
 
@@ -148,7 +148,7 @@ def _toy_input(n_cohorts: int = 30, K: int = 12, shift_at: int = 15) -> pl.DataF
     rows = []
     for c_idx in range(n_cohorts):
         u = cohort_dates[c_idx]
-        for k in range(1, K + 1):
+        for k in range(1, window + 1):
             # Calendar month = uym month + k - 1; just reuse uym for cym
             # since we only need cohort uniqueness, not calendar realism
             # for the regime test.
@@ -167,7 +167,7 @@ def _toy_input(n_cohorts: int = 30, K: int = 12, shift_at: int = 15) -> pl.DataF
 
 
 def test_detect_regime_e_divisive_finds_shift():
-    df = _toy_input(n_cohorts=30, K=12, shift_at=15)
+    df = _toy_input(n_cohorts=30, window=12, shift_at=15)
     # Triangle constructor builds dev from cym/uym — but our toy input
     # sets cym = uym, so dev = 1 only. We need cym to advance. Build
     # cym by adding (k-1) months to uym.
@@ -184,18 +184,18 @@ def test_detect_regime_e_divisive_finds_shift():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        target="lr", K=12, method="e_divisive", min_size=3, R=199, seed=20260509
+        target="lr", window=12, method="e_divisive", min_size=3, R=199, seed=20260509
     )
     assert isinstance(reg, lr.Regime)
     assert reg.method == "e_divisive"
-    assert reg.K == 12
+    assert reg.window == 12
     assert reg.n_regimes >= 2  # at least one break
     # Break should be near cohort 15 (within tolerance)
     assert len(reg.breakpoints) >= 1
 
 
 def test_detect_regime_hclust():
-    df = _toy_input(n_cohorts=30, K=12, shift_at=15)
+    df = _toy_input(n_cohorts=30, window=12, shift_at=15)
     df = df.with_columns(
         pl.col("uy_m").cast(pl.Date),
         pl.col("cy_m").cast(pl.Date),
@@ -208,14 +208,14 @@ def test_detect_regime_hclust():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        target="lr", K=12, method="hclust", n_regimes=2
+        target="lr", window=12, method="hclust", n_regimes=2
     )
     assert reg.method == "hclust"
     assert reg.n_regimes == 2
 
 
 def test_detect_regime_invalid_method_raises():
-    df = _toy_input(n_cohorts=30, K=12, shift_at=15)
+    df = _toy_input(n_cohorts=30, window=12, shift_at=15)
     df = df.with_columns(
         pl.col("uy_m").cast(pl.Date),
         pl.col("cy_m").cast(pl.Date),
@@ -232,7 +232,7 @@ def test_detect_regime_invalid_method_raises():
 
 
 def test_detect_regime_low_K_raises():
-    df = _toy_input(n_cohorts=30, K=12, shift_at=15)
+    df = _toy_input(n_cohorts=30, window=12, shift_at=15)
     df = df.with_columns(
         pl.col("uy_m").cast(pl.Date),
         pl.col("cy_m").cast(pl.Date),
@@ -244,5 +244,5 @@ def test_detect_regime_low_K_raises():
     ).drop("_dev_target")
 
     tri = lr.Triangle(df)
-    with pytest.raises(ValueError, match="K must be"):
-        tri.detect_regime(K=1)
+    with pytest.raises(ValueError, match="window must be"):
+        tri.detect_regime(window=1)

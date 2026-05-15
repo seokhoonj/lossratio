@@ -33,6 +33,6 @@ def test_load_experience_grouped_pipeline_runs():
 def test_load_experience_sur_has_regime_break():
     df = lr.load_experience().filter(pl.col("coverage") == "SUR")
     tri = lr.Triangle(df)
-    reg = tri.detect_regime(target="lr", K=12)
+    reg = tri.detect_regime(target="lr", window=12)
     assert len(reg.breakpoints) == 1
     assert reg.breakpoints[0].isoformat() == "2024-07-01"

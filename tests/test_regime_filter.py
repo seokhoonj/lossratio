@@ -45,7 +45,7 @@ def test_resolve_regime_auto_sentinel():
 
 def test_resolve_regime_callable_spec():
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=12)
+    spec = lr.regime_spec(window=12)
     r = _resolve_regime(spec, tri)
     assert isinstance(r, lr.Regime)
     assert r.method == "e_divisive"
@@ -144,7 +144,7 @@ def test_lr_loss_regime_auto_sentinel():
 
 def test_lr_loss_regime_lazy_spec():
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=12)
+    spec = lr.regime_spec(window=12)
     fit = lr.LR(method="sa", loss_regime=spec).fit(tri)
     assert fit.loss_fit.regime is not None
     assert fit.loss_fit.regime.method == "e_divisive"
@@ -181,7 +181,7 @@ def test_backtest_with_lazy_regime_spec_redetects_on_masked():
     """Lazy spec → callable resolved against masked triangle, so the
     detected regime sees only the training fold's cells."""
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=8)
+    spec = lr.regime_spec(window=8)
     bt = lr.Backtest(
         estimator=lr.LR(method="sa", loss_regime=spec), holdout=3
     ).fit(tri)
@@ -279,10 +279,10 @@ def test_segment_wise_with_auto_detection():
     """`loss_regime='auto'` triggers detect_regime; user can opt into
     segment_wise via regime_spec or by setting treatment after detection."""
     tri = _sur_triangle()
-    spec = lr.regime_spec(K=12, treatment="segment_wise")
+    spec = lr.regime_spec(window=12, treatment="segment_wise")
     fit = lr.LR(method="cl", loss_regime=spec).fit(tri)
     df = fit.to_polars()
-    # Auto detect on SUR with K=12 should find at least one break
+    # Auto detect on SUR with window=12 should find at least one break
     # (regime drop is in the data), making segment_wise meaningful.
     if fit.loss_fit.regime and fit.loss_fit.regime.breakpoints:
         assert "segment_id" in df.columns

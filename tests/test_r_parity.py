@@ -212,7 +212,7 @@ def test_regime_breakpoints_match_r():
     """detect_regime breakpoints (Date list)."""
     r = _load("regime_breakpoints")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = tri.detect_regime(K=12, method="e_divisive").breakpoints
+    py = tri.detect_regime(window=12, method="e_divisive").breakpoints
 
     r_dates = r["breakpoint"].to_list()
     assert len(py) == len(r_dates), (
