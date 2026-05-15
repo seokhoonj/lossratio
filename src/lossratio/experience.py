@@ -9,7 +9,7 @@ This module exposes one module-level function:
   coercible to the expected types; return the same DataFrame type as
   input (pandas in -> pandas out, polars in -> polars out).
 
-For deriving the M / Q / S / A grain sibling columns
+For deriving the M / Q / H / Y grain sibling columns
 (``uy_a`` / ``uy_s`` / ``uy_q``, ``cy_a`` / ``cy_s`` / ``cy_q``,
 ``dev_a`` / ``dev_s`` / ``dev_q``) from a monthly source frame, see
 :func:`lossratio.derive_grain_columns` (in :mod:`lossratio._period`).

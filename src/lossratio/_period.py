@@ -12,7 +12,7 @@ Three concerns, all expressed in domain-neutral terms (no `cohort` /
    Grain values are single-letter codes mirroring the standard column
    suffixes used elsewhere in the package:
 
-       "M" = month, "Q" = quarter, "S" = semester (half), "A" = annual (year).
+       "M" = month, "Q" = quarter, "H" = half-yearly, "Y" = yearly.
 
    ``grain="auto"`` inputs to higher-level constructors are resolved
    to the inferred grain; explicit values are validated against the
@@ -30,7 +30,7 @@ import numpy as np
 import polars as pl
 
 # Grain codes ordered finest -> coarsest.
-GRAIN_ORDER = {"M": 0, "Q": 1, "S": 2, "A": 3}
+GRAIN_ORDER = {"M": 0, "Q": 1, "H": 2, "Y": 3}
 
 # String formats tried in order. ISO-first (safe), datetime variants drop time.
 _STR_DATE_FORMATS = (
@@ -181,7 +181,7 @@ def infer_grain(col: pl.Series) -> str:
     unique date to a year*12+month index, take consecutive diffs,
     classify by the largest divisor.
 
-    Returns one of ``"M"`` / ``"Q"`` / ``"S"`` / ``"A"``. Single-value
+    Returns one of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``. Single-value
     or null-only column returns ``"M"`` as a default.
 
     Performance: ``unique()`` is computed in polars *before*
@@ -210,9 +210,9 @@ def infer_grain(col: pl.Series) -> str:
 
     diffs = np.diff(ym)
     if np.all(diffs % 12 == 0):
-        return "A"
+        return "Y"
     if np.all(diffs % 6 == 0):
-        return "S"
+        return "H"
     if np.all(diffs % 3 == 0):
         return "Q"
     return "M"
@@ -222,8 +222,8 @@ def validate_grain(input_grain: str, requested: str) -> None:
     """Requested view grain must be at least as coarse as input.
 
     Raises ``ValueError`` if ``requested`` is finer than ``input_grain``,
-    or if ``requested`` is not one of ``"M"`` / ``"Q"`` / ``"S"`` /
-    ``"A"``.
+    or if ``requested`` is not one of ``"M"`` / ``"Q"`` / ``"H"`` /
+    ``"Y"``.
     """
     if requested not in GRAIN_ORDER:
         raise ValueError(
@@ -248,8 +248,8 @@ def resolve_grain(input_grain: str, requested: str) -> str:
 
         grain = resolve_grain(infer_grain(col), user_supplied_grain)
 
-    Returns the resolved grain code (one of ``"M"`` / ``"Q"`` / ``"S"``
-    / ``"A"``). Raises ``ValueError`` for invalid or too-fine requests.
+    Returns the resolved grain code (one of ``"M"`` / ``"Q"`` / ``"H"``
+    / ``"Y"``). Raises ``ValueError`` for invalid or too-fine requests.
     """
     if requested == "auto":
         return input_grain
@@ -269,18 +269,18 @@ def floor_to_period(col_expr: pl.Expr, grain: str) -> pl.Expr:
 
     - ``"M"`` -> ``2024-05-01``
     - ``"Q"`` -> ``2024-04-01``
-    - ``"S"`` -> ``2024-01-01``
-    - ``"A"`` -> ``2024-01-01``
+    - ``"H"`` -> ``2024-01-01``
+    - ``"Y"`` -> ``2024-01-01``
     """
     if grain == "M":
         return pl.date(col_expr.dt.year(), col_expr.dt.month(), 1)
     if grain == "Q":
         q_start_month = ((col_expr.dt.month() - 1) // 3) * 3 + 1
         return pl.date(col_expr.dt.year(), q_start_month, 1)
-    if grain == "S":
+    if grain == "H":
         s_start_month = pl.when(col_expr.dt.month() <= 6).then(1).otherwise(7)
         return pl.date(col_expr.dt.year(), s_start_month, 1)
-    if grain == "A":
+    if grain == "Y":
         return pl.date(col_expr.dt.year(), 1, 1)
     raise ValueError(f"Unknown grain: {grain!r}")
 
@@ -329,14 +329,14 @@ def count_periods(
                - (start_expr.dt.month() - 1) // 3)
             + 1
         )
-    elif grain == "S":
+    elif grain == "H":
         elap = (
             (end_expr.dt.year() - start_expr.dt.year()) * 2
             + ((end_expr.dt.month() - 1) // 6
                - (start_expr.dt.month() - 1) // 6)
             + 1
         )
-    elif grain == "A":
+    elif grain == "Y":
         elap = end_expr.dt.year() - start_expr.dt.year() + 1
     else:
         raise ValueError(f"Unknown grain: {grain!r}")
@@ -358,15 +358,15 @@ def add_periods(
     - start=2024-01-01, n=1 -> 2024-01-01
     - start=2024-01-01, n=13 -> 2025-01-01
     """
-    if grain in ("M", "Q", "S"):
-        step = {"M": 1, "Q": 3, "S": 6}[grain]
+    if grain in ("M", "Q", "H"):
+        step = {"M": 1, "Q": 3, "H": 6}[grain]
         total_months = (
             start_expr.dt.year() * 12
             + (start_expr.dt.month() - 1)
             + (n_periods_expr - 1) * step
         )
         return pl.date(total_months // 12, total_months % 12 + 1, 1)
-    if grain == "A":
+    if grain == "Y":
         return pl.date(start_expr.dt.year() + (n_periods_expr - 1), 1, 1)
     raise ValueError(f"Unknown grain: {grain!r}")
 

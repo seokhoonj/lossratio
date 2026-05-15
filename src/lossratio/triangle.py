@@ -27,8 +27,8 @@ _REQUIRED_VALUE_COLS = ("incr_loss", "incr_prem")
 _GRAIN_TO_DEV_VAR = {
     "M": "dev_m",
     "Q": "dev_q",
-    "S": "dev_s",
-    "A": "dev_a",
+    "H": "dev_h",
+    "Y": "dev_y",
 }
 
 
@@ -249,7 +249,7 @@ class Triangle:
 
     @property
     def grain(self) -> str:
-        """Triangle grain code: ``"M"`` / ``"Q"`` / ``"S"`` / ``"A"``.
+        """Triangle grain code: ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``.
 
         Mirrors the standard column suffix (``"M"`` ↔ ``dev_m``, etc.).
         """
