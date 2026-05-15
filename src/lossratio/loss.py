@@ -802,8 +802,8 @@ class LossFit:
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").last().alias("ultimate"),
-                pl.col("loss_total_se").last().alias("se_ultimate"),
-                pl.col("loss_total_cv").last().alias("cv_ultimate"),
+                pl.col("loss_total_se").last().alias("ultimate_se"),
+                pl.col("loss_total_cv").last().alias("ultimate_cv"),
             )
             .sort(keys)
         )

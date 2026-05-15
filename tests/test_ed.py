@@ -234,8 +234,8 @@ def test_ed_summary_columns_and_size():
         "latest",
         "latest_observed_loss",
         "ultimate",
-        "se_ultimate",
-        "cv_ultimate",
+        "ultimate_se",
+        "ultimate_cv",
     }
     assert summary.height == 5
 
@@ -245,7 +245,7 @@ def test_ed_summary_fully_observed_cohort():
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
     assert summary["ultimate"].to_list()[0] == pytest.approx(500.0)
-    se = summary["se_ultimate"].to_list()[0]
+    se = summary["ultimate_se"].to_list()[0]
     assert se is None or se == pytest.approx(0.0)
 
 

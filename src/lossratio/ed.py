@@ -560,14 +560,14 @@ class EDFit:
             .group_by(keys)
             .agg(
                 pl.col("target_proj").last().alias("ultimate"),
-                pl.col("target_total_se").last().alias("se_ultimate"),
+                pl.col("target_total_se").last().alias("ultimate_se"),
             )
         )
 
         out = (
             latest.join(ultimate, on=keys, how="inner")
             .with_columns(
-                (pl.col("se_ultimate") / pl.col("ultimate")).alias("cv_ultimate"),
+                (pl.col("ultimate_se") / pl.col("ultimate")).alias("ultimate_cv"),
             )
             .sort(keys)
         )
