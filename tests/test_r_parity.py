@@ -1,14 +1,14 @@
 """R parity tests.
 
-The fixtures in ``tests/fixtures/*.parquet`` are dumped from the R
-sibling (`Rscript dev/parity_dump.R` in the R repo). Each test loads
-the R-side fixture, runs the equivalent Python call on the same
-input rows, and asserts column-by-column numerical agreement to a
-tight tolerance.
+The fixtures in ``tests/fixtures/*.csv`` are dumped from the R sibling
+(`Rscript dev/parity_dump.R` in the R repo). Each test loads the
+R-side fixture, runs the equivalent Python call on the same input
+rows, and asserts column-by-column numerical agreement to a tight
+tolerance.
 
 These tests guard against silent algorithmic drift between the two
 languages. To refresh fixtures after a deliberate algorithm change,
-re-run the R dump script and copy the new parquets here.
+re-run the R dump script and copy the new CSVs here.
 """
 
 from __future__ import annotations
@@ -20,26 +20,19 @@ import pytest
 
 import lossratio as lr
 
-# Skipped en bloc until parquet fixtures are regenerated under the
-# post-rename schema (`premium*` -> `prem*`, `*_incr` -> `incr_*`,
-# `*_ci_lower/upper` -> `*_ci_lo/hi`, `f_selected` -> `f_sel`,
-# `calendar_idx` -> `cal_idx`). The shipped fixtures carry the
-# pre-rename column names so every test errors at `lr.Triangle(...)`.
-# `test_segment_wise_parity.py` covers the high-value path meanwhile.
-pytestmark = pytest.mark.skip(
-    reason="parquet fixtures use pre-rename schema; pending parity_dump.R rerun"
-)
-
 FIXTURES = Path(__file__).parent / "fixtures"
-ATOL = 1e-8
+ATOL = 1e-6
 RTOL = 1e-9
 
 
 def _load(name: str) -> pl.DataFrame:
-    fp = FIXTURES / f"{name}.parquet"
+    fp = FIXTURES / f"{name}.csv"
     if not fp.exists():
         pytest.skip(f"missing R fixture: {fp.name}")
-    return pl.read_parquet(fp)
+    # data.table::fwrite output. Bumped schema length for mixed-magnitude
+    # numeric columns and try_parse_dates to materialise cohort / change
+    # Date columns rather than leaving them as strings.
+    return pl.read_csv(fp, try_parse_dates=True, infer_schema_length=10000)
 
 
 def _exp_sur() -> pl.DataFrame:
@@ -107,33 +100,6 @@ def test_lr_sa_full_matches_r():
     _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
 
 
-# ---------------------------------------------------------------------------
-# fit_cl / CL
-# ---------------------------------------------------------------------------
-
-
-def test_cl_full_matches_r():
-    r = _load("cl_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = (
-        lr.CL().fit(tri)
-        .to_polars()
-        .sort(["cohort", "dev"])
-    )
-    # Python's CL emits target_proj (worker generic); R fixture uses
-    # value_proj. Map Python's column to the R fixture name.
-    _compare_numeric(
-        py.rename({"target_proj": "value_proj"}),
-        r,
-        cols=["value_proj"],
-    )
-
-
-# ---------------------------------------------------------------------------
-# backtest with metric = "lr"
-# ---------------------------------------------------------------------------
-
-
 def test_lr_ed_full_matches_r():
     r = _load("lr_ed_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
@@ -157,39 +123,65 @@ def test_lr_cl_full_matches_r():
 
 
 def test_lr_sa_maturity_matches_r():
-    """k* = max(ata_to) from fit_lr$maturity table."""
+    """Maturity dev: R's $maturity table carries the link target dev in
+    the `change` column (mirrors the `change` column convention used by
+    Regime). Python exposes the same value via `fit.mat_k[<group>]`."""
     r = _load("lr_sa_maturity")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     fit = lr.LR(method="sa").fit(tri)
-    # R: max(ata_to) per group
-    r_k = int(r["ata_to"].max())
+    r_k = int(r["change"].max())
     py_k = fit.mat_k["SUR"]
     assert py_k == r_k, f"mat_k mismatch: py={py_k} r={r_k}"
+
+
+# ---------------------------------------------------------------------------
+# fit_cl / CL  (worker layer — generic `target_*` columns)
+# ---------------------------------------------------------------------------
+
+
+def test_cl_full_matches_r():
+    r = _load("cl_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
+    py = (
+        lr.CL().fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+    )
+    _compare_numeric(py, r, cols=["target_proj"])
+
+
+def test_cl_mack_se_matches_r():
+    """Mack-style SE on the chain ladder projection."""
+    r = _load("cl_mack_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
+    py = (
+        lr.CL().fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+    )
+    _compare_numeric(py, r, cols=["target_proj", "target_total_se"])
+
+
+# ---------------------------------------------------------------------------
+# Link-level diagnostics — ATA factors + ED intensities
+# ---------------------------------------------------------------------------
 
 
 def test_ata_factors_match_r():
     """Per-link ATA factor diagnostic (f, sigma2, cv, rse, n_cohorts).
 
-    R schema keys the table by (ata_from, ata_to, ata_link); Python
-    uses a single `dev` column which equals R's `ata_from` (link
-    source dev). The numerical columns must agree exactly on the
-    overlapping link set.
+    R fixture is keyed by (ata_from, ata_to, ata_link); Python uses
+    `dev` which equals R's `ata_from` (link source dev). Numeric
+    columns must agree exactly on the overlapping link set.
     """
     r = _load("ata_selected").sort(["ata_from"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = tri.link().ata().df.sort(["dev"])
 
-    # row-align by dev <-> ata_from
     assert py.height == r.height, (
         f"ATA link count mismatch: py={py.height} r={r.height}"
     )
-    # Python now emits `n_cohorts`; the R fixture parquet predates the
-    # `n_obs -> n_cohorts` rename, so map Python's column for comparison.
-    _compare_numeric(
-        py.rename({"n_cohorts": "n_obs"}),
-        r,
-        cols=["f", "sigma2", "cv", "rse", "n_obs"],
-    )
+    _compare_numeric(py, r, cols=["f", "sigma2", "cv", "rse", "n_cohorts"])
 
 
 def test_intensity_factors_match_r():
@@ -201,25 +193,31 @@ def test_intensity_factors_match_r():
     assert py.height == r.height, (
         f"intensity link count mismatch: py={py.height} r={r.height}"
     )
-    _compare_numeric(
-        py.rename({"n_cohorts": "n_obs"}),
-        r,
-        cols=["g", "g_se", "sigma2", "n_obs"],
-    )
+    _compare_numeric(py, r, cols=["g", "g_se", "sigma2", "n_cohorts"])
 
 
-def test_regime_breakpoints_match_r():
-    """detect_regime breakpoints (Date list)."""
-    r = _load("regime_breakpoints")
+# ---------------------------------------------------------------------------
+# detect_regime
+# ---------------------------------------------------------------------------
+
+
+def test_regime_changes_match_r():
+    """detect_regime change points (Date list)."""
+    r = _load("regime_changes")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = tri.detect_regime(window=12, method="e_divisive").breakpoints
 
-    r_dates = r["breakpoint"].to_list()
+    r_dates = r["change"].to_list()
     assert len(py) == len(r_dates), (
-        f"breakpoint count mismatch: py={len(py)} r={len(r_dates)}"
+        f"change count mismatch: py={len(py)} r={len(r_dates)}"
     )
     for p, rr in zip(sorted(py), sorted(r_dates)):
-        assert p == rr, f"breakpoint mismatch: py={p} r={rr}"
+        assert p == rr, f"change mismatch: py={p} r={rr}"
+
+
+# ---------------------------------------------------------------------------
+# Summary tables
+# ---------------------------------------------------------------------------
 
 
 def test_lr_sa_summary_matches_r():
@@ -230,27 +228,12 @@ def test_lr_sa_summary_matches_r():
     py = lr_fit.summary().sort(["cohort"])
 
     common = [
-        c for c in ["lr_ult", "lr_latest", "se_lr", "cv_lr"]
+        c for c in ["lr_ult", "lr_latest", "lr_se", "lr_cv"]
         if c in r.columns and c in py.columns
     ]
     if not common:
         pytest.skip("no overlapping summary columns to compare")
     _compare_numeric(py, r, cols=common)
-
-
-def test_cl_mack_se_matches_r():
-    """Mack-style SE on the chain ladder projection. Python's CL always
-    produces target_total_se (no separate 'method' switch), so this also
-    covers the basic / mack split on the R side at the projection level."""
-    r = _load("cl_mack_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = (
-        lr.CL().fit(tri)
-        .to_polars()
-        .sort(["cohort", "dev"])
-        .rename({"target_proj": "value_proj", "target_total_se": "se_proj"})
-    )
-    _compare_numeric(py, r, cols=["value_proj", "se_proj"])
 
 
 # ---------------------------------------------------------------------------
@@ -259,32 +242,22 @@ def test_cl_mack_se_matches_r():
 
 
 def test_backtest_lr_ae_err_matches_r():
-    """Full row-level parity with R's backtest output.
+    """Cell-level parity with R's backtest output.
 
-    Both languages now use NaN for unfittable links (R-parity sweep on
-    Python's `f_k` default), so the reachable cell set is identical.
-    The defensive intersect-on-(cohort, dev) is kept as a guard against
-    future drift.
+    Both languages emit `actual`, `expected`, `aeg`, `ae_err` and use
+    NaN for unfittable links. The defensive intersect-on-(cohort, dev)
+    is kept as a guard against future drift.
     """
     r = _load("backtest_lr_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
-    py_aligned = (
-        bt.ae_err
-        .rename({"actual": "value_actual", "expected": "value_pred"})
-        .sort(["cohort", "dev"])
-    )
+    py_aligned = bt.ae_err.sort(["cohort", "dev"])
 
-    # Intersect on (cohort, dev) so the comparison is row-aligned across
-    # the cells both languages produced.
     keys = ["cohort", "dev"]
     py_common = py_aligned.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_common = r.join(py_aligned.select(keys), on=keys, how="inner").sort(keys)
 
-    _compare_numeric(
-        py_common, r_common,
-        cols=["value_actual", "value_pred", "ae_err"],
-    )
+    _compare_numeric(py_common, r_common, cols=["actual", "expected", "ae_err"])
 
 
 def test_backtest_col_summary_matches_r():

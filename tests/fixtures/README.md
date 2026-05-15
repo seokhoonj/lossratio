@@ -12,18 +12,27 @@ across languages, re-dump from the R repo:
 ```bash
 cd ~/Dropbox/lossratio
 Rscript dev/parity_dump.R
-cp dev/parity_fixtures/*.parquet ~/Dropbox/lossratio-py/tests/fixtures/
+Rscript dev/parity_segment_wise.R
+cp dev/parity_fixtures/*.csv ~/Dropbox/lossratio-py/tests/fixtures/
 ```
 
-Then run `pytest tests/test_r_parity.py` and resolve any diffs.
+Then run `pytest tests/test_r_parity.py tests/test_segment_wise_parity.py`
+and resolve any diffs.
 
 ## Files
 
-- `experience.parquet` — raw bundled experience data (R `data(experience)`).
-- `triangle_sur.parquet` — `build_triangle(...)` on SUR-only slice.
-- `lr_sa_full.parquet` — `fit_lr(method = "sa")$full`.
-- `lr_sa_selected.parquet` — `$selected`.
-- `lr_sa_maturity.parquet` — `$maturity`.
-- `cl_full.parquet` — `fit_cl(method = "mack")$full`.
-- `backtest_lr_ae_err.parquet` — `backtest(metric = "lr")$ae_err`.
-- `backtest_lr_col_summary.parquet` / `*_diag_summary.parquet`.
+- `experience.csv` — raw bundled experience data (R `data(experience)`).
+- `triangle_sur.csv` — `as_triangle(...)` on SUR-only slice.
+- `lr_sa_full.csv` / `lr_ed_full.csv` / `lr_cl_full.csv` — `fit_lr(method=...)$full`.
+- `lr_sa_selected.csv` — `$selected` (per-link factor table).
+- `lr_sa_maturity.csv` — `$maturity` (maturity-link factor diagnostic).
+- `lr_sa_summary.csv` — `summary(lr_sa)` (per-cohort summary).
+- `cl_full.csv` / `cl_mack_full.csv` — `fit_cl(method = "mack")$full`.
+- `cl_mack_summary.csv` — `summary(cl_mack)`.
+- `ata_selected.csv` / `intensity_selected.csv` — link-level diagnostics.
+- `maturity.csv` — `detect_maturity(...)`.
+- `regime_changes.csv` — `detect_regime(...)$changes`.
+- `backtest_lr_ae_err.csv` — `backtest(target = "lr")$ae_err`.
+- `backtest_lr_col_summary.csv` / `*_diag_summary.csv`.
+- `segment_wise_*.csv` — `dev/parity_segment_wise.R` outputs (canonical
+  SUR-only fixture, segment_wise regime treatment).
