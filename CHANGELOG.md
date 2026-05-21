@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `summary()` now returns a 17-column frame in the R column order.
 - `LossFit.df` / `RatioFit.df` carry a `maturity_from` column (the
   stage-adaptive maturity switch point; `None` for non-SA fits).
+- `sigma_method` accepts two more values, `"mack"` (Mack 1993 tail
+  estimator) and `"none"` (no extrapolation), on `CL` / `ED` / `Loss`
+  / `Ratio` / `Premium`. The full set now matches the R sibling:
+  `locf`, `min_last2`, `loglinear`, `mack`, `none` -- previously
+  `"mack"` / `"none"` raised `ValueError`.
+
+### Changed
+
+- Sigma extrapolation now fills every unestimated development link,
+  not only the last one, matching R's `.extrapolate_sigma_ata`. This
+  changes the standard error only on triangles with interior
+  unestimated links (sparse or heavily filtered groups); a standard
+  triangle with a single tail gap is unaffected. A group with fewer
+  than two estimable links now emits a warning instead of silently
+  skipping extrapolation.
 
 ## [0.0.1.dev10] - 2026-05-14
 
