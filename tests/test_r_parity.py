@@ -251,21 +251,20 @@ def test_ratio_sa_summary_matches_r():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="summary-SE / backtest algorithm lags the R sibling "
-    "(sigma_method + backtest) -- algorithmic-sync follow-up",
-    strict=False,
-)
-def test_backtest_ratio_ae_err_matches_r():
-    """Cell-level parity with R's backtest output.
+@pytest.mark.parametrize("method", ["ed", "sa"])
+def test_backtest_ratio_ae_err_matches_r(method: str):
+    """Cell-level parity with R's backtest output, per loss method.
 
-    Both languages emit `actual`, `expected`, `aeg`, `ae_err` and use
-    NaN for unfittable links. The defensive intersect-on-(cohort, dev)
-    is kept as a guard against future drift.
+    R's `backtest()` is dumped once per `loss_method` ("ed", the
+    default, and "sa"); the Python `Backtest` uses the matching
+    `Ratio` method. Both languages emit `actual`, `expected`, `aeg`,
+    `ae_err`. The intersect-on-(cohort, dev) guards against drift.
     """
-    r = _load("backtest_ratio_ae_err").sort(["cohort", "dev"])
+    r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
+    bt = lr.Backtest(
+        estimator=lr.Ratio(method=method), holdout=6, metric="ratio"
+    ).fit(tri)
     py_aligned = bt.ae_err.sort(["cohort", "dev"])
 
     keys = ["cohort", "dev"]
@@ -275,16 +274,14 @@ def test_backtest_ratio_ae_err_matches_r():
     _compare_numeric(py_common, r_common, cols=["actual", "expected", "ae_err"])
 
 
-@pytest.mark.xfail(
-    reason="summary-SE / backtest algorithm lags the R sibling "
-    "(sigma_method + backtest) -- algorithmic-sync follow-up",
-    strict=False,
-)
-def test_backtest_col_summary_matches_r():
-    """col_summary aggregates by dev."""
-    r = _load("backtest_ratio_col_summary").sort(["dev"])
+@pytest.mark.parametrize("method", ["ed", "sa"])
+def test_backtest_col_summary_matches_r(method: str):
+    """col_summary aggregates by dev, per loss method."""
+    r = _load(f"backtest_ratio_{method}_col_summary").sort(["dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
+    bt = lr.Backtest(
+        estimator=lr.Ratio(method=method), holdout=6, metric="ratio"
+    ).fit(tri)
     py = bt.col_summary.sort(["dev"])
 
     keys = ["dev"]
@@ -297,16 +294,14 @@ def test_backtest_col_summary_matches_r():
     )
 
 
-@pytest.mark.xfail(
-    reason="summary-SE / backtest algorithm lags the R sibling "
-    "(sigma_method + backtest) -- algorithmic-sync follow-up",
-    strict=False,
-)
-def test_backtest_diag_summary_matches_r():
-    """diag_summary aggregates by calendar diagonal."""
-    r = _load("backtest_ratio_diag_summary").sort(["cal_idx"])
+@pytest.mark.parametrize("method", ["ed", "sa"])
+def test_backtest_diag_summary_matches_r(method: str):
+    """diag_summary aggregates by calendar diagonal, per loss method."""
+    r = _load(f"backtest_ratio_{method}_diag_summary").sort(["cal_idx"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
+    bt = lr.Backtest(
+        estimator=lr.Ratio(method=method), holdout=6, metric="ratio"
+    ).fit(tri)
     py = bt.diag_summary.sort(["cal_idx"])
 
     keys = ["cal_idx"]
