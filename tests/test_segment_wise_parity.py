@@ -1,7 +1,7 @@
 """R parity for the segment_wise regime treatment.
 
 Fixtures are produced by ``dev/parity_segment_wise.R`` in the R repo
-on the canonical real-data fixture (``dev/data.rds``, SUR-only). The
+on the canonical real-data fixture (``dev/data.rds``, surgery-only). The
 Python side rebuilds the same Triangle from the same input rows, runs
 the equivalent Ratio fit, and compares projections cell-by-cell.
 
@@ -59,14 +59,14 @@ def _compare(
 
 
 def _build_triangle() -> lr.Triangle:
-    """Reload the SUR-only input that R used and build a Triangle on
-    the same column names (uym / cym / incr_loss / incr_premium)."""
+    """Reload the surgery-only input that R used and build a Triangle on
+    the same column names (uy_m / cy_m / incr_loss / incr_prem)."""
     raw = _load("segment_wise_input")
     return lr.Triangle(
         raw,
-        cohort="uym",
-        calendar="cym",
-        # group_var is None — SUR-only, single group
+        cohort="uy_m",
+        calendar="cy_m",
+        # group_var is None — surgery-only, single group
     )
 
 
