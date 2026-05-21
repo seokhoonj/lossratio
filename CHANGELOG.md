@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BF` and `CC` loss methods (new `bf.py` / `cc.py`), the Python
+  siblings of R's `fit_bf()` / `fit_cc()`. `BF` blends each cohort's
+  observed cumulative loss with an a priori expected loss ratio
+  (`prior`: a scalar, a per-cohort mapping, or an `(elr, elr_se)`
+  distribution prior); `CC` pools the ELR from the data itself per
+  group and reports its uncertainty (`elr_cc_se` / `elr_cc_cv` /
+  `elr_cc_ci_lo` / `elr_cc_ci_hi`). Both support a `credibility=
+  {"method": "bs"}` blend and the closed-form Mack (2008) analytical
+  MSEP standard error, and are wired into the `Loss` dispatcher
+  (`Loss(method="bf", prior=...)` / `Loss(method="cc")`) and exported
+  as `lr.BF` / `lr.CC` / `lr.BFFit` / `lr.CCFit`. Only the analytical
+  SE path is implemented; passing `bootstrap=` or a `type` other than
+  `"analytical"` raises `NotImplementedError`.
 - `RatioFit.summary()` emits five columns previously missing relative
   to the R sibling: `reserve` (`loss_ult - latest`), `ratio_latest`
   (last observed loss / premium), `maturity_from` (the stage-adaptive

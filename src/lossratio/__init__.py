@@ -9,7 +9,9 @@ References:
 from ._period import derive_grain_columns
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
+from .bf import BF, BFFit
 from .calendar import Calendar, as_calendar
+from .cc import CC, CCFit
 from .cl import CL, CLFit
 from .convergence import Convergence, detect_convergence
 from .datasets import load_experience, make_experience
@@ -29,8 +31,12 @@ __version__ = "0.0.1.dev10"
 
 __all__ = [
     "ATA",
+    "BF",
+    "BFFit",
     "Backtest",
     "BacktestFit",
+    "CC",
+    "CCFit",
     "CL",
     "CLFit",
     "Calendar",

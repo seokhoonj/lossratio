@@ -1,4 +1,4 @@
-"""Loss projection dispatcher (sa / ed / cl).
+"""Loss projection dispatcher (sa / ed / cl / bf / cc).
 
 ``Loss`` is the role-specific loss-side dispatcher. It owns the loss
 projection only — premium projection is delegated to :class:`Premium`,
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("sa", "ed", "cl")
+_VALID_METHODS = ("sa", "ed", "cl", "bf", "cc")
 _VALID_PREMIUM_METHODS = ("cl", "ed")
 
 
@@ -421,7 +421,8 @@ def _loss_long_df(
 
 
 class Loss:
-    """Loss projection dispatcher (``"sa"`` / ``"ed"`` / ``"cl"``).
+    """Loss projection dispatcher (``"sa"`` / ``"ed"`` / ``"cl"`` /
+    ``"bf"`` / ``"cc"``).
 
     Parameters
     ----------
@@ -432,6 +433,9 @@ class Loss:
           after. Maturity is detected internally per group.
         * ``"ed"``: pure ED for all dev periods.
         * ``"cl"``: pure Mack chain ladder.
+        * ``"bf"``: Bornhuetter-Ferguson with an external prior ELR.
+          Requires ``prior``.
+        * ``"cc"``: Cape Cod with a data-pooled ELR.
     alpha
         Variance-structure exponent for the loss fit. Default ``1``.
     sigma_method
@@ -449,6 +453,11 @@ class Loss:
     conf_level
         Confidence level for analytical CI on ``loss_proj``. Default
         ``0.95``.
+    prior
+        The a priori expected loss ratio for ``method="bf"`` (required
+        when ``method="bf"``; ignored otherwise). Either a positive
+        scalar or a dict mapping each cohort (or group) to an ELR; see
+        :class:`~lossratio.BF`.
     """
 
     def __init__(
@@ -464,10 +473,15 @@ class Loss:
         min_run: int = 2,
         conf_level: float = 0.95,
         regime: Any = None,
+        prior: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
+            )
+        if method == "bf" and prior is None:
+            raise ValueError(
+                "`prior` is required when method='bf'"
             )
         if premium_method not in _VALID_PREMIUM_METHODS:
             raise ValueError(
@@ -507,9 +521,12 @@ class Loss:
         self.min_run = min_run
         self.conf_level = conf_level
         self.regime = regime
+        self.prior = prior
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the loss projection on a Triangle."""
+        if self.method in ("bf", "cc"):
+            return LossFit._from_bf_cc(triangle, self)
         return LossFit._from_triangle(triangle, self)
 
 
@@ -767,6 +784,117 @@ class LossFit:
         self._kstar_df = pl.concat(kstar_parts, how="diagonal")
         return self
 
+    @classmethod
+    def _from_bf_cc(
+        cls,
+        triangle: "Triangle",
+        estimator: "Loss",
+    ) -> "LossFit":
+        """Build a LossFit from a BF / CC worker fit.
+
+        ``bf`` / ``cc`` do not run the inline SA / ED / CL numpy
+        kernel. They delegate to the :class:`~lossratio.BF` /
+        :class:`~lossratio.CC` estimator and adapt the worker's
+        cell-level ``$full`` grid to the LossFit-uniform schema.
+
+        For the analytical BF / CC path there is no per-cell SE, so the
+        ``loss_proc_se`` / ``loss_param_se`` / ``loss_total_se`` /
+        ``loss_total_cv`` / ``loss_ci_lo`` / ``loss_ci_hi`` columns and
+        ``maturity_from`` are present but all-null -- matching R's
+        ``.lossfit_augment()`` (it skips SE synthesis when the worker
+        ``$full`` lacks ``loss_total_se``).
+        """
+        from .bf import BF
+        from .cc import CC
+
+        if estimator.method == "bf":
+            worker_fit = BF(
+                prior=estimator.prior,
+                alpha=estimator.alpha,
+                sigma_method=estimator.sigma_method,
+                conf_level=estimator.conf_level,
+            ).fit(triangle)
+        else:  # cc
+            worker_fit = CC(
+                alpha=estimator.alpha,
+                sigma_method=estimator.sigma_method,
+                conf_level=estimator.conf_level,
+            ).fit(triangle)
+
+        self = cls.__new__(cls)
+        self._output_type = triangle._output_type
+        self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
+        self.method = estimator.method
+        self.alpha = estimator.alpha
+        self.sigma_method = estimator.sigma_method
+        self.conf_level = estimator.conf_level
+        self.regime = None
+        self.premium_fit = None
+        self._internals = {}
+        # keep a handle on the underlying worker fit (BF/CC summary)
+        self._worker_fit = worker_fit
+
+        # Adapt the worker `$full` grid to the LossFit-uniform schema.
+        # The worker grid carries [groups?, cohort, dev, loss_obs,
+        # loss_proj, incr_loss_proj, premium_obs, premium_proj,
+        # incr_premium_proj]; add the SE / CI / maturity columns as
+        # all-null (no per-cell SE on the analytical BF/CC path).
+        full = worker_fit._df
+        null_cols = [
+            "maturity_from",
+            "loss_proc_se",
+            "loss_param_se",
+            "loss_total_se",
+            "loss_total_cv",
+            "loss_ci_lo",
+            "loss_ci_hi",
+        ]
+        full = full.with_columns(
+            [
+                pl.lit(None, dtype=pl.Float64).alias(c)
+                for c in null_cols
+                if c not in full.columns
+            ]
+        )
+        ordered = (
+            ([self._groups] if self._groups is not None else [])
+            + ["cohort", "dev"]
+            + [
+                "loss_obs",
+                "loss_proj",
+                "incr_loss_proj",
+                "premium_obs",
+                "premium_proj",
+                "incr_premium_proj",
+                "maturity_from",
+                "loss_proc_se",
+                "loss_param_se",
+                "loss_total_se",
+                "loss_total_cv",
+                "loss_ci_lo",
+                "loss_ci_hi",
+            ]
+        )
+        self._df = full.select(ordered)
+
+        # BF / CC carry no maturity concept -> mat_k is None per group.
+        if self._groups is None:
+            self._kstar_df = pl.DataFrame(
+                [{"mat_k": None, "method": estimator.method}]
+            )
+        else:
+            kstar_rows = [
+                {groups_g: g, "mat_k": None, "method": estimator.method}
+                for groups_g in (self._groups,)
+                for g in worker_fit._df[self._groups]
+                .unique(maintain_order=True)
+                .to_list()
+            ]
+            self._kstar_df = pl.DataFrame(kstar_rows)
+        return self
+
     @property
     def df(self):
         return mirror_output(self._df, self._output_type)
@@ -793,7 +921,16 @@ class LossFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort ultimate loss, SE, and CV."""
+        """Per-cohort ultimate loss, SE, and CV.
+
+        For ``bf`` / ``cc`` this is the worker's cohort-level reserve
+        table (``latest`` / ``loss_ult`` / ``reserve`` / ``elr`` / ``q``
+        / analytical SE / CI), since the BF / CC projection summary is
+        richer than the SA / ED / CL ultimate aggregation.
+        """
+        worker_fit = getattr(self, "_worker_fit", None)
+        if worker_fit is not None:
+            return worker_fit.summary()
         df = self._df
         keys: list[str] = []
         if self._groups is not None:
