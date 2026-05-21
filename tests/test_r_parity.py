@@ -220,25 +220,30 @@ def test_regime_changes_match_r():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="summary-SE / backtest algorithm lags the R sibling "
-    "(sigma_method + backtest) -- algorithmic-sync follow-up",
-    strict=False,
-)
 def test_ratio_sa_summary_matches_r():
-    """Ratio(method='sa').summary() — per-cohort projected lr / SE / CV."""
+    """Ratio(method='sa').summary() — per-cohort ultimate / SE / CV.
+
+    Compares the full numeric column set. The R fixture is dumped with
+    bootstrap disabled (`fit_ratio(..., bootstrap = FALSE)`), so the SE
+    columns are the deterministic analytical values — comparable to
+    Python's analytical SE. Fully-observed cohorts carry NaN SE in
+    Python (no projection) vs 0 in R; `_compare_numeric` skips those.
+    """
     r = _load("ratio_sa_summary").sort(["cohort"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     ratio_fit = lr.Ratio(method="sa").fit(tri)
     py = ratio_fit.summary().sort(["cohort"])
 
-    common = [
-        c for c in ["ratio_ult", "ratio_latest", "ratio_se", "ratio_cv"]
-        if c in r.columns and c in py.columns
-    ]
-    if not common:
-        pytest.skip("no overlapping summary columns to compare")
-    _compare_numeric(py, r, cols=common)
+    _compare_numeric(
+        py, r,
+        cols=[
+            "latest", "loss_ult", "reserve", "premium_ult",
+            "ratio_latest", "ratio_ult", "maturity_from",
+            "loss_proc_se", "loss_param_se", "loss_total_se",
+            "loss_total_cv", "ratio_se", "ratio_cv",
+            "ratio_ci_lo", "ratio_ci_hi",
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------

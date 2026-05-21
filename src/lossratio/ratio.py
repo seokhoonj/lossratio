@@ -174,10 +174,10 @@ class RatioFit:
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
         loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
-        incr_premium_proj, loss_*_se, loss_total_cv, loss_ci_*, ratio_proj,
-        incr_ratio_proj, ratio_se, ratio_cv, ratio_ci_lo, ratio_ci_hi]`` (plus
-        ``premium_total_se`` / ``premium_total_cv`` when
-        ``se_method="delta"``).
+        incr_premium_proj, maturity_from, loss_*_se, loss_total_cv,
+        loss_ci_*, ratio_proj, incr_ratio_proj, ratio_se, ratio_cv,
+        ratio_ci_lo, ratio_ci_hi]`` (plus ``premium_total_se`` /
+        ``premium_total_cv`` when ``se_method="delta"``).
     method : str
         ``"sa"``, ``"ed"``, or ``"cl"``.
     mat_k :
@@ -382,9 +382,17 @@ class RatioFit:
             keys.append(self._groups)
         keys.append("cohort")
 
-        observed = df.filter(pl.col("loss_obs").is_not_null())
-        latest = observed.group_by(keys).agg(
-            pl.col("dev").max().alias("latest"),
+        # `latest` / `ratio_latest` are the last *observed* cumulative
+        # loss and observed loss ratio (sorted by dev, not the dev
+        # index).
+        observed = (
+            df.filter(pl.col("loss_obs").is_not_null())
+            .sort(keys + ["dev"])
+            .group_by(keys)
+            .agg(
+                pl.col("loss_obs").last().alias("latest"),
+                pl.col("premium_obs").last().alias("_premium_latest"),
+            )
         )
 
         # segment_wise fits produce trailing null cells past each
@@ -397,6 +405,9 @@ class RatioFit:
                 pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
                 pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
                 pl.col("ratio_proj").drop_nulls().last().alias("ratio_ult"),
+                pl.col("maturity_from").drop_nulls().last().alias("maturity_from"),
+                pl.col("loss_proc_se").drop_nulls().last().alias("loss_proc_se"),
+                pl.col("loss_param_se").drop_nulls().last().alias("loss_param_se"),
                 pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
                 pl.col("loss_total_cv").drop_nulls().last().alias("loss_total_cv"),
                 pl.col("ratio_se").drop_nulls().last().alias("ratio_se"),
@@ -406,7 +417,41 @@ class RatioFit:
             )
         )
 
-        out = latest.join(ultimate, on=keys, how="inner").sort(keys)
+        out = observed.join(ultimate, on=keys, how="inner")
+
+        # `reserve` = ultimate projected loss - last observed cumulative
+        # loss; `ratio_latest` = last observed loss / premium (guarded).
+        out = out.with_columns(
+            (pl.col("loss_ult") - pl.col("latest")).alias("reserve"),
+            pl.when(
+                pl.col("_premium_latest").is_not_null()
+                & (pl.col("_premium_latest") != 0.0)
+            )
+            .then(pl.col("latest") / pl.col("_premium_latest"))
+            .otherwise(None)
+            .alias("ratio_latest"),
+        ).drop("_premium_latest")
+
+        out = out.select(
+            keys
+            + [
+                "latest",
+                "loss_ult",
+                "reserve",
+                "premium_ult",
+                "ratio_latest",
+                "ratio_ult",
+                "maturity_from",
+                "loss_proc_se",
+                "loss_param_se",
+                "loss_total_se",
+                "loss_total_cv",
+                "ratio_se",
+                "ratio_cv",
+                "ratio_ci_lo",
+                "ratio_ci_hi",
+            ]
+        ).sort(keys)
         return mirror_output(out, self._output_type)
 
     @property

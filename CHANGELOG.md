@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `RatioFit.summary()`'s `latest` column was the dev index
+  (`max(dev)`), not a value. It now reports the last observed
+  cumulative loss (`loss_obs` at the deepest observed dev), matching
+  the R sibling.
+
+### Added
+
+- `RatioFit.summary()` emits five columns previously missing relative
+  to the R sibling: `reserve` (`loss_ult - latest`), `ratio_latest`
+  (last observed loss / premium), `maturity_from` (the stage-adaptive
+  maturity switch dev, `None` for `method="ed"` / `"cl"`), and the
+  `loss_proc_se` / `loss_param_se` ultimate-row variance components.
+  `summary()` now returns a 17-column frame in the R column order.
+- `LossFit.df` / `RatioFit.df` carry a `maturity_from` column (the
+  stage-adaptive maturity switch point; `None` for non-SA fits).
+
 ## [0.0.1.dev10] - 2026-05-14
 
 ### Breaking -- R parity column / slot renames

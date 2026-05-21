@@ -384,6 +384,9 @@ def _loss_long_df(
             row["premium_proj"] = pf_row.get("premium_proj")
             row["incr_premium_proj"] = pf_row.get("incr_premium_proj")
 
+            # SA maturity switch point (constant per group; None for ed/cl)
+            row["maturity_from"] = getattr(result, "maturity_from", None)
+
             row["loss_proc_se"] = float(proc) if not np.isnan(proc) else None
             row["loss_param_se"] = float(par) if not np.isnan(par) else None
             row["loss_total_se"] = float(tot) if not np.isnan(tot) else None
@@ -518,8 +521,8 @@ class LossFit:
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
         loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
-        incr_premium_proj, loss_proc_se, loss_param_se, loss_total_se,
-        loss_total_cv, loss_ci_lo, loss_ci_hi]``.
+        incr_premium_proj, maturity_from, loss_proc_se, loss_param_se,
+        loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
         ``"sa"``, ``"ed"``, or ``"cl"``.
     mat_k :
