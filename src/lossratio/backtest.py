@@ -57,8 +57,8 @@ def _build_masked_df(
 
     Returns ``(masked_df, mask_df)``:
 
-    * ``masked_df`` has ``loss``, ``incr_loss``, ``prem``,
-      ``incr_prem``, ``lr``, ``incr_lr`` set to ``None`` for cells
+    * ``masked_df`` has ``loss``, ``incr_loss``, ``premium``,
+      ``incr_premium``, ``lr``, ``incr_ratio`` set to ``None`` for cells
       whose calendar diagonal is among the top ``holdout``.
     * ``mask_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
@@ -82,7 +82,7 @@ def _build_masked_df(
     masked_df = df.with_columns(
         [
             pl.when(pl.col("masked")).then(None).otherwise(pl.col(c)).alias(c)
-            for c in ("loss", "incr_loss", "prem", "incr_prem", "lr", "incr_lr")
+            for c in ("loss", "incr_loss", "premium", "incr_premium", "ratio", "incr_ratio")
             if c in df.columns
         ]
     ).drop("__cohort_idx", "__max_cal", "cal_idx", "masked")
@@ -91,18 +91,18 @@ def _build_masked_df(
     return masked_df, annotated_df
 
 
-_VALID_METRICS = ("lr", "loss", "prem")
+_VALID_METRICS = ("ratio", "loss", "premium")
 
 
 def _is_ratio_fit_estimator(estimator: Any) -> bool:
-    """LR / ED jointly project loss / prem / lr; CL projects a single
+    """Ratio / ED jointly project loss / premium / lr; CL projects a single
     column. Distinguished by whether the estimator class is a ratio-fit.
     """
     # Late import to avoid circular dependency at module load time.
     from .ed import ED
-    from .lr import LR
+    from .ratio import Ratio
 
-    return isinstance(estimator, (LR, ED))
+    return isinstance(estimator, (Ratio, ED))
 
 
 def _resolve_expected_column(
@@ -110,27 +110,27 @@ def _resolve_expected_column(
 ) -> str:
     """Map ``metric`` to the projection column on the refit output frame.
 
-    Post-Phase-4b workers emit generic ``target_proj`` columns (CL: loss
-    side; ED: target = loss, plus ``lr_proj`` as a downstream quantity).
-    LR keeps legacy ``loss_proj`` / ``prem_proj`` / ``lr_proj``.
+    Post-Phase-4b workers emit generic ``loss_proj`` columns (CL: loss
+    side; ED: target = loss, plus ``ratio_proj`` as a downstream quantity).
+    Ratio keeps legacy ``loss_proj`` / ``premium_proj`` / ``ratio_proj``.
     """
     if metric not in _VALID_METRICS:
         raise ValueError(
             f"metric must be one of {_VALID_METRICS}, got {metric!r}"
         )
 
-    # LR estimator: legacy column names still emitted.
-    legacy = {"lr": "lr_proj", "loss": "loss_proj", "prem": "prem_proj"}
+    # Ratio estimator: legacy column names still emitted.
+    legacy = {"ratio": "ratio_proj", "loss": "loss_proj", "premium": "premium_proj"}
     if legacy[metric] in fit_df_columns:
         return legacy[metric]
 
-    # New worker schema (CL / ED): target_proj corresponds to the
-    # estimator's `target` role. Use lr_proj for ratio metric on ED.
-    if metric == "lr" and "lr_proj" in fit_df_columns:
-        return "lr_proj"
+    # New worker schema (CL / ED): loss_proj corresponds to the
+    # estimator's `target` role. Use ratio_proj for ratio metric on ED.
+    if metric == "ratio" and "ratio_proj" in fit_df_columns:
+        return "ratio_proj"
     target = getattr(refit, "target", None)
-    if metric == target and "target_proj" in fit_df_columns:
-        return "target_proj"
+    if metric == target and "loss_proj" in fit_df_columns:
+        return "loss_proj"
     exposure = getattr(refit, "exposure", None)
     if metric == exposure and "exposure_proj" in fit_df_columns:
         return "exposure_proj"
@@ -161,7 +161,7 @@ class Backtest:
     Parameters
     ----------
     estimator
-        An ``lr.CL``, ``lr.ED``, or ``lr.LR`` instance (or any
+        An ``lr.CL``, ``lr.ED``, or ``lr.Ratio`` instance (or any
         estimator whose ``fit(triangle)`` returns a result class with
         a ``loss_proj`` column in ``.df``).
     holdout
@@ -171,7 +171,7 @@ class Backtest:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6).fit(tri)
+    >>> bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6).fit(tri)
     >>> bt.ae_err
     >>> bt.col_summary
     >>> bt.diag_summary
@@ -181,7 +181,7 @@ class Backtest:
         self,
         estimator: Any,
         holdout: int = 6,
-        metric: str = "lr",
+        metric: str = "ratio",
     ) -> None:
         if holdout < 1:
             raise ValueError(f"holdout must be >= 1, got {holdout}")
@@ -193,13 +193,13 @@ class Backtest:
             raise ValueError(
                 f"metric must be one of {_VALID_METRICS}, got {metric!r}"
             )
-        # LR / ED are ratio-fits — only `lr` is a meaningful scoring lane;
-        # use CL directly to backtest the loss or prem projection.
-        if _is_ratio_fit_estimator(estimator) and metric != "lr":
+        # Ratio / ED are ratio-fits — only `lr` is a meaningful scoring lane;
+        # use CL directly to backtest the loss or premium projection.
+        if _is_ratio_fit_estimator(estimator) and metric != "ratio":
             raise ValueError(
                 f"estimator is a ratio-fit ({type(estimator).__name__}); "
-                f"only metric='lr' is supported. Use lr.CL() instead to "
-                f"backtest the loss or prem projection directly."
+                f"only metric='ratio' is supported. Use lr.CL() instead to "
+                f"backtest the loss or premium projection directly."
             )
         self.estimator = estimator
         self.holdout = holdout
@@ -228,7 +228,7 @@ class BacktestFit:
         Aggregated by cal_idx with the same statistics as
         ``col_summary``.
     fit :
-        The refitted estimator's result (e.g. CLFit / EDFit / LRFit).
+        The refitted estimator's result (e.g. CLFit / EDFit / RatioFit).
     """
 
     def __init__(self) -> None:
@@ -275,7 +275,7 @@ class BacktestFit:
 
         # `actual` is the cumulative column on the original Triangle that
         # corresponds to the chosen scoring lane.
-        actual_col = bt.metric  # "lr" / "loss" / "prem"
+        actual_col = bt.metric  # "ratio" / "loss" / "premium"
         held_out = annotated_df.filter(pl.col("masked")).select(
             keys + ["cal_idx", actual_col]
         ).rename({actual_col: "actual"})

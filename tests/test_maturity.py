@@ -31,7 +31,7 @@ def _polars_input() -> pl.DataFrame:
                 180.0, 190.0,
                 200.0,
             ],
-            "incr_prem": [100.0] * 15,
+            "incr_premium": [100.0] * 15,
         }
     )
 
@@ -57,7 +57,7 @@ def _stable_input() -> pl.DataFrame:
                 "cy_m": cym,
                 "uy_m": uym,
                 "incr_loss": float(inc_loss),
-                "incr_prem": 100.0,
+                "incr_premium": 100.0,
             })
     return pl.DataFrame(rows)
 

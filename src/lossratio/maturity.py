@@ -401,7 +401,7 @@ def maturity_at(
 
 def maturity_spec(
     target: str = "loss",
-    exposure: str | None = "prem",
+    exposure: str | None = "premium",
     weight: str | None = None,
     *,
     max_cv: float = 0.15,

@@ -7,11 +7,11 @@ seed 20260501. The generator mirrors R `lossratio`'s
 shift, same recipe — but cell values are NOT bit-identical to R because
 numpy's RNG differs from R's `rnorm` even with the same seed.
 
-Calibration scalars (target LR, prem volume, cell noise CV) per
+Calibration scalars (target Ratio, premium volume, cell noise CV) per
 coverage were measured once on a real long-term Korean health-
 insurance portfolio and are baked in here as constants so this module
 ships without any real-data dependency. SUR carries a regime shift at
-cohort 18 (2024-07): target LR is scaled by 0.6 to mimic the real
+cohort 18 (2024-07): target Ratio is scaled by 0.6 to mimic the real
 portfolio's underwriting tightening.
 
 To regenerate the shipped parquet (e.g., after touching the recipe)::
@@ -45,7 +45,7 @@ _DATA_PATH = Path(__file__).parent / "data" / "experience.parquet"
 #   HOS  Hospitalisation (per-day fixed benefit)
 #   SUR  Surgery (per-event fixed benefit)
 _CALIB: list[tuple[str, float, float, float, float]] = [
-    # (coverage, target_lr, prem_mean,   prem_cv,   cell_cv)
+    # (coverage, target_ratio, premium_mean,   premium_cv,   cell_cv)
     ("CI",       0.6041798, 490_082_826, 0.9332768, 1.3679838),
     ("CAN",      0.4966633, 403_465_899, 0.8684393, 1.6660074),
     ("HOS",      0.3533962,  32_725_571, 0.8545352, 0.8603264),
@@ -53,7 +53,7 @@ _CALIB: list[tuple[str, float, float, float, float]] = [
 ]
 
 # Single regime shift on SUR at cohort idx 18 (2024-07): scale target
-# LR by 0.6 (1.43 -> ~0.86).
+# Ratio by 0.6 (1.43 -> ~0.86).
 _SHIFTS: dict[str, tuple[int, float]] = {"SUR": (18, 0.60)}
 
 _DEFAULT_SEED = 20260501
@@ -84,7 +84,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     * Four coverages keyed by ``coverage`` (``CI``, ``CAN``, ``HOS``,
       ``SUR``).
     * ``SUR`` carries a planted regime shift at cohort 2024-07 (cohort
-      idx 18): target cumulative LR drops to roughly 0.6× the
+      idx 18): target cumulative Ratio drops to roughly 0.6× the
       pre-break level, reflecting the underwriting tightening in the
       real portfolio. The other three coverages are stable.
 
@@ -100,23 +100,23 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     polars.DataFrame
         Columns ``coverage`` (str), ``uy_m`` (str, ISO date), ``cy_m``
         (str, ISO date), ``dev_m`` (int), ``incr_loss`` (float),
-        ``incr_prem`` (float). Pass directly to :class:`Triangle`
+        ``incr_premium`` (float). Pass directly to :class:`Triangle`
         with ``groups="coverage"``.
     """
     rng = np.random.default_rng(seed)
     weights = _make_weights()
 
     records: list[dict] = []
-    for coverage, target_lr, prem_mean, prem_cv, cell_cv in _CALIB:
-        prem_mean_per_dev = prem_mean / _K
+    for coverage, target_ratio, premium_mean, premium_cv, cell_cv in _CALIB:
+        premium_mean_per_dev = premium_mean / _K
         shift = _SHIFTS.get(coverage)
         shift_at = shift[0] if shift else None
         shift_scale = shift[1] if shift else 1.0
 
         for ci in range(_N_COHORTS):
-            cohort_mult = math.exp(rng.normal(0.0, prem_cv))
-            prem_base = prem_mean_per_dev * cohort_mult
-            eff_target = target_lr * (
+            cohort_mult = math.exp(rng.normal(0.0, premium_cv))
+            premium_base = premium_mean_per_dev * cohort_mult
+            eff_target = target_ratio * (
                 shift_scale if shift_at is not None and ci >= shift_at else 1.0
             )
 
@@ -129,13 +129,13 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                 cy_c, cm_c = divmod(ci + k, 12)
                 cy_m = _ymd(2023 + cy_c, cm_c + 1)
 
-                incr_prem = prem_base * (1.0 + rng.normal(0.0, 0.05))
-                incr_prem = max(incr_prem, 0.0)
+                incr_premium = premium_base * (1.0 + rng.normal(0.0, 0.05))
+                incr_premium = max(incr_premium, 0.0)
 
                 noise = math.exp(rng.normal(0.0, math.log(1.0 + cell_cv)))
-                incr_loss = incr_prem * eff_target * weights[k] * _K * noise
+                incr_loss = incr_premium * eff_target * weights[k] * _K * noise
 
-                # Real-world prem / loss are recorded in won (integer);
+                # Real-world premium / loss are recorded in won (integer);
                 # round to match that convention.
                 records.append(
                     {
@@ -144,7 +144,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                         "cy_m":         cy_m,
                         "dev_m":        k + 1,
                         "incr_loss":    round(incr_loss),
-                        "incr_prem": round(incr_prem),
+                        "incr_premium": round(incr_premium),
                     }
                 )
 

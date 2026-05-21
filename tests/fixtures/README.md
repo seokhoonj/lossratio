@@ -23,16 +23,16 @@ and resolve any diffs.
 
 - `experience.csv` — raw bundled experience data (R `data(experience)`).
 - `triangle_sur.csv` — `as_triangle(...)` on SUR-only slice.
-- `lr_sa_full.csv` / `lr_ed_full.csv` / `lr_cl_full.csv` — `fit_lr(method=...)$full`.
-- `lr_sa_selected.csv` — `$selected` (per-link factor table).
-- `lr_sa_maturity.csv` — `$maturity` (maturity-link factor diagnostic).
-- `lr_sa_summary.csv` — `summary(lr_sa)` (per-cohort summary).
+- `ratio_sa_full.csv` / `ratio_ed_full.csv` / `ratio_cl_full.csv` — `fit_ratio(method=...)$full`.
+- `ratio_sa_selected.csv` — `$selected` (per-link factor table).
+- `ratio_sa_maturity.csv` — `$maturity` (maturity-link factor diagnostic).
+- `ratio_sa_summary.csv` — `summary(ratio_sa)` (per-cohort summary).
 - `cl_full.csv` / `cl_mack_full.csv` — `fit_cl(method = "mack")$full`.
 - `cl_mack_summary.csv` — `summary(cl_mack)`.
 - `ata_selected.csv` / `intensity_selected.csv` — link-level diagnostics.
 - `maturity.csv` — `detect_maturity(...)`.
 - `regime_changes.csv` — `detect_regime(...)$changes`.
-- `backtest_lr_ae_err.csv` — `backtest(target = "lr")$ae_err`.
-- `backtest_lr_col_summary.csv` / `*_diag_summary.csv`.
+- `backtest_ratio_ae_err.csv` — `backtest(target = "lr")$ae_err`.
+- `backtest_ratio_col_summary.csv` / `*_diag_summary.csv`.
 - `segment_wise_*.csv` — `dev/parity_segment_wise.R` outputs (canonical
   SUR-only fixture, segment_wise regime treatment).

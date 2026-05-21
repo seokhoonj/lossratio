@@ -94,15 +94,15 @@ def _toy_triangle(n_cohorts: int = 30, window: int = 12, shift_at: int = 15):
         cohort_date = f"2024-{(c_idx % 12) + 1:02d}-01"
         # Use yearly shifting cohort by month index — but keep window dev rows each
         for k in range(1, window + 1):
-            # Underlying signal: pre-shift LR ~ 0.5; post-shift LR ~ 1.0
+            # Underlying signal: pre-shift Ratio ~ 0.5; post-shift Ratio ~ 1.0
             base = 0.5 if c_idx < shift_at else 1.0
-            lr_val = base + rng.normal(0, 0.05)
+            ratio_val = base + rng.normal(0, 0.05)
             rows.append(
                 {
                     "cy_m": cohort_date,
                     "uy_m": cohort_date,
-                    "incr_loss": lr_val * 100.0,
-                    "incr_prem": 100.0,
+                    "incr_loss": ratio_val * 100.0,
+                    "incr_premium": 100.0,
                 }
             )
     df = pl.DataFrame(rows)
@@ -119,7 +119,7 @@ def _toy_triangle(n_cohorts: int = 30, window: int = 12, shift_at: int = 15):
     for c_idx in range(n_cohorts):
         for k in range(1, window + 1):
             base = 0.5 if c_idx < shift_at else 1.0
-            lr_val = base + rng.normal(0, 0.05)
+            ratio_val = base + rng.normal(0, 0.05)
             rows2.append(
                 {
                     "uy_m": cohort_dates[c_idx],
@@ -129,8 +129,8 @@ def _toy_triangle(n_cohorts: int = 30, window: int = 12, shift_at: int = 15):
                     ).item()
                     if False
                     else cohort_dates[c_idx],
-                    "incr_loss": lr_val * 100.0,
-                    "incr_prem": 100.0,
+                    "incr_loss": ratio_val * 100.0,
+                    "incr_premium": 100.0,
                 }
             )
     return rows2  # placeholder, see _toy_input
@@ -153,14 +153,14 @@ def _toy_input(n_cohorts: int = 30, window: int = 12, shift_at: int = 15) -> pl.
             # since we only need cohort uniqueness, not calendar realism
             # for the regime test.
             base = 0.5 if c_idx < shift_at else 1.0
-            lr_val = max(0.0, base + rng.normal(0, 0.05))
+            ratio_val = max(0.0, base + rng.normal(0, 0.05))
             rows.append(
                 {
                     "cy_m": u,
                     "uy_m": u,
                     "_dev_target": k,
-                    "incr_loss": lr_val * 100.0,
-                    "incr_prem": 100.0,
+                    "incr_loss": ratio_val * 100.0,
+                    "incr_premium": 100.0,
                 }
             )
     return pl.DataFrame(rows)
@@ -184,7 +184,7 @@ def test_detect_regime_e_divisive_finds_shift():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        target="lr", window=12, method="e_divisive", min_size=3, R=199, seed=20260509
+        target="ratio", window=12, method="e_divisive", min_size=3, R=199, seed=20260509
     )
     assert isinstance(reg, lr.Regime)
     assert reg.method == "e_divisive"
@@ -208,7 +208,7 @@ def test_detect_regime_hclust():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        target="lr", window=12, method="hclust", n_regimes=2
+        target="ratio", window=12, method="hclust", n_regimes=2
     )
     assert reg.method == "hclust"
     assert reg.n_regimes == 2

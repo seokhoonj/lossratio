@@ -3,7 +3,7 @@
 Fixtures are produced by ``dev/parity_segment_wise.R`` in the R repo
 on the canonical real-data fixture (``dev/data.rds``, SUR-only). The
 Python side rebuilds the same Triangle from the same input rows, runs
-the equivalent LR fit, and compares projections cell-by-cell.
+the equivalent Ratio fit, and compares projections cell-by-cell.
 
 Tight numerical agreement is the contract: any drift signals an
 implementation divergence between the two language ports.
@@ -60,7 +60,7 @@ def _compare(
 
 def _build_triangle() -> lr.Triangle:
     """Reload the SUR-only input that R used and build a Triangle on
-    the same column names (uym / cym / incr_loss / incr_prem)."""
+    the same column names (uym / cym / incr_loss / incr_premium)."""
     raw = _load("segment_wise_input")
     return lr.Triangle(
         raw,
@@ -75,13 +75,13 @@ def _build_triangle() -> lr.Triangle:
 # ---------------------------------------------------------------------------
 
 
-def test_segment_wise_lr_cl_full_matches_r():
-    """Cell-by-cell comparison of fit_lr's $full projection under
-    segment_wise treatment (both loss + prem sides)."""
-    r = _load("segment_wise_lr_cl_full").sort(["cohort", "dev"])
+def test_segment_wise_ratio_cl_full_matches_r():
+    """Cell-by-cell comparison of fit_ratio's $full projection under
+    segment_wise treatment (both loss + premium sides)."""
+    r = _load("segment_wise_ratio_cl_full").sort(["cohort", "dev"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    fit = lr.LR(
+    fit = lr.Ratio(
         method="cl",
         premium_method="cl",
         loss_regime=reg,
@@ -91,7 +91,7 @@ def test_segment_wise_lr_cl_full_matches_r():
 
     # Schema parity check
     for c in ("cohort", "dev", "segment_id",
-              "loss_proj", "prem_proj", "lr_proj"):
+              "loss_proj", "premium_proj", "ratio_proj"):
         assert c in py.columns, f"Python missing column {c!r}"
 
     # Segment ids should match exactly per (cohort, dev)
@@ -102,18 +102,18 @@ def test_segment_wise_lr_cl_full_matches_r():
         py, r,
         cols=[
             "loss_obs", "loss_proj", "incr_loss_proj",
-            "prem_obs", "prem_proj", "incr_prem_proj",
-            "lr_proj", "incr_lr_proj",
+            "premium_obs", "premium_proj", "incr_premium_proj",
+            "ratio_proj", "incr_ratio_proj",
         ],
     )
 
 
-def test_segment_wise_lr_cl_summary_matches_r():
-    """Per-cohort summary (lr_ult / loss_ult / prem_ult) comparison."""
-    r = _load("segment_wise_lr_cl_summary").sort(["cohort"])
+def test_segment_wise_ratio_cl_summary_matches_r():
+    """Per-cohort summary (ratio_ult / loss_ult / premium_ult) comparison."""
+    r = _load("segment_wise_ratio_cl_summary").sort(["cohort"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    fit = lr.LR(
+    fit = lr.Ratio(
         method="cl",
         premium_method="cl",
         loss_regime=reg,
@@ -125,19 +125,19 @@ def test_segment_wise_lr_cl_summary_matches_r():
     py = py.sort(["cohort"])
 
     common = [
-        c for c in ("loss_ult", "prem_ult", "lr_ult")
+        c for c in ("loss_ult", "premium_ult", "ratio_ult")
         if c in r.columns and c in py.columns
     ]
     assert common, f"no overlapping summary cols; r={r.columns}, py={py.columns}"
     _compare(py, r, cols=common)
 
 
-def test_segment_wise_lr_ed_full_matches_r():
-    """ED loss method + CL prem method under segment_wise."""
-    r = _load("segment_wise_lr_ed_full").sort(["cohort", "dev"])
+def test_segment_wise_ratio_ed_full_matches_r():
+    """ED loss method + CL premium method under segment_wise."""
+    r = _load("segment_wise_ratio_ed_full").sort(["cohort", "dev"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    fit = lr.LR(
+    fit = lr.Ratio(
         method="ed",
         premium_method="cl",
         loss_regime=reg,
@@ -150,18 +150,18 @@ def test_segment_wise_lr_ed_full_matches_r():
         py, r,
         cols=[
             "loss_obs", "loss_proj", "incr_loss_proj",
-            "prem_obs", "prem_proj", "incr_prem_proj",
-            "lr_proj", "incr_lr_proj",
+            "premium_obs", "premium_proj", "incr_premium_proj",
+            "ratio_proj", "incr_ratio_proj",
         ],
     )
 
 
-def test_segment_wise_lr_ed_summary_matches_r():
+def test_segment_wise_ratio_ed_summary_matches_r():
     """ED method summary comparison."""
-    r = _load("segment_wise_lr_ed_summary").sort(["cohort"])
+    r = _load("segment_wise_ratio_ed_summary").sort(["cohort"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    fit = lr.LR(
+    fit = lr.Ratio(
         method="ed",
         premium_method="cl",
         loss_regime=reg,
@@ -173,7 +173,7 @@ def test_segment_wise_lr_ed_summary_matches_r():
     py = py.sort(["cohort"])
 
     common = [
-        c for c in ("loss_ult", "prem_ult", "lr_ult")
+        c for c in ("loss_ult", "premium_ult", "ratio_ult")
         if c in r.columns and c in py.columns
     ]
     assert common, f"no overlapping summary cols; r={r.columns}, py={py.columns}"

@@ -32,7 +32,7 @@ def _toy_input() -> pl.DataFrame:
                 180.0, 190.0,
                 200.0,
             ],
-            "incr_prem": [100.0] * 15,
+            "incr_premium": [100.0] * 15,
         }
     )
 
@@ -80,14 +80,14 @@ def test_link_df_has_ata_columns():
     cols = set(link.df.columns)
     assert {
         "cohort", "ata_from", "ata_to", "ata_link",
-        "target_from", "target_to", "target_delta", "ata",
+        "loss_from", "loss_to", "loss_delta", "ata",
     } <= cols
 
 
-def test_link_df_has_prem_columns_in_dual_mode():
+def test_link_df_has_premium_columns_in_dual_mode():
     link = _tri().link()
     cols = set(link.df.columns)
-    # Triangle.link() default carries exposure='prem' → dual-mode
+    # Triangle.link() default carries exposure='premium' → dual-mode
     assert {
         "exposure_from", "exposure_to", "exposure_delta", "intensity",
     } <= cols
@@ -107,17 +107,17 @@ def test_link_ata_equals_loss_to_over_loss_from():
     link = _tri().link()
     df = link.df
     for r in df.iter_rows(named=True):
-        if r["target_from"] is not None and r["target_from"] > 0:
-            assert r["ata"] == pytest.approx(r["target_to"] / r["target_from"])
+        if r["loss_from"] is not None and r["loss_from"] > 0:
+            assert r["ata"] == pytest.approx(r["loss_to"] / r["loss_from"])
 
 
-def test_link_intensity_equals_loss_delta_over_prem_from():
+def test_link_intensity_equals_loss_delta_over_premium_from():
     link = _tri().link()
     df = link.df
     for r in df.iter_rows(named=True):
         if r["exposure_from"] is not None and r["exposure_from"] > 0:
             assert r["intensity"] == pytest.approx(
-                (r["target_to"] - r["target_from"]) / r["exposure_from"]
+                (r["loss_to"] - r["loss_from"]) / r["exposure_from"]
             )
 
 

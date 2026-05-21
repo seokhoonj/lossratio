@@ -150,15 +150,15 @@ def test_maturity_spec_invocation_yields_maturity():
     assert m.min_run == 2
 
 
-def test_maturity_spec_lr_path():
-    """The spec exposes the link-target dispatch needed for LR maturity:
-    target='lr', exposure=None, weight='prem' is the recipe convergence
+def test_maturity_spec_ratio_path():
+    """The spec exposes the link-target dispatch needed for Ratio maturity:
+    target='ratio', exposure=None, weight='premium' is the recipe convergence
     detection uses internally."""
     tri = _sur_triangle()
-    spec = lr.maturity_spec(target="lr", exposure=None, weight="prem")
+    spec = lr.maturity_spec(target="ratio", exposure=None, weight="premium")
     m = spec(tri)
     assert isinstance(m, lr.Maturity)
-    assert m.mat_k is not None  # SUR data should yield a mature LR link
+    assert m.mat_k is not None  # SUR data should yield a mature Ratio link
 
 
 def test_maturity_spec_threshold_overrides_propagate():

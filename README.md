@@ -27,9 +27,9 @@ Working components:
   inline. (`dev_m` is auto-derived from `uy_m` and `cy_m` if absent.) Cumulative is
   the unmarked default (`loss`, `premium`, `lr`); per-period values
   carry an `_incr` suffix.
-- `CL`, `ED`, `LR` — sklearn-style estimators for chain ladder,
+- `CL`, `ED`, `Ratio` — sklearn-style estimators for chain ladder,
   exposure-driven, and stage-adaptive loss-ratio projection
-  (`fit(triangle)` → `CLFit` / `EDFit` / `LRFit` with `summary()`,
+  (`fit(triangle)` → `CLFit` / `EDFit` / `RatioFit` with `summary()`,
   `df` projection frame, and per-cohort SE / CV).
 - `Triangle.link()` — builds the long-format `Link` table (one row
   per cohort × adjacent dev pair). Method chain `tri.link().ata()` /
@@ -97,11 +97,11 @@ ata.maturity(max_cv=0.15, max_rse=0.05, min_run=2).k_star
 #> {'SUR': 4}
 
 # 3. Project loss ratios with the stage-adaptive method (default).
-fit = lr.LR().fit(tri)
-fit.summary().select(["coverage", "cohort", "lr_ult", "se_lr", "cv_lr"]).head(3)
+fit = lr.Ratio().fit(tri)
+fit.summary().select(["coverage", "cohort", "ratio_ult", "se_ratio", "cv_ratio"]).head(3)
 #> shape: (3, 5)
 #> ┌──────────┬────────────┬──────────┬──────────┬──────────┐
-#> │ coverage ┆ cohort     ┆ lr_ult   ┆ se_lr    ┆ cv_lr    │
+#> │ coverage ┆ cohort     ┆ ratio_ult   ┆ se_ratio    ┆ cv_ratio    │
 #> ╞══════════╪════════════╪══════════╪══════════╪══════════╡
 #> │ SUR      ┆ 2024-01-01 ┆ 1.648832 ┆ null     ┆ null     │
 #> │ SUR      ┆ 2024-02-01 ┆ 1.527993 ┆ 0.006237 ┆ 0.004082 │
@@ -109,7 +109,7 @@ fit.summary().select(["coverage", "cohort", "lr_ult", "se_lr", "cv_lr"]).head(3)
 #> └──────────┴────────────┴──────────┴──────────┴──────────┘
 
 # 4. Detect cohort regime shifts.
-reg = tri.detect_regime(loss_var="lr", K=12)
+reg = tri.detect_regime(loss_var="ratio", K=12)
 reg.breakpoints
 #> [datetime.date(2025, 7, 1)]
 
@@ -117,7 +117,7 @@ reg.breakpoints
 #    masked, the estimator is refitted on the remaining cells, and
 #    the projection is compared with actual loss.
 #    ae_err = actual / predicted - 1 (signed relative error).
-bt = lr.Backtest(estimator=lr.LR(), holdout=6).fit(tri)
+bt = lr.Backtest(estimator=lr.Ratio(), holdout=6).fit(tri)
 bt.diag_summary.head(3)
 #> shape: (3, 6)
 #> ┌──────────┬──────────────┬─────┬─────────────┬────────────┬───────────┐

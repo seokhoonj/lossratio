@@ -1,4 +1,4 @@
-"""Tests for the LR (loss-ratio) estimator."""
+"""Tests for the Ratio (loss-ratio) estimator."""
 
 import polars as pl
 import pytest
@@ -31,7 +31,7 @@ def _toy_triangle_input() -> pl.DataFrame:
                 180.0, 190.0,
                 200.0,
             ],
-            "incr_prem": [100.0] * 15,
+            "incr_premium": [100.0] * 15,
         }
     )
 
@@ -45,38 +45,38 @@ def _date(s: str) -> pl.Expr:
 # ---------------------------------------------------------------------------
 
 
-def test_lr_default_method_is_sa():
-    fit = lr.LR().fit(lr.Triangle(_toy_triangle_input()))
+def test_ratio_default_method_is_sa():
+    fit = lr.Ratio().fit(lr.Triangle(_toy_triangle_input()))
     assert fit.method == "sa"
 
 
-def test_lr_invalid_method_raises():
+def test_ratio_invalid_method_raises():
     with pytest.raises(ValueError, match="method"):
-        lr.LR(method="bogus")
+        lr.Ratio(method="bogus")
 
 
-def test_lr_alpha_other_raises():
+def test_ratio_alpha_other_raises():
     with pytest.raises(NotImplementedError, match="alpha"):
-        lr.LR(alpha=2.0)
+        lr.Ratio(alpha=2.0)
 
 
-def test_lr_output_columns():
-    fit = lr.LR(method="cl").fit(
+def test_ratio_output_columns():
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     expected = {
-        "cohort", "dev", "loss_obs", "prem_obs",
-        "loss_proj", "prem_proj", "lr_proj",
-        "incr_loss_proj", "incr_prem_proj", "incr_lr_proj",
-        "loss_total_se", "lr_se", "lr_cv",
-        "lr_ci_lo", "lr_ci_hi",
+        "cohort", "dev", "loss_obs", "premium_obs",
+        "loss_proj", "premium_proj", "ratio_proj",
+        "incr_loss_proj", "incr_premium_proj", "incr_ratio_proj",
+        "loss_total_se", "ratio_se", "ratio_cv",
+        "ratio_ci_lo", "ratio_ci_hi",
         "loss_ci_lo", "loss_ci_hi",
     }
     assert set(fit.to_polars().columns) >= expected
 
 
-def test_lr_output_shape():
-    fit = lr.LR(method="cl").fit(
+def test_ratio_output_shape():
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert fit.n_rows == 25  # 5 cohorts x 5 devs
@@ -87,30 +87,30 @@ def test_lr_output_shape():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_cl_method_matches_cl_fit():
+def test_ratio_cl_method_matches_cl_fit():
     tri = lr.Triangle(_toy_triangle_input())
     cl_fit = lr.CL().fit(tri)
-    lr_fit = lr.LR(method="cl").fit(tri)
+    ratio_fit = lr.Ratio(method="cl").fit(tri)
 
     cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-    lr_df = lr_fit.to_polars().sort(["cohort", "dev"])
+    ratio_df = ratio_fit.to_polars().sort(["cohort", "dev"])
 
     # Cumulative loss projections must match
-    assert cl_df["target_proj"].to_list() == lr_df["loss_proj"].to_list()
+    assert cl_df["loss_proj"].to_list() == ratio_df["loss_proj"].to_list()
 
 
-def test_lr_cl_lr_proj_equals_loss_div_exposure():
-    fit = lr.LR(method="cl").fit(
+def test_ratio_cl_ratio_proj_equals_loss_div_exposure():
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     df = fit.to_polars()
     df_filt = df.filter(
         pl.col("loss_proj").is_not_null()
-        & pl.col("prem_proj").is_not_null()
-        & (pl.col("prem_proj") != 0)
+        & pl.col("premium_proj").is_not_null()
+        & (pl.col("premium_proj") != 0)
     )
-    expected = (df_filt["loss_proj"] / df_filt["prem_proj"]).to_list()
-    actual = df_filt["lr_proj"].to_list()
+    expected = (df_filt["loss_proj"] / df_filt["premium_proj"]).to_list()
+    actual = df_filt["ratio_proj"].to_list()
     for a, b in zip(actual, expected):
         assert a == pytest.approx(b)
 
@@ -120,16 +120,16 @@ def test_lr_cl_lr_proj_equals_loss_div_exposure():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_ed_method_matches_ed_fit():
+def test_ratio_ed_method_matches_ed_fit():
     tri = lr.Triangle(_toy_triangle_input())
     ed_fit = lr.ED().fit(tri)
-    lr_fit = lr.LR(method="ed").fit(tri)
+    ratio_fit = lr.Ratio(method="ed").fit(tri)
 
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
-    lr_df = lr_fit.to_polars().sort(["cohort", "dev"])
+    ratio_df = ratio_fit.to_polars().sort(["cohort", "dev"])
 
     # ED worker output uses generic ``target_*`` column names.
-    assert ed_df["target_proj"].to_list() == lr_df["loss_proj"].to_list()
+    assert ed_df["loss_proj"].to_list() == ratio_df["loss_proj"].to_list()
 
 
 # ---------------------------------------------------------------------------
@@ -137,39 +137,39 @@ def test_lr_ed_method_matches_ed_fit():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_sa_with_loose_thresholds_detects_kstar_early():
+def test_ratio_sa_with_loose_thresholds_detects_kstar_early():
     """With loose thresholds, mat_k should be detected (e.g., 1)."""
-    fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
+    fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert fit.mat_k is not None
 
 
-def test_lr_sa_strict_thresholds_falls_back_to_ed():
+def test_ratio_sa_strict_thresholds_falls_back_to_ed():
     """When maturity not detected, SA falls back to ED throughout, so
     loss_proj should match the pure-ED projection."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.LR(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
+    sa_fit = lr.Ratio(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
     ed_fit = lr.ED().fit(tri)
 
     assert sa_fit.mat_k is None
     sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
-    assert sa_df["loss_proj"].to_list() == ed_df["target_proj"].to_list()
+    assert sa_df["loss_proj"].to_list() == ed_df["loss_proj"].to_list()
 
 
-def test_lr_sa_kstar_two_matches_cl_projection():
+def test_ratio_sa_kstar_two_matches_cl_projection():
     """With mat_k=2, every link's target dev (>= 2) lies in the CL
     region (target dev >= mat_k), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
+    sa_fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.CL().fit(tri)
 
     if sa_fit.mat_k == 2:
         sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
         cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
         # Both use CL throughout when mat_k = 2 (target dev >= 2 for all links).
-        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["target_proj"].to_list()):
+        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
             if a is None or b is None:
                 continue
             assert a == pytest.approx(b)
@@ -180,8 +180,8 @@ def test_lr_sa_kstar_two_matches_cl_projection():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_summary_columns():
-    fit = lr.LR(method="cl").fit(
+def test_ratio_summary_columns():
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     summary = fit.summary()
@@ -189,27 +189,27 @@ def test_lr_summary_columns():
         "cohort",
         "latest",
         "loss_ult",
-        "prem_ult",
-        "lr_ult",
-        "lr_se",
-        "lr_cv",
-        "lr_ci_lo",
-        "lr_ci_hi",
+        "premium_ult",
+        "ratio_ult",
+        "ratio_se",
+        "ratio_cv",
+        "ratio_ci_lo",
+        "ratio_ci_hi",
     }
     assert summary.height == 5
 
 
-def test_lr_summary_fully_observed_cohort():
-    fit = lr.LR(method="cl").fit(
+def test_ratio_summary_fully_observed_cohort():
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
     # Cohort 2024-01 has all 5 devs observed; loss_ult = 500
     assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
-    # prem_ult = 500 (rp=100 per dev for 5 devs)
-    assert summary["prem_ult"].to_list()[0] == pytest.approx(500.0)
-    assert summary["lr_ult"].to_list()[0] == pytest.approx(1.0)
+    # premium_ult = 500 (rp=100 per dev for 5 devs)
+    assert summary["premium_ult"].to_list()[0] == pytest.approx(500.0)
+    assert summary["ratio_ult"].to_list()[0] == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -217,15 +217,15 @@ def test_lr_summary_fully_observed_cohort():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_with_group_var():
+def test_ratio_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    fit = lr.LR(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(df, groups="coverage")
     )
     assert "coverage" in fit.to_polars().columns
 
 
-def test_lr_groups_fitted_independently():
+def test_ratio_groups_fitted_independently():
     base = _toy_triangle_input()
     df_grouped = pl.concat(
         [
@@ -233,7 +233,7 @@ def test_lr_groups_fitted_independently():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    fit = lr.LR(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(df_grouped, groups="coverage")
     )
     df = fit.to_polars().sort(["coverage", "cohort", "dev"])
@@ -242,9 +242,9 @@ def test_lr_groups_fitted_independently():
     assert a_loss == b_loss
 
 
-def test_lr_sa_kstar_per_group_dict():
+def test_ratio_sa_kstar_per_group_dict():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    fit = lr.LR(method="sa", max_cv=10.0, max_rse=10.0).fit(
+    fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0).fit(
         lr.Triangle(df, groups="coverage")
     )
     assert isinstance(fit.mat_k, dict)
@@ -256,10 +256,10 @@ def test_lr_sa_kstar_per_group_dict():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_pandas_input_mirror():
+def test_ratio_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_triangle_input().to_pandas())
-    fit = lr.LR(method="cl").fit(lr.Triangle(df))
+    fit = lr.Ratio(method="cl").fit(lr.Triangle(df))
     assert isinstance(fit.df, pd.DataFrame)
     assert isinstance(fit.summary(), pd.DataFrame)
 
@@ -269,8 +269,8 @@ def test_lr_pandas_input_mirror():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_repr():
-    fit = lr.LR(method="ed").fit(lr.Triangle(_toy_triangle_input()))
+def test_ratio_repr():
+    fit = lr.Ratio(method="ed").fit(lr.Triangle(_toy_triangle_input()))
     text = repr(fit)
-    assert "LRFit" in text
+    assert "RatioFit" in text
     assert "ed" in text

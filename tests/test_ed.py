@@ -18,7 +18,7 @@ def _toy_triangle_input() -> pl.DataFrame:
         2024-04: 180, 370
         2024-05: 200
 
-    Risk prem rp is constant 100 per cell, so cumulative prem is
+    Risk premium rp is constant 100 per cell, so cumulative premium is
     100, 200, 300, ... per cohort regardless of dev attained.
     """
     return pl.DataFrame(
@@ -44,7 +44,7 @@ def _toy_triangle_input() -> pl.DataFrame:
                 180.0, 190.0,
                 200.0,
             ],
-            "incr_prem": [100.0] * 15,
+            "incr_premium": [100.0] * 15,
         }
     )
 
@@ -84,7 +84,7 @@ def test_ed_g_k_first_link_hand_check():
     """At dev 1 -> 2 link, four cohorts contribute (2024-01..04):
 
         Δloss[i,2]:  200-100=100, 280-150=130, 250-120=130, 370-180=190
-        prem[i,1]:    100,         100,         100,         100
+        premium[i,1]:    100,         100,         100,         100
 
         sum Δloss = 100 + 130 + 130 + 190 = 550
         sum premium   = 400
@@ -135,9 +135,9 @@ def test_ed_sigma2_g_k_last_link_min_last2():
 # ---------------------------------------------------------------------------
 
 
-def test_ed_f_p_k_constant_when_prem_constant():
+def test_ed_f_p_k_constant_when_premium_constant():
     """All cohorts have rp=100 in every observed cell, so cumulative
-    prem grows linearly: dev k has premium = 100*k. Then f^P_k = (k+1)/k."""
+    premium grows linearly: dev k has premium = 100*k. Then f^P_k = (k+1)/k."""
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     params = fit._params_df.sort("dev")
     f_p = params["f_p"].to_list()
@@ -159,22 +159,22 @@ def test_ed_f_p_k_constant_when_prem_constant():
 def test_ed_projection_observed_cells_unchanged():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    observed = df.filter(pl.col("target_obs").is_not_null())
-    diffs = (observed["target_proj"] - observed["target_obs"]).abs()
+    observed = df.filter(pl.col("loss_obs").is_not_null())
+    diffs = (observed["loss_proj"] - observed["loss_obs"]).abs()
     assert diffs.max() == pytest.approx(0.0)
 
 
 def test_ed_projection_uses_additive_rule():
     """Cohort 2024-05 has only dev 1 observed (loss = 200, premium = 100).
 
-        target_proj[1, 2] = loss[1, 1] + g_1 * exposure_proj[1, 1]
+        loss_proj[1, 2] = loss[1, 1] + g_1 * exposure_proj[1, 1]
                           = 200 + 1.375 * 100
                           = 337.5
     """
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
-    loss_proj = cohort_5["target_proj"].to_list()
+    loss_proj = cohort_5["loss_proj"].to_list()
     assert loss_proj[0] == 200.0
     assert loss_proj[1] == pytest.approx(200.0 + 1.375 * 100.0)
 
@@ -184,7 +184,7 @@ def test_ed_projection_uses_additive_rule():
 # ---------------------------------------------------------------------------
 
 
-def test_ed_prem_proj_present_for_all_cells():
+def test_ed_premium_proj_present_for_all_cells():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
     # Every cell has a projected exposure (observed or chain-ladder forecast)
@@ -199,15 +199,15 @@ def test_ed_prem_proj_present_for_all_cells():
 def test_ed_se_observed_cells_null():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    observed = df.filter(pl.col("target_obs").is_not_null())
-    assert observed["target_total_se"].null_count() == observed.height
+    observed = df.filter(pl.col("loss_obs").is_not_null())
+    assert observed["loss_total_se"].null_count() == observed.height
 
 
 def test_ed_se_proj_positive_for_projected_cells():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    projected = df.filter(pl.col("target_obs").is_null())
-    se_values = projected["target_total_se"].to_list()
+    projected = df.filter(pl.col("loss_obs").is_null())
+    se_values = projected["loss_total_se"].to_list()
     assert all(v is not None and v > 0 for v in se_values)
 
 
@@ -215,7 +215,7 @@ def test_ed_se_grows_with_distance_from_observed():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars().sort(["cohort", "dev"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
-    se = cohort_5["target_total_se"].to_list()
+    se = cohort_5["loss_total_se"].to_list()
     se_proj_only = [v for v in se if v is not None]
     for i in range(1, len(se_proj_only)):
         assert se_proj_only[i] >= se_proj_only[i - 1]

@@ -1,7 +1,7 @@
 """Experience data validation.
 
 The package's input data convention is the actuarial experience table:
-one row per (cohort, calendar) cell with per-period loss and prem.
+one row per (cohort, calendar) cell with per-period loss and premium.
 
 This module exposes one module-level function:
 
@@ -28,7 +28,7 @@ import polars as pl
 
 from ._io import detect_input_type, mirror_output, to_polars
 
-REQUIRED_COLS = ("uy_m", "cy_m", "incr_loss", "incr_prem")
+REQUIRED_COLS = ("uy_m", "cy_m", "incr_loss", "incr_premium")
 
 
 def validate_experience(df: Any) -> Any:
@@ -36,7 +36,7 @@ def validate_experience(df: Any) -> Any:
 
     Checks that the required columns are present and coerces them to
     the expected types (``uy_m`` / ``cy_m`` to ``Date``, ``incr_loss`` /
-    ``incr_prem`` to ``Float64``). Other columns are left unchanged.
+    ``incr_premium`` to ``Float64``). Other columns are left unchanged.
 
     Parameters
     ----------
@@ -47,7 +47,7 @@ def validate_experience(df: Any) -> Any:
         * ``uy_m`` -- underwriting year-month (date or coercible to date)
         * ``cy_m`` -- calendar year-month (date or coercible to date)
         * ``incr_loss`` -- per-period claim amount (numeric)
-        * ``incr_prem`` -- per-period prem (numeric); risk prem
+        * ``incr_premium`` -- per-period premium (numeric); risk premium
           is commonly used for long-term health insurance
 
     Returns
@@ -77,7 +77,7 @@ def validate_experience(df: Any) -> Any:
         pl.col("cy_m").cast(pl.Date),
         pl.col("uy_m").cast(pl.Date),
         pl.col("incr_loss").cast(pl.Float64),
-        pl.col("incr_prem").cast(pl.Float64),
+        pl.col("incr_premium").cast(pl.Float64),
     )
     return mirror_output(df_pl, output_type)
 

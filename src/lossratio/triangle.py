@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 # Required value columns (cohort/cym are checked separately by name).
-_REQUIRED_VALUE_COLS = ("incr_loss", "incr_prem")
+_REQUIRED_VALUE_COLS = ("incr_loss", "incr_premium")
 
 # Triangle-specific: standard dev column name per grain code.
 _GRAIN_TO_DEV_VAR = {
@@ -57,10 +57,10 @@ class Triangle:
     * ``groups`` -- present only if supplied
     * ``cohort`` -- the underwriting period (renamed from cohort)
     * ``dev`` -- the development index (1, 2, ...) within each cohort
-    * ``loss``, ``prem`` -- cumulative sums within each (group, cohort)
-    * ``incr_loss``, ``incr_prem`` -- per-period sums per cell
-    * ``lr`` -- cumulative loss ratio (``loss / prem``)
-    * ``incr_lr`` -- per-period loss ratio (``incr_loss / incr_prem``)
+    * ``loss``, ``premium`` -- cumulative sums within each (group, cohort)
+    * ``incr_loss``, ``incr_premium`` -- per-period sums per cell
+    * ``lr`` -- cumulative loss ratio (``loss / premium``)
+    * ``incr_ratio`` -- per-period loss ratio (``incr_loss / incr_premium``)
 
     Cumulative is the unmarked default; per-period values carry an
     ``_incr`` (incremental) suffix.
@@ -96,7 +96,7 @@ class Triangle:
         df_pl = coerce_cols_to_date(df_pl, [cohort, calendar])
         df_pl = df_pl.with_columns(
             pl.col("incr_loss").cast(pl.Float64),
-            pl.col("incr_prem").cast(pl.Float64),
+            pl.col("incr_premium").cast(pl.Float64),
         )
 
         # Auto-detect input grain; resolve "auto" or validate explicit value.
@@ -125,7 +125,7 @@ class Triangle:
             df_pl.group_by(agg_keys)
             .agg(
                 pl.col("incr_loss").sum(),
-                pl.col("incr_prem").sum(),
+                pl.col("incr_premium").sum(),
             )
             .sort(agg_keys)
         )
@@ -165,7 +165,7 @@ class Triangle:
                     full_grid.join(agg, on=agg_keys, how="left")
                     .with_columns(
                         pl.col("incr_loss").fill_null(0.0),
-                        pl.col("incr_prem").fill_null(0.0),
+                        pl.col("incr_premium").fill_null(0.0),
                     )
                     .sort(agg_keys)
                 )
@@ -184,10 +184,10 @@ class Triangle:
 
         agg = agg.with_columns(
             pl.col("incr_loss").cum_sum().over(cum_keys).alias("loss"),
-            pl.col("incr_prem").cum_sum().over(cum_keys).alias("prem"),
+            pl.col("incr_premium").cum_sum().over(cum_keys).alias("premium"),
         ).with_columns(
-            (pl.col("loss") / pl.col("prem")).alias("lr"),
-            (pl.col("incr_loss") / pl.col("incr_prem")).alias("incr_lr"),
+            (pl.col("loss") / pl.col("premium")).alias("ratio"),
+            (pl.col("incr_loss") / pl.col("incr_premium")).alias("incr_ratio"),
         )
 
         # Rename to standard column names: cohort -> cohort, _dev_temp -> dev.
@@ -200,8 +200,8 @@ class Triangle:
         ordered.extend([
             "cohort", "dev",
             "loss", "incr_loss",
-            "prem", "incr_prem",
-            "lr", "incr_lr",
+            "premium", "incr_premium",
+            "ratio", "incr_ratio",
         ])
         agg = agg.select(ordered)
 
@@ -275,7 +275,7 @@ class Triangle:
     def link(
         self,
         target: str = "loss",
-        exposure: str | None = "prem",
+        exposure: str | None = "premium",
         weight: str | None = None,
         min_denom: float = 0.0,
         drop_invalid: bool = False,
@@ -299,10 +299,10 @@ class Triangle:
         ----------
         target
             Cumulative metric used as the link numerator. One of
-            ``"loss"``, ``"prem"``, ``"lr"``. Default ``"loss"``.
+            ``"loss"``, ``"premium"``, ``"ratio"``. Default ``"loss"``.
         exposure
             Optional cumulative metric for the ED exposure anchor.
-            Default ``"prem"``. Pass ``None`` for ATA-only mode.
+            Default ``"premium"``. Pass ``None`` for ATA-only mode.
         weight
             Optional WLS weight column (cannot combine with exposure).
         min_denom
@@ -315,7 +315,7 @@ class Triangle:
         Examples
         --------
         >>> tri = lr.Triangle(df, groups="coverage")
-        >>> link = tri.link()                          # target='loss', exposure='prem'
+        >>> link = tri.link()                          # target='loss', exposure='premium'
         >>> link = tri.link(target='loss')             # ATA-only
         >>> link.ata().maturity(max_cv=0.15)
         """
@@ -332,7 +332,7 @@ class Triangle:
 
     def detect_regime(
         self,
-        target: str = "lr",
+        target: str = "ratio",
         window: int = 12,
         method: str = "e_divisive",
         n_regimes: int | None = None,

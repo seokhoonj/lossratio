@@ -194,7 +194,7 @@ class Regime:
         cls,
         triangle: "Triangle",
         *,
-        target: str = "lr",
+        target: str = "ratio",
         window: int = 12,
         method: str = "e_divisive",
         n_regimes: int | None = None,
@@ -455,7 +455,7 @@ def regime_at(
 
 
 def regime_spec(
-    target: str = "lr",
+    target: str = "ratio",
     window: int = 12,
     method: str = "e_divisive",
     *,
@@ -512,7 +512,7 @@ def _resolve_regime(
     - :class:`Regime`: returned as-is (already eagerly built).
     - callable ``f(triangle) -> Regime``: invoked on ``triangle``.
 
-    Used by ``LR`` / ``Loss`` / ``Premium`` / ``Backtest`` to flatten
+    Used by ``Ratio`` / ``Loss`` / ``Premium`` / ``Backtest`` to flatten
     user-supplied regime args before the cohort filter runs. When the
     triangle is a masked backtest fold, the callable / "auto" paths
     re-detect on the masked data -- the leakage-safe contract.

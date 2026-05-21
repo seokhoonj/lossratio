@@ -44,7 +44,7 @@ class _IntensityResult:
 
 def _compute_intensity(
     loss_obs: np.ndarray,
-    prem_obs: np.ndarray,
+    premium_obs: np.ndarray,
     sigma_method: str = "locf",
 ) -> _IntensityResult:
     """Per-link WLS intensity estimation.
@@ -73,7 +73,7 @@ def _compute_intensity(
     n_obs_k = np.zeros(n_links, dtype=np.int64)
 
     for k in range(n_links):
-        ck = prem_obs[:, k]
+        ck = premium_obs[:, k]
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
         n_k = int(mask.sum())
@@ -115,7 +115,7 @@ def _compute_intensity(
         sigma2_k = sigma2_k_new
         # Recompute g_se on the filled tail using sum_crp from the same link.
         k_last = n_links - 1
-        ck_last = prem_obs[:, k_last]
+        ck_last = premium_obs[:, k_last]
         dl_last = loss_obs[:, k_last + 1] - loss_obs[:, k_last]
         mask_last = ~np.isnan(ck_last) & ~np.isnan(dl_last) & (ck_last > 0)
         if mask_last.any():
@@ -205,7 +205,7 @@ class Intensity:
         tri_df = link._tri_df
         groups = link._groups
 
-        target_col = link._target
+        loss_col = link._target
         exposure_col = link._exposure
         if exposure_col is None:
             raise ValueError(
@@ -213,10 +213,10 @@ class Intensity:
             )
 
         if groups is None:
-            loss_obs, _, _ = _build_value_matrix(tri_df, target_col)
-            prem_obs, _, _ = _build_value_matrix(tri_df, exposure_col)
+            loss_obs, _, _ = _build_value_matrix(tri_df, loss_col)
+            premium_obs, _, _ = _build_value_matrix(tri_df, exposure_col)
             result = _compute_intensity(
-                loss_obs, prem_obs, sigma_method=sigma_method
+                loss_obs, premium_obs, sigma_method=sigma_method
             )
             diag_df = _diagnostic_to_df(
                 result, groups=None, group_value=None
@@ -228,10 +228,10 @@ class Intensity:
             )
             for g in group_values:
                 sub = tri_df.filter(pl.col(groups) == g)
-                loss_obs, _, _ = _build_value_matrix(sub, target_col)
-                prem_obs, _, _ = _build_value_matrix(sub, exposure_col)
+                loss_obs, _, _ = _build_value_matrix(sub, loss_col)
+                premium_obs, _, _ = _build_value_matrix(sub, exposure_col)
                 result = _compute_intensity(
-                    loss_obs, prem_obs, sigma_method=sigma_method
+                    loss_obs, premium_obs, sigma_method=sigma_method
                 )
                 diag_parts.append(
                     _diagnostic_to_df(

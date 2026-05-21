@@ -37,7 +37,7 @@ def _load(name: str) -> pl.DataFrame:
 
 def _exp_sur() -> pl.DataFrame:
     """Same SUR-only slice the R fixtures were built from."""
-    return _load("experience").filter(pl.col("coverage") == "SUR")
+    return _load("experience").filter(pl.col("coverage") == "surgery")
 
 
 def _compare_numeric(py_df: pl.DataFrame, r_df: pl.DataFrame, cols: list[str]) -> None:
@@ -80,57 +80,57 @@ def test_triangle_build_matches_r():
     )
     _compare_numeric(
         py, r,
-        cols=["loss", "incr_loss", "prem", "incr_prem", "lr", "incr_lr"],
+        cols=["loss", "incr_loss", "premium", "incr_premium", "ratio", "incr_ratio"],
     )
 
 
 # ---------------------------------------------------------------------------
-# fit_lr / LR
+# fit_ratio / Ratio
 # ---------------------------------------------------------------------------
 
 
-def test_lr_sa_full_matches_r():
-    r = _load("lr_sa_full").sort(["cohort", "dev"])
+def test_ratio_sa_full_matches_r():
+    r = _load("ratio_sa_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.LR(method="sa").fit(tri)
+        lr.Ratio(method="sa").fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
+    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
 
 
-def test_lr_ed_full_matches_r():
-    r = _load("lr_ed_full").sort(["cohort", "dev"])
+def test_ratio_ed_full_matches_r():
+    r = _load("ratio_ed_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.LR(method="ed").fit(tri)
+        lr.Ratio(method="ed").fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
+    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
 
 
-def test_lr_cl_full_matches_r():
-    r = _load("lr_cl_full").sort(["cohort", "dev"])
+def test_ratio_cl_full_matches_r():
+    r = _load("ratio_cl_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.LR(method="cl").fit(tri)
+        lr.Ratio(method="cl").fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "prem_proj", "lr_proj"])
+    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
 
 
-def test_lr_sa_maturity_matches_r():
+def test_ratio_sa_maturity_matches_r():
     """Maturity dev: R's $maturity table carries the link target dev in
     the `change` column (mirrors the `change` column convention used by
     Regime). Python exposes the same value via `fit.mat_k[<group>]`."""
-    r = _load("lr_sa_maturity")
+    r = _load("ratio_sa_maturity")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    fit = lr.LR(method="sa").fit(tri)
+    fit = lr.Ratio(method="sa").fit(tri)
     r_k = int(r["change"].max())
-    py_k = fit.mat_k["SUR"]
+    py_k = fit.mat_k["surgery"]
     assert py_k == r_k, f"mat_k mismatch: py={py_k} r={r_k}"
 
 
@@ -147,7 +147,7 @@ def test_cl_full_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["target_proj"])
+    _compare_numeric(py, r, cols=["loss_proj"])
 
 
 def test_cl_mack_se_matches_r():
@@ -159,7 +159,7 @@ def test_cl_mack_se_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["target_proj", "target_total_se"])
+    _compare_numeric(py, r, cols=["loss_proj", "loss_total_se"])
 
 
 # ---------------------------------------------------------------------------
@@ -220,15 +220,15 @@ def test_regime_changes_match_r():
 # ---------------------------------------------------------------------------
 
 
-def test_lr_sa_summary_matches_r():
-    """LR(method='sa').summary() — per-cohort projected lr / SE / CV."""
-    r = _load("lr_sa_summary").sort(["cohort"])
+def test_ratio_sa_summary_matches_r():
+    """Ratio(method='sa').summary() — per-cohort projected lr / SE / CV."""
+    r = _load("ratio_sa_summary").sort(["cohort"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    lr_fit = lr.LR(method="sa").fit(tri)
-    py = lr_fit.summary().sort(["cohort"])
+    ratio_fit = lr.Ratio(method="sa").fit(tri)
+    py = ratio_fit.summary().sort(["cohort"])
 
     common = [
-        c for c in ["lr_ult", "lr_latest", "lr_se", "lr_cv"]
+        c for c in ["ratio_ult", "ratio_latest", "ratio_se", "ratio_cv"]
         if c in r.columns and c in py.columns
     ]
     if not common:
@@ -237,20 +237,20 @@ def test_lr_sa_summary_matches_r():
 
 
 # ---------------------------------------------------------------------------
-# backtest with metric = "lr"
+# backtest with metric = "ratio"
 # ---------------------------------------------------------------------------
 
 
-def test_backtest_lr_ae_err_matches_r():
+def test_backtest_ratio_ae_err_matches_r():
     """Cell-level parity with R's backtest output.
 
     Both languages emit `actual`, `expected`, `aeg`, `ae_err` and use
     NaN for unfittable links. The defensive intersect-on-(cohort, dev)
     is kept as a guard against future drift.
     """
-    r = _load("backtest_lr_ae_err").sort(["cohort", "dev"])
+    r = _load("backtest_ratio_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
+    bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
     py_aligned = bt.ae_err.sort(["cohort", "dev"])
 
     keys = ["cohort", "dev"]
@@ -262,9 +262,9 @@ def test_backtest_lr_ae_err_matches_r():
 
 def test_backtest_col_summary_matches_r():
     """col_summary aggregates by dev."""
-    r = _load("backtest_lr_col_summary").sort(["dev"])
+    r = _load("backtest_ratio_col_summary").sort(["dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
+    bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
     py = bt.col_summary.sort(["dev"])
 
     keys = ["dev"]
@@ -279,9 +279,9 @@ def test_backtest_col_summary_matches_r():
 
 def test_backtest_diag_summary_matches_r():
     """diag_summary aggregates by calendar diagonal."""
-    r = _load("backtest_lr_diag_summary").sort(["cal_idx"])
+    r = _load("backtest_ratio_diag_summary").sort(["cal_idx"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6, metric="lr").fit(tri)
+    bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
     py = bt.diag_summary.sort(["cal_idx"])
 
     keys = ["cal_idx"]

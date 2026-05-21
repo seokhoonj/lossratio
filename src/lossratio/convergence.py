@@ -2,7 +2,7 @@
 loss ratio stabilises.
 
 Mirror of R's ``detect_convergence()`` --- multi-criterion drift /
-slope / dispersion test on the LR backtest path.
+slope / dispersion test on the Ratio backtest path.
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ def _compute_dispersion(
     triangle: "Triangle",
     min_n_cohorts: int = 5,
 ) -> pl.DataFrame:
-    """Robust cross-cohort dispersion of incremental LR per (group, dev).
+    """Robust cross-cohort dispersion of incremental Ratio per (group, dev).
 
     Returns a polars DataFrame with columns ``[groups?, dev,
-    n_cohorts, lr_median, lr_mad, dispersion, flag]``.
+    n_cohorts, ratio_median, ratio_mad, dispersion, flag]``.
     """
-    tri_df = triangle.to_polars().filter(pl.col("lr").is_not_null())
+    tri_df = triangle.to_polars().filter(pl.col("ratio").is_not_null())
     grp = triangle.groups
     by_cols = ([grp] if grp is not None else []) + ["dev"]
 
@@ -39,13 +39,13 @@ def _compute_dispersion(
         tri_df.group_by(by_cols)
         .agg(
             pl.len().alias("n_cohorts"),
-            pl.col("lr").median().alias("lr_median"),
+            pl.col("ratio").median().alias("ratio_median"),
             # MAD with constant 1.4826 = consistent estimator of sigma
             # for normal data: median(|x - median(x)|) * 1.4826.
             (
-                (pl.col("lr") - pl.col("lr").median()).abs().median()
+                (pl.col("ratio") - pl.col("ratio").median()).abs().median()
                 * 1.4826
-            ).alias("lr_mad"),
+            ).alias("ratio_mad"),
         )
         .sort(by_cols)
     )
@@ -53,38 +53,38 @@ def _compute_dispersion(
     out = out.with_columns(
         pl.when(pl.col("n_cohorts") < min_n_cohorts)
           .then(pl.lit("sparse"))
-          .when(pl.col("lr_median").abs() < _NEAR_ZERO_FLOOR)
+          .when(pl.col("ratio_median").abs() < _NEAR_ZERO_FLOOR)
           .then(pl.lit("near_zero_median"))
           .otherwise(pl.lit("ok"))
           .alias("flag")
     )
 
     denom = pl.max_horizontal(
-        pl.col("lr_median").abs(), pl.lit(_NEAR_ZERO_FLOOR)
+        pl.col("ratio_median").abs(), pl.lit(_NEAR_ZERO_FLOOR)
     )
     out = out.with_columns(
         pl.when(pl.col("flag") == "sparse")
           .then(None)
-          .otherwise(pl.col("lr_mad") / denom)
+          .otherwise(pl.col("ratio_mad") / denom)
           .alias("dispersion")
     )
 
-    return out.select(by_cols + ["n_cohorts", "lr_median", "lr_mad",
+    return out.select(by_cols + ["n_cohorts", "ratio_median", "ratio_mad",
                                  "dispersion", "flag"])
 
 
-def _extract_portfolio_lr(bt_fit: Any) -> float:
-    """Portfolio-level projected LR from a BacktestFit.
+def _extract_portfolio_ratio(bt_fit: Any) -> float:
+    """Portfolio-level projected Ratio from a BacktestFit.
 
-    Computes ``sum(loss_ult) / sum(prem_ult)`` where ``loss_ult`` /
-    ``prem_ult`` are the *latest projected* per-cohort cumulative
-    values (last non-null ``loss_proj`` / ``prem_proj`` sorted by
+    Computes ``sum(loss_ult) / sum(premium_ult)`` where ``loss_ult`` /
+    ``premium_ult`` are the *latest projected* per-cohort cumulative
+    values (last non-null ``loss_proj`` / ``premium_proj`` sorted by
     dev). Using last-non-null is robust when the masked refit's
     projection halts before ``dev_max`` because late ATA factors are
     unestimable (no cohort-pair under the mask).
 
     Returns ``nan`` when no cohorts have a projectable cell or total
-    prem is non-positive.
+    premium is non-positive.
     """
     refit = getattr(bt_fit, "_refit", None)
     if refit is None:
@@ -94,7 +94,7 @@ def _extract_portfolio_lr(bt_fit: Any) -> float:
         return float("nan")
     if not isinstance(df, pl.DataFrame):
         return float("nan")
-    if "loss_proj" not in df.columns or "prem_proj" not in df.columns:
+    if "loss_proj" not in df.columns or "premium_proj" not in df.columns:
         return float("nan")
 
     keys: list[str] = []
@@ -106,19 +106,19 @@ def _extract_portfolio_lr(bt_fit: Any) -> float:
     # Last non-null projection per cohort (sorted by dev).
     ult = (
         df.filter(pl.col("loss_proj").is_not_null()
-                  & pl.col("prem_proj").is_not_null())
+                  & pl.col("premium_proj").is_not_null())
         .sort(keys + ["dev"])
         .group_by(keys, maintain_order=True)
         .agg(
             pl.col("loss_proj").last().alias("loss_ult"),
-            pl.col("prem_proj").last().alias("prem_ult"),
+            pl.col("premium_proj").last().alias("premium_ult"),
         )
     )
     if ult.height == 0:
         return float("nan")
 
     total_loss = ult["loss_ult"].sum()
-    total_exp = ult["prem_ult"].sum()
+    total_exp = ult["premium_ult"].sum()
     if total_exp is None or not np.isfinite(total_exp) or total_exp <= 0:
         return float("nan")
     return float(total_loss) / float(total_exp)
@@ -150,7 +150,7 @@ def detect_convergence(
     min_n_cohorts: int = 5,
     **backtest_kwargs: Any,
 ) -> "Convergence":
-    """Detect the development period at which the projected LR stabilises.
+    """Detect the development period at which the projected Ratio stabilises.
 
     Parameters
     ----------
@@ -162,7 +162,7 @@ def detect_convergence(
         - ``"tail"`` (default, reserving-safe): tail drift over
           ``[k, dev_max]`` falls below ``max_drift``.
         - ``"window"``: local drift over ``[k, k + window - 1]``.
-        - ``"slope"``: ``|OLS slope of LR ~ k|`` on ``[k, dev_max]``
+        - ``"slope"``: ``|OLS slope of Ratio ~ k|`` on ``[k, dev_max]``
           below ``max_slope``.
         - ``"all"``: all three above pass simultaneously.
 
@@ -178,7 +178,7 @@ def detect_convergence(
         Drift window length (in dev steps). Default ``5``.
     mat_k
         Pre-computed maturity point. When ``None``, auto-detected from
-        the LR-link ATA.
+        the Ratio-link ATA.
     holdout_max
         Cap on holdout depth. When ``None``, set to
         ``max(window, (dev_max - mat_k) // 2)``.
@@ -186,7 +186,7 @@ def detect_convergence(
         Minimum cohorts required to compute dispersion. Default ``5``.
     **backtest_kwargs
         Forwarded to ``Backtest`` (e.g. ``estimator`` choice). Defaults
-        to ``lr.LR(method="sa")``.
+        to ``lr.Ratio(method="sa")``.
 
     Returns
     -------
@@ -194,7 +194,7 @@ def detect_convergence(
         Result object exposing ``conv_k``, ``mat_k``, ``dev_max``, the
         candidate dev sequence and per-criterion diagnostics.
     """
-    from .lr import LR
+    from .ratio import Ratio
     from .backtest import Backtest
 
     if method not in _VALID_METHODS:
@@ -211,10 +211,10 @@ def detect_convergence(
         raise ValueError("window must be >= 2")
     window = int(window)
 
-    # 1. Resolve mat_k from LR-link ATA if not given.
+    # 1. Resolve mat_k from Ratio-link ATA if not given.
     if mat_k is None:
         mat = (
-            triangle.link(target="lr", exposure=None, weight="prem")
+            triangle.link(target="ratio", exposure=None, weight="premium")
             .ata()
             .maturity()
         )
@@ -223,7 +223,7 @@ def detect_convergence(
             vals = [v for v in mat_k_raw.values() if v is not None]
             if not vals:
                 raise ValueError(
-                    "Auto mat_k failed: no mature LR link in any group. "
+                    "Auto mat_k failed: no mature Ratio link in any group. "
                     "Pass mat_k=... explicitly (e.g. detect_convergence("
                     "triangle, mat_k=4)) to bypass."
                 )
@@ -231,7 +231,7 @@ def detect_convergence(
         else:
             if mat_k_raw is None:
                 raise ValueError(
-                    "Auto mat_k failed: no mature LR link detected. "
+                    "Auto mat_k failed: no mature Ratio link detected. "
                     "Pass mat_k=... explicitly."
                 )
             mat_k = int(mat_k_raw)
@@ -254,19 +254,19 @@ def detect_convergence(
             stacklevel=2,
         )
 
-    # 3. LR per candidate via cached backtest.
-    estimator = backtest_kwargs.pop("estimator", None) or LR(method="sa")
-    lr_arr = np.full(len(dev_cand), np.nan)
+    # 3. Ratio per candidate via cached backtest.
+    estimator = backtest_kwargs.pop("estimator", None) or Ratio(method="sa")
+    ratio_arr = np.full(len(dev_cand), np.nan)
     cache: dict[int, float] = {}
 
-    def _get_lr(h: int) -> float:
+    def _get_ratio(h: int) -> float:
         if h in cache:
             return cache[h]
         try:
             bt_fit = Backtest(
-                estimator=estimator, holdout=h, metric="lr"
+                estimator=estimator, holdout=h, metric="ratio"
             ).fit(triangle)
-            val = _extract_portfolio_lr(bt_fit)
+            val = _extract_portfolio_ratio(bt_fit)
         except Exception:
             val = float("nan")
         cache[h] = val
@@ -276,12 +276,12 @@ def detect_convergence(
         h = dev_max - k
         if h < 1 or h > holdout_max:
             continue
-        lr_arr[i] = _get_lr(h)
+        ratio_arr[i] = _get_ratio(h)
 
     # 4. revision (diagnostic only).
     revision = np.full(len(dev_cand), np.nan)
     if len(dev_cand) >= 2:
-        revision[1:] = np.abs(np.diff(lr_arr))
+        revision[1:] = np.abs(np.diff(ratio_arr))
 
     # 5. drift_window over [i, i + window - 1].
     drift_window = np.full(len(dev_cand), np.nan)
@@ -289,23 +289,23 @@ def detect_convergence(
         j = i + window - 1
         if j >= len(dev_cand):
             break
-        w = lr_arr[i:j + 1]
+        w = ratio_arr[i:j + 1]
         if np.all(np.isfinite(w)):
             drift_window[i] = float(np.max(w) - np.min(w))
 
     # 6. drift_tail over [i, end].
     drift_tail = np.full(len(dev_cand), np.nan)
     for i in range(len(dev_cand)):
-        w = lr_arr[i:]
+        w = ratio_arr[i:]
         w = w[np.isfinite(w)]
         if len(w) >= 2:
             drift_tail[i] = float(np.max(w) - np.min(w))
 
-    # 7. slope -- OLS slope of LR ~ dev on [i, end].
+    # 7. slope -- OLS slope of Ratio ~ dev on [i, end].
     slope_arr = np.full(len(dev_cand), np.nan)
     dev_cand_arr = np.array(dev_cand, dtype=float)
     for i in range(len(dev_cand)):
-        slope_arr[i] = _ols_slope(dev_cand_arr[i:], lr_arr[i:])
+        slope_arr[i] = _ols_slope(dev_cand_arr[i:], ratio_arr[i:])
 
     # 8. dispersion at each candidate dev (group-collapsed via median).
     dispersion = np.full(len(dev_cand), np.nan)
@@ -358,7 +358,7 @@ def detect_convergence(
         mat_k=mat_k,
         dev_max=dev_max,
         dev_cand=dev_cand,
-        lr=lr_arr,
+        lr=ratio_arr,
         revision=revision,
         drift_window=drift_window,
         drift_tail=drift_tail,
@@ -479,7 +479,7 @@ class Convergence:
         """One-row-per-candidate diagnostic table."""
         df = pl.DataFrame({
             "dev": self.dev_cand,
-            "lr": self.lr,
+            "ratio": self.lr,
             "revision": self.revision,
             "drift_window": self.drift_window,
             "drift_tail": self.drift_tail,

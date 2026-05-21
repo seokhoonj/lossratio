@@ -9,7 +9,7 @@ import pytest
 import lossratio as lr
 from lossratio.convergence import (
     _compute_dispersion,
-    _extract_portfolio_lr,
+    _extract_portfolio_ratio,
     _ols_slope,
 )
 
@@ -45,7 +45,7 @@ def test_ols_slope_returns_nan_with_zero_variance():
 def test_compute_dispersion_schema():
     tri = _sur_triangle()
     disp = _compute_dispersion(tri, min_n_cohorts=5)
-    assert {"dev", "n_cohorts", "lr_median", "lr_mad",
+    assert {"dev", "n_cohorts", "ratio_median", "ratio_mad",
             "dispersion", "flag"}.issubset(set(disp.columns))
     # Sparse rows have null dispersion.
     sparse = disp.filter(pl.col("flag") == "sparse")
@@ -87,7 +87,7 @@ def test_detect_convergence_summary_table():
         df = df.to_polars()
     assert df.height == len(conv.dev_cand)
     expected_cols = {
-        "dev", "lr", "revision", "drift_window", "drift_tail",
+        "dev", "ratio", "revision", "drift_window", "drift_tail",
         "slope", "dispersion",
         "pass_window", "pass_tail", "pass_slope", "pass",
     }
@@ -144,18 +144,18 @@ def test_detect_convergence_multi_group():
     # across groups). conv_k may be None depending on data, but the
     # diagnostic series must still be populated.
     assert len(conv.dev_cand) > 0
-    finite_lr = np.isfinite(conv.lr).sum()
-    assert finite_lr > 0
+    finite_ratio = np.isfinite(conv.lr).sum()
+    assert finite_ratio > 0
 
 
-def test_extract_portfolio_lr_helper():
+def test_extract_portfolio_ratio_helper():
     """Direct call on a BacktestFit should yield a finite value when the
     masked refit has any projectable cell."""
     tri = _sur_triangle()
     bt_fit = lr.Backtest(
-        estimator=lr.LR(method="sa"), holdout=5, metric="lr",
+        estimator=lr.Ratio(method="sa"), holdout=5, metric="ratio",
     ).fit(tri)
-    val = _extract_portfolio_lr(bt_fit)
+    val = _extract_portfolio_ratio(bt_fit)
     assert np.isfinite(val)
     assert 0 < val < 5  # sanity-check ballpark
 

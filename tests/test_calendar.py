@@ -26,11 +26,11 @@ def test_calendar_schema_grouped():
     cal = lr.as_calendar(tri).to_polars()
     expected = {
         "coverage", "calendar", "cal_idx", "n_cohorts",
-        "loss", "incr_loss", "prem", "incr_prem",
-        "lr", "incr_lr",
+        "loss", "incr_loss", "premium", "incr_premium",
+        "ratio", "incr_ratio",
         "margin", "incr_margin", "profit", "incr_profit",
         "loss_share", "incr_loss_share",
-        "prem_share", "incr_prem_share",
+        "premium_share", "incr_premium_share",
     }
     assert set(cal.columns) == expected
 
@@ -40,7 +40,7 @@ def test_calendar_schema_no_group():
     cal = lr.as_calendar(tri).to_polars()
     # No group var, no group column in output.
     assert "coverage" not in cal.columns
-    for col in ["calendar", "cal_idx", "loss", "prem", "lr"]:
+    for col in ["calendar", "cal_idx", "loss", "premium", "ratio"]:
         assert col in cal.columns
 
 
@@ -70,13 +70,13 @@ def test_calendar_diagonal_sum_matches_triangle():
         tri_df.group_by(["coverage", "calendar"])
         .agg(
             pl.col("incr_loss").sum().alias("incr_loss_direct"),
-            pl.col("incr_prem").sum().alias("incr_prem_direct"),
+            pl.col("incr_premium").sum().alias("incr_premium_direct"),
         )
     )
     joined = cal.join(direct, on=["coverage", "calendar"], how="inner")
     for c_left, c_right in [
         ("incr_loss", "incr_loss_direct"),
-        ("incr_prem", "incr_prem_direct"),
+        ("incr_premium", "incr_premium_direct"),
     ]:
         for a, b in zip(joined[c_left].to_list(), joined[c_right].to_list()):
             assert a == pytest.approx(b, rel=1e-12, abs=1e-6)

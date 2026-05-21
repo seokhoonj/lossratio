@@ -1,13 +1,13 @@
 """Loss projection dispatcher (sa / ed / cl).
 
 ``Loss`` is the role-specific loss-side dispatcher. It owns the loss
-projection only — prem projection is delegated to :class:`Premium`,
+projection only — premium projection is delegated to :class:`Premium`,
 and loss-ratio composition (with delta method) is handled by
-:class:`LR`.
+:class:`Ratio`.
 
 Output columns use the role-specific ``loss_*`` naming. The full table
-also carries ``prem_*`` columns (taken from the embedded
-``PremiumFit``) so downstream LR composition has everything in one
+also carries ``premium_*`` columns (taken from the embedded
+``PremiumFit``) so downstream Ratio composition has everything in one
 place.
 
 Python sibling of R ``fit_loss()`` (see ``R/loss.R``).
@@ -25,7 +25,7 @@ from scipy.stats import norm
 from ._io import mirror_output
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
-from .ed import _build_prem_matrix, _fit_ed, _mack_g_var
+from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
 from .maturity import _compute_maturity
 from .premium import Premium, PremiumFit
 
@@ -52,10 +52,10 @@ class _LossResult:
     proc_se: np.ndarray
     param_se: np.ndarray
     total_se: np.ndarray
-    prem_obs: np.ndarray
-    prem_proj: np.ndarray
+    premium_obs: np.ndarray
+    premium_proj: np.ndarray
     mat_k: int | None
-    # internal parameters retained for LR bootstrap reuse
+    # internal parameters retained for Ratio bootstrap reuse
     g_sel: np.ndarray
     g_sigma2: np.ndarray
     g_var: np.ndarray
@@ -84,13 +84,13 @@ def _expand_to_full_grid(
 
     2. **Observed values**: pre-mini-triangle cells (which the
        per-segment fit dropped) are repopulated from the parent
-       triangle's ``loss`` / ``prem`` / ``lr`` columns. R's
+       triangle's ``loss`` / ``premium`` / ``lr`` columns. R's
        ``$full`` shows ``loss_obs == loss_proj`` on observed cells
        regardless of which segment they live in; matching that
        requires re-attaching the originals after the split fit.
 
-    3. **Increments**: ``incr_loss_proj`` / ``incr_prem_proj`` /
-       ``incr_lr_proj`` are recomputed from the now-complete
+    3. **Increments**: ``incr_loss_proj`` / ``incr_premium_proj`` /
+       ``incr_ratio_proj`` are recomputed from the now-complete
        cumulative columns via per-cohort
        ``cumulative - cumulative.shift(1)``. The per-segment fits
        produced increments only within each mini-triangle's reach,
@@ -126,9 +126,9 @@ def _expand_to_full_grid(
 
     # Re-attach observed values from the parent triangle. Where the
     # parent has observations, treat them as both `loss_obs` /
-    # `prem_obs` AND `loss_proj` / `prem_proj` (observed cells
+    # `premium_obs` AND `loss_proj` / `premium_proj` (observed cells
     # need no projection).
-    parent_keep = [c for c in ("loss", "prem", "lr") if c in tri_df.columns]
+    parent_keep = [c for c in ("loss", "premium", "ratio") if c in tri_df.columns]
     parent_view = tri_df.select(keys + parent_keep).with_columns(
         pl.col("dev").cast(pl.Int64)
     )
@@ -150,7 +150,7 @@ def _expand_to_full_grid(
 
     coalesce_exprs = (
         _coalesce_obs("loss", "loss_obs", "loss_proj")
-        + _coalesce_obs("prem", "prem_obs", "prem_proj")
+        + _coalesce_obs("premium", "premium_obs", "premium_proj")
     )
     if coalesce_exprs:
         out = out.with_columns(coalesce_exprs)
@@ -173,8 +173,8 @@ def _expand_to_full_grid(
     # Recompute increments from the now-complete cumulative columns.
     incr_pairs = [
         ("loss_proj", "incr_loss_proj"),
-        ("prem_proj", "incr_prem_proj"),
-        ("lr_proj", "incr_lr_proj"),
+        ("premium_proj", "incr_premium_proj"),
+        ("ratio_proj", "incr_ratio_proj"),
     ]
     over_keys = ([groups] if groups else []) + ["cohort"]
     incr_exprs = [
@@ -196,8 +196,8 @@ def _safe_div(a, b):
 
 def _fit_loss_single(
     loss_obs: np.ndarray,
-    prem_obs: np.ndarray,
-    prem_proj_from_fit: np.ndarray,
+    premium_obs: np.ndarray,
+    premium_proj_from_fit: np.ndarray,
     method: str,
     sigma_method: str,
     max_cv: float,
@@ -206,8 +206,8 @@ def _fit_loss_single(
 ) -> _LossResult:
     """Project cumulative loss + decompose variance (process / parameter).
 
-    ``prem_proj_from_fit`` is the prem projection from
-    ``PremiumFit`` (so the loss recursion uses the dispatcher's prem
+    ``premium_proj_from_fit`` is the premium projection from
+    ``PremiumFit`` (so the loss recursion uses the dispatcher's premium
     projection, not an inline Mack call). Both share the same point
     estimate so this is a no-op numerically but preserves the
     composition layering.
@@ -216,7 +216,7 @@ def _fit_loss_single(
     n_links = n_devs - 1
 
     # ED parameters
-    ed_result = _fit_ed(loss_obs, prem_obs, sigma_method=sigma_method)
+    ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
     g_k = ed_result.g_k
     sigma2_g_k = ed_result.sigma2_g_k
     var_g_k = _mack_g_var(ed_result)
@@ -268,7 +268,7 @@ def _fit_loss_single(
 
         target_dev = k + 2  # link from dev (k+1) to dev (k+2)
         ck = loss_proj[:, k]
-        pk = prem_proj_from_fit[:, k]
+        pk = premium_proj_from_fit[:, k]
 
         if target_dev < mat_threshold:
             # ED phase: additive
@@ -317,8 +317,8 @@ def _fit_loss_single(
         proc_se=proc_se,
         param_se=param_se,
         total_se=total_se,
-        prem_obs=prem_obs,
-        prem_proj=prem_proj_from_fit,
+        premium_obs=premium_obs,
+        premium_proj=premium_proj_from_fit,
         mat_k=mat_k,
         g_sel=g_k,
         g_sigma2=sigma2_g_k,
@@ -342,7 +342,7 @@ def _loss_long_df(
     """Assemble long-format DataFrame for one group's loss fit.
 
     ``pf_sub`` is the matching PremiumFit slice (same group) — used to
-    pull ``prem_*`` columns straight through onto the loss output.
+    pull ``premium_*`` columns straight through onto the loss output.
     """
     z_alpha = float(norm.ppf((1 + conf_level) / 2))
 
@@ -378,11 +378,11 @@ def _loss_long_df(
                 row["incr_loss_proj"] = row["loss_proj"] - prev_loss_proj
             prev_loss_proj = row["loss_proj"]
 
-            # prem_* — copied from PremiumFit slice
+            # premium_* — copied from PremiumFit slice
             pf_row = pf_idx.get((cohorts[i], k + 1), {})
-            row["prem_obs"] = pf_row.get("prem_obs")
-            row["prem_proj"] = pf_row.get("prem_proj")
-            row["incr_prem_proj"] = pf_row.get("incr_prem_proj")
+            row["premium_obs"] = pf_row.get("premium_obs")
+            row["premium_proj"] = pf_row.get("premium_proj")
+            row["incr_premium_proj"] = pf_row.get("incr_premium_proj")
 
             row["loss_proc_se"] = float(proc) if not np.isnan(proc) else None
             row["loss_param_se"] = float(par) if not np.isnan(par) else None
@@ -442,7 +442,7 @@ class Loss:
         One of ``"cl"`` (default) or ``"ed"``. Used only when
         ``premium_fit`` is ``None``.
     premium_alpha
-        Variance-structure exponent for the prem fit. Default ``1``.
+        Variance-structure exponent for the premium fit. Default ``1``.
     conf_level
         Confidence level for analytical CI on ``loss_proj``. Default
         ``0.95``.
@@ -517,15 +517,15 @@ class LossFit:
     ----------
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
-        loss_obs, loss_proj, incr_loss_proj, prem_obs, prem_proj,
-        incr_prem_proj, loss_proc_se, loss_param_se, loss_total_se,
+        loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
+        incr_premium_proj, loss_proc_se, loss_param_se, loss_total_se,
         loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
         ``"sa"``, ``"ed"``, or ``"cl"``.
     mat_k :
         Detected maturity for ``"sa"`` (None elsewhere).
     premium_fit :
-        The embedded :class:`PremiumFit` used for prem projection.
+        The embedded :class:`PremiumFit` used for premium projection.
     """
 
     def __init__(self) -> None:
@@ -552,8 +552,8 @@ class LossFit:
         # resolver also handles the "auto" sentinel and lazy spec
         # callables (re-detected on the masked fold inside backtest).
         # Internal Premium (when not user-supplied) uses the original
-        # unfiltered triangle — prem has no loss-side regime semantic;
-        # users wanting a prem-side filter compose via LR or pass
+        # unfiltered triangle — premium has no loss-side regime semantic;
+        # users wanting a premium-side filter compose via Ratio or pass
         # premium_fit explicitly.
         from .regime import (
             _apply_regime_filter,
@@ -604,18 +604,18 @@ class LossFit:
         tri_df = triangle._df
         groups = triangle._groups
 
-        # internal-params dict; not exposed to user but kept for LR bootstrap
+        # internal-params dict; not exposed to user but kept for Ratio bootstrap
         self._internals: dict[Any, _LossResult] = {}
 
         if groups is None:
             loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
-            prem_obs, _, _ = _build_prem_matrix(tri_df)
-            # prem_proj from PremiumFit (cohort, dev) -> value
-            prem_proj_mat = _prem_proj_matrix(pf_df, cohorts, loss_obs.shape[1])
+            premium_obs, _, _ = _build_premium_matrix(tri_df)
+            # premium_proj from PremiumFit (cohort, dev) -> value
+            premium_proj_mat = _premium_proj_matrix(pf_df, cohorts, loss_obs.shape[1])
             result = _fit_loss_single(
                 loss_obs,
-                prem_obs,
-                prem_proj_mat,
+                premium_obs,
+                premium_proj_mat,
                 estimator.method,
                 estimator.sigma_method,
                 estimator.max_cv,
@@ -643,14 +643,14 @@ class LossFit:
                 sub = tri_df.filter(pl.col(groups) == g)
                 pf_sub = pf_df.filter(pl.col(groups) == g)
                 loss_obs, cohorts, _ = _build_loss_matrix(sub)
-                prem_obs, _, _ = _build_prem_matrix(sub)
-                prem_proj_mat = _prem_proj_matrix(
+                premium_obs, _, _ = _build_premium_matrix(sub)
+                premium_proj_mat = _premium_proj_matrix(
                     pf_sub, cohorts, loss_obs.shape[1]
                 )
                 result = _fit_loss_single(
                     loss_obs,
-                    prem_obs,
-                    prem_proj_mat,
+                    premium_obs,
+                    premium_proj_mat,
                     estimator.method,
                     estimator.sigma_method,
                     estimator.max_cv,
@@ -754,7 +754,7 @@ class LossFit:
         combined = pl.concat(long_parts, how="diagonal")
 
         # Expand to the full parent (group?, cohort, dev) grid so the
-        # output shape matches R's fit_loss / fit_lr `$full`. Cells past
+        # output shape matches R's fit_loss / fit_ratio `$full`. Cells past
         # each segment's reach stay as null (no factor extrapolation
         # without a fallback knob — R Phase 2C parity).
         self._df = _expand_to_full_grid(
@@ -824,13 +824,13 @@ class LossFit:
         return f"<LossFit(method={self.method!r}): {n_rows} rows>"
 
 
-def _prem_proj_matrix(
+def _premium_proj_matrix(
     pf_sub: pl.DataFrame,
     cohorts: list,
     n_devs: int,
 ) -> np.ndarray:
     """Reshape PremiumFit slice into a (n_cohorts, n_devs) array of
-    ``prem_proj`` values (NaN where missing).
+    ``premium_proj`` values (NaN where missing).
     """
     out = np.full((len(cohorts), n_devs), np.nan, dtype=np.float64)
     if pf_sub.height == 0:
@@ -842,7 +842,7 @@ def _prem_proj_matrix(
             continue
         k = row["dev"] - 1
         if 0 <= k < n_devs:
-            val = row.get("prem_proj")
+            val = row.get("premium_proj")
             if val is not None:
                 out[i, k] = float(val)
     return out

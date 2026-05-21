@@ -31,7 +31,7 @@ def _toy_triangle_input() -> pl.DataFrame:
                 180.0, 190.0,
                 200.0,
             ],
-            "incr_prem": [100.0] * 15,
+            "incr_premium": [100.0] * 15,
         }
     )
 
@@ -207,16 +207,16 @@ def test_backtest_with_ed_estimator():
     assert "expected" in bt.ae_err.columns
 
 
-def test_backtest_with_lr_sa_estimator():
+def test_backtest_with_ratio_sa_estimator():
     bt = lr.Backtest(
-        estimator=lr.LR(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
+        estimator=lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
         holdout=1,
     ).fit(lr.Triangle(_toy_triangle_input()))
     assert bt.ae_err.shape[0] == 3
 
 
-def test_backtest_with_lr_cl_method():
-    bt = lr.Backtest(estimator=lr.LR(method="cl"), holdout=1).fit(
+def test_backtest_with_ratio_cl_method():
+    bt = lr.Backtest(estimator=lr.Ratio(method="cl"), holdout=1).fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert bt.ae_err.shape[0] == 3
@@ -279,8 +279,8 @@ def test_backtest_refit_is_cl_fit():
     assert isinstance(bt.fit, lr.CLFit)
 
 
-def test_backtest_refit_is_lr_fit():
-    bt = lr.Backtest(estimator=lr.LR(method="cl"), holdout=1).fit(
+def test_backtest_refit_is_ratio_fit():
+    bt = lr.Backtest(estimator=lr.Ratio(method="cl"), holdout=1).fit(
         lr.Triangle(_toy_triangle_input())
     )
-    assert isinstance(bt.fit, lr.LRFit)
+    assert isinstance(bt.fit, lr.RatioFit)

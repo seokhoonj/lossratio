@@ -18,7 +18,7 @@ from .experience import validate_experience
 from .intensity import Intensity
 from .link import Link
 from .loss import Loss, LossFit
-from .lr import LR, LRFit
+from .ratio import Ratio, RatioFit
 from .maturity import Maturity, maturity_at, maturity_spec
 from .premium import Premium, PremiumFit
 from .regime import Regime, regime_at, regime_spec
@@ -38,8 +38,8 @@ __all__ = [
     "ED",
     "EDFit",
     "Intensity",
-    "LR",
-    "LRFit",
+    "Ratio",
+    "RatioFit",
     "Link",
     "Loss",
     "LossFit",

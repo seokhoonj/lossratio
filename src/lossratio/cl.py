@@ -63,7 +63,7 @@ def _build_value_matrix(
 
     Rows are cohorts (sorted), columns are dev = 1..max_dev. The
     column to extract is ``value_col`` (typically ``"loss"`` or
-    ``"prem"``).
+    ``"premium"``).
     """
     df = df.sort(["cohort", "dev"])
     cohorts = df["cohort"].unique(maintain_order=True).to_list()
@@ -208,10 +208,10 @@ def _result_to_long_df(
 
     Schema (post-Phase-4b, generic worker):
       ``[groups?, cohort, dev,
-         target_obs, target_proj, incr_target_proj,
-         target_proc_se2, target_param_se2, target_total_se2,
-         target_proc_se,  target_param_se,  target_total_se,
-         target_proc_cv,  target_param_cv,  target_total_cv]``.
+         loss_obs, loss_proj, incr_loss_proj,
+         loss_proc_se2, loss_param_se2, loss_total_se2,
+         loss_proc_se,  loss_param_se,  loss_total_se,
+         loss_proc_cv,  loss_param_cv,  loss_total_cv]``.
     """
     n_cohorts = len(cohorts)
     n_devs = result.n_devs
@@ -250,9 +250,9 @@ def _result_to_long_df(
             proj = result.loss_proj[i, k]
             incr = incr_proj[i, k]
 
-            row["target_obs"] = float(obs) if not np.isnan(obs) else None
-            row["target_proj"] = float(proj) if not np.isnan(proj) else None
-            row["incr_target_proj"] = (
+            row["loss_obs"] = float(obs) if not np.isnan(obs) else None
+            row["loss_proj"] = float(proj) if not np.isnan(proj) else None
+            row["incr_loss_proj"] = (
                 float(incr) if not np.isnan(incr) else None
             )
 
@@ -260,25 +260,25 @@ def _result_to_long_df(
             # available from _fit_mack's product-form recursion. Report
             # NaN for the breakdown columns and the total in the totals
             # column, plus CV from total.
-            row["target_proc_se2"] = None
-            row["target_param_se2"] = None
-            row["target_total_se2"] = (
+            row["loss_proc_se2"] = None
+            row["loss_param_se2"] = None
+            row["loss_total_se2"] = (
                 ts_val * ts_val if ts_val is not None else None
             )
-            row["target_proc_se"] = None
-            row["target_param_se"] = None
-            row["target_total_se"] = ts_val
+            row["loss_proc_se"] = None
+            row["loss_param_se"] = None
+            row["loss_total_se"] = ts_val
 
             cv = None
             if (
-                row["target_proj"] is not None
-                and row["target_proj"] != 0
+                row["loss_proj"] is not None
+                and row["loss_proj"] != 0
                 and ts_val is not None
             ):
-                cv = ts_val / row["target_proj"]
-            row["target_proc_cv"] = None
-            row["target_param_cv"] = None
-            row["target_total_cv"] = cv
+                cv = ts_val / row["loss_proj"]
+            row["loss_proc_cv"] = None
+            row["loss_param_cv"] = None
+            row["loss_total_cv"] = cv
 
             out_rows.append(row)
 
@@ -358,7 +358,7 @@ class CL:
             Source :class:`Triangle`.
         target
             Cumulative metric to project. One of ``"loss"``,
-            ``"prem"``, ``"lr"``. Default ``"loss"``.
+            ``"premium"``, ``"ratio"``. Default ``"loss"``.
         weight
             Optional column for WLS weights (currently reserved; the
             Mack core fit uses volume weighting by default).
@@ -483,10 +483,10 @@ class CLFit:
         keys.append("cohort")
 
         # Latest observed dev per cohort (NaN-aware)
-        observed = df.filter(pl.col("target_obs").is_not_null())
+        observed = df.filter(pl.col("loss_obs").is_not_null())
         latest = observed.group_by(keys).agg(
             pl.col("dev").max().alias("latest"),
-            pl.col("target_obs").last().alias("latest_observed_loss"),
+            pl.col("loss_obs").last().alias("latest_observed_loss"),
         )
 
         # Ultimate (max dev) per cohort
@@ -494,8 +494,8 @@ class CLFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("target_proj").last().alias("ultimate"),
-                pl.col("target_total_se").last().alias("ultimate_se"),
+                pl.col("loss_proj").last().alias("ultimate"),
+                pl.col("loss_total_se").last().alias("ultimate_se"),
             )
         )
 

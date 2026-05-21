@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `col_summary` / `diag_summary` aggregates. Matches the actuarial
   A/E (Actual / Expected) convention used on the R side.
 - `k_star` -> `mat_k` everywhere it appeared as a slot, attribute,
-  or property (`Maturity.k_star`, `LossFit.k_star`, `LRFit.k_star`,
+  or property (`Maturity.k_star`, `LossFit.k_star`, `RatioFit.k_star`,
   fixture dictionaries). The math symbol $k^*$ survives in
   docstrings, but no longer as a Python identifier.
 
@@ -50,27 +50,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carry-forward at deepest-dev cells and froze SE / CV at the
   last fittable step. The new behaviour matches R, Mack 1993, and
   ChainLadder R package conventions: unfittable = unestimable =
-  NaN. Affects `CL.fit().df.loss_proj`, `LR.fit().df.lr_proj`,
+  NaN. Affects `CL.fit().df.loss_proj`, `Ratio.fit().df.ratio_proj`,
   `Backtest(...)` row counts (NaN-projected cells are dropped),
   and any downstream that consumed the implicit flat
   extrapolation.
 
-- `Backtest` gained a `metric: str = "lr"` argument (R parity). It
-  selects the scoring lane on the held-out cells; one of `"lr"`
+- `Backtest` gained a `metric: str = "ratio"` argument (R parity). It
+  selects the scoring lane on the held-out cells; one of `"ratio"`
   (default), `"loss"`, or `"premium"`. The previous behaviour
   silently scored `loss_proj` — callers using `Backtest(estimator=
   lr.CL(), ...)` must now pass `metric="loss"` explicitly to keep
-  the old behaviour. The new default `"lr"` works out of the box
-  for `lr.LR()` and `lr.ED()`.
+  the old behaviour. The new default `"ratio"` works out of the box
+  for `lr.Ratio()` and `lr.ED()`.
 
-- Ratio-fit estimators (`lr.LR`, `lr.ED`) only accept
-  `metric="lr"`. Constructing `Backtest(estimator=lr.LR(),
+- Ratio-fit estimators (`lr.Ratio`, `lr.ED`) only accept
+  `metric="ratio"`. Constructing `Backtest(estimator=lr.Ratio(),
   metric="loss")` now raises `ValueError` with a hint to use
   `lr.CL()` directly for non-ratio scoring lanes.
 
-- `ED.fit(...)` output gains a `lr_proj` column (= `loss_proj /
-  premium_proj`), bringing it in line with `LR.fit(...)`. This is
-  what enables the new ratio-fit backtest with `metric="lr"`.
+- `ED.fit(...)` output gains a `ratio_proj` column (= `loss_proj /
+  premium_proj`), bringing it in line with `Ratio.fit(...)`. This is
+  what enables the new ratio-fit backtest with `metric="ratio"`.
 
 ### Internal
 
@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   development region splits as ED = `dev < k_star` and CL = `dev >= k_star`.
   Mirrors the R sibling's convention sweep. Consumer code comparing
   against `k_star` should add 1 (or use the new `target_dev` reading).
-  `LRFit.k_star` follows the same convention. Numerical projection
+  `RatioFit.k_star` follows the same convention. Numerical projection
   output is unchanged — only the index label moved by 1.
 
 ### Added
@@ -258,7 +258,7 @@ match the R sibling's `ae_err` family.
   a 2D prefix-sum table.
 - `lr.load_experience()` built-in synthetic dataset: 36 monthly
   cohorts × up to 36 dev months × 4 coverages (`CI`, `CAN`, `HOS`,
-  `SUR`), generated deterministically. Per-coverage target LR,
+  `SUR`), generated deterministically. Per-coverage target Ratio,
   cohort premium volume mean / CV, and cell-level loss noise CV
   are calibrated to a real long-term Korean health portfolio (no
   real-data file is shipped). `SUR` carries a planted regime shift
@@ -267,7 +267,7 @@ match the R sibling's `ae_err` family.
   and pairwise distances).
 
 ### Changed
-- LR / Triangle.maturity / Maturity argument rename to mirror the
+- Ratio / Triangle.maturity / Maturity argument rename to mirror the
   R sibling and to read as "the maximum X tolerated":
   `theta_cv` → `max_cv`, `theta_rse` → `max_rse`, `m` → `min_run`.
   Default `max_cv` raised 0.10 → 0.15 to match R, so SA fits on
@@ -279,11 +279,11 @@ match the R sibling's `ae_err` family.
   cancer is the separate `CAN` coverage).
 - Summary column rename to suffix style for parity with R:
   `ultimate_loss` → `loss_ult`, `ultimate_exposure` →
-  `premium_ult`, `ultimate_lr` → `lr_ult`,
+  `premium_ult`, `ultimate_ratio` → `ratio_ult`,
   `latest_observed_dev` → `latest`. Matches the existing
-  `loss_*` / `premium_*` / `lr_*` column families.
+  `loss_*` / `premium_*` / `ratio_*` column families.
 - README QuickStart now opens with `df = lr.load_experience()` and
-  walks Experience → Triangle → LR fit → detect_regime → Backtest
+  walks Experience → Triangle → Ratio fit → detect_regime → Backtest
   in one block. Adds an Install section with the polars-only and
   `[pandas]` extras.
 
@@ -299,7 +299,7 @@ match the R sibling's `ae_err` family.
 - **Column naming convention swept to mirror R `lossratio`**:
   cumulative is now the unmarked default (`loss`, `premium`, `lr`);
   per-period values carry an `_incr` (incremental) suffix (`loss_incr`,
-  `premium_incr`, `lr_incr`). Old c-prefix forms (`closs`, `crp`,
+  `premium_incr`, `ratio_incr`). Old c-prefix forms (`closs`, `crp`,
   `clr`) are gone, including compound identifiers like `closs_obs`,
   `closs_proj`, `crp_obs`, `crp_proj`, `_build_closs_matrix`,
   `_build_crp_matrix` — all renamed to `loss_*` / `premium_*`.
@@ -315,7 +315,7 @@ match the R sibling's `ae_err` family.
   calendar-diagonal hold-out backtest of any fit estimator.
 
   ```python
-  bt = lr.Backtest(estimator=lr.LR(method="sa"), holdout=6).fit(tri)
+  bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6).fit(tri)
   bt.aeg              # per-cell: cohort, dev, calendar_idx, actual, predicted, aeg
   bt.col_summary      # aggregated by dev
   bt.diag_summary     # aggregated by calendar diagonal
@@ -326,7 +326,7 @@ match the R sibling's `ae_err` family.
   where ``cohort_idx + (dev - 1) > max_cal_idx - holdout``), refits
   the supplied estimator on the masked Triangle, and compares the
   projection to the original observed `loss` on the held-out cells.
-  Supports `lr.CL`, `lr.ED`, and `lr.LR` (all three now produce a
+  Supports `lr.CL`, `lr.ED`, and `lr.Ratio` (all three now produce a
   unified `loss_proj` column on `.df`). Per-group fitting when
   `Triangle.group_var` is set.
 
@@ -340,7 +340,7 @@ match the R sibling's `ae_err` family.
   Returns per-link diagnostics (`f`, `sigma2`, `cv`, `rse`,
   `stable`) and a `k_star` summary (single value when no group_var
   is set, or a `dict[group, k_star]` otherwise).
-- `LR` estimator + `LRFit` result class — sklearn-style
+- `Ratio` estimator + `RatioFit` result class — sklearn-style
   loss-ratio projection with three methods:
   - `method="sa"` (default): stage-adaptive — exposure-driven (ED)
     before the maturity point `k*`, chain ladder (CL) after.
@@ -352,9 +352,9 @@ match the R sibling's `ae_err` family.
   - The premium triangle is always projected forward via chain ladder
     on cumulative risk premium.
   - Output columns: `[group_var?, cohort, dev, closs, crp, loss_proj,
-    exposure_proj, lr_proj, se_loss, se_lr, cv_lr]`.
-  - `LRFit.summary()` returns per-cohort `ultimate_loss`,
-    `ultimate_exposure`, `ultimate_lr`, `se_lr`, `cv_lr`.
+    exposure_proj, ratio_proj, se_loss, se_ratio, cv_ratio]`.
+  - `RatioFit.summary()` returns per-cohort `ultimate_loss`,
+    `ultimate_exposure`, `ultimate_ratio`, `se_ratio`, `cv_ratio`.
 
 ## [0.0.1.dev3] — 2026-05-07
 

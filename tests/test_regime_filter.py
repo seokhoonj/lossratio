@@ -1,5 +1,5 @@
 """Tests for the 4-type regime dispatch + ``latest_only`` cohort filter
-wired into LR / Loss / Premium / Backtest."""
+wired into Ratio / Loss / Premium / Backtest."""
 
 from __future__ import annotations
 
@@ -113,53 +113,53 @@ def test_apply_regime_filter_per_group_cutoff():
 
 
 # ---------------------------------------------------------------------------
-# Wired into LR.fit: loss_regime / premium_regime
+# Wired into Ratio.fit: loss_regime / premium_regime
 # ---------------------------------------------------------------------------
 
 
-def test_lr_loss_regime_filters_loss_cohorts():
+def test_ratio_loss_regime_filters_loss_cohorts():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01")
-    fit = lr.LR(method="sa", loss_regime=r).fit(tri)
+    fit = lr.Ratio(method="sa", loss_regime=r).fit(tri)
     # loss_fit only carries surviving cohorts (cohorts >= 2024-07-01)
     n = fit.loss_fit.to_polars()["cohort"].n_unique()
     assert n < tri.to_polars()["cohort"].n_unique()
     assert fit.loss_fit.regime is r
 
 
-def test_lr_premium_regime_filters_prem_cohorts():
+def test_ratio_premium_regime_filters_premium_cohorts():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01")
-    fit = lr.LR(method="sa", premium_regime=r).fit(tri)
-    n_prem = fit.premium_fit.to_polars()["cohort"].n_unique()
-    assert n_prem < tri.to_polars()["cohort"].n_unique()
+    fit = lr.Ratio(method="sa", premium_regime=r).fit(tri)
+    n_premium = fit.premium_fit.to_polars()["cohort"].n_unique()
+    assert n_premium < tri.to_polars()["cohort"].n_unique()
 
 
-def test_lr_loss_regime_auto_sentinel():
+def test_ratio_loss_regime_auto_sentinel():
     tri = _sur_triangle()
-    fit = lr.LR(method="sa", loss_regime="auto").fit(tri)
+    fit = lr.Ratio(method="sa", loss_regime="auto").fit(tri)
     assert fit.loss_fit.regime is not None
     assert fit.loss_fit.regime.method == "e_divisive"
 
 
-def test_lr_loss_regime_lazy_spec():
+def test_ratio_loss_regime_lazy_spec():
     tri = _sur_triangle()
     spec = lr.regime_spec(window=12)
-    fit = lr.LR(method="sa", loss_regime=spec).fit(tri)
+    fit = lr.Ratio(method="sa", loss_regime=spec).fit(tri)
     assert fit.loss_fit.regime is not None
     assert fit.loss_fit.regime.method == "e_divisive"
 
 
-def test_lr_loss_and_premium_regime_independent():
-    """The two regimes apply independently to loss and prem sides."""
+def test_ratio_loss_and_premium_regime_independent():
+    """The two regimes apply independently to loss and premium sides."""
     tri = _sur_triangle()
-    lr_reg = lr.regime_at(change="2024-07-01")
+    ratio_reg = lr.regime_at(change="2024-07-01")
     pr_reg = lr.regime_at(change="2024-10-01")
-    fit = lr.LR(method="sa", loss_regime=lr_reg, premium_regime=pr_reg).fit(tri)
+    fit = lr.Ratio(method="sa", loss_regime=ratio_reg, premium_regime=pr_reg).fit(tri)
     loss_min = fit.loss_fit.to_polars()["cohort"].min()
-    prem_min = fit.premium_fit.to_polars()["cohort"].min()
+    premium_min = fit.premium_fit.to_polars()["cohort"].min()
     # Premium is cut more strictly
-    assert prem_min > loss_min
+    assert premium_min > loss_min
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ def test_backtest_with_eager_loss_regime():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01")
     bt = lr.Backtest(
-        estimator=lr.LR(method="sa", loss_regime=r), holdout=6
+        estimator=lr.Ratio(method="sa", loss_regime=r), holdout=6
     ).fit(tri)
     # backtest ran without error
     assert bt._refit.loss_fit.regime is r
@@ -183,7 +183,7 @@ def test_backtest_with_lazy_regime_spec_redetects_on_masked():
     tri = _sur_triangle()
     spec = lr.regime_spec(window=8)
     bt = lr.Backtest(
-        estimator=lr.LR(method="sa", loss_regime=spec), holdout=3
+        estimator=lr.Ratio(method="sa", loss_regime=spec), holdout=3
     ).fit(tri)
     detected = bt._refit.loss_fit.regime
     assert detected is not None
@@ -226,18 +226,18 @@ def test_segment_wise_split_into_mini_triangles():
 def test_segment_wise_fit_emits_segment_id_column():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    fit = lr.LR(method="cl", loss_regime=r, premium_regime=r).fit(tri)
+    fit = lr.Ratio(method="cl", loss_regime=r, premium_regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
     assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
 
 
-def test_segment_wise_lr_ult_differs_between_segments():
+def test_segment_wise_ratio_ult_differs_between_segments():
     """The per-segment factor estimation should yield distinct
     ultimate LRs for early vs late cohorts."""
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    fit = lr.LR(method="cl", loss_regime=r, premium_regime=r).fit(tri)
+    fit = lr.Ratio(method="cl", loss_regime=r, premium_regime=r).fit(tri)
     s = fit.summary()
     if hasattr(s, "to_polars"):
         s = s.to_polars()
@@ -251,13 +251,13 @@ def test_segment_wise_lr_ult_differs_between_segments():
     # SUR data has a regime drop at mid-2024 → early lr > late lr on
     # average. Use means to avoid late-cohort noise from single-dev
     # cohorts.
-    early_mean = early["lr_ult"].drop_nulls().mean()
-    late_mean = late["lr_ult"].drop_nulls().mean()
+    early_mean = early["ratio_ult"].drop_nulls().mean()
+    late_mean = late["ratio_ult"].drop_nulls().mean()
     assert early_mean > late_mean
 
 
 def test_segment_wise_loss_only():
-    """Loss-side segment_wise works standalone without LR composition."""
+    """Loss-side segment_wise works standalone without Ratio composition."""
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
     fit = lr.Loss(method="cl", regime=r).fit(tri)
@@ -266,7 +266,7 @@ def test_segment_wise_loss_only():
     assert fit.regime is r
 
 
-def test_segment_wise_prem_only():
+def test_segment_wise_premium_only():
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
     fit = lr.Premium(method="ed", regime=r).fit(tri)
@@ -280,7 +280,7 @@ def test_segment_wise_with_auto_detection():
     segment_wise via regime_spec or by setting treatment after detection."""
     tri = _sur_triangle()
     spec = lr.regime_spec(window=12, treatment="segment_wise")
-    fit = lr.LR(method="cl", loss_regime=spec).fit(tri)
+    fit = lr.Ratio(method="cl", loss_regime=spec).fit(tri)
     df = fit.to_polars()
     # Auto detect on SUR with window=12 should find at least one break
     # (regime drop is in the data), making segment_wise meaningful.

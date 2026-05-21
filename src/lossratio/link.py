@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_TARGETS = ("loss", "prem", "lr")
+_VALID_TARGETS = ("loss", "premium", "ratio")
 
 
 def _build_link_df(
@@ -43,7 +43,7 @@ def _build_link_df(
     Generic worker: ``target`` / ``exposure`` / ``weight`` are *role*
     selectors that pull the cumulative column of the same name from
     the source triangle and emit role-prefixed columns
-    ``target_from`` / ``exposure_from`` / ``weight``.
+    ``loss_from`` / ``exposure_from`` / ``weight``.
     """
     sort_keys: list[str] = []
     if groups is not None:
@@ -64,8 +64,8 @@ def _build_link_df(
             pl.col("cohort"),
             pl.col("dev").alias("ata_from"),
             pl.col("dev").shift(-1).over(over_keys).alias("ata_to"),
-            pl.col(target).alias("target_from"),
-            pl.col(target).shift(-1).over(over_keys).alias("target_to"),
+            pl.col(target).alias("loss_from"),
+            pl.col(target).shift(-1).over(over_keys).alias("loss_to"),
         ]
     )
     if exposure is not None:
@@ -85,9 +85,9 @@ def _build_link_df(
             pl.format(
                 "{}-{}", pl.col("ata_from"), pl.col("ata_to")
             ).alias("ata_link"),
-            (pl.col("target_to") - pl.col("target_from")).alias("target_delta"),
-            pl.when(pl.col("target_from") > min_denom)
-            .then(pl.col("target_to") / pl.col("target_from"))
+            (pl.col("loss_to") - pl.col("loss_from")).alias("loss_delta"),
+            pl.when(pl.col("loss_from") > min_denom)
+            .then(pl.col("loss_to") / pl.col("loss_from"))
             .otherwise(None)
             .alias("ata"),
         ]
@@ -101,7 +101,7 @@ def _build_link_df(
                 ),
                 pl.when(pl.col("exposure_from") > min_denom)
                 .then(
-                    (pl.col("target_to") - pl.col("target_from"))
+                    (pl.col("loss_to") - pl.col("loss_from"))
                     / pl.col("exposure_from")
                 )
                 .otherwise(None)
@@ -124,9 +124,9 @@ def _build_link_df(
             "ata_from",
             "ata_to",
             "ata_link",
-            "target_from",
-            "target_to",
-            "target_delta",
+            "loss_from",
+            "loss_to",
+            "loss_delta",
             "ata",
         ]
     )
@@ -163,7 +163,7 @@ class Link:
 
         - Always:
           ``[groups?, cohort, ata_from, ata_to, ata_link,
-          target_from, target_to, target_delta, ata]``.
+          loss_from, loss_to, loss_delta, ata]``.
         - When ``exposure`` is set:
           ``[exposure_from, exposure_to, exposure_delta, intensity]``.
         - When ``weight`` is set: ``weight``.
@@ -172,9 +172,9 @@ class Link:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> link = tri.link()                              # target='loss', exposure='prem'
+    >>> link = tri.link()                              # target='loss', exposure='premium'
     >>> link = tri.link(target="loss")                 # ATA-only
-    >>> link = tri.link(target="loss", exposure="prem")
+    >>> link = tri.link(target="loss", exposure="premium")
     >>> link.ata()         # ATA factor diagnostic
     >>> link.intensity()   # ED intensity diagnostic
     >>> link.df            # raw long-format link table
@@ -196,7 +196,7 @@ class Link:
         cls,
         triangle: "Triangle",
         target: str = "loss",
-        exposure: str | None = "prem",
+        exposure: str | None = "premium",
         weight: str | None = None,
         min_denom: float = 0.0,
         drop_invalid: bool = False,
@@ -274,7 +274,7 @@ class Link:
         return self._weight
 
     @property
-    def _has_prem(self) -> bool:
+    def _has_premium(self) -> bool:
         """Backward-compat alias for dual-mode detection."""
         return self._exposure is not None
 
@@ -312,7 +312,7 @@ class Link:
         if self._exposure is None:
             raise ValueError(
                 "Link.intensity() requires the Link to be built with "
-                "`exposure` set (e.g. exposure='prem')."
+                "`exposure` set (e.g. exposure='premium')."
             )
         from .intensity import Intensity
 

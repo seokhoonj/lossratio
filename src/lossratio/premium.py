@@ -1,12 +1,12 @@
 """Premium (exposure) projection dispatcher.
 
 ``Premium`` is the role-specific dispatcher that projects cumulative
-prem across the cohort x dev grid. The point estimate is identical
+premium across the cohort x dev grid. The point estimate is identical
 under both ``"cl"`` (Mack multiplicative) and ``"ed"`` (additive)
 recursions — the two methods differ only in how the variance
 accumulates forward.
 
-This is the Python sibling of R ``fit_prem()`` (see ``R/prem.R``).
+This is the Python sibling of R ``fit_premium()`` (see ``R/premium.R``).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from scipy.stats import norm
 from ._io import mirror_output
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
-from .ed import _build_prem_matrix
+from .ed import _build_premium_matrix
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -37,11 +37,11 @@ _VALID_METHODS = ("ed", "cl")
 
 @dataclass
 class _PremiumResult:
-    """Single-group prem fit result."""
+    """Single-group premium fit result."""
 
     n_devs: int
-    prem_obs: np.ndarray
-    prem_proj: np.ndarray
+    premium_obs: np.ndarray
+    premium_proj: np.ndarray
     proc_se: np.ndarray
     param_se: np.ndarray
     total_se: np.ndarray
@@ -49,22 +49,22 @@ class _PremiumResult:
     sigma2_k: np.ndarray
 
 
-def _fit_prem_single(
-    prem_obs: np.ndarray,
+def _fit_premium_single(
+    premium_obs: np.ndarray,
     method: str,
     sigma_method: str,
 ) -> _PremiumResult:
-    """Fit prem projection (point + SE under CL or ED recursion)."""
-    mack = _fit_mack(prem_obs, sigma_method=sigma_method)
-    prem_proj = mack.loss_proj
+    """Fit premium projection (point + SE under CL or ED recursion)."""
+    mack = _fit_mack(premium_obs, sigma_method=sigma_method)
+    premium_proj = mack.loss_proj
     f_k = mack.f_k
     sigma2_k = mack.sigma2_k
     sum_col_k = mack.sum_col_k
     f_var = _mack_f_var(mack)
-    n_cohorts, n_devs = prem_obs.shape
+    n_cohorts, n_devs = premium_obs.shape
     n_links = n_devs - 1
 
-    obs_mask = ~np.isnan(prem_obs)
+    obs_mask = ~np.isnan(premium_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs,
@@ -85,7 +85,7 @@ def _fit_prem_single(
         if not active.any():
             continue
 
-        ck = prem_proj[:, k]
+        ck = premium_proj[:, k]
         pos = active & ~np.isnan(ck) & (ck > 0)
         if not pos.any():
             continue
@@ -110,7 +110,7 @@ def _fit_prem_single(
             if np.isfinite(f_var[k]):
                 param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
 
-        ck1 = prem_proj[:, k + 1]
+        ck1 = premium_proj[:, k + 1]
         sp = pos & ~np.isnan(ck1)
         proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_var[sp], 0))
         param_se[sp, k + 1] = np.sqrt(np.maximum(param_var[sp], 0))
@@ -126,8 +126,8 @@ def _fit_prem_single(
 
     return _PremiumResult(
         n_devs=n_devs,
-        prem_obs=prem_obs,
-        prem_proj=prem_proj,
+        premium_obs=premium_obs,
+        premium_proj=premium_proj,
         proc_se=proc_se,
         param_se=param_se,
         total_se=total_se,
@@ -136,7 +136,7 @@ def _fit_prem_single(
     )
 
 
-def _prem_long_df(
+def _premium_long_df(
     result: _PremiumResult,
     cohorts: list,
     groups: str | None,
@@ -155,63 +155,63 @@ def _prem_long_df(
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
 
-            p_obs = result.prem_obs[i, k]
-            p_proj = result.prem_proj[i, k]
+            p_obs = result.premium_obs[i, k]
+            p_proj = result.premium_proj[i, k]
             proc = result.proc_se[i, k]
             par = result.param_se[i, k]
             tot = result.total_se[i, k]
 
-            row["prem_obs"] = float(p_obs) if not np.isnan(p_obs) else None
-            row["prem_proj"] = (
+            row["premium_obs"] = float(p_obs) if not np.isnan(p_obs) else None
+            row["premium_proj"] = (
                 float(p_proj) if not np.isnan(p_proj) else None
             )
             # incremental: per-cohort first difference of cum
-            if row["prem_proj"] is None:
-                row["incr_prem_proj"] = None
+            if row["premium_proj"] is None:
+                row["incr_premium_proj"] = None
             elif prev_proj is None:
-                row["incr_prem_proj"] = row["prem_proj"]
+                row["incr_premium_proj"] = row["premium_proj"]
             else:
-                row["incr_prem_proj"] = row["prem_proj"] - prev_proj
-            prev_proj = row["prem_proj"]
+                row["incr_premium_proj"] = row["premium_proj"] - prev_proj
+            prev_proj = row["premium_proj"]
 
-            row["prem_proc_se"] = float(proc) if not np.isnan(proc) else None
-            row["prem_param_se"] = (
+            row["premium_proc_se"] = float(proc) if not np.isnan(proc) else None
+            row["premium_param_se"] = (
                 float(par) if not np.isnan(par) else None
             )
-            row["prem_total_se"] = (
+            row["premium_total_se"] = (
                 float(tot) if not np.isnan(tot) else None
             )
-            row["prem_proc_cv"] = (
-                row["prem_proc_se"] / row["prem_proj"]
-                if row["prem_proc_se"] is not None
-                and row["prem_proj"] not in (None, 0.0)
+            row["premium_proc_cv"] = (
+                row["premium_proc_se"] / row["premium_proj"]
+                if row["premium_proc_se"] is not None
+                and row["premium_proj"] not in (None, 0.0)
                 else None
             )
-            row["prem_param_cv"] = (
-                row["prem_param_se"] / row["prem_proj"]
-                if row["prem_param_se"] is not None
-                and row["prem_proj"] not in (None, 0.0)
+            row["premium_param_cv"] = (
+                row["premium_param_se"] / row["premium_proj"]
+                if row["premium_param_se"] is not None
+                and row["premium_proj"] not in (None, 0.0)
                 else None
             )
-            row["prem_total_cv"] = (
-                row["prem_total_se"] / row["prem_proj"]
-                if row["prem_total_se"] is not None
-                and row["prem_proj"] not in (None, 0.0)
+            row["premium_total_cv"] = (
+                row["premium_total_se"] / row["premium_proj"]
+                if row["premium_total_se"] is not None
+                and row["premium_proj"] not in (None, 0.0)
                 else None
             )
 
             if (
-                row["prem_total_se"] is not None
-                and row["prem_proj"] is not None
+                row["premium_total_se"] is not None
+                and row["premium_proj"] is not None
             ):
-                lo = row["prem_proj"] - z_alpha * row["prem_total_se"]
-                row["prem_ci_lo"] = max(0.0, lo)
-                row["prem_ci_hi"] = (
-                    row["prem_proj"] + z_alpha * row["prem_total_se"]
+                lo = row["premium_proj"] - z_alpha * row["premium_total_se"]
+                row["premium_ci_lo"] = max(0.0, lo)
+                row["premium_ci_hi"] = (
+                    row["premium_proj"] + z_alpha * row["premium_total_se"]
                 )
             else:
-                row["prem_ci_lo"] = None
-                row["prem_ci_hi"] = None
+                row["premium_ci_lo"] = None
+                row["premium_ci_hi"] = None
 
             rows.append(row)
     return pl.DataFrame(rows, infer_schema_length=None)
@@ -225,11 +225,11 @@ def _prem_long_df(
 class Premium:
     """Premium (exposure) projection dispatcher.
 
-    Projects cumulative prem across the cohort x dev grid via chain
+    Projects cumulative premium across the cohort x dev grid via chain
     ladder. Two SE recursions are supported:
 
     * ``"ed"`` (default): additive variance — ``proc_{k+1} = proc_k +
-      sigma^2 * C_k``. Empirically more robust on long-projection prem
+      sigma^2 * C_k``. Empirically more robust on long-projection premium
       triangles, where multiplicative scaling of CL can amplify variance
       under cohort-wise heterogeneity.
     * ``"cl"``: Mack multiplicative — ``proc_{k+1} = f^2 * proc_k +
@@ -283,21 +283,21 @@ class Premium:
         self.conf_level = conf_level
 
     def fit(self, triangle: "Triangle") -> "PremiumFit":
-        """Fit the prem projection on a Triangle."""
+        """Fit the premium projection on a Triangle."""
         return PremiumFit._from_triangle(triangle, self)
 
 
 class PremiumFit:
-    """Result of a prem projection fit.
+    """Result of a premium projection fit.
 
     Properties
     ----------
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
-        prem_obs, prem_proj, incr_prem_proj, prem_proc_se,
-        prem_param_se, prem_total_se, prem_proc_cv,
-        prem_param_cv, prem_total_cv, prem_ci_lo,
-        prem_ci_hi]``.
+        premium_obs, premium_proj, incr_premium_proj, premium_proc_se,
+        premium_param_se, premium_total_se, premium_proc_cv,
+        premium_param_cv, premium_total_cv, premium_ci_lo,
+        premium_ci_hi]``.
     method : str
         ``"ed"`` or ``"cl"``.
     """
@@ -319,7 +319,7 @@ class PremiumFit:
         triangle: "Triangle",
         estimator: "Premium",
     ) -> "PremiumFit":
-        # Resolve + apply prem-side regime filter (cohort-axis cut).
+        # Resolve + apply premium-side regime filter (cohort-axis cut).
         from .regime import (
             _apply_regime_filter,
             _resolve_regime,
@@ -352,11 +352,11 @@ class PremiumFit:
         groups = triangle._groups
 
         if groups is None:
-            prem_obs, cohorts, _ = _build_prem_matrix(tri_df)
-            result = _fit_prem_single(
-                prem_obs, estimator.method, estimator.sigma_method
+            premium_obs, cohorts, _ = _build_premium_matrix(tri_df)
+            result = _fit_premium_single(
+                premium_obs, estimator.method, estimator.sigma_method
             )
-            long_df = _prem_long_df(
+            long_df = _premium_long_df(
                 result, cohorts, None, None, estimator.conf_level
             )
         else:
@@ -365,12 +365,12 @@ class PremiumFit:
                 tri_df[groups].unique(maintain_order=True).to_list()
             ):
                 sub = tri_df.filter(pl.col(groups) == g)
-                prem_obs, cohorts, _ = _build_prem_matrix(sub)
-                result = _fit_prem_single(
-                    prem_obs, estimator.method, estimator.sigma_method
+                premium_obs, cohorts, _ = _build_premium_matrix(sub)
+                result = _fit_premium_single(
+                    premium_obs, estimator.method, estimator.sigma_method
                 )
                 parts.append(
-                    _prem_long_df(
+                    _premium_long_df(
                         result, cohorts, groups, g, estimator.conf_level
                     )
                 )
@@ -386,7 +386,7 @@ class PremiumFit:
         estimator: "Premium",
         regime: Any,
     ) -> "PremiumFit":
-        """Fit prem projection per regime segment, then concat."""
+        """Fit premium projection per regime segment, then concat."""
         import copy as _copy
 
         from .regime import _split_into_segment_triangles
@@ -421,7 +421,7 @@ class PremiumFit:
         self.conf_level = estimator.conf_level
         self.regime = regime
         combined = pl.concat(parts, how="diagonal")
-        # Match R fit_prem $full shape: full cohort × dev grid.
+        # Match R fit_premium $full shape: full cohort × dev grid.
         from .loss import _expand_to_full_grid
         self._df = _expand_to_full_grid(
             combined, triangle, self._groups, last_self._cohort
@@ -450,9 +450,9 @@ class PremiumFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("prem_proj").last().alias("ultimate"),
-                pl.col("prem_total_se").last().alias("ultimate_se"),
-                pl.col("prem_total_cv").last().alias("ultimate_cv"),
+                pl.col("premium_proj").last().alias("ultimate"),
+                pl.col("premium_total_se").last().alias("ultimate_se"),
+                pl.col("premium_total_cv").last().alias("ultimate_cv"),
             )
             .sort(keys)
         )

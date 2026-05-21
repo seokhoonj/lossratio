@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def as_total(x: "Triangle") -> "Total":
     """Aggregate a :class:`Triangle` to per-group portfolio totals.
 
-    Each row is one group with total loss / prem / loss ratio plus
+    Each row is one group with total loss / premium / loss ratio plus
     the cohort range (``sales_start`` / ``sales_end``) and cohort count.
     Use for portfolio-level comparisons across groups.
 
@@ -28,7 +28,7 @@ def as_total(x: "Triangle") -> "Total":
     -------
     Total
         One row per group with cohort count, sales window, loss /
-        prem totals, lr, and within-portfolio shares.
+        premium totals, lr, and within-portfolio shares.
     """
     return Total._from_triangle(x)
 
@@ -54,7 +54,7 @@ class Total:
             pl.col("cohort").min().alias("sales_start"),
             pl.col("cohort").max().alias("sales_end"),
             pl.col("incr_loss").sum().alias("loss"),
-            pl.col("incr_prem").sum().alias("prem"),
+            pl.col("incr_premium").sum().alias("premium"),
         ]
 
         if grp is not None:
@@ -63,9 +63,9 @@ class Total:
             ds = tri_df.select(agg_exprs)
 
         ds = ds.with_columns(
-            (pl.col("loss") / pl.col("prem")).alias("lr"),
+            (pl.col("loss") / pl.col("premium")).alias("ratio"),
             (pl.col("loss") / pl.col("loss").sum()).alias("loss_share"),
-            (pl.col("prem") / pl.col("prem").sum()).alias("prem_share"),
+            (pl.col("premium") / pl.col("premium").sum()).alias("premium_share"),
         )
 
         ordered = []
@@ -73,8 +73,8 @@ class Total:
             ordered.append(grp)
         ordered.extend([
             "n_cohorts", "sales_start", "sales_end",
-            "loss", "prem", "lr",
-            "loss_share", "prem_share",
+            "loss", "premium", "ratio",
+            "loss_share", "premium_share",
         ])
         ds = ds.select(ordered)
 
@@ -108,9 +108,9 @@ class Total:
 
     def summary(self) -> pl.DataFrame:
         """Return rows sorted by descending ``lr``."""
-        if "lr" not in self._df.columns:
+        if "ratio" not in self._df.columns:
             return self._df
-        return self._df.sort("lr", descending=True)
+        return self._df.sort("ratio", descending=True)
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]

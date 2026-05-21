@@ -24,7 +24,7 @@ def _exp_input() -> pl.DataFrame:
                 "2024-03-01",
             ],
             "incr_loss":    [10.0, 20.0, 30.0, 15.0, 25.0, 5.0],
-            "incr_prem": [100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+            "incr_premium": [100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
         }
     )
 
@@ -35,8 +35,8 @@ def test_triangle_no_group():
     assert tri.columns == [
         "cohort", "dev",
         "loss", "incr_loss",
-        "prem", "incr_prem",
-        "lr", "incr_lr",
+        "premium", "incr_premium",
+        "ratio", "incr_ratio",
     ]
     # 3 cohorts: cohort_1 has 3 devs, cohort_2 has 2, cohort_3 has 1 -> 6 rows
     assert tri.n_rows == 6
@@ -57,9 +57,9 @@ def test_triangle_cumulative():
     # loss: 10, 20, 30 -> loss: 10, 30, 60
     assert cohort_1["loss"].to_list() == [10.0, 30.0, 60.0]
     # rp: 100, 100, 100 -> premium: 100, 200, 300
-    assert cohort_1["prem"].to_list() == [100.0, 200.0, 300.0]
+    assert cohort_1["premium"].to_list() == [100.0, 200.0, 300.0]
     # lr: 10/100, 30/200, 60/300
-    assert cohort_1["lr"].to_list() == [0.1, 0.15, 0.2]
+    assert cohort_1["ratio"].to_list() == [0.1, 0.15, 0.2]
 
 
 def test_triangle_with_group():
@@ -78,7 +78,7 @@ def test_triangle_pandas_input_mirror():
             "cy_m":         ["2024-01-01", "2024-02-01"],
             "uy_m":         ["2024-01-01", "2024-01-01"],
             "incr_loss":    [10.0, 20.0],
-            "incr_prem": [100.0, 100.0],
+            "incr_premium": [100.0, 100.0],
         }
     )
     tri = lr.Triangle(df)
@@ -119,7 +119,7 @@ def _gap_input() -> pl.DataFrame:
             "cy_m":         ["2024-01-01", "2024-02-01", "2024-04-01"],
             "uy_m":         ["2024-01-01", "2024-01-01", "2024-01-01"],
             "incr_loss":    [10.0, 20.0, 40.0],
-            "incr_prem": [100.0, 100.0, 100.0],
+            "incr_premium": [100.0, 100.0, 100.0],
         }
     )
 
