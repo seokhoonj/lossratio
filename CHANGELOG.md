@@ -96,9 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   downstream projections, SE, and CV. Previously Python used
   `f_k = 1.0` (identity) which silently produced flat
   carry-forward at deepest-dev cells and froze SE / CV at the
-  last fittable step. The new behaviour matches R, Mack 1993, and
-  ChainLadder R package conventions: unfittable = unestimable =
-  NaN. Affects `CL.fit().df.loss_proj`, `Ratio.fit().df.ratio_proj`,
+  last fittable step. The new behaviour matches R and Mack 1993:
+  unfittable = unestimable = NaN. Affects `CL.fit().df.loss_proj`,
+  `Ratio.fit().df.ratio_proj`,
   `Backtest(...)` row counts (NaN-projected cells are dropped),
   and any downstream that consumed the implicit flat
   extrapolation.
@@ -202,7 +202,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dev_y/h/q/m` to match R `lossratio`'s 2026-05-10 sweep. The
   "elap" prefix was an etymology word ("elapsed") rather than the
   concept word; `dev_*` aligns raw column names with the abstract
-  `dev` axis used by Triangle and matches ChainLadder-style framing.
+  `dev` axis used by Triangle.
   Migration:
     Before: lr.Triangle(df, dev_var="elap_m")
     After:  lr.Triangle(df, dev_var="dev_m")

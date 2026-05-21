@@ -177,9 +177,8 @@ def coerce_cols_to_date(df: pl.DataFrame, col_names: list[str]) -> pl.DataFrame:
 def infer_grain(col: pl.Series) -> str:
     """Infer grain from a Date column's value spacing.
 
-    Mirrors chainladder-python's ``_get_grain`` algorithm: convert each
-    unique date to a year*12+month index, take consecutive diffs,
-    classify by the largest divisor.
+    The algorithm: convert each unique date to a year*12+month index,
+    take consecutive diffs, classify by the largest divisor.
 
     Returns one of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``. Single-value
     or null-only column returns ``"M"`` as a default.
