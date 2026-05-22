@@ -42,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Triangle()` reaches parity with R `as_triangle()`: a `dev`
+  argument enables the 3-mode dispatch (cohort + calendar /
+  cohort + dev / both), so dev-indexed input without a calendar axis
+  now loads; a `cell_type` argument accepts cumulative-within-cohort
+  input (differenced per cohort); and the output gains nine columns
+  to match R -- `n_cohorts`, `margin` / `incr_margin`, `profit` /
+  `incr_profit`, and the `loss_share` / `incr_loss_share` /
+  `premium_share` / `incr_premium_share` portfolio-share columns.
+  `loss` / `premium` / `calendar` are explicit arguments and the raw
+  column names are retained as attributes (`Calendar.calendar` now
+  returns the real raw name, `None` for a dev-only triangle).
 - Residual bootstrap module (`Bootstrap` / `BootstrapTriangle`, new
   `bootstrap.py`) for predictive uncertainty. Covers the analytical
   (Mack closed-form), nonparametric (residual resample, cell and link

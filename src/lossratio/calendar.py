@@ -51,7 +51,7 @@ class Calendar:
         self._df: pl.DataFrame
         self._output_type: str
         self._groups: str | None
-        self._calendar: str
+        self._calendar: str | None
         self._grain: str
 
     @classmethod
@@ -156,7 +156,9 @@ class Calendar:
         self._df = ds
         self._output_type = triangle._output_type
         self._groups = grp
-        self._calendar = "cy_m"  # placeholder; Triangle doesn't retain raw cal name
+        # Real raw calendar name from the Triangle. `None` for a mode-2
+        # (dev-only) triangle -- no calendar column was ever supplied.
+        self._calendar = triangle.calendar
         self._grain = grain
         return self
 
@@ -173,6 +175,15 @@ class Calendar:
     @property
     def groups(self) -> str | None:
         return self._groups
+
+    @property
+    def calendar(self) -> str | None:
+        """Original calendar variable name (e.g. 'cy_m').
+
+        ``None`` when the source :class:`Triangle` was built dev-only
+        (mode 2), since no raw calendar column was supplied.
+        """
+        return self._calendar
 
     @property
     def grain(self) -> str:

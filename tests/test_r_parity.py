@@ -78,10 +78,27 @@ def test_triangle_build_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
+    # Numeric columns: the headline triplet plus the 7 new numeric
+    # parity columns (n_cohorts, margin pair, share quartet). Proves
+    # the Python formulas match R's `as_triangle` bit-for-bit.
     _compare_numeric(
         py, r,
-        cols=["loss", "incr_loss", "premium", "incr_premium", "ratio", "incr_ratio"],
+        cols=[
+            "loss", "incr_loss", "premium", "incr_premium",
+            "ratio", "incr_ratio",
+            "n_cohorts", "margin", "incr_margin",
+            "loss_share", "incr_loss_share",
+            "premium_share", "incr_premium_share",
+        ],
     )
+    # `profit` / `incr_profit` are string indicators ("pos" / "neg")
+    # -- compare with plain equality, not the numeric tolerance path.
+    for c in ("profit", "incr_profit"):
+        assert c in py.columns, f"Python output missing column {c!r}"
+        assert c in r.columns, f"R fixture missing column {c!r}"
+        assert py[c].to_list() == r[c].to_list(), (
+            f"string column {c!r} differs from R fixture"
+        )
 
 
 # ---------------------------------------------------------------------------
