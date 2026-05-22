@@ -458,6 +458,24 @@ class Loss:
         when ``method="bf"``; ignored otherwise). Either a positive
         scalar or a dict mapping each cohort (or group) to an ELR; see
         :class:`~lossratio.BF`.
+    bootstrap
+        Optional bootstrap specification. Bootstrap is strictly opt-in:
+        when ``None`` / ``False`` (the default) the fit is the pure
+        analytical SA / ED / CL SE, byte-unchanged. When supplied, the
+        bootstrap SE is overlaid onto the *projected* cells of ``$full``
+        (observed cells keep their analytical SE). The bootstrap runs
+        with the dispatcher's own ``method`` paradigm -- ``Loss(method=
+        "ed", bootstrap="auto")`` bootstraps with ED, ``method="sa"``
+        with SA, ``method="cl"`` with CL. Accepted forms:
+
+        * ``True`` / ``"auto"`` -- a default :class:`Bootstrap` config
+          inheriting this dispatcher's ``method``.
+        * a :class:`Bootstrap` config instance -- its own settings win.
+        * a pre-built :class:`BootstrapTriangle`.
+        * a callable ``f(triangle) -> BootstrapTriangle``.
+
+        Not supported for ``method="bf"`` / ``"cc"`` (raises a clear
+        error -- BF / CC bootstrap is a later phase).
     """
 
     def __init__(
@@ -474,6 +492,7 @@ class Loss:
         conf_level: float = 0.95,
         regime: Any = None,
         prior: Any = None,
+        bootstrap: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -482,6 +501,13 @@ class Loss:
         if method == "bf" and prior is None:
             raise ValueError(
                 "`prior` is required when method='bf'"
+            )
+        if method in ("bf", "cc") and bootstrap is not None \
+                and bootstrap is not False:
+            raise NotImplementedError(
+                f"bootstrap is not yet supported for method={method!r}; "
+                f"BF / CC bootstrap is a later phase. Pass bootstrap=None "
+                f"(the default) or use method 'sa' / 'ed' / 'cl'."
             )
         if premium_method not in _VALID_PREMIUM_METHODS:
             raise ValueError(
@@ -522,6 +548,7 @@ class Loss:
         self.conf_level = conf_level
         self.regime = regime
         self.prior = prior
+        self.bootstrap = bootstrap
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the loss projection on a Triangle."""
@@ -560,6 +587,9 @@ class LossFit:
         self.sigma_method: str
         self.conf_level: float
         self.premium_fit: PremiumFit
+        # Bootstrap slots -- ci_type is "analytical" unless a bootstrap ran.
+        self.boots: Any = None
+        self.ci_type: str = "analytical"
 
     @classmethod
     def _from_triangle(
@@ -607,6 +637,9 @@ class LossFit:
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
+        # Bootstrap slots default to the pure-analytical state.
+        self.boots = None
+        self.ci_type = "analytical"
 
         # 1) resolve PremiumFit ------------------------------------------------
         if estimator.premium_fit is not None:
@@ -700,9 +733,104 @@ class LossFit:
                 pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
             )
 
+        # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
+        # With no bootstrap, `long_df` is the pure analytical SA / ED / CL
+        # fit and is left byte-unchanged. The bootstrap runs with the
+        # dispatcher's own `method` paradigm (cl / ed / sa); SA also
+        # threads the resolved per-group maturity.
+        long_df = self._maybe_overlay_bootstrap(
+            long_df, original_tri, estimator, kstar_df
+        )
+
         self._df = long_df
         self._kstar_df = kstar_df
         return self
+
+    def _maybe_overlay_bootstrap(
+        self,
+        long_df: pl.DataFrame,
+        triangle: "Triangle",
+        estimator: "Loss",
+        kstar_df: pl.DataFrame,
+    ) -> pl.DataFrame:
+        """Resolve + overlay the dispatcher's bootstrap onto ``long_df``.
+
+        No-op (returns ``long_df`` unchanged) when ``estimator.bootstrap``
+        is ``None`` / ``False``. Otherwise resolves the bootstrap with the
+        dispatcher's own ``method`` paradigm -- ``method="cl"`` ->
+        analytical Mack, ``"ed"`` / ``"sa"`` -> the positivity-preserving
+        parametric paradigm -- and overlays the bootstrap SE onto the
+        projected cells of ``long_df``. Sets :attr:`boots` / :attr:`ci_type`.
+
+        For ``method="sa"`` the resolved per-group maturity (from
+        ``kstar_df``) is threaded into the bootstrap config so the
+        stage switch matches the analytical fit. An explicit
+        :class:`Bootstrap` config the user passed keeps its own settings
+        (``_resolve_bootstrap`` forwards ``**kw`` only for the
+        ``True`` / ``"auto"`` case).
+        """
+        bootstrap = estimator.bootstrap
+        if bootstrap is None or bootstrap is False:
+            return long_df
+
+        from .bootstrap import _apply_bootstrap_overlay, _resolve_bootstrap
+
+        method = estimator.method
+        # Default Bootstrap kwargs for the True / "auto" form: inherit the
+        # dispatcher's method + the type/process that paradigm requires.
+        # `type="analytical"` is CL-only; ED / SA need the parametric
+        # paradigm with a positivity-preserving process.
+        kw: dict[str, Any] = {"method": method}
+        if method == "cl":
+            kw["type"] = "analytical"
+            kw["process"] = "normal"
+        else:  # ed / sa
+            kw["type"] = "parametric"
+            kw["process"] = "gamma"
+        if method == "sa":
+            kw["maturity"] = self._maturity_for_bootstrap(kstar_df)
+
+        boots = _resolve_bootstrap(
+            bootstrap, triangle,
+            target      = "loss",
+            quantile_ci = True,
+            keep_pseudo = False,
+            **kw,
+        )
+        if boots is None:
+            return long_df
+
+        groups = self._groups
+        keys = ([groups] if groups is not None else []) + ["cohort", "dev"]
+        long_df = _apply_bootstrap_overlay(
+            long_df, boots,
+            role    = "loss",
+            se_cols = ["param_se", "proc_se", "total_se", "total_cv"],
+            keys    = keys,
+        )
+        self.boots   = boots
+        self.ci_type = "bootstrap"
+        return long_df
+
+    def _maturity_for_bootstrap(self, kstar_df: pl.DataFrame):
+        """Resolved SA maturity in the form ``Bootstrap`` expects.
+
+        ``Bootstrap._resolve_maturity_map`` accepts an ``int`` (ungrouped)
+        or a per-group ``dict``. Returns ``None`` when no maturity was
+        detected so the bootstrap config falls back to its own
+        auto-detection.
+        """
+        if kstar_df.height == 0 or "mat_k" not in kstar_df.columns:
+            return None
+        groups = self._groups
+        if groups is None or groups not in kstar_df.columns:
+            mk = kstar_df["mat_k"][0]
+            return None if mk is None else int(mk)
+        out = {
+            row[groups]: (None if row["mat_k"] is None else int(row["mat_k"]))
+            for row in kstar_df.iter_rows(named=True)
+        }
+        return out if any(v is not None for v in out.values()) else None
 
     @classmethod
     def _segment_wise_fit(
@@ -729,6 +857,8 @@ class LossFit:
 
         sub_estimator = _copy.copy(estimator)
         sub_estimator.regime = None
+        # Bootstrap once on the assembled grid below -- not per segment.
+        sub_estimator.bootstrap = None
 
         sub_tris = _split_into_segment_triangles(triangle, regime)
         if not sub_tris:
@@ -770,6 +900,9 @@ class LossFit:
         self.regime = regime
         self.premium_fit = last_self.premium_fit
         self._internals = internals_combined
+        # Bootstrap slots default to the pure-analytical state.
+        self.boots = None
+        self.ci_type = "analytical"
 
         combined = pl.concat(long_parts, how="diagonal")
 
@@ -777,11 +910,18 @@ class LossFit:
         # output shape matches R's fit_loss / fit_ratio `$full`. Cells past
         # each segment's reach stay as null (no factor extrapolation
         # without a fallback knob — R Phase 2C parity).
-        self._df = _expand_to_full_grid(
+        full_df = _expand_to_full_grid(
             combined, triangle, self._groups, last_self._cohort
         )
-
         self._kstar_df = pl.concat(kstar_parts, how="diagonal")
+
+        # Bootstrap overlay -- a single run on the parent triangle (the
+        # per-segment fits ran with bootstrap disabled above).
+        full_df = self._maybe_overlay_bootstrap(
+            full_df, triangle, estimator, self._kstar_df
+        )
+
+        self._df = full_df
         return self
 
     @classmethod
@@ -833,6 +973,9 @@ class LossFit:
         self.regime = None
         self.premium_fit = None
         self._internals = {}
+        # BF / CC analytical path -- no bootstrap (later phase).
+        self.boots = None
+        self.ci_type = "analytical"
         # keep a handle on the underlying worker fit (BF/CC summary)
         self._worker_fit = worker_fit
 

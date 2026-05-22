@@ -10,6 +10,7 @@ from ._period import derive_grain_columns
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .bf import BF, BFFit
+from .bootstrap import Bootstrap, BootstrapTriangle
 from .calendar import Calendar, as_calendar
 from .cc import CC, CCFit
 from .cl import CL, CLFit
@@ -35,6 +36,8 @@ __all__ = [
     "BFFit",
     "Backtest",
     "BacktestFit",
+    "Bootstrap",
+    "BootstrapTriangle",
     "CC",
     "CCFit",
     "CL",

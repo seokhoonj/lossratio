@@ -317,6 +317,19 @@ class CL:
         Variance scaling exponent for the Mack family. Currently only
         ``alpha = 1`` (volume-weighted) is implemented; other values
         raise ``NotImplementedError``.
+    sigma_method
+        Tail-sigma extrapolation rule (see :mod:`lossratio._sigma`).
+    bootstrap
+        Optional bootstrap specification. Bootstrap is strictly opt-in:
+        when ``None`` / ``False`` (the default) the fit is the pure
+        analytical Mack SE, byte-unchanged. When supplied, the bootstrap
+        SE is overlaid onto the *projected* cells of ``$full`` (observed
+        cells keep their analytical SE). Accepted forms:
+
+        * ``True`` / ``"auto"`` -- a default :class:`Bootstrap` config.
+        * a :class:`Bootstrap` config instance.
+        * a pre-built :class:`BootstrapTriangle`.
+        * a callable ``f(triangle) -> BootstrapTriangle``.
 
     Examples
     --------
@@ -324,12 +337,14 @@ class CL:
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> fit = lr.CL().fit(tri)
     >>> fit.summary()
+    >>> boot_fit = lr.CL(bootstrap="auto").fit(tri)
     """
 
     def __init__(
         self,
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        bootstrap: Any = None,
     ) -> None:
         if alpha != 1.0:
             raise NotImplementedError(
@@ -343,6 +358,7 @@ class CL:
             )
         self.alpha = alpha
         self.sigma_method = sigma_method
+        self.bootstrap = bootstrap
 
     def fit(
         self,
@@ -369,6 +385,7 @@ class CL:
             sigma_method=self.sigma_method,
             target=target,
             weight=weight,
+            bootstrap=self.bootstrap,
         )
 
 
@@ -394,6 +411,9 @@ class CLFit:
         self._cohort: str
         self._dev: str
         self.alpha: float
+        # Bootstrap slots -- ci_type is "analytical" unless a bootstrap ran.
+        self.boots: Any = None
+        self.ci_type: str = "analytical"
 
     @classmethod
     def _from_triangle(
@@ -403,6 +423,7 @@ class CLFit:
         sigma_method: str = "locf",
         target: str = "loss",
         weight: str | None = None,
+        bootstrap: Any = None,
     ) -> "CLFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
@@ -413,6 +434,9 @@ class CLFit:
         self.sigma_method = sigma_method
         self.target = target
         self.weight = weight
+        # Bootstrap slots default to the pure-analytical state.
+        self.boots = None
+        self.ci_type = "analytical"
 
         tri_df = triangle._df
         groups = triangle._groups
@@ -448,6 +472,37 @@ class CLFit:
                 )
             long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
             fk_df = pl.concat(fk_parts) if fk_parts else pl.DataFrame()
+
+        # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
+        # With no bootstrap, `long_df` is the pure analytical Mack fit and
+        # is left byte-unchanged.
+        if bootstrap is not None and bootstrap is not False:
+            from .bootstrap import (
+                _apply_bootstrap_overlay,
+                _resolve_bootstrap,
+            )
+
+            boots = _resolve_bootstrap(
+                bootstrap, triangle,
+                target      = "loss",
+                quantile_ci = True,
+                keep_pseudo = False,
+            )
+            if boots is not None:
+                keys = (
+                    ([groups] if groups is not None else [])
+                    + ["cohort", "dev"]
+                )
+                long_df = _apply_bootstrap_overlay(
+                    long_df, boots,
+                    role    = "loss",
+                    se_cols = [
+                        "param_se", "proc_se", "total_se", "total_cv",
+                    ],
+                    keys    = keys,
+                )
+                self.boots   = boots
+                self.ci_type = "bootstrap"
 
         self._df = long_df
         self._fk_df = fk_df
