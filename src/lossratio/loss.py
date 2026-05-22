@@ -23,6 +23,7 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output
+from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
 from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
@@ -203,6 +204,7 @@ def _fit_loss_single(
     max_cv: float,
     max_rse: float,
     min_run: int,
+    recent: int | None = None,
 ) -> _LossResult:
     """Project cumulative loss + decompose variance (process / parameter).
 
@@ -211,18 +213,38 @@ def _fit_loss_single(
     projection, not an inline Mack call). Both share the same point
     estimate so this is a no-op numerically but preserves the
     composition layering.
+
+    ``recent`` is the optional recent-diagonal window: when supplied,
+    the ED / CL factor parameters and the SA maturity point are
+    estimated from the recent-``N`` calendar wedge while the point
+    projection stays seeded from the full triangle. ``None`` (default)
+    is the byte-identical no-filter path.
     """
+    from ._recent import recent_link_mask
+
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
+    # Recent-diagonal link-level fit masks (None when recent=None).
+    loss_link_mask = recent_link_mask(loss_obs, recent)
+    premium_link_mask = recent_link_mask(premium_obs, recent)
+
     # ED parameters
-    ed_result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
+    ed_result = _fit_ed(
+        loss_obs,
+        premium_obs,
+        sigma_method=sigma_method,
+        loss_link_mask=loss_link_mask,
+        premium_link_mask=premium_link_mask,
+    )
     g_k = ed_result.g_k
     sigma2_g_k = ed_result.sigma2_g_k
     var_g_k = _mack_g_var(ed_result)
 
     # CL parameters
-    cl_result = _fit_mack(loss_obs, sigma_method=sigma_method)
+    cl_result = _fit_mack(
+        loss_obs, sigma_method=sigma_method, link_mask=loss_link_mask
+    )
     f_k = cl_result.f_k
     sigma2_f_k = cl_result.sigma2_k
     var_f_k = _mack_f_var(cl_result)
@@ -230,7 +252,9 @@ def _fit_loss_single(
     # Maturity (only for SA)
     mat_k: int | None = None
     if method == "sa":
-        mat = _compute_maturity(loss_obs, max_cv, max_rse, min_run)
+        mat = _compute_maturity(
+            loss_obs, max_cv, max_rse, min_run, link_mask=loss_link_mask
+        )
         mat_k = mat.mat_k
 
     # Switch threshold: target dev < mat = ED phase; target dev >= mat = CL.
@@ -453,6 +477,15 @@ class Loss:
     conf_level
         Confidence level for analytical CI on ``loss_proj``. Default
         ``0.95``.
+    regime
+        Loss-side regime filter (cohort-axis cut). See :class:`Regime`.
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals feed factor estimation across the
+        inner ED / CL fits (and the embedded :class:`Premium`); the
+        point projection still covers the full grid. For ``"bf"`` /
+        ``"cc"`` it threads into the inner chain-ladder fits.
+        ``None`` (default) leaves the fit byte-unchanged.
     prior
         The a priori expected loss ratio for ``method="bf"`` (required
         when ``method="bf"``; ignored otherwise). Either a positive
@@ -495,6 +528,7 @@ class Loss:
         min_run: int = 2,
         conf_level: float = 0.95,
         regime: Any = None,
+        recent: int | None = None,
         prior: Any = None,
         bootstrap: Any = None,
     ) -> None:
@@ -540,6 +574,7 @@ class Loss:
             raise TypeError(
                 "premium_fit must be a PremiumFit instance or None"
             )
+        _validate_recent(recent)
         self.method = method
         self.alpha = alpha
         self.sigma_method = sigma_method
@@ -551,6 +586,7 @@ class Loss:
         self.min_run = min_run
         self.conf_level = conf_level
         self.regime = regime
+        self.recent = recent
         self.prior = prior
         self.bootstrap = bootstrap
 
@@ -641,6 +677,7 @@ class LossFit:
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
+        self.recent = estimator.recent
         # Bootstrap slots default to the pure-analytical state.
         self.boots = None
         self.ci_type = "analytical"
@@ -653,6 +690,7 @@ class LossFit:
                 method=estimator.premium_method,
                 alpha=estimator.premium_alpha,
                 sigma_method=estimator.sigma_method,
+                recent=estimator.recent,
                 conf_level=estimator.conf_level,
             ).fit(original_tri)
         self.premium_fit = pf
@@ -678,6 +716,7 @@ class LossFit:
                 estimator.max_cv,
                 estimator.max_rse,
                 estimator.min_run,
+                recent=estimator.recent,
             )
             long_df = _loss_long_df(
                 result,
@@ -713,6 +752,7 @@ class LossFit:
                     estimator.max_cv,
                     estimator.max_rse,
                     estimator.min_run,
+                    recent=estimator.recent,
                 )
                 long_parts.append(
                     _loss_long_df(
@@ -882,6 +922,7 @@ class LossFit:
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
+        self.recent = estimator.recent
         self.premium_fit = last_self.premium_fit
         self._internals = internals_combined
         # Bootstrap slots default to the pure-analytical state.
@@ -936,12 +977,14 @@ class LossFit:
                 prior=estimator.prior,
                 alpha=estimator.alpha,
                 sigma_method=estimator.sigma_method,
+                recent=estimator.recent,
                 conf_level=estimator.conf_level,
             ).fit(triangle)
         else:  # cc
             worker_fit = CC(
                 alpha=estimator.alpha,
                 sigma_method=estimator.sigma_method,
+                recent=estimator.recent,
                 conf_level=estimator.conf_level,
             ).fit(triangle)
 
@@ -955,6 +998,7 @@ class LossFit:
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = None
+        self.recent = estimator.recent
         self.premium_fit = None
         self._internals = {}
         # BF / CC analytical path -- no bootstrap (later phase).

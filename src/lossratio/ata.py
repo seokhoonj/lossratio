@@ -19,6 +19,8 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
+from ._recent import recent_link_mask
+from ._recent import validate_recent as _validate_recent
 from .cl import _build_value_matrix, _fit_mack
 from .maturity import _compute_cv_rse
 
@@ -44,8 +46,16 @@ class _ATAResult:
     n_devs: int
 
 
-def _count_link_obs(loss_obs: np.ndarray) -> np.ndarray:
-    """Count cohorts contributing to each link (both endpoints finite)."""
+def _count_link_obs(
+    loss_obs: np.ndarray,
+    link_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Count cohorts contributing to each link (both endpoints finite).
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`): when supplied, only links inside the
+    recent wedge are counted.
+    """
     n_devs = loss_obs.shape[1]
     n_links = n_devs - 1
     n_obs_k = np.zeros(n_links, dtype=np.int64)
@@ -53,6 +63,8 @@ def _count_link_obs(loss_obs: np.ndarray) -> np.ndarray:
         col_k = loss_obs[:, k]
         col_k1 = loss_obs[:, k + 1]
         mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         n_obs_k[k] = int(mask.sum())
     return n_obs_k
 
@@ -60,11 +72,22 @@ def _count_link_obs(loss_obs: np.ndarray) -> np.ndarray:
 def _compute_ata_factor(
     loss_obs: np.ndarray,
     sigma_method: str = "locf",
+    link_mask: np.ndarray | None = None,
 ) -> _ATAResult:
-    """Compute per-link ATA factor diagnostic (no stability detection)."""
-    mack = _fit_mack(loss_obs, sigma_method=sigma_method)
-    cv_k, rse_k = _compute_cv_rse(loss_obs, mack.f_k, mack.sigma2_k)
-    n_obs_k = _count_link_obs(loss_obs)
+    """Compute per-link ATA factor diagnostic (no stability detection).
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`). When supplied, every factor-level
+    statistic (``f_k``, ``sigma2_k``, cross-cohort CV, RSE, and the
+    per-link cohort count) is computed only from links inside the
+    recent wedge. ``None`` (default) is the byte-identical no-filter
+    path.
+    """
+    mack = _fit_mack(loss_obs, sigma_method=sigma_method, link_mask=link_mask)
+    cv_k, rse_k = _compute_cv_rse(
+        loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
+    )
+    n_obs_k = _count_link_obs(loss_obs, link_mask=link_mask)
     return _ATAResult(
         f_k=mack.f_k,
         sigma2_k=mack.sigma2_k,
@@ -144,7 +167,13 @@ class ATA:
         self._dev: str
 
     @classmethod
-    def _from_link(cls, link: "Link", sigma_method: str = "locf") -> "ATA":
+    def _from_link(
+        cls,
+        link: "Link",
+        sigma_method: str = "locf",
+        recent: int | None = None,
+    ) -> "ATA":
+        _validate_recent(recent)
         self = cls.__new__(cls)
         self._output_type = link._output_type
         self._groups = link._groups
@@ -156,7 +185,11 @@ class ATA:
 
         if groups is None:
             loss_obs, _, _ = _build_value_matrix(tri_df, link._target)
-            result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
+            result = _compute_ata_factor(
+                loss_obs,
+                sigma_method=sigma_method,
+                link_mask=recent_link_mask(loss_obs, recent),
+            )
             diag_df = _diagnostic_to_df(
                 result, groups=None, group_value=None
             )
@@ -168,7 +201,11 @@ class ATA:
             for g in group_values:
                 sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, _, _ = _build_value_matrix(sub, link._target)
-                result = _compute_ata_factor(loss_obs, sigma_method=sigma_method)
+                result = _compute_ata_factor(
+                    loss_obs,
+                    sigma_method=sigma_method,
+                    link_mask=recent_link_mask(loss_obs, recent),
+                )
                 diag_parts.append(
                     _diagnostic_to_df(
                         result, groups=groups, group_value=g

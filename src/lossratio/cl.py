@@ -9,6 +9,8 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
+from ._recent import recent_link_mask
+from ._recent import validate_recent as _validate_recent
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -91,8 +93,18 @@ def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
 def _fit_mack(
     loss_obs: np.ndarray,
     sigma_method: str = "locf",
+    link_mask: np.ndarray | None = None,
 ) -> _MackResult:
-    """Fit Mack chain ladder (alpha = 1) on an observed loss matrix."""
+    """Fit Mack chain ladder (alpha = 1) on an observed loss matrix.
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    of shape ``(n_cohorts, n_devs - 1)`` (see :mod:`lossratio._recent`).
+    When supplied, ``f_k`` / ``sigma2_k`` / ``sum_col_k`` are estimated
+    only from links inside the recent wedge, while the point projection
+    and Mack SE recursion are seeded from the full, unmasked
+    ``loss_obs``. ``None`` (default) is the byte-identical no-filter
+    path.
+    """
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
@@ -107,6 +119,9 @@ def _fit_mack(
         # Match R's .lm_ata: drop cohorts with ck <= 0 (otherwise wt-style
         # accumulation includes 0/positive cohorts that bias f upward).
         mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
+        # Recent-diagonal wedge: keep only links inside the wedge.
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         n_k = int(mask.sum())
 
         if n_k == 0:
@@ -319,6 +334,13 @@ class CL:
         raise ``NotImplementedError``.
     sigma_method
         Tail-sigma extrapolation rule (see :mod:`lossratio._sigma`).
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals (a right-bottom wedge of the
+        triangle) feed factor estimation; the point projection still
+        covers the full ``cohort x dev`` grid. ``None`` (default)
+        leaves the fit byte-unchanged. This is a calendar-diagonal
+        filter, not a cohort cut — see :mod:`lossratio._recent`.
     bootstrap
         Optional bootstrap specification. Bootstrap is strictly opt-in:
         when ``None`` / ``False`` (the default) the fit is the pure
@@ -344,6 +366,7 @@ class CL:
         self,
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        recent: int | None = None,
         bootstrap: Any = None,
     ) -> None:
         if alpha != 1.0:
@@ -356,8 +379,10 @@ class CL:
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
                 f"got {sigma_method!r}"
             )
+        _validate_recent(recent)
         self.alpha = alpha
         self.sigma_method = sigma_method
+        self.recent = recent
         self.bootstrap = bootstrap
 
     def fit(
@@ -385,6 +410,7 @@ class CL:
             sigma_method=self.sigma_method,
             target=target,
             weight=weight,
+            recent=self.recent,
             bootstrap=self.bootstrap,
         )
 
@@ -423,6 +449,7 @@ class CLFit:
         sigma_method: str = "locf",
         target: str = "loss",
         weight: str | None = None,
+        recent: int | None = None,
         bootstrap: Any = None,
     ) -> "CLFit":
         self = cls.__new__(cls)
@@ -434,6 +461,7 @@ class CLFit:
         self.sigma_method = sigma_method
         self.target = target
         self.weight = weight
+        self.recent = recent
         # Bootstrap slots default to the pure-analytical state.
         self.boots = None
         self.ci_type = "analytical"
@@ -449,7 +477,11 @@ class CLFit:
 
         if groups is None:
             value_obs, cohorts, _ = _build_value_matrix(tri_df, target)
-            result = _fit_mack(value_obs, sigma_method=sigma_method)
+            result = _fit_mack(
+                value_obs,
+                sigma_method=sigma_method,
+                link_mask=recent_link_mask(value_obs, recent),
+            )
             long_df = _result_to_long_df(
                 result, cohorts, groups=None, group_value=None
             )
@@ -463,7 +495,11 @@ class CLFit:
             for g in group_values:
                 sub = tri_df.filter(pl.col(groups) == g)
                 value_obs, cohorts, _ = _build_value_matrix(sub, target)
-                result = _fit_mack(value_obs, sigma_method=sigma_method)
+                result = _fit_mack(
+                    value_obs,
+                    sigma_method=sigma_method,
+                    link_mask=recent_link_mask(value_obs, recent),
+                )
                 long_parts.append(
                     _result_to_long_df(result, cohorts, groups=groups, group_value=g)
                 )

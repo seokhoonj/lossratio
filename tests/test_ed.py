@@ -1,11 +1,32 @@
 """Tests for the ED (exposure-driven) estimator."""
 
 import math
+from pathlib import Path
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 import lossratio as lr
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _sur_triangle() -> lr.Triangle:
+    """Surgery slice of the synthetic experience dataset (36 x 36).
+
+    Read from the same fixture the R `recent` parity fixtures were
+    dumped from, so behavioural and parity tests share input rows.
+    """
+    exp = (
+        pl.read_csv(
+            _FIXTURES / "experience.csv",
+            try_parse_dates=True,
+            infer_schema_length=10000,
+        )
+        .filter(pl.col("coverage") == "surgery")
+    )
+    return lr.Triangle(exp, groups="coverage")
 
 
 def _toy_triangle_input() -> pl.DataFrame:
@@ -310,3 +331,58 @@ def test_ed_and_cl_differ_on_same_triangle():
         for c, e in zip(cl_ult, ed_ult)
         if c is not None and e is not None
     )
+
+
+# ---------------------------------------------------------------------------
+# recent — calendar-diagonal wedge factor filter
+# ---------------------------------------------------------------------------
+
+
+def test_ed_recent_changes_intensities():
+    """recent=12 restricts the ED intensity g_k (and the inner premium
+    chain ladder) to the recent diagonal wedge: early-link parameters
+    differ from the unfiltered fit."""
+    tri = _sur_triangle()
+    full = lr.ED().fit(tri)._params_df.sort("dev")
+    r12 = lr.ED(recent=12).fit(tri)._params_df.sort("dev")
+
+    g_full = full["g"].to_list()
+    g_r12 = r12["g"].to_list()
+    assert g_full[0] != pytest.approx(g_r12[0]), (
+        "first-link intensity unchanged by recent filter"
+    )
+    # The inner premium chain ladder factor also shifts.
+    fp_full = full["f_p"].to_list()
+    fp_r12 = r12["f_p"].to_list()
+    assert fp_full[0] != pytest.approx(fp_r12[0])
+
+
+def test_ed_recent_none_is_byte_identical_to_no_arg():
+    """recent=None (the default) reproduces the no-arg ED fit exactly."""
+    tri = _sur_triangle()
+    no_arg = lr.ED().fit(tri).to_polars()
+    explicit_none = lr.ED(recent=None).fit(tri).to_polars()
+    assert_frame_equal(no_arg, explicit_none)
+
+
+def test_ed_recent_larger_than_span_equals_unfiltered():
+    """recent wider than the diagonal span is byte-identical to the
+    unfiltered ED fit."""
+    tri = _sur_triangle()
+    unfiltered = lr.ED().fit(tri).to_polars()
+    wide = lr.ED(recent=10_000).fit(tri).to_polars()
+    assert_frame_equal(unfiltered, wide)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 2.5, "x"])
+def test_ed_recent_invalid_raises(bad):
+    """Non-positive-integer `recent` is rejected at construction."""
+    with pytest.raises(ValueError, match="recent"):
+        lr.ED(recent=bad)
+
+
+def test_ed_recent_invalid_raises_on_link_intensity():
+    """The Link.intensity() diagnostic validates `recent` the same way."""
+    tri = _sur_triangle()
+    with pytest.raises(ValueError, match="recent"):
+        tri.link().intensity(recent=0)

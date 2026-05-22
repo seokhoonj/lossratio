@@ -17,6 +17,7 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output
+from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .loss import Loss, LossFit
 from .premium import Premium, PremiumFit
@@ -58,6 +59,14 @@ class Ratio:
         differs from the loss regime.
     sigma_method
         ``"locf"`` (default), ``"min_last2"``, or ``"loglinear"``.
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals feed factor estimation across the
+        inner loss and premium fits; the point projection still covers
+        the full grid. ``None`` (default) leaves the fit byte-unchanged.
+        This is a calendar-diagonal filter shared by both the loss and
+        premium sides — orthogonal to the cohort-axis ``loss_regime`` /
+        ``premium_regime`` cuts.
     se_method
         How ``ratio_se`` is computed:
 
@@ -104,6 +113,7 @@ class Ratio:
         premium_alpha: float = 1.0,
         premium_regime: Any = None,
         sigma_method: str = "locf",
+        recent: int | None = None,
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
@@ -156,6 +166,7 @@ class Ratio:
             )
         if not isinstance(B, int) or B < 1:
             raise ValueError(f"B must be a positive integer, got {B!r}")
+        _validate_recent(recent)
 
         self.method = method
         self.loss_alpha = loss_alpha
@@ -164,6 +175,7 @@ class Ratio:
         self.premium_alpha = premium_alpha
         self.premium_regime = premium_regime
         self.sigma_method = sigma_method
+        self.recent = recent
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run
@@ -236,6 +248,7 @@ class RatioFit:
         self.premium_alpha = estimator.premium_alpha
         self.se_method = estimator.se_method
         self.rho = estimator.rho
+        self.recent = estimator.recent
         self.conf_level = estimator.conf_level
         # Bootstrap slots default to the pure-analytical state.
         self.boots = None
@@ -249,6 +262,7 @@ class RatioFit:
             sigma_method=estimator.sigma_method,
             conf_level=estimator.conf_level,
             regime=estimator.premium_regime,
+            recent=estimator.recent,
         ).fit(triangle)
         self.premium_fit = premium_fit
 
@@ -265,6 +279,7 @@ class RatioFit:
             min_run=estimator.min_run,
             conf_level=estimator.conf_level,
             regime=estimator.loss_regime,
+            recent=estimator.recent,
         ).fit(triangle)
         self.loss_fit = loss_fit
 

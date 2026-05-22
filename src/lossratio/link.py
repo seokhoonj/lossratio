@@ -278,7 +278,11 @@ class Link:
         """Backward-compat alias for dual-mode detection."""
         return self._premium is not None
 
-    def ata(self, sigma_method: str = "locf") -> "ATA":
+    def ata(
+        self,
+        sigma_method: str = "locf",
+        recent: int | None = None,
+    ) -> "ATA":
         """ATA factor diagnostic on this link.
 
         Aggregates the per-cell ``ata`` column across cohorts via
@@ -290,12 +294,21 @@ class Link:
             Tail-sigma extrapolation method when the last link has only
             one contributing cohort. One of ``"locf"`` (default, most
             conservative), ``"min_last2"``, ``"loglinear"``.
+        recent
+            Optional positive integer. When supplied, only the
+            most-recent ``recent`` calendar diagonals feed the per-link
+            factor diagnostic (a calendar-diagonal wedge). ``None``
+            (default) leaves the diagnostic byte-unchanged.
         """
         from .ata import ATA
 
-        return ATA._from_link(self, sigma_method=sigma_method)
+        return ATA._from_link(self, sigma_method=sigma_method, recent=recent)
 
-    def intensity(self, sigma_method: str = "locf") -> "Intensity":
+    def intensity(
+        self,
+        sigma_method: str = "locf",
+        recent: int | None = None,
+    ) -> "Intensity":
         """ED intensity diagnostic on this link.
 
         Requires the Link to be in dual mode (``exposure`` set).
@@ -308,6 +321,11 @@ class Link:
             Tail-sigma extrapolation method when the last link has
             only one contributing cohort. One of ``"locf"`` (default,
             most conservative), ``"min_last2"``, ``"loglinear"``.
+        recent
+            Optional positive integer. When supplied, only the
+            most-recent ``recent`` calendar diagonals feed the per-link
+            intensity diagnostic (a calendar-diagonal wedge). ``None``
+            (default) leaves the diagnostic byte-unchanged.
         """
         if self._premium is None:
             raise ValueError(
@@ -316,7 +334,9 @@ class Link:
             )
         from .intensity import Intensity
 
-        return Intensity._from_link(self, sigma_method=sigma_method)
+        return Intensity._from_link(
+            self, sigma_method=sigma_method, recent=recent
+        )
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

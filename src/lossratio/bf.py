@@ -29,6 +29,7 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output
+from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .bootstrap import (
     BFBootstrap,
@@ -494,20 +495,34 @@ def _fit_bf_cc_single(
     cape_cod: bool,
     prior: Any = None,
     group_value: Any | None = None,
+    recent: int | None = None,
 ) -> _BFResult:
     """Fit BF or Cape Cod on one group's loss + premium matrices.
 
     When ``cape_cod`` is ``True`` the ELR is data-pooled within the
     group; otherwise the user-supplied ``prior`` is resolved per cohort.
+
+    ``recent`` is the optional recent-diagonal window threaded into the
+    inner loss / premium chain-ladder fits (factors from the recent-``N``
+    wedge, projection seed from the full triangle). ``None`` (default)
+    is the byte-identical no-filter path.
     """
+    from ._recent import recent_link_mask
+
     n_cohorts, n_devs = loss_obs.shape
 
     # Inner chain-ladder fits. `_fit_premium_single(method="cl")` runs
     # the Mack point projection AND the proc / param SE decomposition
     # (the same multiplicative recursion R's fit_cl uses), so reuse it
     # for both the loss side and the premium side.
-    loss_cl = _fit_premium_single(loss_obs, "cl", sigma_method)
-    premium_cl = _fit_premium_single(premium_obs, "cl", sigma_method)
+    loss_cl = _fit_premium_single(
+        loss_obs, "cl", sigma_method,
+        link_mask=recent_link_mask(loss_obs, recent),
+    )
+    premium_cl = _fit_premium_single(
+        premium_obs, "cl", sigma_method,
+        link_mask=recent_link_mask(premium_obs, recent),
+    )
 
     # `_fit_premium_single` names its fields premium_*; for the loss
     # side those arrays are really the loss projection / SE.
@@ -802,6 +817,12 @@ class BF:
     sigma_method
         Tail-sigma extrapolation method for the inner chain-ladder
         fits. Default ``"locf"``.
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals feed factor estimation in the
+        inner loss / premium chain-ladder fits; the point projection
+        still covers the full grid. ``None`` (default) leaves the fit
+        byte-unchanged.
     conf_level
         Confidence level for ``loss_ci_lo`` / ``loss_ci_hi``. Default
         ``0.95``.
@@ -823,6 +844,7 @@ class BF:
         prior: Any,
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        recent: int | None = None,
         conf_level: float = 0.95,
         credibility: Any = None,
         bootstrap: Any = None,
@@ -853,9 +875,11 @@ class BF:
             )
         if not (isinstance(B, (int, np.integer)) and B >= 1):
             raise ValueError("`B` must be a positive integer.")
+        _validate_recent(recent)
         self.prior = prior
         self.alpha = alpha
         self.sigma_method = sigma_method
+        self.recent = recent
         self.conf_level = conf_level
         self.credibility = _resolve_credibility(credibility)
         self.bootstrap = bootstrap
@@ -930,6 +954,7 @@ class BFFit:
         self.premium = exposure
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
+        self.recent = estimator.recent
         self.conf_level = estimator.conf_level
         self.credibility = estimator.credibility
         self.ci_type = "analytical"
@@ -964,6 +989,7 @@ class BFFit:
                 cape_cod=False,
                 prior=estimator.prior,
                 group_value=None,
+                recent=estimator.recent,
             )
             full_parts.append(_bf_full_df(result, None, None))
             summary_parts.append(
@@ -987,6 +1013,7 @@ class BFFit:
                     cape_cod=False,
                     prior=estimator.prior,
                     group_value=g,
+                    recent=estimator.recent,
                 )
                 full_parts.append(_bf_full_df(result, groups, g))
                 summary_parts.append(

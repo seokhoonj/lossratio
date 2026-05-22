@@ -1,11 +1,36 @@
 """Tests for the CL (Mack chain ladder) estimator."""
 
 import math
+from pathlib import Path
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 import lossratio as lr
+
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _sur_triangle() -> lr.Triangle:
+    """Surgery slice of the synthetic experience dataset.
+
+    36 cohorts x 36 devs -- large enough that the `recent` calendar
+    wedge meaningfully restricts the contributing cohort set (early
+    links lose all but the most-recent diagonals). Read from the same
+    fixture the R `recent` parity fixtures were dumped from, so the
+    behavioural and parity tests exercise identical input rows.
+    """
+    exp = (
+        pl.read_csv(
+            _FIXTURES / "experience.csv",
+            try_parse_dates=True,
+            infer_schema_length=10000,
+        )
+        .filter(pl.col("coverage") == "surgery")
+    )
+    return lr.Triangle(exp, groups="coverage")
 
 
 def _toy_triangle_input() -> pl.DataFrame:
@@ -303,3 +328,126 @@ def test_cl_chain_with_triangle_constructor():
     """sklearn-style estimator + Triangle constructor."""
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     assert fit.n_rows == 25
+
+
+# ---------------------------------------------------------------------------
+# recent — calendar-diagonal wedge factor filter
+# ---------------------------------------------------------------------------
+
+
+def test_cl_recent_changes_factors():
+    """recent=12 restricts factor estimation to the recent diagonal
+    wedge: early-link factors differ from the unfiltered fit and the
+    per-link n_cohorts drops to the recent window."""
+    tri = _sur_triangle()
+    full = lr.CL().fit(tri)._fk_df.sort("dev")
+    r12 = lr.CL(recent=12).fit(tri)._fk_df.sort("dev")
+
+    # Early links (lots of cohorts dropped) must have different f.
+    f_full = full["f"].to_list()
+    f_r12 = r12["f"].to_list()
+    assert f_full[0] != pytest.approx(f_r12[0]), (
+        "first-link factor unchanged by recent filter"
+    )
+    assert f_full[1] != pytest.approx(f_r12[1])
+    # The two fits have the same link set (projection grid unchanged).
+    assert full.height == r12.height
+
+
+def test_cl_recent_drops_n_cohorts_per_link():
+    """The per-link contributing cohort count drops to the recent
+    window for early links (the ATA diagnostic exposes n_cohorts)."""
+    tri = _sur_triangle()
+    full = tri.link().ata().df.sort("dev")
+    r12 = tri.link().ata(recent=12).df.sort("dev")
+
+    # Unfiltered: early links pool many cohorts; recent=12 caps it.
+    assert full["n_cohorts"][0] > 12
+    assert r12["n_cohorts"][0] == 12
+    # Every early link inside the wedge collapses to exactly 12.
+    early = r12.filter(pl.col("dev") <= 24)
+    assert all(n == 12 for n in early["n_cohorts"].to_list())
+
+
+def test_cl_recent_none_is_byte_identical_to_no_arg():
+    """recent=None (the default) reproduces the no-arg fit exactly."""
+    tri = _sur_triangle()
+    no_arg = lr.CL().fit(tri).to_polars()
+    explicit_none = lr.CL(recent=None).fit(tri).to_polars()
+    assert_frame_equal(no_arg, explicit_none)
+    # f_k table identical too.
+    assert_frame_equal(
+        lr.CL().fit(tri)._fk_df, lr.CL(recent=None).fit(tri)._fk_df
+    )
+
+
+def test_cl_recent_larger_than_span_equals_unfiltered():
+    """recent wider than the triangle's diagonal span keeps every link
+    -- byte-identical to the unfiltered fit."""
+    tri = _sur_triangle()
+    # 36 cohorts x 36 devs -> max source calendar index is 35; any
+    # `recent` >= that keeps every existing link.
+    unfiltered = lr.CL().fit(tri).to_polars()
+    wide = lr.CL(recent=10_000).fit(tri).to_polars()
+    assert_frame_equal(unfiltered, wide)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 2.5, "x"])
+def test_cl_recent_invalid_raises(bad):
+    """Non-positive-integer `recent` is rejected at construction."""
+    with pytest.raises(ValueError, match="recent"):
+        lr.CL(recent=bad)
+
+
+def test_cl_recent_invalid_raises_on_link_ata():
+    """The Link.ata() diagnostic validates `recent` the same way."""
+    tri = _sur_triangle()
+    with pytest.raises(ValueError, match="recent"):
+        tri.link().ata(recent=0)
+
+
+@pytest.mark.parametrize(
+    "estimator_factory",
+    [
+        lambda r: lr.Loss(recent=r),
+        lambda r: lr.Ratio(recent=r),
+        lambda r: lr.BF(prior=1.5, recent=r),
+        lambda r: lr.CC(recent=r),
+    ],
+    ids=["Loss", "Ratio", "BF", "CC"],
+)
+def test_cl_recent_threads_through_dispatchers(estimator_factory):
+    """`recent` runs and shifts the fit on every loss-side estimator
+    that exposes it (Loss / Ratio / BF / CC)."""
+    tri = _sur_triangle()
+    unfiltered = (
+        estimator_factory(None).fit(tri).to_polars().sort(["cohort", "dev"])
+    )
+    filtered = (
+        estimator_factory(12).fit(tri).to_polars().sort(["cohort", "dev"])
+    )
+    assert unfiltered.height == filtered.height
+    u = unfiltered["loss_proj"].to_list()
+    f = filtered["loss_proj"].to_list()
+    # At least one projected cell must move once the wedge is applied.
+    assert any(
+        a is not None and b is not None and abs(a - b) > 1.0
+        for a, b in zip(u, f)
+    ), "recent filter did not change any loss_proj cell"
+
+
+def test_cl_recent_on_link_diagnostics():
+    """`recent` works on both Link.ata() and Link.intensity()."""
+    tri = _sur_triangle()
+    link = tri.link()
+    ata_full = link.ata().df.sort("dev")
+    ata_r12 = link.ata(recent=12).df.sort("dev")
+    inten_full = link.intensity().df.sort("dev")
+    inten_r12 = link.intensity(recent=12).df.sort("dev")
+
+    # Same link set, but first-link factors / intensities shift.
+    assert ata_full.height == ata_r12.height
+    assert inten_full.height == inten_r12.height
+    assert ata_full["f"][0] != pytest.approx(ata_r12["f"][0])
+    assert inten_full["g"][0] != pytest.approx(inten_r12["g"][0])
+    assert inten_r12["n_cohorts"][0] == 12

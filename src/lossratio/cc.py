@@ -28,6 +28,7 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output
+from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .bf import (
     _bf_full_df,
@@ -146,6 +147,12 @@ class CC:
     sigma_method
         Tail-sigma extrapolation method for the inner chain-ladder
         fits. Default ``"locf"``.
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals feed factor estimation in the
+        inner loss / premium chain-ladder fits; the point projection
+        still covers the full grid. ``None`` (default) leaves the fit
+        byte-unchanged.
     conf_level
         Confidence level for ``loss_ci_lo`` / ``loss_ci_hi`` and the
         pooled-ELR CI. Default ``0.95``.
@@ -167,6 +174,7 @@ class CC:
         self,
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        recent: int | None = None,
         conf_level: float = 0.95,
         credibility: Any = None,
         bootstrap: Any = None,
@@ -197,8 +205,10 @@ class CC:
             )
         if not (isinstance(B, (int, np.integer)) and B >= 1):
             raise ValueError("`B` must be a positive integer.")
+        _validate_recent(recent)
         self.alpha = alpha
         self.sigma_method = sigma_method
+        self.recent = recent
         self.conf_level = conf_level
         self.credibility = _resolve_credibility(credibility)
         self.bootstrap = bootstrap
@@ -277,6 +287,7 @@ class CCFit:
         self.premium = exposure
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
+        self.recent = estimator.recent
         self.conf_level = estimator.conf_level
         self.credibility = estimator.credibility
         self.ci_type = "analytical"
@@ -311,6 +322,7 @@ class CCFit:
                 cape_cod=True,
                 prior=None,
                 group_value=None,
+                recent=estimator.recent,
             )
             full_parts.append(_bf_full_df(result, None, None))
             summary_parts.append(
@@ -332,6 +344,7 @@ class CCFit:
                     cape_cod=True,
                     prior=None,
                     group_value=g,
+                    recent=estimator.recent,
                 )
                 full_parts.append(_bf_full_df(result, groups, g))
                 summary_parts.append(

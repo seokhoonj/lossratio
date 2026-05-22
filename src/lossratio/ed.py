@@ -9,6 +9,8 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
+from ._recent import recent_link_mask
+from ._recent import validate_recent as _validate_recent
 from .cl import _build_loss_matrix, _build_value_matrix, _fit_mack
 
 if TYPE_CHECKING:
@@ -67,13 +69,28 @@ def _fit_ed(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str = "locf",
+    loss_link_mask: np.ndarray | None = None,
+    premium_link_mask: np.ndarray | None = None,
 ) -> _EDResult:
-    """Fit ED (alpha = 1) on observed loss and premium matrices."""
+    """Fit ED (alpha = 1) on observed loss and premium matrices.
+
+    ``loss_link_mask`` / ``premium_link_mask`` are the optional
+    recent-diagonal *link-level* fit masks (see
+    :mod:`lossratio._recent`). When supplied, the ED intensity ``g_k``
+    is estimated only from loss links inside the recent wedge and the
+    inner premium chain ladder factors only from premium links inside
+    the wedge; the point projection stays seeded from the full,
+    unmasked ``loss_obs`` / ``premium_obs``. ``None`` (default) is the
+    byte-identical no-filter path.
+    """
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
-    # 1. Premium chain ladder for exposure projection
-    premium_mack = _fit_mack(premium_obs, sigma_method=sigma_method)
+    # 1. Premium chain ladder for exposure projection (factors from the
+    #    recent wedge when masked, projection seed from the full matrix).
+    premium_mack = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_link_mask
+    )
     f_p_k = premium_mack.f_k
     sigma2_f_p_k = premium_mack.sigma2_k
     premium_proj = premium_mack.loss_proj  # premium filled in via chain ladder
@@ -89,6 +106,9 @@ def _fit_ed(
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
         # Match R's fit_ed: drop cohorts with premium_from <= 0.
         mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
+        # Recent-diagonal wedge: keep only loss links inside the wedge.
+        if loss_link_mask is not None:
+            mask = mask & loss_link_mask[:, k]
         n_k = int(mask.sum())
 
         if n_k == 0:
@@ -385,6 +405,19 @@ class ED:
     ladder fit on `premium` (``f^P_k``), since computing future incremental
     loss requires future C^P values.
 
+    Parameters
+    ----------
+    alpha
+        Variance-structure exponent. Only ``alpha = 1`` is supported.
+    sigma_method
+        Tail-sigma extrapolation rule (see :mod:`lossratio._sigma`).
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals feed factor estimation (the ED
+        intensity ``g_k`` and the inner premium chain ladder); the
+        point projection still covers the full ``cohort x dev`` grid.
+        ``None`` (default) leaves the fit byte-unchanged.
+
     Examples
     --------
     >>> import lossratio as lr
@@ -397,6 +430,7 @@ class ED:
         self,
         alpha: float = 1.0,
         sigma_method: str = "locf",
+        recent: int | None = None,
     ) -> None:
         if alpha != 1.0:
             raise NotImplementedError(
@@ -408,8 +442,10 @@ class ED:
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
                 f"got {sigma_method!r}"
             )
+        _validate_recent(recent)
         self.alpha = alpha
         self.sigma_method = sigma_method
+        self.recent = recent
 
     def fit(
         self,
@@ -435,6 +471,7 @@ class ED:
             sigma_method=self.sigma_method,
             target=target,
             exposure=exposure,
+            recent=self.recent,
         )
 
 
@@ -469,6 +506,7 @@ class EDFit:
         sigma_method: str = "locf",
         target: str = "loss",
         exposure: str = "premium",
+        recent: int | None = None,
     ) -> "EDFit":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
@@ -478,6 +516,7 @@ class EDFit:
         self.alpha = alpha
         self.target = target
         self.exposure = exposure
+        self.recent = recent
 
         tri_df = triangle._df
         groups = triangle._groups
@@ -494,7 +533,13 @@ class EDFit:
         if groups is None:
             loss_obs, cohorts, _ = _build_value_matrix(tri_df, target)
             premium_obs, _cohorts2, _ = _build_value_matrix(tri_df, exposure)
-            result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
+            result = _fit_ed(
+                loss_obs,
+                premium_obs,
+                sigma_method=sigma_method,
+                loss_link_mask=recent_link_mask(loss_obs, recent),
+                premium_link_mask=recent_link_mask(premium_obs, recent),
+            )
             long_df = _result_to_long_df(
                 result, cohorts, groups=None, group_value=None
             )
@@ -509,7 +554,15 @@ class EDFit:
                 sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, cohorts, _ = _build_value_matrix(sub, target)
                 premium_obs, _, _ = _build_value_matrix(sub, exposure)
-                result = _fit_ed(loss_obs, premium_obs, sigma_method=sigma_method)
+                result = _fit_ed(
+                    loss_obs,
+                    premium_obs,
+                    sigma_method=sigma_method,
+                    loss_link_mask=recent_link_mask(loss_obs, recent),
+                    premium_link_mask=recent_link_mask(
+                        premium_obs, recent
+                    ),
+                )
                 long_parts.append(
                     _result_to_long_df(
                         result, cohorts, groups=groups, group_value=g

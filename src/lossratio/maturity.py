@@ -50,8 +50,16 @@ def _compute_cv_rse(
     loss_obs: np.ndarray,
     f_k: np.ndarray,
     sigma2_k: np.ndarray,
+    link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute CV (across cohort link factors) and RSE (of pooled f_k)."""
+    """Compute CV (across cohort link factors) and RSE (of pooled f_k).
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`). When supplied, both the cross-cohort
+    CV and the pooled RSE are computed only from links inside the
+    recent wedge. ``None`` (default) is the byte-identical no-filter
+    path.
+    """
     n_cohorts, n_devs = loss_obs.shape
     n_links = n_devs - 1
 
@@ -62,6 +70,8 @@ def _compute_cv_rse(
         col_k = loss_obs[:, k]
         col_k1 = loss_obs[:, k + 1]
         mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         n_k = int(mask.sum())
 
         # Cross-cohort CV of individual link factors (needs n_k >= 2,
@@ -122,14 +132,23 @@ def _compute_maturity(
     max_cv: float,
     max_rse: float,
     min_run: int,
+    link_mask: np.ndarray | None = None,
 ) -> _MaturityResult:
     """Internal: compute factor stats + stability flags + mat_k.
 
     Used by :mod:`lr` for the stage-adaptive method's switch point.
     The public path is ``triangle.link().ata().maturity(...)``.
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`): when supplied, the factor stats and
+    stability detection run on the recent wedge (R parity — ``fit_ata``
+    applies the recent filter before resolving maturity). ``None``
+    (default) is the byte-identical no-filter path.
     """
-    mack = _fit_mack(loss_obs)
-    cv_k, rse_k = _compute_cv_rse(loss_obs, mack.f_k, mack.sigma2_k)
+    mack = _fit_mack(loss_obs, link_mask=link_mask)
+    cv_k, rse_k = _compute_cv_rse(
+        loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
+    )
     stable_k = np.zeros(len(cv_k), dtype=bool)
     for k in range(len(cv_k)):
         if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):

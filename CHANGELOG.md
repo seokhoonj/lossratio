@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `recent=N` argument on `CL` / `ED` / `Loss` / `Premium` / `Ratio` /
+  `BF` / `CC` and the `Link.ata()` / `Link.intensity()` diagnostics
+  (R parity). It restricts factor estimation to the most-recent N
+  calendar diagonals -- a right-bottom wedge -- while the point
+  projection still spans the full triangle. `recent=None` (default)
+  leaves every fit unchanged.
 - `Triangle()` reaches parity with R `as_triangle()`: a `dev`
   argument enables the 3-mode dispatch (cohort + calendar /
   cohort + dev / both), so dev-indexed input without a calendar axis

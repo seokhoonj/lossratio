@@ -20,6 +20,8 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
+from ._recent import recent_link_mask
+from ._recent import validate_recent as _validate_recent
 from .cl import _build_value_matrix
 
 if TYPE_CHECKING:
@@ -46,8 +48,15 @@ def _compute_intensity(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str = "locf",
+    link_mask: np.ndarray | None = None,
 ) -> _IntensityResult:
     """Per-link WLS intensity estimation.
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`). When supplied, every factor-level
+    statistic (``g_k``, ``g_se_k``, ``sigma2_k``, the per-link cohort
+    count) is computed only from links inside the recent wedge.
+    ``None`` (default) is the byte-identical no-filter path.
 
     For each link ``k = 0, ..., n_links - 1`` (0-indexed source dev),
     solves the no-intercept WLS regression with alpha = 1:
@@ -76,6 +85,9 @@ def _compute_intensity(
         ck = premium_obs[:, k]
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
+        # Recent-diagonal wedge: keep only links inside the wedge.
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         n_k = int(mask.sum())
         n_obs_k[k] = n_k
 
@@ -118,6 +130,8 @@ def _compute_intensity(
         ck_last = premium_obs[:, k_last]
         dl_last = loss_obs[:, k_last + 1] - loss_obs[:, k_last]
         mask_last = ~np.isnan(ck_last) & ~np.isnan(dl_last) & (ck_last > 0)
+        if link_mask is not None:
+            mask_last = mask_last & link_mask[:, k_last]
         if mask_last.any():
             sum_crp_last = float(ck_last[mask_last].sum())
             if sum_crp_last > 0 and sigma2_k[-1] > 0:
@@ -195,7 +209,13 @@ class Intensity:
         self._dev: str
 
     @classmethod
-    def _from_link(cls, link: "Link", sigma_method: str = "locf") -> "Intensity":
+    def _from_link(
+        cls,
+        link: "Link",
+        sigma_method: str = "locf",
+        recent: int | None = None,
+    ) -> "Intensity":
+        _validate_recent(recent)
         self = cls.__new__(cls)
         self._output_type = link._output_type
         self._groups = link._groups
@@ -216,7 +236,10 @@ class Intensity:
             loss_obs, _, _ = _build_value_matrix(tri_df, loss_col)
             premium_obs, _, _ = _build_value_matrix(tri_df, premium_col)
             result = _compute_intensity(
-                loss_obs, premium_obs, sigma_method=sigma_method
+                loss_obs,
+                premium_obs,
+                sigma_method=sigma_method,
+                link_mask=recent_link_mask(loss_obs, recent),
             )
             diag_df = _diagnostic_to_df(
                 result, groups=None, group_value=None
@@ -231,7 +254,10 @@ class Intensity:
                 loss_obs, _, _ = _build_value_matrix(sub, loss_col)
                 premium_obs, _, _ = _build_value_matrix(sub, premium_col)
                 result = _compute_intensity(
-                    loss_obs, premium_obs, sigma_method=sigma_method
+                    loss_obs,
+                    premium_obs,
+                    sigma_method=sigma_method,
+                    link_mask=recent_link_mask(loss_obs, recent),
                 )
                 diag_parts.append(
                     _diagnostic_to_df(

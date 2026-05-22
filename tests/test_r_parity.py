@@ -180,6 +180,125 @@ def test_cl_mack_se_matches_r():
 
 
 # ---------------------------------------------------------------------------
+# recent — calendar-diagonal wedge factor filter (deterministic; bit-parity)
+# ---------------------------------------------------------------------------
+
+# The `recent` filter is a deterministic cell selection, so Python and R
+# must agree to floating-point precision — the only slack is R's fwrite
+# rounding to ~15 significant digits. Use a tight tolerance.
+_RECENT_ATOL = 1e-4
+_RECENT_RTOL = 1e-12
+
+
+def _compare_recent(
+    py_df: pl.DataFrame, r_df: pl.DataFrame, cols: list[str]
+) -> float:
+    """Bit-parity compare for the deterministic `recent` filter.
+
+    Returns the worst absolute difference observed (for reporting). The
+    tolerance is `_RECENT_ATOL + _RECENT_RTOL * |r|` — far tighter than
+    the generic `_compare_numeric` path, since the recent wedge selects
+    an exact cohort set with no algorithmic slack.
+    """
+    assert py_df.height == r_df.height, (
+        f"row count mismatch: py={py_df.height}, r={r_df.height}"
+    )
+    worst = 0.0
+    for c in cols:
+        assert c in py_df.columns, f"Python output missing column {c!r}"
+        assert c in r_df.columns, f"R fixture missing column {c!r}"
+        py_v = py_df[c].to_list()
+        r_v = r_df[c].to_list()
+        for i, (a, b) in enumerate(zip(py_v, r_v)):
+            if a is None or b is None:
+                continue
+            if isinstance(a, float) and (a != a):
+                continue
+            if isinstance(b, float) and (b != b):
+                continue
+            diff = abs(a - b)
+            worst = max(worst, diff)
+            tol = _RECENT_ATOL + _RECENT_RTOL * abs(b)
+            assert diff <= tol, (
+                f"column {c!r} row {i}: py={a} r={b} diff={diff} tol={tol}"
+            )
+    return worst
+
+
+def test_cl_recent_matches_r():
+    """CL(recent=12).fit(...) loss_proj vs R fit_cl(recent=12)$full.
+
+    The recent-diagonal wedge is a deterministic filter, so the
+    projected losses must match R to floating-point precision.
+    """
+    r = _load("cl_recent12_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
+    py = (
+        lr.CL(recent=12).fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+    )
+    _compare_recent(py, r, cols=["loss_proj"])
+
+
+def test_ed_recent_matches_r():
+    """ED(recent=12).fit(...) loss_proj / premium_proj vs R
+    fit_ed(recent=12)$full — deterministic, floating-point parity."""
+    r = _load("ed_recent12_full").sort(["cohort", "dev"])
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
+    py = (
+        lr.ED(recent=12).fit(tri)
+        .to_polars()
+        .sort(["cohort", "dev"])
+    )
+    cols = ["loss_proj"]
+    if "premium_proj" in r.columns:
+        cols.append("premium_proj")
+    _compare_recent(py, r, cols=cols)
+
+
+def test_cl_recent_factors_match_r():
+    """recent=12 per-link ATA factors vs R cl_recent12_selected.csv.
+
+    Keys on the link's source dev (Python `dev` == R `ata_from`). The
+    R `selected` fixture carries `f`, `f_sel`, `sigma2`, `n_cohorts`;
+    Python applies no separate selection on top of the volume-weighted
+    `f`, so `f` == R's `f_sel`.
+
+    The decisive check is `n_cohorts`. With recent=12 every early link
+    caps at exactly 12 contributing cohorts (down from 35 unfiltered);
+    only the late links near the triangle tip carry fewer than 12 --
+    the calendar-diagonal wedge simply runs out of links there. Python
+    must reproduce R's exact per-link cohort count.
+    """
+    r = _load("cl_recent12_selected").sort(["ata_from"])
+    tri = lr.Triangle(_exp_sur(), groups="coverage")
+    py = tri.link().ata(recent=12).df.sort(["dev"])
+
+    assert py.height == r.height, (
+        f"link count mismatch: py={py.height} r={r.height}"
+    )
+    # Python `dev` aligns with R `ata_from` after both are sorted.
+    assert py["dev"].to_list() == r["ata_from"].to_list(), (
+        "link source-dev keys differ from R fixture"
+    )
+    # Every early link caps at exactly 12; the wedge runs out only at
+    # the triangle tip. Python and R must agree link-for-link.
+    r_n = r["n_cohorts"].to_list()
+    assert all(n == 12 for n in r_n[:12]), (
+        "R fixture: recent=12 should cap early links at 12 cohorts"
+    )
+    assert py["n_cohorts"].to_list() == r_n, (
+        "per-link n_cohorts differs from R fixture"
+    )
+    _compare_recent(py, r, cols=["f", "sigma2", "n_cohorts"])
+    # Python `f` is the selected factor (no separate selection step):
+    # compare it against R's `f_sel` column directly.
+    py_sel = py.rename({"f": "f_sel"})
+    _compare_recent(py_sel, r, cols=["f_sel"])
+
+
+# ---------------------------------------------------------------------------
 # Link-level diagnostics — ATA factors + ED intensities
 # ---------------------------------------------------------------------------
 

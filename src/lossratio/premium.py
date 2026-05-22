@@ -19,6 +19,8 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output
+from ._recent import recent_link_mask
+from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
 from .ed import _build_premium_matrix
@@ -53,9 +55,19 @@ def _fit_premium_single(
     premium_obs: np.ndarray,
     method: str,
     sigma_method: str,
+    link_mask: np.ndarray | None = None,
 ) -> _PremiumResult:
-    """Fit premium projection (point + SE under CL or ED recursion)."""
-    mack = _fit_mack(premium_obs, sigma_method=sigma_method)
+    """Fit premium projection (point + SE under CL or ED recursion).
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`) forwarded to the inner Mack fit:
+    factors come from the recent wedge, the projection seed stays the
+    full ``premium_obs``. ``None`` (default) is the byte-identical
+    no-filter path.
+    """
+    mack = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=link_mask
+    )
     premium_proj = mack.loss_proj
     f_k = mack.f_k
     sigma2_k = mack.sigma2_k
@@ -237,6 +249,28 @@ class Premium:
 
     Both methods share the same point estimate; only the SE differs.
 
+    Parameters
+    ----------
+    method
+        ``"ed"`` (default) or ``"cl"`` — the variance recursion.
+    alpha
+        Variance-structure exponent. Only ``alpha = 1`` is supported.
+    sigma_method
+        ``"locf"`` (default), ``"min_last2"``, or ``"loglinear"``.
+    regime
+        Premium-side regime filter (cohort-axis cut). See
+        :class:`Regime`.
+    recent
+        Optional positive integer. When supplied, only the most-recent
+        ``recent`` calendar diagonals feed factor estimation; the point
+        projection still covers the full grid. The filter applies after
+        any ``regime`` cohort cut. ``None`` (default) leaves the fit
+        byte-unchanged.
+    tail
+        Reserved; not yet implemented.
+    conf_level
+        Confidence level for the analytical CI. Default ``0.95``.
+
     Examples
     --------
     >>> import lossratio as lr
@@ -251,6 +285,7 @@ class Premium:
         alpha: float = 1.0,
         sigma_method: str = "locf",
         regime: Any = None,
+        recent: int | None = None,
         tail: bool = False,
         conf_level: float = 0.95,
     ) -> None:
@@ -275,10 +310,12 @@ class Premium:
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
+        _validate_recent(recent)
         self.method = method
         self.alpha = alpha
         self.sigma_method = sigma_method
         self.regime = regime
+        self.recent = recent
         self.tail = tail
         self.conf_level = conf_level
 
@@ -347,14 +384,17 @@ class PremiumFit:
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
+        self.recent = estimator.recent
 
         tri_df = triangle._df
         groups = triangle._groups
+        recent = estimator.recent
 
         if groups is None:
             premium_obs, cohorts, _ = _build_premium_matrix(tri_df)
             result = _fit_premium_single(
-                premium_obs, estimator.method, estimator.sigma_method
+                premium_obs, estimator.method, estimator.sigma_method,
+                link_mask=recent_link_mask(premium_obs, recent),
             )
             long_df = _premium_long_df(
                 result, cohorts, None, None, estimator.conf_level
@@ -367,7 +407,8 @@ class PremiumFit:
                 sub = tri_df.filter(pl.col(groups) == g)
                 premium_obs, cohorts, _ = _build_premium_matrix(sub)
                 result = _fit_premium_single(
-                    premium_obs, estimator.method, estimator.sigma_method
+                    premium_obs, estimator.method, estimator.sigma_method,
+                    link_mask=recent_link_mask(premium_obs, recent),
                 )
                 parts.append(
                     _premium_long_df(
