@@ -30,6 +30,8 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from ._period import derive_grain_columns
+
 _DATA_PATH = Path(__file__).parent / "data" / "experience.parquet"
 
 # --- Calibration constants (per coverage) -------------------------------
@@ -98,10 +100,13 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        Columns ``coverage`` (str), ``uy_m`` (str, ISO date), ``cy_m``
-        (str, ISO date), ``dev_m`` (int), ``incr_loss`` (float),
-        ``incr_premium`` (float). Pass directly to :class:`Triangle`
-        with ``groups="coverage"``.
+        15 columns, matching the R `lossratio` `data(experience)`
+        schema: ``coverage`` (str); the underwriting axis ``uy`` /
+        ``uy_h`` / ``uy_q`` / ``uy_m`` (Date); the calendar axis
+        ``cy`` / ``cy_h`` / ``cy_q`` / ``cy_m`` (Date); the
+        development axis ``dev_y`` / ``dev_h`` / ``dev_q`` / ``dev_m``
+        (int); and ``incr_loss`` / ``incr_premium`` (float). Pass
+        directly to :class:`Triangle` with ``groups="coverage"``.
     """
     rng = np.random.default_rng(seed)
     weights = _make_weights()
@@ -148,7 +153,21 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                     }
                 )
 
-    return pl.DataFrame(records)
+    df = pl.DataFrame(records).with_columns(
+        pl.col("uy_m").str.to_date(),
+        pl.col("cy_m").str.to_date(),
+    )
+
+    # Enrich to the full M/Q/H/Y grain schema, then order columns to
+    # match the R `data(experience)` 15-column layout.
+    df = derive_grain_columns(df)
+    return df.select(
+        "coverage",
+        "uy", "uy_h", "uy_q", "uy_m",
+        "cy", "cy_h", "cy_q", "cy_m",
+        "dev_y", "dev_h", "dev_q", "dev_m",
+        "incr_loss", "incr_premium",
+    )
 
 
 def load_experience() -> pl.DataFrame:
@@ -162,6 +181,6 @@ def load_experience() -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        Same shape as :func:`make_experience`.
+        Same 15-column shape as :func:`make_experience`.
     """
     return pl.read_parquet(_DATA_PATH)

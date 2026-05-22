@@ -371,17 +371,17 @@ def add_periods(
 
 
 # ---------------------------------------------------------------------------
-# User-facing: derive M/Q/S/A grain columns from monthly source
+# User-facing: derive M/Q/H/Y grain columns from monthly source
 # ---------------------------------------------------------------------------
 
 
 def derive_grain_columns(df: Any) -> Any:
-    """Derive monthly / quarterly / semi-annual / annual grain columns.
+    """Derive monthly / quarterly / half-yearly / yearly grain columns.
 
     Given a long-format frame with monthly source columns (``uy_m``,
-    ``cy_m``), derive the coarser-grain siblings (``uy_q`` / ``uy_s`` /
-    ``uy_a``, ``cy_q`` / ``cy_s`` / ``cy_a``) plus the development
-    indices (``dev_m`` / ``dev_q`` / ``dev_s`` / ``dev_a``) so the
+    ``cy_m``), derive the coarser-grain siblings (``uy_q`` / ``uy_h`` /
+    ``uy``, ``cy_q`` / ``cy_h`` / ``cy``) plus the development
+    indices (``dev_m`` / ``dev_q`` / ``dev_h`` / ``dev_y``) so the
     same frame can be aggregated at any of the four grains.
 
     This is an *optional* utility — :class:`Triangle` already derives
@@ -389,20 +389,22 @@ def derive_grain_columns(df: Any) -> Any:
     enriched frame that can be re-aggregated at multiple grains, or
     for exploratory plots.
 
-    Letter-suffix family: ``_m`` / ``_q`` / ``_s`` / ``_a`` = monthly /
-    quarterly / semi-annual / annual.
+    Letter-suffix family: ``_m`` / ``_q`` / ``_h`` / ``_y`` = monthly /
+    quarterly / half-yearly / yearly. The yearly underwriting and
+    calendar columns are bare (``uy`` / ``cy``, no suffix), matching
+    the R sibling's column scheme.
 
     The 12 grain columns (4 grains × 3 axes) are:
 
     * Underwriting period (Date, from ``uy_m``):
-      ``uy_a``, ``uy_s``, ``uy_q``, ``uy_m``.
+      ``uy``, ``uy_h``, ``uy_q``, ``uy_m``.
     * Calendar period (Date, from ``cy_m``):
-      ``cy_a``, ``cy_s``, ``cy_q``, ``cy_m``.
+      ``cy``, ``cy_h``, ``cy_q``, ``cy_m``.
     * Development period (Int, derived from ``uy_m`` and ``cy_m``):
-      ``dev_a``, ``dev_s``, ``dev_q``, ``dev_m``.
+      ``dev_y``, ``dev_h``, ``dev_q``, ``dev_m``.
 
-    ``dev_s`` and ``dev_q`` are *not* simple groupings of ``dev_m`` —
-    they are aligned to calendar S / Q boundaries so that underwriting
+    ``dev_h`` and ``dev_q`` are *not* simple groupings of ``dev_m`` —
+    they are aligned to calendar H / Q boundaries so that underwriting
     cohorts in (say) Q1 vs Q2 are compared on a consistent cumulative
     development basis.
 
@@ -442,14 +444,14 @@ def derive_grain_columns(df: Any) -> Any:
         pl.col("cy_m").cast(pl.Date),
     )
 
-    # Underwriting grain Dates: uy_a / uy_s / uy_q.
+    # Underwriting grain Dates: uy / uy_h / uy_q.
     df_pl = df_pl.with_columns(
-        pl.date(pl.col("uy_m").dt.year(), 1, 1).alias("uy_a"),
+        pl.date(pl.col("uy_m").dt.year(), 1, 1).alias("uy"),
         pl.date(
             pl.col("uy_m").dt.year(),
             pl.when(pl.col("uy_m").dt.month() <= 6).then(1).otherwise(7),
             1,
-        ).alias("uy_s"),
+        ).alias("uy_h"),
         pl.date(
             pl.col("uy_m").dt.year(),
             ((pl.col("uy_m").dt.month() - 1) // 3) * 3 + 1,
@@ -457,14 +459,14 @@ def derive_grain_columns(df: Any) -> Any:
         ).alias("uy_q"),
     )
 
-    # Calendar grain Dates: cy_a / cy_s / cy_q.
+    # Calendar grain Dates: cy / cy_h / cy_q.
     df_pl = df_pl.with_columns(
-        pl.date(pl.col("cy_m").dt.year(), 1, 1).alias("cy_a"),
+        pl.date(pl.col("cy_m").dt.year(), 1, 1).alias("cy"),
         pl.date(
             pl.col("cy_m").dt.year(),
             pl.when(pl.col("cy_m").dt.month() <= 6).then(1).otherwise(7),
             1,
-        ).alias("cy_s"),
+        ).alias("cy_h"),
         pl.date(
             pl.col("cy_m").dt.year(),
             ((pl.col("cy_m").dt.month() - 1) // 3) * 3 + 1,
@@ -472,12 +474,12 @@ def derive_grain_columns(df: Any) -> Any:
         ).alias("cy_q"),
     )
 
-    # Development indices (Int): dev_m, dev_q, dev_s, dev_a.
-    # S / Q indices are 0-based grain indices within the calendar year:
-    #   uy_s_idx ∈ {0, 1}    (0 = S1, 1 = S2)
+    # Development indices (Int): dev_m, dev_q, dev_h, dev_y.
+    # H / Q indices are 0-based grain indices within the calendar year:
+    #   uy_h_idx ∈ {0, 1}    (0 = H1, 1 = H2)
     #   uy_q_idx ∈ {0, 1, 2, 3}  (0 = Q1, ..., 3 = Q4)
-    uy_s_idx = (pl.col("uy_m").dt.month() - 1) // 6
-    cy_s_idx = (pl.col("cy_m").dt.month() - 1) // 6
+    uy_h_idx = (pl.col("uy_m").dt.month() - 1) // 6
+    cy_h_idx = (pl.col("cy_m").dt.month() - 1) // 6
     uy_q_idx = (pl.col("uy_m").dt.month() - 1) // 3
     cy_q_idx = (pl.col("cy_m").dt.month() - 1) // 3
 
@@ -490,12 +492,12 @@ def derive_grain_columns(df: Any) -> Any:
     )
 
     df_pl = df_pl.with_columns(
-        (((pl.col("dev_m") - 1) // 12) + 1).cast(pl.Int64).alias("dev_a"),
+        (((pl.col("dev_m") - 1) // 12) + 1).cast(pl.Int64).alias("dev_y"),
         (
             (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 2
-            + (cy_s_idx - uy_s_idx)
+            + (cy_h_idx - uy_h_idx)
             + 1
-        ).cast(pl.Int64).alias("dev_s"),
+        ).cast(pl.Int64).alias("dev_h"),
         (
             (pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 4
             + (cy_q_idx - uy_q_idx)

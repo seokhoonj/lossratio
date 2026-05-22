@@ -167,7 +167,7 @@ def test_ed_projection_observed_cells_unchanged():
 def test_ed_projection_uses_additive_rule():
     """Cohort 2024-05 has only dev 1 observed (loss = 200, premium = 100).
 
-        loss_proj[1, 2] = loss[1, 1] + g_1 * exposure_proj[1, 1]
+        loss_proj[1, 2] = loss[1, 1] + g_1 * premium_proj[1, 1]
                           = 200 + 1.375 * 100
                           = 337.5
     """
@@ -187,8 +187,8 @@ def test_ed_projection_uses_additive_rule():
 def test_ed_premium_proj_present_for_all_cells():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
-    # Every cell has a projected exposure (observed or chain-ladder forecast)
-    assert df["exposure_proj"].null_count() == 0
+    # Every cell has a projected premium (observed or chain-ladder forecast)
+    assert df["premium_proj"].null_count() == 0
 
 
 # ---------------------------------------------------------------------------

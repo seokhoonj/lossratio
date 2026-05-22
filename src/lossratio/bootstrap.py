@@ -922,7 +922,7 @@ def _cell_residuals_cl(
 
 def _cell_residuals_ed(
     link_df:    pl.DataFrame,
-    from_col:   str = "exposure_from",
+    from_col:   str = "premium_from",
 ) -> _CellResiduals:
     """ED-paradigm Pearson cell residuals (single group).
 
@@ -952,9 +952,9 @@ def _cell_residuals_ed(
         ``loss_delta`` and the from-side cumulative premium column
         named by ``from_col``.
     from_col
-        Name of the from-side cumulative premium column. The R sibling
-        names it ``premium_from``; the current Python ``Link`` emits
-        ``exposure_from`` -- the default matches the Python ``Link``.
+        Name of the from-side cumulative premium column. Both the R
+        sibling and the Python ``Link`` emit ``premium_from`` -- the
+        default matches.
 
     Returns
     -------
@@ -963,15 +963,10 @@ def _cell_residuals_ed(
         number of distinct links used.
     """
     if from_col not in link_df.columns:
-        # Tolerate either denominator-column naming (worker arg vs domain).
-        alt = "premium_from" if from_col == "exposure_from" else "exposure_from"
-        if alt in link_df.columns:
-            from_col = alt
-        else:
-            raise ValueError(
-                f"link DataFrame is missing the from-side premium column "
-                f"({from_col!r} / its alias); columns: {link_df.columns}"
-            )
+        raise ValueError(
+            f"link DataFrame is missing the from-side premium column "
+            f"({from_col!r}); columns: {link_df.columns}"
+        )
 
     df = link_df.select(
         ["cohort", "ata_to", "loss_delta", from_col]
@@ -1345,7 +1340,7 @@ def _refit_fstar(
 
 def _refit_gstar(
     cum:           np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     link_to_idx:   np.ndarray,
     g_hat:         np.ndarray,
 ) -> np.ndarray:
@@ -1354,7 +1349,7 @@ def _refit_gstar(
     Mirrors R's ``bootstrap_refit_ed_gstar``. For each link ``k``,
     ``g_star[k, b] = sum(cum_to - cum_from) / sum(premium_from)`` -- the
     numerator over the cohorts whose pseudo cumulative is finite at
-    *both* endpoints, and the denominator summing ``exposure_proj`` over
+    *both* endpoints, and the denominator summing ``premium_proj`` over
     the *same* cohort set (the fixed premium projection). A non-positive
     denominator falls back to the anchor ``g_hat[k]``.
 
@@ -1362,7 +1357,7 @@ def _refit_gstar(
     ----------
     cum
         ``(n_coh, n_dev, B)`` masked pseudo cumulative array.
-    exposure_proj
+    premium_proj
         ``(n_coh, n_dev)`` fixed projected premium matrix.
     link_to_idx
         ``(n_links,)`` 1-indexed destination dev column of each link.
@@ -1386,7 +1381,7 @@ def _refit_gstar(
         to_col   = to_col_1 - 1
         c_from = cum[:, from_col, :]
         c_to   = cum[:, to_col, :]
-        p_from = exposure_proj[:, from_col][:, None]
+        p_from = premium_proj[:, from_col][:, None]
         ok = (
             np.isfinite(c_from) & np.isfinite(c_to)
             & np.isfinite(p_from) & (p_from > 0.0)
@@ -1435,7 +1430,7 @@ def _fwd_proj_cl(
 def _fwd_proj_ed(
     cum:           np.ndarray,
     g_star:        np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     last_obs:      np.ndarray,
     k_idx_by_j:    np.ndarray,
 ) -> None:
@@ -1443,7 +1438,7 @@ def _fwd_proj_ed(
 
     Mirrors R's ``bootstrap_fwd_proj_ed_and_clip``. For each dev ``j``,
     cohorts with ``last_obs[i] < j`` get ``cum[i, j] = cum[i, j-1] +
-    g_star[k] * exposure_proj[i, j-1]``. Finite negatives clipped to 0.
+    g_star[k] * premium_proj[i, j-1]``. Finite negatives clipped to 0.
     """
     n_coh, n_dev, B = cum.shape
     for j in range(1, n_dev):
@@ -1458,7 +1453,7 @@ def _fwd_proj_ed(
         else:
             g_b = g_star[k, :][None, :]
             g_b = np.where(np.isfinite(g_b), g_b, 0.0)
-            p_prev = exposure_proj[proj, j - 1][:, None]
+            p_prev = premium_proj[proj, j - 1][:, None]
             inc = np.where(np.isfinite(p_prev), g_b * p_prev, 0.0)
             cum[proj, j, :] = prev + inc
     neg = np.isfinite(cum) & (cum < 0.0)
@@ -1469,7 +1464,7 @@ def _fwd_proj_sa(
     cum:           np.ndarray,
     f_star:        np.ndarray,
     g_star:        np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     last_obs:      np.ndarray,
     k_idx_by_j:    np.ndarray,
     mat_k:         np.ndarray,
@@ -1503,7 +1498,7 @@ def _fwd_proj_sa(
             else:
                 g_b = g_star[k, :]
                 g_b = np.where(np.isfinite(g_b), g_b, 0.0)
-                p_prev = exposure_proj[i, j - 1]
+                p_prev = premium_proj[i, j - 1]
                 inc = g_b * p_prev if np.isfinite(p_prev) else 0.0
                 cum[i, j, :] = prev + inc
     neg = np.isfinite(cum) & (cum < 0.0)
@@ -1608,7 +1603,7 @@ def _fwd_sim_cl_cell(
 def _fwd_sim_ed_cell(
     cum_mean:      np.ndarray,
     g_star:        np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     last_obs:      np.ndarray,
     k_idx_by_j:    np.ndarray,
     rng:           np.random.Generator,
@@ -1619,7 +1614,7 @@ def _fwd_sim_ed_cell(
     """Cell-independent ED Stage-2 simulation.
 
     Mirrors R's ``bootstrap_fwd_sim_ed_cell``. The per-step mean is the
-    additive ED increment ``inc_mean = g_star[k] * exposure_proj[j-1]``;
+    additive ED increment ``inc_mean = g_star[k] * premium_proj[j-1]``;
     a fresh process draw is added and ``cum_sampled`` accumulates.
     """
     n_coh, n_dev, B = cum_mean.shape
@@ -1641,7 +1636,7 @@ def _fwd_sim_ed_cell(
                 continue
             k = k_1 - 1
             g_b = g_star[k, :] if 0 <= k < n_links else np.full(B, np.nan)
-            p_prev = exposure_proj[i, j - 1]
+            p_prev = premium_proj[i, j - 1]
             if not np.isfinite(p_prev):
                 cum_sampled[i, j, :] = prev
                 continue
@@ -2020,14 +2015,10 @@ def _ed_intensity_anchor(
     ``g_k = sum(loss_delta) / sum(premium_from)`` over observed link
     rows; non-finite -> 0. Mirrors R's ``.boot_anchor_ed``.
     """
-    from_col = (
-        "exposure_from" if "exposure_from" in link_df.columns
-        else "premium_from"
-    )
-    sub = link_df.select(["ata_to", "loss_delta", from_col])
+    sub = link_df.select(["ata_to", "loss_delta", "premium_from"])
     ata_to     = sub["ata_to"].to_numpy().astype(np.float64)
     loss_delta = sub["loss_delta"].to_numpy().astype(np.float64)
-    prem_from  = sub[from_col].to_numpy().astype(np.float64)
+    prem_from  = sub["premium_from"].to_numpy().astype(np.float64)
 
     g_by_to: dict[int, float] = {}
     ok = (
@@ -2242,7 +2233,7 @@ def _boot_kernel_ed_cell(
     anchor:        _Anchor,
     mu_ed_grid:    np.ndarray,
     g_hat:         np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     pool:          "_ResidualPool | None",
     phi:           float,
     B:             int,
@@ -2254,8 +2245,8 @@ def _boot_kernel_ed_cell(
     """ED cell-residual kernel (exposure-driven additive recursion).
 
     Like the CL cell path but the projection is additive: refit
-    ``g_star``, ``cum[j] = cum[j-1] + g_star[k] * exposure_proj[j-1]``,
-    and the Stage-2 increment mean is ``g_star[k] * exposure_proj[j-1]``.
+    ``g_star``, ``cum[j] = cum[j-1] + g_star[k] * premium_proj[j-1]``,
+    and the Stage-2 increment mean is ``g_star[k] * premium_proj[j-1]``.
     """
     loss_obs = gi.loss_obs
     n_coh, n_dev = loss_obs.shape
@@ -2271,11 +2262,11 @@ def _boot_kernel_ed_cell(
     cum = _place_increments(inc, lin, n_coh, n_dev, B)
     _cumsum_mask(cum, gi.last_obs)
 
-    g_star = _refit_gstar(cum, exposure_proj, gi.link_to_idx, g_hat)
-    _fwd_proj_ed(cum, g_star, exposure_proj, gi.last_obs, gi.k_idx_by_j)
+    g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
+    _fwd_proj_ed(cum, g_star, premium_proj, gi.last_obs, gi.k_idx_by_j)
 
     cum_sampled = _fwd_sim_ed_cell(
-        cum, g_star, exposure_proj, gi.last_obs, gi.k_idx_by_j,
+        cum, g_star, premium_proj, gi.last_obs, gi.k_idx_by_j,
         rng, phi, alpha, _process_code(process),
     )
     return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
@@ -2287,7 +2278,7 @@ def _boot_kernel_sa_cell(
     mu_cl_grid:    np.ndarray,
     mu_ed_grid:    np.ndarray,
     g_hat:         np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     mat_k:         np.ndarray,
     pool_ed:       "_ResidualPool | None",
     pool_cl:       "_ResidualPool | None",
@@ -2365,8 +2356,8 @@ def _boot_kernel_sa_cell(
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
-    g_star = _refit_gstar(cum, exposure_proj, gi.link_to_idx, g_hat)
-    _fwd_proj_sa(cum, f_star, g_star, exposure_proj, gi.last_obs,
+    g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
+    _fwd_proj_sa(cum, f_star, g_star, premium_proj, gi.last_obs,
                  gi.k_idx_by_j, mat_k)
 
     cum_sampled = _fwd_sim_sa_cell(
@@ -2419,7 +2410,7 @@ def _boot_kernel_ed_parametric(
     anchor:        _Anchor,
     mu_ed_grid:    np.ndarray,
     g_hat:         np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     phi:           float,
     B:             int,
     rng:           np.random.Generator,
@@ -2441,11 +2432,11 @@ def _boot_kernel_ed_parametric(
     cum = _place_increments(inc, lin, n_coh, n_dev, B)
     _cumsum_mask(cum, gi.last_obs)
 
-    g_star = _refit_gstar(cum, exposure_proj, gi.link_to_idx, g_hat)
-    _fwd_proj_ed(cum, g_star, exposure_proj, gi.last_obs, gi.k_idx_by_j)
+    g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
+    _fwd_proj_ed(cum, g_star, premium_proj, gi.last_obs, gi.k_idx_by_j)
 
     cum_sampled = _fwd_sim_ed_cell(
-        cum, g_star, exposure_proj, gi.last_obs, gi.k_idx_by_j,
+        cum, g_star, premium_proj, gi.last_obs, gi.k_idx_by_j,
         rng, phi, alpha, pc,
     )
     return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
@@ -2457,7 +2448,7 @@ def _boot_kernel_sa_parametric(
     mu_cl_grid:    np.ndarray,
     mu_ed_grid:    np.ndarray,
     g_hat:         np.ndarray,
-    exposure_proj: np.ndarray,
+    premium_proj:  np.ndarray,
     mat_k:         np.ndarray,
     phi_ed:        float,
     phi_cl:        float,
@@ -2505,8 +2496,8 @@ def _boot_kernel_sa_parametric(
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
-    g_star = _refit_gstar(cum, exposure_proj, gi.link_to_idx, g_hat)
-    _fwd_proj_sa(cum, f_star, g_star, exposure_proj, gi.last_obs,
+    g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
+    _fwd_proj_sa(cum, f_star, g_star, premium_proj, gi.last_obs,
                  gi.k_idx_by_j, mat_k)
 
     cum_sampled = _fwd_sim_sa_cell(
@@ -2993,14 +2984,14 @@ class Bootstrap:
             )
             g_hat = _ed_intensity_anchor(link_df, anchor)
             exp_obs = _premium_obs_matrix(sub, cohorts, devs)
-            exposure_proj = _premium_anchor_proj(exp_obs, gi.last_obs)
+            premium_proj = _premium_anchor_proj(exp_obs, gi.last_obs)
             mu_ed_grid = self._ed_fitted_grid(
-                loss_obs, gi.last_obs, anchor, g_hat, exposure_proj, devs
+                loss_obs, gi.last_obs, anchor, g_hat, premium_proj, devs
             )
             if self.method == "ed":
                 cell = _cell_residuals_ed(link_df)
                 return _boot_kernel_ed_parametric(
-                    gi, anchor, mu_ed_grid, g_hat, exposure_proj,
+                    gi, anchor, mu_ed_grid, g_hat, premium_proj,
                     cell.phi, B, rng, alpha, self.process,
                 )
             # SA parametric.
@@ -3012,7 +3003,7 @@ class Bootstrap:
             )
             mat_vec = self._mat_k_vec(mat_k, n_coh)
             return _boot_kernel_sa_parametric(
-                gi, anchor, mu_cl_grid, mu_ed_grid, g_hat, exposure_proj,
+                gi, anchor, mu_cl_grid, mu_ed_grid, g_hat, premium_proj,
                 mat_vec, cell_ed.phi, cell_cl.phi, B, rng, alpha,
                 self.process,
             )
@@ -3052,9 +3043,9 @@ class Bootstrap:
         )
         g_hat = _ed_intensity_anchor(link_df, anchor)
         exp_obs = _premium_obs_matrix(sub, cohorts, devs)
-        exposure_proj = _premium_anchor_proj(exp_obs, gi.last_obs)
+        premium_proj = _premium_anchor_proj(exp_obs, gi.last_obs)
         mu_ed_grid = self._ed_fitted_grid(
-            loss_obs, gi.last_obs, anchor, g_hat, exposure_proj, devs
+            loss_obs, gi.last_obs, anchor, g_hat, premium_proj, devs
         )
 
         if self.method == "ed":
@@ -3064,7 +3055,7 @@ class Bootstrap:
                 min_pool=self.min_pool, demean=self.demean,
             )
             return _boot_kernel_ed_cell(
-                gi, anchor, mu_ed_grid, g_hat, exposure_proj, pool,
+                gi, anchor, mu_ed_grid, g_hat, premium_proj, pool,
                 cell.phi, B, rng, alpha, self.process,
             )
 
@@ -3084,7 +3075,7 @@ class Bootstrap:
         )
         mat_vec = self._mat_k_vec(mat_k, n_coh)
         return _boot_kernel_sa_cell(
-            gi, anchor, mu_cl_grid, mu_ed_grid, g_hat, exposure_proj,
+            gi, anchor, mu_cl_grid, mu_ed_grid, g_hat, premium_proj,
             mat_vec, pool_ed, pool_cl, cell_ed.phi, cell_cl.phi,
             B, rng, alpha, self.process,
         )
@@ -3095,7 +3086,7 @@ class Bootstrap:
         last_obs:      np.ndarray,
         anchor:        _Anchor,
         g_hat:         np.ndarray,
-        exposure_proj: np.ndarray,
+        premium_proj:  np.ndarray,
         devs:          list,
     ) -> np.ndarray:
         """Chain-anchored ED fitted incremental backbone ``mu_ed``.
@@ -3116,14 +3107,14 @@ class Bootstrap:
 
         def fwd(cur: float, i: int, j: int) -> float:
             g_k = g_by_to[j]
-            e_from = exposure_proj[i, j - 1]
+            e_from = premium_proj[i, j - 1]
             if np.isfinite(g_k) and np.isfinite(e_from):
                 return cur + g_k * e_from
             return cur
 
         def bwd(cur: float, i: int, j: int) -> float:
             g_k = g_by_to[j + 1]
-            e_from = exposure_proj[i, j]
+            e_from = premium_proj[i, j]
             if np.isfinite(g_k) and np.isfinite(e_from):
                 return cur - g_k * e_from
             return cur

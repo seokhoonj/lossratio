@@ -206,15 +206,15 @@ class Intensity:
         groups = link._groups
 
         loss_col = link._target
-        exposure_col = link._exposure
-        if exposure_col is None:
+        premium_col = link._premium
+        if premium_col is None:
             raise ValueError(
                 "Intensity requires the source Link to have `exposure` set."
             )
 
         if groups is None:
             loss_obs, _, _ = _build_value_matrix(tri_df, loss_col)
-            premium_obs, _, _ = _build_value_matrix(tri_df, exposure_col)
+            premium_obs, _, _ = _build_value_matrix(tri_df, premium_col)
             result = _compute_intensity(
                 loss_obs, premium_obs, sigma_method=sigma_method
             )
@@ -229,7 +229,7 @@ class Intensity:
             for g in group_values:
                 sub = tri_df.filter(pl.col(groups) == g)
                 loss_obs, _, _ = _build_value_matrix(sub, loss_col)
-                premium_obs, _, _ = _build_value_matrix(sub, exposure_col)
+                premium_obs, _, _ = _build_value_matrix(sub, premium_col)
                 result = _compute_intensity(
                     loss_obs, premium_obs, sigma_method=sigma_method
                 )

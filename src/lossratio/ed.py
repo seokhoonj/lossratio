@@ -87,7 +87,7 @@ def _fit_ed(
         # Δloss[i, k+1] = loss[i, k+1] - loss[i, k] (incremental at dev k+2)
         ck = premium_obs[:, k]
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
-        # Match R's fit_ed: drop cohorts with exposure_from <= 0.
+        # Match R's fit_ed: drop cohorts with premium_from <= 0.
         mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
         n_k = int(mask.sum())
 
@@ -186,7 +186,7 @@ def _result_to_long_df(
     Schema (post-Phase-4b, generic worker):
       ``[groups?, cohort, dev,
          loss_obs, loss_proj, incr_loss_proj,
-         exposure_obs, exposure_proj, exposure_incr_proj,
+         premium_obs, premium_proj, incr_premium_proj,
          loss_proc_se2, loss_param_se2, loss_total_se2,
          loss_proc_se,  loss_param_se,  loss_total_se,
          loss_proc_cv,  loss_param_cv,  loss_total_cv,
@@ -240,9 +240,9 @@ def _result_to_long_df(
                 proc_se2[i, k] = np.nan
                 param_se2[i, k] = np.nan
 
-    # Incremental projections (target + exposure)
+    # Incremental projections (target + premium)
     target_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    exposure_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    premium_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
     for i in range(n_cohorts):
         prev_t = 0.0
         prev_e = 0.0
@@ -253,7 +253,7 @@ def _result_to_long_df(
                 target_incr[i, k] = t - prev_t
                 prev_t = t
             if not np.isnan(e):
-                exposure_incr[i, k] = e - prev_e
+                premium_incr[i, k] = e - prev_e
                 prev_e = e
 
     rows = []
@@ -270,18 +270,18 @@ def _result_to_long_df(
             t_inc = target_incr[i, k]
             e_obs = result.premium_obs[i, k]
             e_proj = result.premium_proj[i, k]
-            e_inc = exposure_incr[i, k]
+            e_inc = premium_incr[i, k]
 
             row["loss_obs"] = float(t_obs) if not np.isnan(t_obs) else None
             row["loss_proj"] = float(t_proj) if not np.isnan(t_proj) else None
             row["incr_loss_proj"] = (
                 float(t_inc) if not np.isnan(t_inc) else None
             )
-            row["exposure_obs"] = float(e_obs) if not np.isnan(e_obs) else None
-            row["exposure_proj"] = (
+            row["premium_obs"] = float(e_obs) if not np.isnan(e_obs) else None
+            row["premium_proj"] = (
                 float(e_proj) if not np.isnan(e_proj) else None
             )
-            row["exposure_incr_proj"] = (
+            row["incr_premium_proj"] = (
                 float(e_inc) if not np.isnan(e_inc) else None
             )
 
@@ -319,13 +319,13 @@ def _result_to_long_df(
             row["loss_param_cv"] = _cv(row["loss_param_se"])
             row["loss_total_cv"] = _cv(row["loss_total_se"])
 
-            # ratio_proj = loss_proj / exposure_proj
+            # ratio_proj = loss_proj / premium_proj
             if (
                 row["loss_proj"] is not None
-                and row["exposure_proj"] is not None
-                and row["exposure_proj"] != 0
+                and row["premium_proj"] is not None
+                and row["premium_proj"] != 0
             ):
-                row["ratio_proj"] = row["loss_proj"] / row["exposure_proj"]
+                row["ratio_proj"] = row["loss_proj"] / row["premium_proj"]
             else:
                 row["ratio_proj"] = None
             rows.append(row)

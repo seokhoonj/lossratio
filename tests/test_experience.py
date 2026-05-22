@@ -108,13 +108,16 @@ def test_derive_grain_columns_pandas_returns_pandas():
 
 
 def test_derive_grain_columns_columns_present():
-    """Derived columns are uy/cy/dev x a/s/q/m (12 columns total)."""
+    """Derived columns are uy/cy/dev x M/Q/H/Y (12 columns total).
+
+    Yearly underwriting / calendar columns are bare (``uy`` / ``cy``).
+    """
     out = lr.derive_grain_columns(_period_input())
     cols = set(out.columns)
     assert {
-        "uy_a", "uy_s", "uy_q", "uy_m",
-        "cy_a", "cy_s", "cy_q", "cy_m",
-        "dev_a", "dev_s", "dev_q", "dev_m",
+        "uy", "uy_h", "uy_q", "uy_m",
+        "cy", "cy_h", "cy_q", "cy_m",
+        "dev_y", "dev_h", "dev_q", "dev_m",
     } <= cols
 
 
@@ -140,10 +143,10 @@ def test_derive_grain_columns_dev_q_calc():
     assert out["dev_q"].to_list() == [1, 1, 1]
 
 
-def test_derive_grain_columns_uy_a_first_of_year():
-    """uy_a is the first day of the underwriting year."""
+def test_derive_grain_columns_uy_first_of_year():
+    """uy is the first day of the underwriting year."""
     out = lr.derive_grain_columns(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    actual = out["uy_a"].to_list()
+    actual = out["uy"].to_list()
     assert all(d.isoformat() == "2024-01-01" for d in actual)

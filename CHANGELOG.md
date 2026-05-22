@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- `Link` ED-mode (dual) columns and `EDFit` output columns renamed
+  from `exposure_*` to `premium_*`, matching the R sibling. The Link
+  table now emits `premium_from` / `premium_to` / `premium_delta`
+  (was `exposure_from` / `exposure_to` / `exposure_delta`), and
+  `Link.exposure` (the stored raw denominator column name) is now
+  `Link.premium`. `EDFit.df` now emits `premium_obs` / `premium_proj`
+  / `incr_premium_proj` (was `exposure_obs` / `exposure_proj` /
+  `exposure_incr_proj` -- note the `incr_` prefix). The worker
+  arguments `Triangle.link(exposure=...)` and `ED().fit(exposure=...)`
+  are unchanged.
+- Grain columns moved from the retired M/Q/S/A scheme to M/Q/H/Y,
+  matching the R sibling. `derive_grain_columns()` now emits `uy` /
+  `uy_h` (was `uy_a` / `uy_s`), `cy` / `cy_h` (was `cy_a` / `cy_s`),
+  and `dev_y` / `dev_h` (was `dev_a` / `dev_s`); `uy_q` / `uy_m` /
+  `cy_q` / `cy_m` / `dev_q` / `dev_m` are unchanged. The yearly
+  underwriting and calendar columns are bare (`uy` / `cy`, no
+  suffix). Grain single-letter codes follow suit: `"H"` (half-yearly)
+  and `"Y"` (yearly) replace `"S"` and `"A"`. `load_experience()` and
+  `make_experience()` now return the full 15-column M/Q/H/Y schema
+  (`coverage`, `uy` / `uy_h` / `uy_q` / `uy_m`, `cy` / `cy_h` /
+  `cy_q` / `cy_m`, `dev_y` / `dev_h` / `dev_q` / `dev_m`,
+  `incr_loss`, `incr_premium`), identical to R `data(experience)`;
+  previously they returned only the six source columns.
+
 ### Fixed
 
 - `RatioFit.summary()`'s `latest` column was the dev index

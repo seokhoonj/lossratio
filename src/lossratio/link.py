@@ -43,7 +43,7 @@ def _build_link_df(
     Generic worker: ``target`` / ``exposure`` / ``weight`` are *role*
     selectors that pull the cumulative column of the same name from
     the source triangle and emit role-prefixed columns
-    ``loss_from`` / ``exposure_from`` / ``weight``.
+    ``loss_from`` / ``premium_from`` / ``weight``.
     """
     sort_keys: list[str] = []
     if groups is not None:
@@ -71,8 +71,8 @@ def _build_link_df(
     if exposure is not None:
         base_cols.extend(
             [
-                pl.col(exposure).alias("exposure_from"),
-                pl.col(exposure).shift(-1).over(over_keys).alias("exposure_to"),
+                pl.col(exposure).alias("premium_from"),
+                pl.col(exposure).shift(-1).over(over_keys).alias("premium_to"),
             ]
         )
     if weight is not None:
@@ -96,13 +96,13 @@ def _build_link_df(
     if exposure is not None:
         out = out.with_columns(
             [
-                (pl.col("exposure_to") - pl.col("exposure_from")).alias(
-                    "exposure_delta"
+                (pl.col("premium_to") - pl.col("premium_from")).alias(
+                    "premium_delta"
                 ),
-                pl.when(pl.col("exposure_from") > min_denom)
+                pl.when(pl.col("premium_from") > min_denom)
                 .then(
                     (pl.col("loss_to") - pl.col("loss_from"))
-                    / pl.col("exposure_from")
+                    / pl.col("premium_from")
                 )
                 .otherwise(None)
                 .alias("intensity"),
@@ -132,7 +132,7 @@ def _build_link_df(
     )
     if exposure is not None:
         col_order.extend(
-            ["exposure_from", "exposure_to", "exposure_delta", "intensity"]
+            ["premium_from", "premium_to", "premium_delta", "intensity"]
         )
     if weight is not None:
         col_order.append("weight")
@@ -165,7 +165,7 @@ class Link:
           ``[groups?, cohort, ata_from, ata_to, ata_link,
           loss_from, loss_to, loss_delta, ata]``.
         - When ``exposure`` is set:
-          ``[exposure_from, exposure_to, exposure_delta, intensity]``.
+          ``[premium_from, premium_to, premium_delta, intensity]``.
         - When ``weight`` is set: ``weight``.
 
     Examples
@@ -188,7 +188,7 @@ class Link:
         self._cohort: str
         self._dev: str
         self._target: str
-        self._exposure: str | None
+        self._premium: str | None
         self._weight: str | None
 
     @classmethod
@@ -228,7 +228,7 @@ class Link:
             if exposure is not None:
                 raise ValueError(
                     "`weight` cannot be combined with `exposure`. "
-                    "Dual mode uses `exposure_from` as its anchor."
+                    "Dual mode uses `premium_from` as its anchor."
                 )
             if weight == target:
                 raise ValueError("`weight` must differ from `target`.")
@@ -238,7 +238,7 @@ class Link:
                 )
 
         self._target = target
-        self._exposure = exposure
+        self._premium = exposure
         self._weight = weight
         self._tri_df = tri_df
 
@@ -264,9 +264,9 @@ class Link:
         return self._target
 
     @property
-    def exposure(self) -> str | None:
+    def premium(self) -> str | None:
         """Triangle column used as the ED exposure anchor (or ``None``)."""
-        return self._exposure
+        return self._premium
 
     @property
     def weight(self) -> str | None:
@@ -276,7 +276,7 @@ class Link:
     @property
     def _has_premium(self) -> bool:
         """Backward-compat alias for dual-mode detection."""
-        return self._exposure is not None
+        return self._premium is not None
 
     def ata(self, sigma_method: str = "locf") -> "ATA":
         """ATA factor diagnostic on this link.
@@ -309,7 +309,7 @@ class Link:
             only one contributing cohort. One of ``"locf"`` (default,
             most conservative), ``"min_last2"``, ``"loglinear"``.
         """
-        if self._exposure is None:
+        if self._premium is None:
             raise ValueError(
                 "Link.intensity() requires the Link to be built with "
                 "`exposure` set (e.g. exposure='premium')."
@@ -325,7 +325,7 @@ class Link:
         return self._df.to_pandas()
 
     def __repr__(self) -> str:
-        mode = "dual-mode" if self._exposure is not None else "ATA-only"
+        mode = "dual-mode" if self._premium is not None else "ATA-only"
         n_links = self._df.height
         if self._groups is None:
             return f"<Link: {n_links} links, {mode}>"

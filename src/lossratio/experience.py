@@ -10,8 +10,8 @@ This module exposes one module-level function:
   input (pandas in -> pandas out, polars in -> polars out).
 
 For deriving the M / Q / H / Y grain sibling columns
-(``uy_a`` / ``uy_s`` / ``uy_q``, ``cy_a`` / ``cy_s`` / ``cy_q``,
-``dev_a`` / ``dev_s`` / ``dev_q``) from a monthly source frame, see
+(``uy`` / ``uy_h`` / ``uy_q``, ``cy`` / ``cy_h`` / ``cy_q``,
+``dev_y`` / ``dev_h`` / ``dev_q``) from a monthly source frame, see
 :func:`lossratio.derive_grain_columns` (in :mod:`lossratio._period`).
 
 There is intentionally no ``Experience`` *class*. Wrapping a polars

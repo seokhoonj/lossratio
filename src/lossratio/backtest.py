@@ -172,8 +172,8 @@ def _resolve_expected_column(
     if metric == target and "loss_proj" in fit_df_columns:
         return "loss_proj"
     exposure = getattr(refit, "exposure", None)
-    if metric == exposure and "exposure_proj" in fit_df_columns:
-        return "exposure_proj"
+    if metric == exposure and "premium_proj" in fit_df_columns:
+        return "premium_proj"
 
     raise ValueError(
         f"Refitted estimator output has no column for metric={metric!r}. "

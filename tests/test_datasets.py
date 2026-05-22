@@ -9,7 +9,14 @@ def test_load_experience_shape():
     df = lr.load_experience()
     # 4 coverages x triangular cells (36+35+...+1 per coverage) = 2664
     assert df.height == 2664
-    assert df.columns == ["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]
+    # 15-column M/Q/H/Y grain schema, matching R `data(experience)`.
+    assert df.columns == [
+        "coverage",
+        "uy", "uy_h", "uy_q", "uy_m",
+        "cy", "cy_h", "cy_q", "cy_m",
+        "dev_y", "dev_h", "dev_q", "dev_m",
+        "incr_loss", "incr_premium",
+    ]
     assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]
 
 
