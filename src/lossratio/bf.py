@@ -14,9 +14,9 @@ This module also hosts the machinery shared with :mod:`lossratio.cc`
 (Cape Cod): the per-cohort emergence table, the Buehlmann-Straub
 credibility blend, and the closed-form Mack (2008) analytical SE path.
 
-Python sibling of R ``fit_bf()`` (see ``R/bf.R``). Only the analytical
-SE path is implemented; the bootstrap path raises ``NotImplementedError``
-since the Python sibling has no bootstrap module.
+Python sibling of R ``fit_bf()`` (see ``R/bf.R``). Both the closed-form
+Mack (2008) analytical SE path and the two-bootstrap composition path
+(``bootstrap=`` non-``None``) are implemented.
 """
 
 from __future__ import annotations
@@ -30,6 +30,11 @@ from scipy.stats import norm
 
 from ._io import mirror_output
 from ._sigma import VALID_SIGMA_METHODS
+from .bootstrap import (
+    BFBootstrap,
+    _bf_compose_bootstrap,
+    _resolve_bootstrap_bf,
+)
 from .cl import _build_value_matrix
 from .premium import _fit_premium_single
 
@@ -448,6 +453,31 @@ def _resolve_bf_prior(
     )
 
 
+def _bf_prior_df(
+    prior:       Any,
+    cohorts:     list,
+    groups:      str | None,
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """Per-cohort ELR table for the bootstrap composition (single group).
+
+    Wraps :func:`_resolve_bf_prior` and reshapes its ``(elr, elr_se)``
+    arrays into a long-format ``[groups?, cohort, elr, elr_se]``
+    DataFrame -- the per-cohort prior table the BF bootstrap composition
+    joins on.
+    """
+    elr, elr_se = _resolve_bf_prior(prior, cohorts, group_value)
+    data: dict[str, Any] = {}
+    if groups is not None:
+        data[groups] = [group_value] * len(cohorts)
+    data["cohort"] = list(cohorts)
+    data["elr"]    = [float(v) for v in elr]
+    data["elr_se"] = [
+        None if not np.isfinite(v) else float(v) for v in elr_se
+    ]
+    return pl.DataFrame(data, infer_schema_length=None)
+
+
 # ---------------------------------------------------------------------------
 # Shared single-group fit core (used by both BF and CC)
 # ---------------------------------------------------------------------------
@@ -796,7 +826,11 @@ class BF:
         conf_level: float = 0.95,
         credibility: Any = None,
         bootstrap: Any = None,
-        type: str = "analytical",
+        B: int = 999,
+        seed: int | None = None,
+        type: str = "parametric",
+        residual: str = "cell",
+        process: str = "gamma",
     ) -> None:
         if alpha != 1.0:
             raise NotImplementedError(
@@ -812,19 +846,24 @@ class BF:
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
-        if bootstrap is not None and bootstrap is not False:
-            raise NotImplementedError(
-                "bootstrap not yet implemented in BF/CC (Python)"
+        if type not in ("parametric", "nonparametric", "analytical"):
+            raise ValueError(
+                "type must be one of 'parametric', 'nonparametric', "
+                f"'analytical', got {type!r}"
             )
-        if type != "analytical":
-            raise NotImplementedError(
-                "bootstrap not yet implemented in BF/CC (Python)"
-            )
+        if not (isinstance(B, (int, np.integer)) and B >= 1):
+            raise ValueError("`B` must be a positive integer.")
         self.prior = prior
         self.alpha = alpha
         self.sigma_method = sigma_method
         self.conf_level = conf_level
         self.credibility = _resolve_credibility(credibility)
+        self.bootstrap = bootstrap
+        self.B = int(B)
+        self.seed = seed
+        self.type = type
+        self.residual = residual
+        self.process = process
 
     def fit(
         self,
@@ -894,6 +933,7 @@ class BFFit:
         self.conf_level = estimator.conf_level
         self.credibility = estimator.credibility
         self.ci_type = "analytical"
+        self.boots = None
 
         tri_df = triangle._df
         groups = triangle._groups
@@ -909,6 +949,7 @@ class BFFit:
 
         full_parts: list[pl.DataFrame] = []
         summary_parts: list[pl.DataFrame] = []
+        prior_parts: list[pl.DataFrame] = []
 
         if groups is None:
             loss_obs, cohorts, _ = _build_value_matrix(tri_df, loss)
@@ -927,6 +968,9 @@ class BFFit:
             full_parts.append(_bf_full_df(result, None, None))
             summary_parts.append(
                 _bf_summary_df(result, None, None, cape_cod=False)
+            )
+            prior_parts.append(
+                _bf_prior_df(estimator.prior, cohorts, None, None)
             )
         else:
             for g in tri_df[groups].unique(maintain_order=True).to_list():
@@ -948,6 +992,9 @@ class BFFit:
                 summary_parts.append(
                     _bf_summary_df(result, groups, g, cape_cod=False)
                 )
+                prior_parts.append(
+                    _bf_prior_df(estimator.prior, cohorts, groups, g)
+                )
 
         self._df = (
             pl.concat(full_parts) if full_parts else pl.DataFrame()
@@ -957,6 +1004,51 @@ class BFFit:
             if summary_parts
             else pl.DataFrame()
         )
+
+        # Bootstrap composition path. A credibility blend forces the
+        # analytical path even when a bootstrap is requested (R parity:
+        # the bootstrap composition is defined for the classical
+        # q-weighted BF only).
+        boots = None
+        if estimator.credibility is None:
+            boots = _resolve_bootstrap_bf(
+                estimator.bootstrap,
+                triangle,
+                B=estimator.B,
+                seed=estimator.seed,
+                type=estimator.type,
+                residual=estimator.residual,
+                process=estimator.process,
+            )
+        if boots is not None:
+            prior_df = (
+                pl.concat(prior_parts)
+                if prior_parts
+                else pl.DataFrame()
+            )
+            composed = _bf_compose_bootstrap(
+                boots,
+                full_df=self._df,
+                summary_df=self._summary_df,
+                groups=groups,
+                cape_cod=False,
+                prior_df=prior_df,
+                conf_level=estimator.conf_level,
+                rng=np.random.default_rng(estimator.seed),
+            )
+            self._df = composed["full"]
+            self._summary_df = composed["summary"]
+            self.ci_type = "bootstrap"
+            self.boots = BFBootstrap(
+                boots["loss"],
+                boots["premium"],
+                composed["ult_replicates"],
+                B=boots["loss"].meta["B"],
+                seed=boots["loss"].meta["seed"],
+                type=boots["loss"].meta["type"],
+                residual=boots["loss"].meta["residual"],
+                process=boots["loss"].meta["process"],
+            )
         return self
 
     @property
@@ -972,6 +1064,10 @@ class BFFit:
             "incr_loss_proj",
             "premium_proj",
             "incr_premium_proj",
+            "loss_total_se",
+            "loss_total_cv",
+            "loss_ci_lo",
+            "loss_ci_hi",
         ]
         df = self._df.with_columns(
             [

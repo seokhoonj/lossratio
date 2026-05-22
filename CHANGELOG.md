@@ -17,15 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Residual bootstrap module (`Bootstrap` / `BootstrapTriangle`, new
-  `bootstrap.py`) for loss-side predictive uncertainty. Covers the
-  analytical (Mack closed-form), nonparametric (residual resample,
-  cell and link scope), and parametric paradigms across the `cl` /
-  `ed` / `sa` methods, with the two-stage parameter / process variance
-  decomposition. `CL` and `Loss` accept a `bootstrap=` argument
-  (`"auto"`, a `Bootstrap` config, a `BootstrapTriangle`, or a
-  callable); when set, projected-cell standard errors and confidence
-  intervals are overlaid from the bootstrap. Exported as
-  `lr.Bootstrap` / `lr.BootstrapTriangle`.
+  `bootstrap.py`) for predictive uncertainty. Covers the analytical
+  (Mack closed-form), nonparametric (residual resample, cell and link
+  scope), and parametric paradigms across the `cl` / `ed` / `sa`
+  methods, with the two-stage parameter / process variance
+  decomposition. `CL`, `Loss`, `Ratio`, `BF`, and `CC` accept a
+  `bootstrap=` argument (`"auto"`, a `Bootstrap` config, a
+  `BootstrapTriangle`, or a callable); when set, projected-cell
+  standard errors and confidence intervals are overlaid from the
+  bootstrap. `BF` / `CC` compose a paired loss + premium bootstrap
+  (`BFBootstrap` / `CCBootstrap`). `Backtest` accepts
+  bootstrap-configured estimators -- the rebuild-per-fold forms are
+  leakage-safe, a pre-built `BootstrapTriangle` is rejected. Bootstrap
+  is opt-in: the default fit keeps the deterministic analytical SE.
+  Exported as `lr.Bootstrap` / `lr.BootstrapTriangle`.
 - `BF` and `CC` loss methods (new `bf.py` / `cc.py`), the Python
   siblings of R's `fit_bf()` / `fit_cc()`. `BF` blends each cohort's
   observed cumulative loss with an a priori expected loss ratio

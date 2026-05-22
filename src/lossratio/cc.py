@@ -14,15 +14,18 @@ reports its uncertainty (``elr_cc_se`` / ``elr_cc_cv`` /
 
 Python sibling of R ``fit_cc()`` (see ``R/cc.R``). The shared machinery
 (emergence table, credibility blend, analytical SE, cell projection)
-lives in :mod:`lossratio.bf`. Only the analytical SE path is
-implemented; the bootstrap path raises ``NotImplementedError``.
+lives in :mod:`lossratio.bf`. Both the closed-form Mack (2008)
+analytical SE path and the two-bootstrap composition path
+(``bootstrap=`` non-``None``) are implemented.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import polars as pl
+from scipy.stats import norm
 
 from ._io import mirror_output
 from ._sigma import VALID_SIGMA_METHODS
@@ -32,10 +35,97 @@ from .bf import (
     _fit_bf_cc_single,
     _resolve_credibility,
 )
+from .bootstrap import (
+    CCBootstrap,
+    _agg_sd_quantile,
+    _bf_compose_bootstrap,
+    _resolve_bootstrap_bf,
+)
 from .cl import _build_value_matrix
 
 if TYPE_CHECKING:
     from .triangle import Triangle
+
+
+# ---------------------------------------------------------------------------
+# Cape Cod bootstrap -- pooled-ELR uncertainty overlay
+# ---------------------------------------------------------------------------
+
+
+def _cc_overlay_elr_uncertainty(
+    summary_df:        pl.DataFrame,
+    elr_cc_replicates: pl.DataFrame,
+    elr_cc_point:      pl.DataFrame,
+    groups:            str | None,
+    conf_level:        float,
+) -> pl.DataFrame:
+    """Overlay bootstrap pooled-ELR uncertainty columns onto ``$summary``.
+
+    The Cape Cod ELR is itself data-driven, so the bootstrap path also
+    reports its uncertainty. From the per-replicate ``elr_cc_b`` draws,
+    derives the SD-based ``elr_cc_se``, the type-1 quantile CI
+    (``elr_cc_ci_lo`` / ``elr_cc_ci_hi``), and ``elr_cc_cv`` against the
+    point ELR. Mirrors the ``elr_summary`` block of R's ``fit_cc()``
+    bootstrap path. Stale analytical pooled-ELR columns are replaced.
+    """
+    by_grp = [groups] if groups is not None else []
+    alpha2 = (1.0 - conf_level) / 2.0
+
+    rows: list[dict[str, Any]] = []
+    if by_grp:
+        grouped = elr_cc_replicates.group_by(by_grp, maintain_order=True)
+    else:
+        grouped = [((None,), elr_cc_replicates)]
+    for key, sub in grouped:
+        vals = sub["elr_cc_b"].to_numpy().astype(np.float64)
+        finite = vals[np.isfinite(vals)]
+        row: dict[str, Any] = {}
+        if by_grp:
+            key_tuple = key if isinstance(key, tuple) else (key,)
+            for col, kv in zip(by_grp, key_tuple):
+                row[col] = kv
+        row["elr_cc_se"] = (
+            float(np.std(finite, ddof=1)) if finite.size >= 2
+            else (0.0 if finite.size == 1 else None)
+        )
+        row["elr_cc_ci_lo"] = (
+            float(np.quantile(finite, alpha2, method="inverted_cdf"))
+            if finite.size else None
+        )
+        row["elr_cc_ci_hi"] = (
+            float(np.quantile(finite, 1.0 - alpha2,
+                              method="inverted_cdf"))
+            if finite.size else None
+        )
+        rows.append(row)
+    elr_se = pl.DataFrame(rows, infer_schema_length=None)
+
+    # elr_cc_cv against the point pooled ELR.
+    elr_se = elr_se.join(
+        elr_cc_point, on=by_grp, how="left"
+    ) if by_grp else elr_se.with_columns(
+        pl.lit(elr_cc_point["elr_cc"][0]).alias("elr_cc")
+    )
+    elr_se = elr_se.with_columns(
+        pl.when(
+            pl.col("elr_cc").is_finite() & (pl.col("elr_cc") > 0.0)
+        )
+        .then(pl.col("elr_cc_se") / pl.col("elr_cc"))
+        .otherwise(None)
+        .alias("elr_cc_cv")
+    )
+
+    elr_cols = ["elr_cc_se", "elr_cc_cv", "elr_cc_ci_lo", "elr_cc_ci_hi"]
+    drop = [c for c in elr_cols if c in summary_df.columns]
+    out = summary_df.drop(drop) if drop else summary_df
+    if by_grp:
+        return out.join(
+            elr_se.select(by_grp + elr_cols), on=by_grp, how="left"
+        )
+    # ungrouped: broadcast the single-row scalars.
+    return out.with_columns(
+        [pl.lit(elr_se[c][0]).alias(c) for c in elr_cols]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +170,11 @@ class CC:
         conf_level: float = 0.95,
         credibility: Any = None,
         bootstrap: Any = None,
-        type: str = "analytical",
+        B: int = 999,
+        seed: int | None = None,
+        type: str = "parametric",
+        residual: str = "cell",
+        process: str = "gamma",
     ) -> None:
         if alpha != 1.0:
             raise NotImplementedError(
@@ -96,18 +190,23 @@ class CC:
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
-        if bootstrap is not None and bootstrap is not False:
-            raise NotImplementedError(
-                "bootstrap not yet implemented in BF/CC (Python)"
+        if type not in ("parametric", "nonparametric", "analytical"):
+            raise ValueError(
+                "type must be one of 'parametric', 'nonparametric', "
+                f"'analytical', got {type!r}"
             )
-        if type != "analytical":
-            raise NotImplementedError(
-                "bootstrap not yet implemented in BF/CC (Python)"
-            )
+        if not (isinstance(B, (int, np.integer)) and B >= 1):
+            raise ValueError("`B` must be a positive integer.")
         self.alpha = alpha
         self.sigma_method = sigma_method
         self.conf_level = conf_level
         self.credibility = _resolve_credibility(credibility)
+        self.bootstrap = bootstrap
+        self.B = int(B)
+        self.seed = seed
+        self.type = type
+        self.residual = residual
+        self.process = process
 
     def fit(
         self,
@@ -181,6 +280,7 @@ class CCFit:
         self.conf_level = estimator.conf_level
         self.credibility = estimator.credibility
         self.ci_type = "analytical"
+        self.boots = None
 
         tri_df = triangle._df
         groups = triangle._groups
@@ -252,6 +352,51 @@ class CCFit:
         self._elr_cc_df = pl.DataFrame(
             elr_rows, infer_schema_length=None
         )
+
+        # Bootstrap composition path. A credibility blend forces the
+        # analytical path even when a bootstrap is requested (R parity).
+        boots = None
+        if estimator.credibility is None:
+            boots = _resolve_bootstrap_bf(
+                estimator.bootstrap,
+                triangle,
+                B=estimator.B,
+                seed=estimator.seed,
+                type=estimator.type,
+                residual=estimator.residual,
+                process=estimator.process,
+            )
+        if boots is not None:
+            composed = _bf_compose_bootstrap(
+                boots,
+                full_df=self._df,
+                summary_df=self._summary_df,
+                groups=groups,
+                cape_cod=True,
+                prior_df=None,
+                conf_level=estimator.conf_level,
+                rng=np.random.default_rng(estimator.seed),
+            )
+            self._df = composed["full"]
+            self._summary_df = _cc_overlay_elr_uncertainty(
+                composed["summary"],
+                composed["elr_cc_replicates"],
+                self._elr_cc_df,
+                groups,
+                estimator.conf_level,
+            )
+            self.ci_type = "bootstrap"
+            self.boots = CCBootstrap(
+                boots["loss"],
+                boots["premium"],
+                composed["ult_replicates"],
+                composed["elr_cc_replicates"],
+                B=boots["loss"].meta["B"],
+                seed=boots["loss"].meta["seed"],
+                type=boots["loss"].meta["type"],
+                residual=boots["loss"].meta["residual"],
+                process=boots["loss"].meta["process"],
+            )
         return self
 
     @property
@@ -267,6 +412,10 @@ class CCFit:
             "incr_loss_proj",
             "premium_proj",
             "incr_premium_proj",
+            "loss_total_se",
+            "loss_total_cv",
+            "loss_ci_lo",
+            "loss_ci_hi",
         ]
         df = self._df.with_columns(
             [

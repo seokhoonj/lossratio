@@ -24,8 +24,10 @@ import pytest
 
 import lossratio as lr
 from lossratio.bootstrap import (
+    BFBootstrap,
     Bootstrap,
     BootstrapTriangle,
+    CCBootstrap,
     _apply_bootstrap_overlay,
     _boot_anchor_cl,
     _boot_kernel_cl_analytical,
@@ -1004,7 +1006,8 @@ def test_phase2_seed_reproducible(config):
 def test_phase2_loss_bootstrap_overlay(method):
     """``Loss(method=..., bootstrap='auto')`` overlays bootstrap SE on the
     projected cells while leaving ``loss_proj`` analytical. The bootstrap
-    runs with the dispatcher's own ``method`` paradigm."""
+    SE overlay always uses the analytical-CL paradigm regardless of the
+    dispatcher's loss ``method`` (R parity)."""
     tri = _tri()
     plain = lr.Loss(method=method).fit(tri)
     boot = lr.Loss(method=method, bootstrap="auto").fit(tri)
@@ -1013,8 +1016,10 @@ def test_phase2_loss_bootstrap_overlay(method):
     assert plain.boots is None
     assert boot.ci_type == "bootstrap"
     assert isinstance(boot.boots, BootstrapTriangle)
-    # the bootstrap inherits the dispatcher's method paradigm.
-    assert boot.boots.meta["method"] == method
+    # the dispatcher bootstrap SE overlay always uses the analytical-CL
+    # (Mack closed-form) paradigm regardless of the loss method.
+    assert boot.boots.meta["method"] == "cl"
+    assert boot.boots.meta["type"] == "analytical"
 
     p = plain.to_polars().sort(["coverage", "cohort", "dev"])
     b = boot.to_polars().sort(["coverage", "cohort", "dev"])
@@ -1078,3 +1083,711 @@ def test_phase2_loss_bf_bootstrap_not_implemented():
     bootstrap is a later phase."""
     with pytest.raises(NotImplementedError):
         lr.Loss(method="bf", bootstrap="auto", prior=0.7)
+
+
+# ===========================================================================
+# Phase 3 -- Ratio(bootstrap=...) integration
+# ===========================================================================
+#
+# Phase 3 wired the loss-side bootstrap into the Ratio composition layer:
+# `Ratio(method=..., bootstrap=...)` runs a loss-side bootstrap with the
+# Ratio's own loss `method` paradigm, overlays the bootstrap-derived
+# `loss_total_se` onto the projected cells, and recomputes `ratio_se` /
+# `ratio_cv` / `ratio_ci_lo` / `ratio_ci_hi` from it. The premium side is
+# never bootstrapped. `RatioFit` gained `boots` / `ci_type` slots.
+#
+# Layered like Phases 1-2:
+#   Layer 1 -- the analytical no-bootstrap fit is byte-unchanged, and the
+#              `se_method="fixed"` identity (`ratio_se == loss_total_se /
+#              premium_proj`) is exact arithmetic.
+#   Layer 3 -- the Monte-Carlo `ratio_se` is statistical; R and Python use
+#              different RNGs, so only the *median* relative difference vs
+#              the R B=4000 fixture is asserted, never bit-equality.
+
+
+@pytest.mark.parametrize("method", ["sa", "ed"])
+def test_phase3_ratio_bootstrap_overlay(method):
+    """``Ratio(method=..., bootstrap='auto')`` overlays a loss-side
+    bootstrap onto the projected cells and recomputes ``ratio_se`` from
+    it, while leaving ``ratio_proj`` analytical and observed cells
+    untouched.
+
+    The Ratio composition layer always bootstraps loss with the
+    analytical CL (Mack closed-form) paradigm regardless of its loss
+    ``method`` -- this mirrors R ``fit_ratio()``, whose wrap-only
+    bootstrap path is hard-wired to ``type="analytical"`` /
+    ``process="normal"``. The loss ``method`` still drives the point
+    projection; only the SE overlay is the analytical bootstrap.
+    """
+    tri = _tri()
+    plain = lr.Ratio(method=method).fit(tri)
+    boot = lr.Ratio(method=method, bootstrap="auto").fit(tri)
+
+    assert plain.ci_type == "analytical"
+    assert plain.boots is None
+    assert boot.ci_type == "bootstrap"
+    assert isinstance(boot.boots, BootstrapTriangle)
+    # Ratio always bootstraps loss with the analytical CL paradigm
+    # (R `fit_ratio` parity), independent of the loss `method`.
+    assert boot.boots.meta["method"] == "cl"
+    assert boot.boots.meta["type"] == "analytical"
+    assert boot.boots.meta["target"] == "loss"
+
+    p = plain.to_polars().sort(["coverage", "cohort", "dev"])
+    b = boot.to_polars().sort(["coverage", "cohort", "dev"])
+    assert p.height == b.height
+
+    # ratio_proj is the analytical point estimate -- never overlaid.
+    for x, y in zip(p["ratio_proj"].to_list(), b["ratio_proj"].to_list()):
+        if x is None or y is None:
+            assert x is None and y is None
+            continue
+        assert x == pytest.approx(y, rel=1e-12, abs=1e-12), (
+            "ratio_proj must stay analytical under bootstrap"
+        )
+
+    # observed cells keep their analytical ratio_se; projected cells get
+    # a bootstrap-derived ratio_se that differs from the analytical one.
+    obs_unchanged = True
+    proj_changed = False
+    for pr, br in zip(p.iter_rows(named=True), b.iter_rows(named=True)):
+        ps, bs = pr["ratio_se"], br["ratio_se"]
+        if pr["loss_obs"] is not None:
+            # observed cell -- ratio_se identical (both analytical / NaN)
+            if ps is None and bs is None:
+                continue
+            if ps is None or bs is None:
+                obs_unchanged = False
+            elif not (np.isnan(ps) and np.isnan(bs)) and ps != bs:
+                obs_unchanged = False
+        else:
+            # projected cell -- ratio_se should differ from analytical
+            if (
+                ps is not None and bs is not None
+                and np.isfinite(ps) and np.isfinite(bs)
+                and ps > 0 and ps != bs
+            ):
+                proj_changed = True
+    assert obs_unchanged, "observed-cell ratio_se must not change"
+    assert proj_changed, (
+        f"projected-cell ratio_se must differ under bootstrap for "
+        f"method={method!r}"
+    )
+
+
+def test_phase3_ratio_no_bootstrap_unchanged():
+    """A plain ``Ratio(method='sa').fit`` is the pure-analytical state --
+    ``ci_type='analytical'``, ``boots is None``, and the output frame is
+    byte-equal to a fresh analytical fit."""
+    tri = _tri()
+    fit = lr.Ratio(method="sa").fit(tri)
+    assert fit.ci_type == "analytical"
+    assert fit.boots is None
+
+    fresh = lr.Ratio(method="sa").fit(tri)
+    a = fit.to_polars().sort(["coverage", "cohort", "dev"])
+    b = fresh.to_polars().sort(["coverage", "cohort", "dev"])
+    assert a.columns == b.columns
+    assert a.equals(b), "no-bootstrap Ratio fit must be byte-reproducible"
+
+
+@pytest.mark.parametrize("method", ["sa", "ed"])
+def test_phase3_ratio_summary_statistically_close_to_r(method):
+    """Python ``Ratio(bootstrap='auto')`` summary vs the R B=4000 fixture.
+
+    R and Python use different RNGs -- the Monte-Carlo draws are not the
+    same numbers, so bit-equality is impossible. Both ``ratio_se`` /
+    ``ratio_cv`` columns are Monte-Carlo estimates of the same loss-side
+    bootstrap paradigm divided by the (identical, analytical)
+    ``premium_proj``, so they must agree up to Monte-Carlo noise. This
+    asserts the *median* relative difference over projected cohorts is
+    small, NOT cell-by-cell equality.
+
+    Fully-matured cohorts carry ``ratio_se == 0`` in the R fixture (no
+    projection, no spread); those are skipped by ``_median_rel_diff``.
+    """
+    r = _load(f"ratio_{method}_boot_summary").sort(["coverage", "cohort"])
+    tri = _tri()
+    fit = lr.Ratio(
+        method=method, bootstrap="auto", B=4000, seed=20260522,
+        se_method="fixed",
+    ).fit(tri)
+    py = fit.summary().sort(["coverage", "cohort"])
+
+    keys = ["coverage", "cohort"]
+    py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
+    r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
+    assert py_c.height == r_c.height > 0
+
+    mrd_se = _median_rel_diff(
+        py_c["ratio_se"].to_list(), r_c["ratio_se"].to_list()
+    )
+    assert mrd_se < 0.06, (
+        f"ratio_{method}: ratio_se median rel diff = {mrd_se:.4f} "
+        f"(expected < 0.06; statistical, not bit-equal -- RNGs differ)"
+    )
+
+    mrd_cv = _median_rel_diff(
+        py_c["ratio_cv"].to_list(), r_c["ratio_cv"].to_list()
+    )
+    assert mrd_cv < 0.06, (
+        f"ratio_{method}: ratio_cv median rel diff = {mrd_cv:.4f} "
+        f"(expected < 0.06; statistical, not bit-equal -- RNGs differ)"
+    )
+
+
+def test_phase3_ratio_se_consistency():
+    """On a bootstrap fit the ``se_method='fixed'`` identity holds
+    exactly: ``ratio_se == loss_total_se / premium_proj`` on every
+    projected cell. The overlay recomputes ``ratio_se`` from the
+    bootstrap ``loss_total_se`` but the premium-fixed division is pure
+    arithmetic."""
+    tri = _tri()
+    fit = lr.Ratio(
+        method="sa", bootstrap="auto", B=200, seed=11, se_method="fixed"
+    ).fit(tri)
+    assert fit.ci_type == "bootstrap"
+
+    checked = 0
+    for row in fit.to_polars().iter_rows(named=True):
+        lse, pp, rse = (
+            row["loss_total_se"], row["premium_proj"], row["ratio_se"]
+        )
+        if None in (lse, pp, rse):
+            continue
+        if not (np.isfinite(lse) and np.isfinite(pp) and np.isfinite(rse)):
+            continue
+        if pp == 0.0:
+            continue
+        assert rse == pytest.approx(lse / pp, rel=1e-12, abs=1e-12), (
+            "ratio_se must equal loss_total_se / premium_proj (fixed)"
+        )
+        checked += 1
+    assert checked > 0, "no cells exercised the fixed-premium identity"
+
+
+def test_phase3_ratio_seed_reproducible():
+    """Same seed -> identical Ratio bootstrap summary; a different seed
+    changes the Monte-Carlo ``ratio_se``."""
+    tri = _tri()
+    a = lr.Ratio(method="sa", bootstrap="auto", B=300, seed=42).fit(tri)
+    b = lr.Ratio(method="sa", bootstrap="auto", B=300, seed=42).fit(tri)
+    c = lr.Ratio(method="sa", bootstrap="auto", B=300, seed=43).fit(tri)
+
+    sa, sb, sc = a.summary(), b.summary(), c.summary()
+    # same seed -> bit-identical ratio_se.
+    for x, y in zip(sa["ratio_se"].to_list(), sb["ratio_se"].to_list()):
+        if x is None or y is None:
+            continue
+        assert x == y, "same seed must give identical bootstrap output"
+
+    # different seed -> at least one projected cohort's ratio_se differs.
+    differs = any(
+        x is not None and y is not None and np.isfinite(x)
+        and np.isfinite(y) and x > 0 and x != y
+        for x, y in zip(sa["ratio_se"].to_list(), sc["ratio_se"].to_list())
+    )
+    assert differs, "a different seed should change the Monte-Carlo SE"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 -- BF / CC bootstrap composition
+#
+# BF / CC run a paired loss + premium bootstrap (shared seed,
+# keep_pseudo=True), compose the per-replicate ultimate, and overlay the
+# bootstrap SE/CI onto $full and $summary. The point estimate
+# (loss_proj / loss_ult) stays analytical -- only the SE/CI columns are
+# replaced by the bootstrap.
+# ---------------------------------------------------------------------------
+
+
+def _bf_cohorts(tri: lr.Triangle) -> list:
+    """Sorted unique cohort keys of a Triangle (for per-cohort priors)."""
+    return tri.df.sort("cohort")["cohort"].unique(maintain_order=True).to_list()
+
+
+def test_phase4_bf_bootstrap_overlay():
+    """``BF(prior=..., bootstrap='auto')`` overlays a paired loss+premium
+    bootstrap onto the projected cells and the cohort summary.
+
+    The bootstrap path replaces the cohort-level ``loss_total_se`` with
+    the SD across composed per-replicate ultimates and *adds* the
+    cell-level SE/CI columns the analytical ``$full`` never carries. The
+    point estimate -- ``loss_proj`` on every cell, ``loss_ult`` on every
+    cohort -- is the analytical BF blend and must stay byte-unchanged.
+    """
+    tri = _tri()
+    plain = lr.BF(prior=1.5).fit(tri)
+    boot = lr.BF(prior=1.5, bootstrap="auto", B=200, seed=20260522).fit(tri)
+
+    assert plain.ci_type == "analytical"
+    assert plain.boots is None
+    assert boot.ci_type == "bootstrap"
+    assert isinstance(boot.boots, BFBootstrap)
+    # paired loss + premium BootstrapTriangle, shared seed.
+    assert boot.boots.loss_bootstrap.meta["target"] == "loss"
+    assert boot.boots.premium_bootstrap.meta["target"] == "premium"
+    assert boot.boots.B == 200
+
+    sp = plain.summary().sort(["coverage", "cohort"])
+    sb = boot.summary().sort(["coverage", "cohort"])
+    assert sp.height == sb.height
+
+    # loss_ult is the analytical point estimate -- byte-unchanged.
+    assert sp["loss_ult"].to_list() == sb["loss_ult"].to_list(), (
+        "loss_ult must stay analytical under bootstrap"
+    )
+    # summary loss_total_se is the bootstrap SD -- differs from analytical.
+    se_differs = any(
+        x is not None and y is not None and np.isfinite(x)
+        and np.isfinite(y) and x > 0 and x != y
+        for x, y in zip(
+            sp["loss_total_se"].to_list(), sb["loss_total_se"].to_list()
+        )
+    )
+    assert se_differs, "summary loss_total_se must change under bootstrap"
+
+    fp = plain.to_polars().sort(["coverage", "cohort", "dev"])
+    fb = boot.to_polars().sort(["coverage", "cohort", "dev"])
+    # loss_proj cell-level point estimate -- byte-unchanged.
+    assert fp["loss_proj"].to_list() == fb["loss_proj"].to_list(), (
+        "loss_proj must stay analytical under bootstrap"
+    )
+    # the analytical $full carries no per-cell SE; the bootstrap path
+    # adds loss_total_se and every projected cell gets a positive SD.
+    assert "loss_total_se" not in fp.columns
+    assert "loss_total_se" in fb.columns
+    proj = fb.filter(pl.col("loss_obs").is_null())
+    proj_se = [
+        v for v in proj["loss_total_se"].to_list()
+        if v is not None and np.isfinite(v) and v > 0
+    ]
+    assert len(proj_se) == proj.height > 0, (
+        "every projected cell must carry a positive bootstrap loss_total_se"
+    )
+
+
+def test_phase4_cc_bootstrap_overlay():
+    """``CC(bootstrap='auto')`` overlays a paired loss+premium bootstrap,
+    and additionally reports the pooled-ELR uncertainty.
+
+    Cape Cod estimates the ELR from the data, so the bootstrap path also
+    derives ``elr_cc_se`` (the SD of the per-replicate pooled ELR). As in
+    BF, the point estimate stays analytical and the cell-level SE is
+    added; here the bootstrap-helper is a :class:`CCBootstrap` carrying
+    the per-replicate pooled-ELR draws.
+    """
+    tri = _tri()
+    plain = lr.CC().fit(tri)
+    boot = lr.CC(bootstrap="auto", B=200, seed=20260522).fit(tri)
+
+    assert plain.ci_type == "analytical"
+    assert plain.boots is None
+    assert boot.ci_type == "bootstrap"
+    assert isinstance(boot.boots, CCBootstrap)
+    assert boot.boots.loss_bootstrap.meta["target"] == "loss"
+    assert boot.boots.premium_bootstrap.meta["target"] == "premium"
+    # CCBootstrap carries the per-replicate pooled-ELR draws.
+    assert boot.boots.elr_cc_replicates.height > 0
+    assert "elr_cc_b" in boot.boots.elr_cc_replicates.columns
+
+    sp = plain.summary().sort(["coverage", "cohort"])
+    sb = boot.summary().sort(["coverage", "cohort"])
+    assert sp["loss_ult"].to_list() == sb["loss_ult"].to_list(), (
+        "loss_ult must stay analytical under bootstrap"
+    )
+    se_differs = any(
+        x is not None and y is not None and np.isfinite(x)
+        and np.isfinite(y) and x > 0 and x != y
+        for x, y in zip(
+            sp["loss_total_se"].to_list(), sb["loss_total_se"].to_list()
+        )
+    )
+    assert se_differs, "summary loss_total_se must change under bootstrap"
+
+    fp = plain.to_polars().sort(["coverage", "cohort", "dev"])
+    fb = boot.to_polars().sort(["coverage", "cohort", "dev"])
+    assert fp["loss_proj"].to_list() == fb["loss_proj"].to_list(), (
+        "loss_proj must stay analytical under bootstrap"
+    )
+    assert "loss_total_se" not in fp.columns
+    assert "loss_total_se" in fb.columns
+
+    # the bootstrap summary carries a finite pooled-ELR uncertainty.
+    elr_cc_se = [
+        v for v in sb["elr_cc_se"].to_list() if v is not None
+    ]
+    assert elr_cc_se, "elr_cc_se must be present on the bootstrap summary"
+    assert all(np.isfinite(v) and v > 0 for v in elr_cc_se), (
+        "the pooled-ELR bootstrap SE must be finite and positive"
+    )
+
+
+def test_phase4_bf_no_bootstrap_unchanged():
+    """A plain ``BF(prior=1.5).fit`` is the pure-analytical state --
+    ``ci_type='analytical'``, ``boots is None``, and the output frames
+    are byte-equal to a fresh analytical fit."""
+    tri = _tri()
+    fit = lr.BF(prior=1.5).fit(tri)
+    assert fit.ci_type == "analytical"
+    assert fit.boots is None
+
+    fresh = lr.BF(prior=1.5).fit(tri)
+    a = fit.to_polars().sort(["coverage", "cohort", "dev"])
+    b = fresh.to_polars().sort(["coverage", "cohort", "dev"])
+    assert a.columns == b.columns
+    assert a.equals(b), "no-bootstrap BF $full must be byte-reproducible"
+    sa = fit.summary().sort(["coverage", "cohort"])
+    sb = fresh.summary().sort(["coverage", "cohort"])
+    assert sa.equals(sb), "no-bootstrap BF $summary must be byte-equal"
+
+
+def test_phase4_cc_no_bootstrap_unchanged():
+    """A plain ``CC().fit`` is the pure-analytical state --
+    ``ci_type='analytical'``, ``boots is None``, and the output frames
+    are byte-equal to a fresh analytical fit."""
+    tri = _tri()
+    fit = lr.CC().fit(tri)
+    assert fit.ci_type == "analytical"
+    assert fit.boots is None
+
+    fresh = lr.CC().fit(tri)
+    a = fit.to_polars().sort(["coverage", "cohort", "dev"])
+    b = fresh.to_polars().sort(["coverage", "cohort", "dev"])
+    assert a.columns == b.columns
+    assert a.equals(b), "no-bootstrap CC $full must be byte-reproducible"
+    sa = fit.summary().sort(["coverage", "cohort"])
+    sb = fresh.summary().sort(["coverage", "cohort"])
+    assert sa.equals(sb), "no-bootstrap CC $summary must be byte-equal"
+
+
+def test_phase4_bf_summary_statistically_close_to_r():
+    """Python ``BF(prior=1.5, bootstrap='auto')`` summary vs the R B=4000
+    fixture (``bf_boot_summary.csv``).
+
+    R and Python use different RNGs -- the Monte-Carlo draws are not the
+    same numbers, so bit-equality is impossible. ``loss_total_se`` is the
+    SD of the composed per-replicate ultimate; it must agree with R only
+    up to Monte-Carlo noise. This asserts the *median* relative
+    difference over projected cohorts, NOT the max: the greenest cohort
+    (emergence fraction ``q ~ 0.006``) has a heavy-tailed ``q_b``
+    estimator (``q_b = loss_latest / loss_ult_cl_b`` with a tiny, noisy
+    denominator) and so shows large Monte-Carlo dispersion even at
+    B=4000 -- the per-cohort max rel diff can exceed 100% there.
+    Comparing medians is the robust statistical check.
+
+    ``loss_ult`` is the analytical BF point estimate and must match R
+    near-exactly (~1e-9 relative).
+    """
+    r = _load("bf_boot_summary").sort(["coverage", "cohort"])
+    tri = _tri()
+    fit = lr.BF(
+        prior=1.5, bootstrap="auto", B=4000, seed=20260522
+    ).fit(tri)
+    py = fit.summary().sort(["coverage", "cohort"])
+
+    keys = ["coverage", "cohort"]
+    py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
+    r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
+    assert py_c.height == r_c.height > 0
+
+    mrd_se = _median_rel_diff(
+        py_c["loss_total_se"].to_list(), r_c["loss_total_se"].to_list()
+    )
+    assert mrd_se < 0.08, (
+        f"BF: loss_total_se median rel diff = {mrd_se:.4f} "
+        f"(expected < 0.08; statistical, not bit-equal -- RNGs differ)"
+    )
+
+    # loss_ult is the analytical point estimate -- near-exact match.
+    for x, y in zip(
+        py_c["loss_ult"].to_list(), r_c["loss_ult"].to_list()
+    ):
+        if x is None or y is None:
+            continue
+        assert x == pytest.approx(y, rel=1e-9), (
+            "BF loss_ult is a point estimate and must match R closely"
+        )
+
+
+def test_phase4_cc_summary_statistically_close_to_r():
+    """Python ``CC(bootstrap='auto')`` summary vs the R B=4000 fixture
+    (``cc_boot_summary.csv``).
+
+    Same statistical caveat as the BF closeness test: ``loss_total_se``
+    is a Monte-Carlo estimate, so only the *median* relative difference
+    over projected cohorts is asserted, never the max -- the greenest
+    cohort's heavy-tailed ``q_b`` estimator is noisy even at B=4000.
+    ``loss_ult`` is the analytical Cape Cod point estimate and must match
+    R near-exactly (~1e-9 relative).
+    """
+    r = _load("cc_boot_summary").sort(["coverage", "cohort"])
+    tri = _tri()
+    fit = lr.CC(bootstrap="auto", B=4000, seed=20260522).fit(tri)
+    py = fit.summary().sort(["coverage", "cohort"])
+
+    keys = ["coverage", "cohort"]
+    py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
+    r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
+    assert py_c.height == r_c.height > 0
+
+    mrd_se = _median_rel_diff(
+        py_c["loss_total_se"].to_list(), r_c["loss_total_se"].to_list()
+    )
+    assert mrd_se < 0.08, (
+        f"CC: loss_total_se median rel diff = {mrd_se:.4f} "
+        f"(expected < 0.08; statistical, not bit-equal -- RNGs differ)"
+    )
+
+    for x, y in zip(
+        py_c["loss_ult"].to_list(), r_c["loss_ult"].to_list()
+    ):
+        if x is None or y is None:
+            continue
+        assert x == pytest.approx(y, rel=1e-9), (
+            "CC loss_ult is a point estimate and must match R closely"
+        )
+
+
+def test_phase4_bf_distribution_prior_bootstrap():
+    """A distribution prior ``(elr, elr_se)`` inflates the bootstrap
+    ``loss_total_se`` over a point prior of the same ELR mean.
+
+    Under a distribution prior the BF composition draws a per-replicate
+    ``Normal(elr, elr_se)`` ELR; that extra parameter variance feeds the
+    composed ultimate and so widens its SD. A point prior of the same
+    mean has ``elr_se`` NaN and draws the fixed ELR every replicate.
+    """
+    tri = _tri()
+    cohorts = _bf_cohorts(tri)
+    point_prior = {c: 1.5 for c in cohorts}
+    dist_prior = {c: (1.5, 0.3) for c in cohorts}
+
+    fp = lr.BF(
+        prior=point_prior, bootstrap="auto", B=400, seed=7
+    ).fit(tri)
+    fd = lr.BF(
+        prior=dist_prior, bootstrap="auto", B=400, seed=7
+    ).fit(tri)
+    sp = fp.summary().sort(["coverage", "cohort"])
+    sd = fd.summary().sort(["coverage", "cohort"])
+
+    inflated = 0
+    total = 0
+    for a, b in zip(
+        sp["loss_total_se"].to_list(), sd["loss_total_se"].to_list()
+    ):
+        if a is None or b is None:
+            continue
+        if not (np.isfinite(a) and np.isfinite(b)) or a <= 0:
+            continue
+        total += 1
+        if b > a:
+            inflated += 1
+    assert total > 0, "no projected cohorts to compare"
+    # the distribution prior must widen the SE on the large majority of
+    # projected cohorts (a few may not move under Monte-Carlo noise).
+    assert inflated >= total - 1, (
+        f"distribution prior inflated loss_total_se on only {inflated} "
+        f"of {total} projected cohorts"
+    )
+
+
+def test_phase4_bf_bootstrap_seed_reproducible():
+    """Same seed -> identical BF bootstrap summary; a different seed
+    changes the Monte-Carlo ``loss_total_se``."""
+    tri = _tri()
+    a = lr.BF(prior=1.5, bootstrap="auto", B=300, seed=42).fit(tri)
+    b = lr.BF(prior=1.5, bootstrap="auto", B=300, seed=42).fit(tri)
+    c = lr.BF(prior=1.5, bootstrap="auto", B=300, seed=43).fit(tri)
+
+    sa = a.summary().sort(["coverage", "cohort"])
+    sb = b.summary().sort(["coverage", "cohort"])
+    sc = c.summary().sort(["coverage", "cohort"])
+    assert sa.equals(sb), "same seed must give identical bootstrap summary"
+
+    differs = any(
+        x is not None and y is not None and np.isfinite(x)
+        and np.isfinite(y) and x > 0 and x != y
+        for x, y in zip(
+            sa["loss_total_se"].to_list(), sc["loss_total_se"].to_list()
+        )
+    )
+    assert differs, "a different seed should change the Monte-Carlo SE"
+
+
+def test_phase4_bf_credibility_stays_analytical():
+    """A credibility spec forces the analytical path even when a
+    bootstrap is requested.
+
+    R parity: the BF / CC bootstrap composition is defined for the
+    classical q-weighted blend only, so a ``credibility`` spec keeps
+    ``ci_type='analytical'`` and ``boots is None`` regardless of the
+    ``bootstrap`` argument.
+    """
+    tri = _tri()
+    fit = lr.BF(
+        prior=1.5,
+        credibility={"method": "bs"},
+        bootstrap="auto",
+    ).fit(tri)
+    assert fit.ci_type == "analytical", (
+        "a credibility spec must force the analytical path"
+    )
+    assert fit.boots is None
+
+
+# ===========================================================================
+# Phase 5 -- Backtest x bootstrap-configured estimator
+#
+# A Backtest masks the last `holdout` calendar diagonals and refits the
+# estimator on the masked triangle per fold. When the estimator carries a
+# `bootstrap` config, the rebuild-per-fit forms ("auto" / a Bootstrap
+# config / a callable) all rebuild the bootstrap from the *masked*
+# triangle -- no held-out cell ever enters the residual pool. A pre-built
+# BootstrapTriangle, by contrast, was fitted on the unmasked triangle and
+# would leak; Backtest rejects it.
+#
+# The bootstrap overlay only ever touches the SE / CI columns, never the
+# point projection, so `ae_err` (computed from `expected`, the point
+# projection) is provably identical with or without bootstrap.
+# ---------------------------------------------------------------------------
+
+
+def test_phase5_backtest_bootstrap_runs_without_error():
+    """``Backtest(estimator=lr.Ratio(method='sa', bootstrap='auto'))``
+    runs end-to-end -- each masked-triangle refit rebuilds the bootstrap
+    on the masked data (no leakage) and the result carries an ``ae_err``
+    table."""
+    tri = _tri()
+    bt = lr.Backtest(
+        estimator=lr.Ratio(method="sa", bootstrap="auto", B=80, seed=1),
+        holdout=6,
+        metric="ratio",
+    ).fit(tri)
+    assert bt.ae_err.height > 0
+    # the per-fold refit ran with the bootstrap config -> bootstrap CI.
+    assert bt.fit.ci_type == "bootstrap"
+    assert isinstance(bt.fit.boots, BootstrapTriangle)
+
+
+def test_phase5_backtest_ae_err_bootstrap_independent():
+    """``ae_err`` is computed from the point projection (``expected``),
+    which the bootstrap overlay never touches. A bootstrap-configured
+    estimator must therefore produce the *same* ``ae_err`` (and the same
+    ``col_summary`` / ``diag_summary``) as an analytical one -- the only
+    effect of the bootstrap is extra compute per fold."""
+    tri = _tri()
+    analytic = lr.Backtest(
+        estimator=lr.Ratio(method="sa"),
+        holdout=6,
+        metric="ratio",
+    ).fit(tri)
+    booted = lr.Backtest(
+        estimator=lr.Ratio(method="sa", bootstrap="auto", B=80, seed=1),
+        holdout=6,
+        metric="ratio",
+    ).fit(tri)
+
+    a = analytic.ae_err.sort(["coverage", "cohort", "dev"])
+    b = booted.ae_err.sort(["coverage", "cohort", "dev"])
+    assert a.height == b.height > 0
+    # the point projection -- and therefore every A/E quantity -- is
+    # byte-identical regardless of the bootstrap overlay.
+    for col in ("actual", "expected", "aeg", "ae_err"):
+        assert a[col].to_list() == b[col].to_list(), (
+            f"backtest {col!r} must be bootstrap-independent (the overlay "
+            f"touches SE/CI only, never the point projection)"
+        )
+    # the dev / diagonal summaries inherit the same invariance.
+    assert analytic.col_summary.sort(["coverage", "dev"]).equals(
+        booted.col_summary.sort(["coverage", "dev"])
+    ), "col_summary must be bootstrap-independent"
+    assert analytic.diag_summary.sort(["coverage", "cal_idx"]).equals(
+        booted.diag_summary.sort(["coverage", "cal_idx"])
+    ), "diag_summary must be bootstrap-independent"
+
+
+def test_phase5_backtest_bootstrap_config_form_safe():
+    """A ``Bootstrap`` config instance on the estimator is also a
+    rebuild-per-fit form -- accepted, and each fold refits it on the
+    masked triangle."""
+    tri = _tri()
+    bt = lr.Backtest(
+        estimator=lr.Ratio(
+            method="sa",
+            bootstrap=Bootstrap(type="analytical", method="cl",
+                                B=80, seed=2),
+        ),
+        holdout=6,
+        metric="ratio",
+    ).fit(tri)
+    assert bt.ae_err.height > 0
+    assert bt.fit.ci_type == "bootstrap"
+
+
+def test_phase5_backtest_bootstrap_callable_form_safe():
+    """A callable ``f(tri) -> BootstrapTriangle`` is the leakage-safe
+    form: Backtest accepts it, and the callable is invoked on the masked
+    triangle per fold."""
+    tri = _tri()
+    orig_obs = tri._df["loss"].len() - tri._df["loss"].null_count()
+    seen: list[int] = []
+
+    def make_boot(masked_tri: lr.Triangle):
+        # the callable receives the *masked* triangle -- record its
+        # observed-cell count to prove it is not the original (unmasked)
+        # triangle. Masking nulls the held-out cells (row count is
+        # unchanged), so the masked triangle has strictly fewer observed
+        # `loss` cells than the original.
+        n_obs = masked_tri._df["loss"].len() - masked_tri._df["loss"].null_count()
+        seen.append(n_obs)
+        return Bootstrap(
+            type="analytical", method="cl", B=80, seed=3
+        ).fit(masked_tri, target="loss")
+
+    bt = lr.Backtest(
+        estimator=lr.Ratio(method="sa", bootstrap=make_boot),
+        holdout=6,
+        metric="ratio",
+    ).fit(tri)
+    assert bt.ae_err.height > 0
+    assert bt.fit.ci_type == "bootstrap"
+    # the callable ran on the masked triangle, which has fewer observed
+    # cells than the original -- proof the bootstrap saw no held-out
+    # diagonal.
+    assert seen, "the bootstrap callable was never invoked"
+    assert all(n < orig_obs for n in seen), (
+        "the callable must be invoked on the masked triangle (fewer "
+        "observed cells than the original), not the unmasked one"
+    )
+
+
+def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected():
+    """A pre-built ``BootstrapTriangle`` on the estimator is rejected by
+    ``Backtest`` -- it was fitted on the unmasked triangle and would leak
+    the held-out cells into every fold's residual pool. The error directs
+    the user to the rebuild-per-fit forms."""
+    tri = _tri()
+    # build a BootstrapTriangle on the FULL (unmasked) triangle.
+    prebuilt = Bootstrap(
+        type="analytical", method="cl", B=80, seed=4
+    ).fit(tri, target="loss")
+    assert isinstance(prebuilt, BootstrapTriangle)
+
+    est = lr.Ratio(method="sa", bootstrap=prebuilt)
+    with pytest.raises(ValueError, match="pre-built BootstrapTriangle"):
+        lr.Backtest(estimator=est, holdout=6, metric="ratio")
+
+
+def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected_loss():
+    """The pre-built-``BootstrapTriangle`` guard fires for any estimator
+    that carries a ``bootstrap`` slot -- here ``lr.Loss``."""
+    tri = _tri()
+    prebuilt = Bootstrap(
+        type="analytical", method="cl", B=80, seed=5
+    ).fit(tri, target="loss")
+
+    est = lr.Loss(method="cl", bootstrap=prebuilt)
+    with pytest.raises(ValueError, match="leak"):
+        lr.Backtest(estimator=est, holdout=6, metric="loss")

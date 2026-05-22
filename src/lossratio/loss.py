@@ -463,13 +463,17 @@ class Loss:
         when ``None`` / ``False`` (the default) the fit is the pure
         analytical SA / ED / CL SE, byte-unchanged. When supplied, the
         bootstrap SE is overlaid onto the *projected* cells of ``$full``
-        (observed cells keep their analytical SE). The bootstrap runs
-        with the dispatcher's own ``method`` paradigm -- ``Loss(method=
-        "ed", bootstrap="auto")`` bootstraps with ED, ``method="sa"``
-        with SA, ``method="cl"`` with CL. Accepted forms:
+        (observed cells keep their analytical SE). The bootstrap SE
+        overlay always uses the analytical CL (Mack closed-form)
+        bootstrap -- ``type="analytical"``, ``process="normal"``,
+        ``method="cl"`` -- regardless of the dispatcher's loss
+        ``method``. The loss ``method`` drives only the *point*
+        projection; the SE overlay is always the analytical-CL
+        bootstrap (an ED / SA fit's bootstrap SE necessarily coerces
+        to CL). Accepted forms:
 
         * ``True`` / ``"auto"`` -- a default :class:`Bootstrap` config
-          inheriting this dispatcher's ``method``.
+          for the analytical-CL bootstrap.
         * a :class:`Bootstrap` config instance -- its own settings win.
         * a pre-built :class:`BootstrapTriangle`.
         * a callable ``f(triangle) -> BootstrapTriangle``.
@@ -735,11 +739,11 @@ class LossFit:
 
         # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
         # With no bootstrap, `long_df` is the pure analytical SA / ED / CL
-        # fit and is left byte-unchanged. The bootstrap runs with the
-        # dispatcher's own `method` paradigm (cl / ed / sa); SA also
-        # threads the resolved per-group maturity.
+        # fit and is left byte-unchanged. The bootstrap SE overlay always
+        # uses the analytical-CL (Mack closed-form) paradigm regardless of
+        # the dispatcher's loss `method`.
         long_df = self._maybe_overlay_bootstrap(
-            long_df, original_tri, estimator, kstar_df
+            long_df, original_tri, estimator
         )
 
         self._df = long_df
@@ -751,23 +755,28 @@ class LossFit:
         long_df: pl.DataFrame,
         triangle: "Triangle",
         estimator: "Loss",
-        kstar_df: pl.DataFrame,
     ) -> pl.DataFrame:
         """Resolve + overlay the dispatcher's bootstrap onto ``long_df``.
 
         No-op (returns ``long_df`` unchanged) when ``estimator.bootstrap``
-        is ``None`` / ``False``. Otherwise resolves the bootstrap with the
-        dispatcher's own ``method`` paradigm -- ``method="cl"`` ->
-        analytical Mack, ``"ed"`` / ``"sa"`` -> the positivity-preserving
-        parametric paradigm -- and overlays the bootstrap SE onto the
-        projected cells of ``long_df``. Sets :attr:`boots` / :attr:`ci_type`.
+        is ``None`` / ``False``. Otherwise resolves the bootstrap and
+        overlays the bootstrap SE onto the projected cells of ``long_df``.
+        Sets :attr:`boots` / :attr:`ci_type`.
 
-        For ``method="sa"`` the resolved per-group maturity (from
-        ``kstar_df``) is threaded into the bootstrap config so the
-        stage switch matches the analytical fit. An explicit
-        :class:`Bootstrap` config the user passed keeps its own settings
-        (``_resolve_bootstrap`` forwards ``**kw`` only for the
-        ``True`` / ``"auto"`` case).
+        The dispatcher bootstrap SE overlay always uses the analytical
+        CL (Mack closed-form) paradigm -- ``type="analytical"``,
+        ``process="normal"``, ``method="cl"`` -- regardless of the
+        dispatcher's loss ``method``. This mirrors R ``fit_loss()`` /
+        ``fit_sa()`` (``.lossfit_bootstrap`` in ``R/loss.R``), whose
+        bootstrap path is hard-wired to the analytical-CL bootstrap.
+        The loss ``method`` still drives the *point* projection on
+        ``long_df``; only the SE overlay is the analytical-CL bootstrap
+        (``type="analytical"`` is CL-only, so an ED fit's bootstrap SE
+        necessarily coerces to CL).
+
+        An explicit :class:`Bootstrap` config the user passed keeps its
+        own settings (``_resolve_bootstrap`` forwards ``**kw`` only for
+        the ``True`` / ``"auto"`` case).
         """
         bootstrap = estimator.bootstrap
         if bootstrap is None or bootstrap is False:
@@ -775,20 +784,15 @@ class LossFit:
 
         from .bootstrap import _apply_bootstrap_overlay, _resolve_bootstrap
 
-        method = estimator.method
-        # Default Bootstrap kwargs for the True / "auto" form: inherit the
-        # dispatcher's method + the type/process that paradigm requires.
-        # `type="analytical"` is CL-only; ED / SA need the parametric
-        # paradigm with a positivity-preserving process.
-        kw: dict[str, Any] = {"method": method}
-        if method == "cl":
-            kw["type"] = "analytical"
-            kw["process"] = "normal"
-        else:  # ed / sa
-            kw["type"] = "parametric"
-            kw["process"] = "gamma"
-        if method == "sa":
-            kw["maturity"] = self._maturity_for_bootstrap(kstar_df)
+        # Default Bootstrap kwargs for the True / "auto" form. The
+        # dispatcher always bootstraps loss with the analytical CL
+        # (Mack closed-form) paradigm regardless of the fit's loss
+        # `method` -- see the docstring above.
+        kw: dict[str, Any] = {
+            "type":    "analytical",
+            "process": "normal",
+            "method":  "cl",
+        }
 
         boots = _resolve_bootstrap(
             bootstrap, triangle,
@@ -811,26 +815,6 @@ class LossFit:
         self.boots   = boots
         self.ci_type = "bootstrap"
         return long_df
-
-    def _maturity_for_bootstrap(self, kstar_df: pl.DataFrame):
-        """Resolved SA maturity in the form ``Bootstrap`` expects.
-
-        ``Bootstrap._resolve_maturity_map`` accepts an ``int`` (ungrouped)
-        or a per-group ``dict``. Returns ``None`` when no maturity was
-        detected so the bootstrap config falls back to its own
-        auto-detection.
-        """
-        if kstar_df.height == 0 or "mat_k" not in kstar_df.columns:
-            return None
-        groups = self._groups
-        if groups is None or groups not in kstar_df.columns:
-            mk = kstar_df["mat_k"][0]
-            return None if mk is None else int(mk)
-        out = {
-            row[groups]: (None if row["mat_k"] is None else int(row["mat_k"]))
-            for row in kstar_df.iter_rows(named=True)
-        }
-        return out if any(v is not None for v in out.values()) else None
 
     @classmethod
     def _segment_wise_fit(
@@ -918,7 +902,7 @@ class LossFit:
         # Bootstrap overlay -- a single run on the parent triangle (the
         # per-segment fits ran with bootstrap disabled above).
         full_df = self._maybe_overlay_bootstrap(
-            full_df, triangle, estimator, self._kstar_df
+            full_df, triangle, estimator
         )
 
         self._df = full_df

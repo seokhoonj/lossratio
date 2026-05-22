@@ -2542,7 +2542,10 @@ class BootstrapTriangle:
         Run-configuration dictionary.
     pseudo_triangles
         ``None`` unless ``keep_pseudo=True`` -- then a long-format
-        DataFrame of the per-replicate ``cum_sampled`` trajectories.
+        DataFrame of the per-replicate trajectories with columns
+        ``[groups?, cohort, dev, rep, {target}_mean, {target}_sampled]``
+        (the Stage-1 deterministic projection and the Stage-1 + Stage-2
+        process-noisy simulation).
     """
 
     def __init__(self) -> None:
@@ -2851,7 +2854,7 @@ class Bootstrap:
             )
             if self.keep_pseudo:
                 pseudo_parts.append(
-                    self._pseudo_to_df(stage1, groups, g)
+                    self._pseudo_to_df(stage1, groups, g, target)
                 )
 
         out = BootstrapTriangle()
@@ -3230,19 +3233,28 @@ class Bootstrap:
         stage1:      _Stage1Result,
         groups:      str | None,
         group_value: Any | None,
+        target:      str = "loss",
     ) -> pl.DataFrame:
-        """Long-format per-replicate ``cum_sampled`` trajectories.
+        """Long-format per-replicate trajectories (Stage-1 mean + sampled).
 
-        Columns: ``[groups?, cohort, dev, rep, loss]`` -- ``rep``
-        ranges over ``1..B``. Built only when ``keep_pseudo=True``.
+        Columns: ``[groups?, cohort, dev, rep, {target}_mean,
+        {target}_sampled]`` -- ``rep`` ranges over ``1..B``. The
+        ``{target}_mean`` column is the Stage-1 deterministic projection
+        (parameter uncertainty only); ``{target}_sampled`` adds the
+        Stage-2 process noise. Built only when ``keep_pseudo=True``.
+
+        The value columns are named after the bootstrap ``target`` so the
+        BF / Cape Cod composition can read ``loss_mean`` / ``premium_mean``
+        from the two paired :class:`BootstrapTriangle` objects -- mirrors
+        R's ``.boot_build_pseudo_long`` (``R/bootstrap.R``).
         """
-        cum = stage1.cum_sampled            # (n_cohorts, n_devs, B)
-        n_cohorts, n_devs, B = cum.shape
+        cum_mean    = stage1.cum_mean        # (n_cohorts, n_devs, B)
+        cum_sampled = stage1.cum_sampled
+        n_cohorts, n_devs, B = cum_sampled.shape
         cohorts = stage1.cohorts
         devs    = stage1.devs
 
         # column-major flatten (cohort fastest, then dev, then rep).
-        flat = cum.flatten(order="F")
         cohort_col = cohorts * (n_devs * B)
         dev_col = np.tile(
             np.repeat(devs, n_cohorts), B
@@ -3254,10 +3266,11 @@ class Bootstrap:
         data: dict[str, Any] = {}
         if groups is not None:
             data[groups] = [group_value] * (n_cohorts * n_devs * B)
-        data["cohort"] = cohort_col
-        data["dev"]    = dev_col
-        data["rep"]    = rep_col
-        data["loss"]   = flat
+        data["cohort"]            = cohort_col
+        data["dev"]               = dev_col
+        data["rep"]               = rep_col
+        data[f"{target}_mean"]    = cum_mean.flatten(order="F")
+        data[f"{target}_sampled"] = cum_sampled.flatten(order="F")
         return pl.DataFrame(data)
 
 
@@ -3441,4 +3454,615 @@ def _apply_bootstrap_overlay(
     drop_cols = [c for c in drop_cols if c in out.columns]
     if drop_cols:
         out = out.drop(drop_cols)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Section 7 -- BF / Cape Cod bootstrap composition (Phase 4)
+# ---------------------------------------------------------------------------
+#
+# fit_bf / fit_cc with `bootstrap` non-None run TWO Triangle-level
+# bootstraps -- one for `target="loss"`, one for `target="premium"` --
+# with a SHARED seed, `method="cl"`, and `keep_pseudo=True`. The two
+# per-replicate Stage-1 mean trajectories are then composed, one
+# replicate at a time, into a BF / Cape Cod ultimate distribution.
+#
+# References:
+#   Bornhuetter & Ferguson (1972)  -- the BF blend formula.
+#   Stanard (1985)                 -- the Cape Cod pooled-ELR variant.
+#   Mack (2008)                    -- the analytical MSEP path (kept for
+#                                     `bootstrap=None`).
+
+
+def _resolve_bootstrap_bf(
+    bootstrap: Any,
+    triangle:  "Triangle",
+    *,
+    B:        int            = 999,
+    seed:     int | None     = None,
+    type:     str            = "parametric",
+    residual: str            = "cell",
+    process:  str            = "gamma",
+) -> "dict[str, BootstrapTriangle] | None":
+    """Resolve the ``bootstrap`` argument of :class:`BF` / :class:`CC`.
+
+    Four-type dispatch mirroring :func:`_resolve_bootstrap` but returning
+    a *pair* of :class:`BootstrapTriangle` objects -- BF / Cape Cod
+    compose loss-side parameter uncertainty (via ``q_i^b``) and
+    premium-side parameter uncertainty (via ``E_i^{ult,b}``) into a
+    single ultimate distribution. Mirrors R's
+    ``.resolve_bootstrap_bf()`` (``R/bf.R``).
+
+    Accepted forms for ``bootstrap``:
+
+    * ``None`` / ``False`` -> ``None`` (point estimate only).
+    * ``True`` / ``"auto"`` -> two internal :class:`Bootstrap` fits (one
+      per target) sharing ``seed`` so replicate indices align, both with
+      ``method="cl"`` and ``keep_pseudo=True``.
+    * a ``dict`` ``{"loss": BootstrapTriangle, "premium":
+      BootstrapTriangle}`` -- validated for matching ``meta["B"]`` and
+      the correct per-side ``meta["target"]``.
+    * a callable ``f(triangle) -> dict`` -- invoked, then re-resolved.
+
+    Parameters
+    ----------
+    bootstrap
+        The polymorphic specification (see above).
+    triangle
+        The :class:`Triangle` the bootstrap is computed on.
+    B, seed
+        Replicate count and shared seed for the ``"auto"`` path.
+    type
+        Bootstrap residual paradigm -- ``"parametric"`` /
+        ``"nonparametric"`` select a simulation paradigm.
+    residual
+        Residual scope for ``type="nonparametric"`` (``"cell"`` /
+        ``"link"``).
+    process
+        Stage-2 process distribution.
+
+    Returns
+    -------
+    dict or None
+        ``{"loss": BootstrapTriangle, "premium": BootstrapTriangle}`` or
+        ``None`` when bootstrap is disabled.
+    """
+    if bootstrap is None or bootstrap is False:
+        return None
+
+    if bootstrap is True or bootstrap == "auto":
+        # Force keep_pseudo=True -- the BF composition needs the
+        # per-replicate cohort-by-dev Stage-1 means. Same seed for both
+        # calls so replicate indices align across the two simulations.
+        cfg_kw: dict[str, Any] = dict(
+            type        = type,
+            method      = "cl",
+            process     = process,
+            B           = B,
+            seed        = seed,
+            keep_pseudo = True,
+            quantile_ci = False,
+        )
+        if type == "nonparametric":
+            cfg_kw["residual"] = residual
+        bt_loss = Bootstrap(**cfg_kw).fit(triangle, target="loss")
+        bt_exp  = Bootstrap(**cfg_kw).fit(triangle, target="premium")
+        return {"loss": bt_loss, "premium": bt_exp}
+
+    if isinstance(bootstrap, dict) and not callable(bootstrap):
+        if "loss" not in bootstrap or "premium" not in bootstrap:
+            raise ValueError(
+                "`bootstrap` dict must carry both a 'loss' and a "
+                "'premium' BootstrapTriangle."
+            )
+        bt_loss = bootstrap["loss"]
+        bt_exp  = bootstrap["premium"]
+        if not isinstance(bt_loss, BootstrapTriangle):
+            raise ValueError(
+                "`bootstrap['loss']` must be a BootstrapTriangle."
+            )
+        if not isinstance(bt_exp, BootstrapTriangle):
+            raise ValueError(
+                "`bootstrap['premium']` must be a BootstrapTriangle."
+            )
+        t_loss = bt_loss.meta.get("target")
+        t_exp  = bt_exp.meta.get("target")
+        if t_loss != "loss":
+            raise ValueError(
+                f"`bootstrap['loss']` has meta['target'] = {t_loss!r} "
+                "but BF / CC expects target = 'loss'."
+            )
+        if t_exp != "premium":
+            raise ValueError(
+                f"`bootstrap['premium']` has meta['target'] = {t_exp!r} "
+                "but BF / CC expects target = 'premium'."
+            )
+        if bt_loss.meta.get("B") != bt_exp.meta.get("B"):
+            raise ValueError(
+                f"`bootstrap['loss']` B ({bt_loss.meta.get('B')}) must "
+                f"equal `bootstrap['premium']` B "
+                f"({bt_exp.meta.get('B')})."
+            )
+        if bt_loss.pseudo_triangles is None \
+                or bt_exp.pseudo_triangles is None:
+            raise ValueError(
+                "BF / CC bootstrap composition requires keep_pseudo=True "
+                "on both BootstrapTriangle objects."
+            )
+        return {"loss": bt_loss, "premium": bt_exp}
+
+    if callable(bootstrap):
+        return _resolve_bootstrap_bf(
+            bootstrap(triangle), triangle,
+            B=B, seed=seed, type=type, residual=residual, process=process,
+        )
+
+    raise TypeError(
+        "`bootstrap` must be None, True/False, 'auto', a dict "
+        "{'loss': BootstrapTriangle, 'premium': BootstrapTriangle}, or a "
+        f"callable returning one; got {type(bootstrap).__name__}."
+    )
+
+
+class BFBootstrap:
+    """Bootstrap helper for a :class:`BF` fit.
+
+    Holds the two paired :class:`BootstrapTriangle` objects (loss-side
+    and premium-side), the per-replicate ultimate table, and the run
+    metadata. R-parity name for ``R/bf.R``'s ``BFBootstrap`` structure.
+
+    Attributes
+    ----------
+    loss_bootstrap, premium_bootstrap
+        The loss-side and premium-side :class:`BootstrapTriangle`.
+    ult_replicates
+        Long-format DataFrame ``[groups?, cohort, b, q_b, premium_ult_b,
+        elr_b, loss_ult_b]`` -- the per-replicate composed ultimate.
+    B, seed, type, residual, process
+        Run-configuration metadata.
+    """
+
+    _is_cape_cod = False
+
+    def __init__(
+        self,
+        loss_bootstrap:    "BootstrapTriangle",
+        premium_bootstrap: "BootstrapTriangle",
+        ult_replicates:    pl.DataFrame,
+        *,
+        B:        int,
+        seed:     int | None,
+        type:     str,
+        residual: str,
+        process:  str,
+    ) -> None:
+        self.loss_bootstrap    = loss_bootstrap
+        self.premium_bootstrap = premium_bootstrap
+        self.ult_replicates    = ult_replicates
+        self.B        = B
+        self.seed     = seed
+        self.type     = type
+        self.residual = residual
+        self.process  = process
+
+    def __repr__(self) -> str:
+        return (
+            f"<BFBootstrap: B={self.B}, type={self.type}, "
+            f"seed={self.seed}>"
+        )
+
+
+class CCBootstrap(BFBootstrap):
+    """Bootstrap helper for a :class:`CC` fit.
+
+    Like :class:`BFBootstrap` but additionally carries
+    :attr:`elr_cc_replicates` -- the per-replicate pooled-ELR draws,
+    since the Cape Cod ELR is itself data-driven and thus uncertain.
+    R-parity name for ``R/bf.R``'s ``CCBootstrap`` structure.
+
+    Attributes
+    ----------
+    elr_cc_replicates
+        Long-format DataFrame ``[groups?, b, elr_cc_b]`` -- the
+        per-replicate data-pooled ELR.
+    """
+
+    _is_cape_cod = True
+
+    def __init__(
+        self,
+        loss_bootstrap:    "BootstrapTriangle",
+        premium_bootstrap: "BootstrapTriangle",
+        ult_replicates:    pl.DataFrame,
+        elr_cc_replicates: pl.DataFrame,
+        *,
+        B:        int,
+        seed:     int | None,
+        type:     str,
+        residual: str,
+        process:  str,
+    ) -> None:
+        super().__init__(
+            loss_bootstrap, premium_bootstrap, ult_replicates,
+            B=B, seed=seed, type=type, residual=residual, process=process,
+        )
+        self.elr_cc_replicates = elr_cc_replicates
+
+    def __repr__(self) -> str:
+        return (
+            f"<CCBootstrap: B={self.B}, type={self.type}, "
+            f"seed={self.seed}>"
+        )
+
+
+def _last_dev_value(df: pl.DataFrame, value_col: str,
+                    by_cols: list[str]) -> pl.DataFrame:
+    """Per-key value of ``value_col`` at the row with the largest ``dev``.
+
+    Mirrors R's ``.SD[which.max(dev)]`` per-group extraction.
+    """
+    return (
+        df.sort("dev")
+        .group_by(by_cols, maintain_order=True)
+        .agg(pl.col(value_col).last().alias(value_col))
+    )
+
+
+def _quantile_type1(x: np.ndarray, p: float) -> float:
+    """Empirical quantile, R ``type = 1`` (== numpy ``inverted_cdf``)."""
+    finite = x[np.isfinite(x)]
+    if finite.size == 0:
+        return np.nan
+    return float(np.quantile(finite, p, method="inverted_cdf"))
+
+
+def _bf_compose_bootstrap(
+    boots:           "dict[str, BootstrapTriangle]",
+    *,
+    full_df:         pl.DataFrame,
+    summary_df:      pl.DataFrame,
+    groups:          str | None,
+    cape_cod:        bool,
+    prior_df:        pl.DataFrame | None,
+    conf_level:      float,
+    rng:             np.random.Generator | None = None,
+) -> dict[str, Any]:
+    """Per-replicate BF / Cape Cod composition from two BootstrapTriangle.
+
+    Given paired loss-side and premium-side :class:`BootstrapTriangle`
+    objects (both ``keep_pseudo=True``, so the per-replicate
+    cohort-by-dev Stage-1 means are available), compose the BF / Cape Cod
+    ultimate distribution per replicate. Mirrors R's
+    ``.bf_compose_bootstrap()`` (``R/bf.R``).
+
+    Per replicate ``b``:
+
+    * ``q_b = loss_latest / loss_ult_cl_b`` where ``loss_ult_cl_b`` is
+      the loss-side Stage-1 mean trajectory's last-dev cell.
+    * ``premium_ult_b`` -- the premium-side Stage-1 mean last-dev cell.
+    * ``elr_b`` -- BF: the prior ELR, drawn ``Normal(elr, elr_se)``
+      floored at 0 per replicate when the prior carries a finite
+      ``elr_se``; CC: per group ``sum(loss_latest) / sum(premium_ult_b *
+      q_b)``.
+    * ``loss_ult_b = loss_latest + (1 - q_b) * elr_b * premium_ult_b``.
+    * cell-level: scale the per-replicate CL emergence pattern so each
+      cohort lands at ``loss_ult_b`` (the same flat-step-to-ultimate rule
+      the analytical :func:`_bf_cell_projection` uses).
+
+    SE = SD across replicates; CI = type-1 quantiles (2.5 / 97.5%).
+
+    Parameters
+    ----------
+    boots
+        ``{"loss": BootstrapTriangle, "premium": BootstrapTriangle}``.
+    full_df
+        The point-estimate ``$full`` cell-level DataFrame.
+    summary_df
+        The point-estimate cohort-level ``$summary`` DataFrame.
+    groups
+        The grouping column name, or ``None``.
+    cape_cod
+        Whether to data-pool the ELR per replicate (Cape Cod) or use the
+        supplied per-cohort prior (BF).
+    prior_df
+        Per-cohort ELR table ``[groups?, cohort, elr, elr_se]`` for BF;
+        ``None`` for Cape Cod.
+    conf_level
+        Confidence level for the quantile CI.
+    rng
+        Random generator for the distribution-prior ELR draw. A fresh
+        default generator is used when ``None``.
+
+    Returns
+    -------
+    dict
+        ``{"full", "summary", "ult_replicates", "elr_cc_replicates"}`` --
+        the SE/CI-overlaid cell-level + cohort-level tables, the
+        per-replicate ultimate table, and (Cape Cod only) the
+        per-replicate pooled-ELR table.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    bt_loss = boots["loss"]
+    bt_exp  = boots["premium"]
+    pl_pseudo = bt_loss.pseudo_triangles
+    pe_pseudo = bt_exp.pseudo_triangles
+    if pl_pseudo is None or pe_pseudo is None:
+        raise ValueError(
+            "BF / CC bootstrap composition requires keep_pseudo=True on "
+            "both BootstrapTriangle objects."
+        )
+    # mirror_output may have handed back pandas; normalise to polars.
+    if not isinstance(pl_pseudo, pl.DataFrame):
+        pl_pseudo = pl.from_pandas(pl_pseudo)
+    if not isinstance(pe_pseudo, pl.DataFrame):
+        pe_pseudo = pl.from_pandas(pe_pseudo)
+
+    by_cols  = ([groups] if groups is not None else []) + ["cohort"]
+    by_grp   = [groups] if groups is not None else []
+    cell_key = by_cols + ["dev"]
+    alpha2   = (1.0 - conf_level) / 2.0
+
+    # --- per (by_cols, rep) Stage-1 mean ultimates -------------------------
+    # loss_ult_cl_b = loss-side Stage-1 mean last-dev cell.
+    ult_loss = (
+        _last_dev_value(pl_pseudo, "loss_mean", by_cols + ["rep"])
+        .rename({"loss_mean": "loss_ult_cl_b"})
+    )
+    # premium_ult_b = premium-side Stage-1 mean last-dev cell.
+    ult_exp = (
+        _last_dev_value(pe_pseudo, "premium_mean", by_cols + ["rep"])
+        .rename({"premium_mean": "premium_ult_b"})
+    )
+
+    # per-cohort observed latest loss (anchor) from the point-estimate grid.
+    latest_loss = (
+        full_df.filter(pl.col("loss_obs").is_not_null())
+        .pipe(_last_dev_value, "loss_obs", by_cols)
+        .rename({"loss_obs": "loss_latest"})
+    )
+
+    ult_b = (
+        ult_loss
+        .join(ult_exp, on=by_cols + ["rep"], how="inner")
+        .join(latest_loss, on=by_cols, how="left")
+    )
+    ult_b = ult_b.with_columns(
+        pl.when(
+            pl.col("loss_ult_cl_b").is_finite()
+            & (pl.col("loss_ult_cl_b") > 0.0)
+        )
+        .then(pl.col("loss_latest") / pl.col("loss_ult_cl_b"))
+        .otherwise(None)
+        .alias("q_b")
+    )
+
+    elr_cc_replicates: pl.DataFrame | None = None
+    if cape_cod:
+        # Per (group, rep) data-pooled ELR.
+        elr_boot = (
+            ult_b.group_by(by_grp + ["rep"], maintain_order=True)
+            .agg(
+                (
+                    pl.col("loss_latest").sum()
+                    / (pl.col("premium_ult_b") * pl.col("q_b")).sum()
+                ).alias("elr_cc_b")
+            )
+        )
+        join_on = by_grp + ["rep"] if by_grp else ["rep"]
+        ult_b = ult_b.join(elr_boot, on=join_on, how="left")
+        ult_b = ult_b.with_columns(
+            pl.col("elr_cc_b").alias("elr_b")
+        )
+        elr_cc_replicates = (
+            ult_b.select(by_grp + ["rep", "elr_cc_b"])
+            .unique(maintain_order=True)
+            .rename({"rep": "b"})
+        )
+    else:
+        # BF: join the per-cohort prior. A finite elr_se draws a
+        # per-replicate Normal(elr, elr_se) ELR (floored at 0); a
+        # deterministic prior keeps the fixed point ELR per replicate.
+        if prior_df is None:
+            raise ValueError("BF composition requires `prior_df`.")
+        ult_b = ult_b.join(prior_df, on=by_cols, how="left")
+        elr_arr    = ult_b["elr"].to_numpy().astype(np.float64)
+        elr_se_arr = ult_b["elr_se"].to_numpy().astype(np.float64)
+        elr_b_arr  = elr_arr.copy()
+        has_se = np.isfinite(elr_se_arr) & (elr_se_arr > 0.0)
+        if has_se.any():
+            draws = rng.normal(
+                elr_arr[has_se], elr_se_arr[has_se]
+            )
+            elr_b_arr[has_se] = np.maximum(0.0, draws)
+        ult_b = ult_b.with_columns(
+            pl.Series("elr_b", elr_b_arr)
+        )
+
+    ult_b = ult_b.with_columns(
+        (
+            pl.col("loss_latest")
+            + (1.0 - pl.col("q_b")) * pl.col("elr_b")
+            * pl.col("premium_ult_b")
+        ).alias("loss_ult_b")
+    )
+
+    # --- cohort-level SE / CI on loss_ult_b across replicates -------------
+    ult_summary = _agg_sd_quantile(
+        ult_b, "loss_ult_b", by_cols, alpha2
+    )
+    ult_summary = ult_summary.join(
+        summary_df.select(by_cols + ["loss_ult"]), on=by_cols, how="left"
+    )
+    ult_summary = ult_summary.with_columns(
+        pl.when(
+            pl.col("loss_ult").is_finite() & (pl.col("loss_ult") > 0.0)
+        )
+        .then(pl.col("loss_total_se") / pl.col("loss_ult"))
+        .otherwise(None)
+        .alias("loss_total_cv")
+    )
+
+    summary_out = _overlay_cohort_se(
+        summary_df, ult_summary, by_cols,
+        ["loss_total_se", "loss_total_cv", "loss_ci_lo", "loss_ci_hi"],
+    )
+
+    # --- cell-level projection per replicate -----------------------------
+    # Per (by_cols, dev, rep): scale the per-replicate CL emergence
+    # pattern (loss_mean) so each cohort lands at loss_ult_b.
+    cell = (
+        pl_pseudo
+        .join(latest_loss, on=by_cols, how="left")
+        .join(
+            ult_b.select(by_cols + ["rep", "loss_ult_b"]),
+            on=by_cols + ["rep"], how="left",
+        )
+    )
+    cell = _cell_proj_per_rep(cell, by_cols)
+
+    cell_summary = _agg_sd_quantile(
+        cell, "loss_proj_b", cell_key, alpha2
+    )
+
+    full_out = _overlay_cell_se(
+        full_df, cell_summary, cell_key,
+        ["loss_total_se", "loss_ci_lo", "loss_ci_hi"],
+    )
+
+    # per-replicate ultimate table kept on the helper.
+    ult_replicates = (
+        ult_b.select(
+            by_cols + ["rep", "q_b", "premium_ult_b", "elr_b",
+                       "loss_ult_b"]
+        )
+        .rename({"rep": "b"})
+    )
+
+    return {
+        "full":              full_out,
+        "summary":           summary_out,
+        "ult_replicates":    ult_replicates,
+        "elr_cc_replicates": elr_cc_replicates,
+    }
+
+
+def _agg_sd_quantile(
+    df:       pl.DataFrame,
+    value:    str,
+    by_cols:  list[str],
+    alpha2:   float,
+) -> pl.DataFrame:
+    """Per-key SD + type-1 lower/upper quantiles of ``value``.
+
+    Returns columns ``by_cols + [loss_total_se, loss_ci_lo,
+    loss_ci_hi]`` -- the SD becomes the bootstrap SE, the quantiles the
+    CI. Mirrors R's ``stats::sd`` + ``stats::quantile(type = 1L)``.
+    """
+    rows: list[dict[str, Any]] = []
+    for key, sub in df.group_by(by_cols, maintain_order=True):
+        vals = sub[value].to_numpy().astype(np.float64)
+        finite = vals[np.isfinite(vals)]
+        row: dict[str, Any] = {}
+        key_tuple = key if isinstance(key, tuple) else (key,)
+        for col, kv in zip(by_cols, key_tuple):
+            row[col] = kv
+        if finite.size >= 2:
+            row["loss_total_se"] = float(np.std(finite, ddof=1))
+        elif finite.size == 1:
+            row["loss_total_se"] = 0.0
+        else:
+            row["loss_total_se"] = None
+        row["loss_ci_lo"] = _quantile_type1(vals, alpha2)
+        row["loss_ci_hi"] = _quantile_type1(vals, 1.0 - alpha2)
+        rows.append(row)
+    return pl.DataFrame(rows, infer_schema_length=None)
+
+
+def _cell_proj_per_rep(
+    cell:    pl.DataFrame,
+    by_cols: list[str],
+) -> pl.DataFrame:
+    """Per-replicate BF / CC cell-level projection ``loss_proj_b``.
+
+    Per ``(by_cols, rep)`` group: ``cl_rem = loss_mean - loss_latest``,
+    ``scale_b = (loss_ult_b - loss_latest) / cl_rem`` evaluated at the
+    last dev (a cohort scalar; 0 when CL projects no remainder),
+    ``loss_proj_b = loss_latest + cl_rem * scale_b``. Mirrors the
+    ``loss_proj_b`` block of R's ``.bf_compose_bootstrap()``.
+    """
+    eps = float(np.finfo(np.float64).eps)
+    parts: list[pl.DataFrame] = []
+    for _key, sub in cell.group_by(
+        by_cols + ["rep"], maintain_order=True
+    ):
+        sub = sub.sort("dev")
+        loss_mean   = sub["loss_mean"].to_numpy().astype(np.float64)
+        loss_latest = sub["loss_latest"].to_numpy().astype(np.float64)
+        loss_ult_b  = sub["loss_ult_b"].to_numpy().astype(np.float64)
+        cl_rem      = loss_mean - loss_latest
+        cl_rem_last = cl_rem[-1] if cl_rem.size else np.nan
+        ult_rem     = loss_ult_b[0] - loss_latest[0] if loss_ult_b.size \
+            else np.nan
+        if np.isfinite(cl_rem_last) and abs(cl_rem_last) > eps:
+            scale_b = ult_rem / cl_rem_last
+        else:
+            scale_b = 0.0
+        loss_proj_b = loss_latest + cl_rem * scale_b
+        parts.append(
+            sub.with_columns(pl.Series("loss_proj_b", loss_proj_b))
+        )
+    return pl.concat(parts) if parts else cell.with_columns(
+        pl.lit(None, dtype=pl.Float64).alias("loss_proj_b")
+    )
+
+
+def _overlay_cohort_se(
+    summary_df: pl.DataFrame,
+    boot_se:    pl.DataFrame,
+    by_cols:    list[str],
+    cols:       list[str],
+) -> pl.DataFrame:
+    """Replace the analytical cohort-level SE/CI columns with bootstrap.
+
+    Drops any stale ``cols`` from ``summary_df``, then left-joins the
+    bootstrap ``boot_se`` table on ``by_cols``. Mirrors the
+    ``drop_cols`` + ``merge`` block of R's ``.bf_compose_bootstrap()``.
+    """
+    drop = [c for c in cols if c in summary_df.columns]
+    out = summary_df.drop(drop) if drop else summary_df
+    return out.join(
+        boot_se.select(by_cols + cols), on=by_cols, how="left"
+    )
+
+
+def _overlay_cell_se(
+    full_df:   pl.DataFrame,
+    boot_se:   pl.DataFrame,
+    cell_key:  list[str],
+    cols:      list[str],
+) -> pl.DataFrame:
+    """Overlay bootstrap cell-level SE/CI onto a BF / CC ``$full`` grid.
+
+    Drops any stale SE/CI columns, left-joins ``boot_se`` on
+    ``cell_key``, then derives ``loss_total_cv`` from the joined
+    ``loss_total_se`` and the point ``loss_proj``. Mirrors the cell-level
+    ``merge`` + ``loss_total_cv`` block of R's
+    ``.bf_compose_bootstrap()``.
+    """
+    se_ci = ["loss_total_se", "loss_total_cv", "loss_ci_lo", "loss_ci_hi"]
+    drop = [c for c in se_ci if c in full_df.columns]
+    out = full_df.drop(drop) if drop else full_df
+    out = out.join(
+        boot_se.select(cell_key + cols), on=cell_key, how="left"
+    )
+    out = out.with_columns(
+        pl.when(
+            pl.col("loss_proj").is_finite() & (pl.col("loss_proj") > 0.0)
+        )
+        .then(pl.col("loss_total_se") / pl.col("loss_proj"))
+        .otherwise(None)
+        .alias("loss_total_cv")
+    )
     return out

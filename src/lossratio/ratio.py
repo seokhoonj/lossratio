@@ -72,7 +72,27 @@ class Ratio:
         Confidence level for ``ratio_ci_lo`` / ``ratio_ci_hi``. Default
         ``0.95``.
     bootstrap
-        Not yet implemented in Python; must be ``False`` (default).
+        Optional bootstrap specification. Bootstrap is strictly opt-in:
+        when ``None`` / ``False`` (the default) the fit is the pure
+        analytical ratio SE, byte-unchanged. When supplied, a loss-side
+        bootstrap is run (premium is *not* bootstrapped) and the
+        bootstrap-derived ``loss_total_se`` is overlaid onto the
+        *projected* cells of ``$full``; ``ratio_se`` / ``ratio_cv`` /
+        ``ratio_ci_*`` are then recomputed from it. The bootstrap runs
+        with the Ratio's own loss ``method`` paradigm -- ``method="ed"``
+        bootstraps with ED, ``"sa"`` with SA, ``"cl"`` with CL. Accepted
+        forms:
+
+        * ``True`` / ``"auto"`` -- a default :class:`Bootstrap` config
+          inheriting this estimator's loss ``method``.
+        * a :class:`Bootstrap` config instance -- its own settings win.
+        * a pre-built loss-side :class:`BootstrapTriangle`.
+        * a callable ``f(triangle) -> BootstrapTriangle``.
+    B
+        Integer number of bootstrap replicates. Used only when
+        ``bootstrap`` resolves to ``"auto"``. Default ``999``.
+    seed
+        Optional integer seed for a reproducible bootstrap.
     """
 
     def __init__(
@@ -90,7 +110,7 @@ class Ratio:
         se_method: str = "fixed",
         rho: float = 0.95,
         conf_level: float = 0.95,
-        bootstrap: bool = False,
+        bootstrap: Any = None,
         B: int = 999,
         seed: int | None = None,
         # backwards-compat alias for loss_alpha (pre-Phase-5 callers)
@@ -134,10 +154,8 @@ class Ratio:
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
-        if bootstrap:
-            raise NotImplementedError(
-                "bootstrap not yet implemented in Ratio (Python)"
-            )
+        if not isinstance(B, int) or B < 1:
+            raise ValueError(f"B must be a positive integer, got {B!r}")
 
         self.method = method
         self.loss_alpha = loss_alpha
@@ -200,6 +218,9 @@ class RatioFit:
         self.conf_level: float
         self.loss_fit: LossFit
         self.premium_fit: PremiumFit
+        # Bootstrap slots -- ci_type is "analytical" unless a bootstrap ran.
+        self.boots: Any = None
+        self.ci_type: str = "analytical"
 
     @classmethod
     def _from_triangle(
@@ -216,6 +237,9 @@ class RatioFit:
         self.se_method = estimator.se_method
         self.rho = estimator.rho
         self.conf_level = estimator.conf_level
+        # Bootstrap slots default to the pure-analytical state.
+        self.boots = None
+        self.ci_type = "analytical"
 
         # 1) build premium fit first so the loss side can see it, allowing
         # premium_regime to apply independently of loss_regime.
@@ -356,8 +380,162 @@ class RatioFit:
             .alias("ratio_ci_hi"),
         )
 
+        # 6) optional loss-side bootstrap overlay (strictly opt-in) -----------
+        # With no bootstrap, `full` is the pure analytical ratio fit and is
+        # left byte-unchanged. Otherwise the loss SE columns are overlaid
+        # from a loss-side bootstrap and the ratio SE / CV / CI are
+        # recomputed from the bootstrap-derived `loss_total_se`. Premium is
+        # never bootstrapped (loss-only convention).
+        full = self._maybe_overlay_bootstrap(full, triangle, estimator)
+
         self._df = full
         return self
+
+    def _maybe_overlay_bootstrap(
+        self,
+        full: pl.DataFrame,
+        triangle: "Triangle",
+        estimator: "Ratio",
+    ) -> pl.DataFrame:
+        """Resolve + overlay a loss-side bootstrap onto the ratio ``$full``.
+
+        No-op (returns ``full`` unchanged) when ``estimator.bootstrap`` is
+        ``None`` / ``False``. Otherwise resolves a *loss-side* bootstrap
+        with the Ratio's own loss ``method`` paradigm (``cl`` -> analytical
+        Mack, ``ed`` / ``sa`` -> the positivity-preserving parametric
+        paradigm; ``sa`` also threads the detected per-group maturity),
+        overlays the bootstrap loss SE onto the projected cells, and then
+        recomputes ``ratio_se`` / ``ratio_cv`` / ``ratio_ci_lo`` /
+        ``ratio_ci_hi`` from the now-bootstrap ``loss_total_se``. The
+        premium side is not bootstrapped. Sets :attr:`boots` /
+        :attr:`ci_type`.
+        """
+        bootstrap = estimator.bootstrap
+        if bootstrap is None or bootstrap is False:
+            return full
+
+        from .bootstrap import _apply_bootstrap_overlay, _resolve_bootstrap
+
+        # Default Bootstrap kwargs for the True / "auto" form. The Ratio
+        # composition layer always bootstraps loss with the analytical
+        # CL (Mack closed-form) paradigm -- `type="analytical"`,
+        # `process="normal"` -- regardless of the Ratio's loss `method`.
+        # This mirrors R `fit_ratio()` (`R/ratio.R`), whose wrap-only
+        # bootstrap path is hard-wired to `type = "analytical"` /
+        # `process = "normal"`. The loss `method` still drives the
+        # *point* projection on `$full`; only the SE overlay is the
+        # analytical bootstrap.
+        kw: dict[str, Any] = {
+            "method":  "cl",
+            "type":    "analytical",
+            "process": "normal",
+            "B":       estimator.B,
+            "seed":    estimator.seed,
+        }
+
+        boots = _resolve_bootstrap(
+            bootstrap, triangle,
+            target      = "loss",
+            quantile_ci = True,
+            keep_pseudo = False,
+            **kw,
+        )
+        if boots is None:
+            return full
+
+        groups = self._groups
+        keys = ([groups] if groups is not None else []) + ["cohort", "dev"]
+        full = _apply_bootstrap_overlay(
+            full, boots,
+            role    = "loss",
+            se_cols = ["param_se", "proc_se", "total_se", "total_cv"],
+            keys    = keys,
+        )
+
+        # Recompute ratio SE / CV / CI from the bootstrap-derived
+        # `loss_total_se`. `ratio_proj` and observed cells are unchanged --
+        # the overlay only touched projected-cell loss SE columns.
+        z_alpha = float(norm.ppf((1 + estimator.conf_level) / 2))
+        if estimator.se_method == "fixed":
+            full = full.with_columns(
+                pl.when(
+                    pl.col("loss_total_se").is_not_null()
+                    & pl.col("premium_proj").is_not_null()
+                    & (pl.col("premium_proj") != 0.0)
+                )
+                .then(pl.col("loss_total_se") / pl.col("premium_proj"))
+                .otherwise(None)
+                .alias("ratio_se")
+            )
+        else:
+            # delta: Var(L/P) ~ (SE_L / P)^2 + (L * SE_P / P^2)^2
+            #                   - 2 rho L SE_L SE_P / P^3
+            rho = estimator.rho
+            full = full.with_columns(
+                (
+                    (pl.col("loss_total_se") / pl.col("premium_proj")) ** 2
+                    + (
+                        pl.col("loss_proj")
+                        * pl.col("premium_total_se")
+                        / (pl.col("premium_proj") ** 2)
+                    )
+                    ** 2
+                    - 2
+                    * rho
+                    * pl.col("loss_proj")
+                    * pl.col("loss_total_se")
+                    * pl.col("premium_total_se")
+                    / (pl.col("premium_proj") ** 3)
+                ).alias("_var_ratio")
+            )
+            full = full.with_columns(
+                pl.when(
+                    pl.col("loss_proj").is_not_null()
+                    & pl.col("premium_proj").is_not_null()
+                    & (pl.col("premium_proj") > 0.0)
+                    & pl.col("loss_total_se").is_not_null()
+                    & pl.col("premium_total_se").is_not_null()
+                )
+                .then(pl.col("_var_ratio").clip(lower_bound=0.0).sqrt())
+                .otherwise(None)
+                .alias("ratio_se")
+            ).drop("_var_ratio")
+
+        full = full.with_columns(
+            pl.when(
+                pl.col("ratio_proj").is_not_null()
+                & (pl.col("ratio_proj") != 0.0)
+                & pl.col("ratio_se").is_not_null()
+            )
+            .then(pl.col("ratio_se") / pl.col("ratio_proj").abs())
+            .otherwise(None)
+            .alias("ratio_cv"),
+        )
+        full = full.with_columns(
+            pl.when(
+                pl.col("ratio_proj").is_not_null()
+                & pl.col("ratio_se").is_not_null()
+            )
+            .then(
+                pl.max_horizontal(
+                    pl.lit(0.0),
+                    pl.col("ratio_proj") - z_alpha * pl.col("ratio_se"),
+                )
+            )
+            .otherwise(None)
+            .alias("ratio_ci_lo"),
+            pl.when(
+                pl.col("ratio_proj").is_not_null()
+                & pl.col("ratio_se").is_not_null()
+            )
+            .then(pl.col("ratio_proj") + z_alpha * pl.col("ratio_se"))
+            .otherwise(None)
+            .alias("ratio_ci_hi"),
+        )
+
+        self.boots = boots
+        self.ci_type = "bootstrap"
+        return full
 
     @property
     def df(self):

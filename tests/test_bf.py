@@ -177,18 +177,21 @@ def test_bf_zero_prior_raises():
         lr.BF(prior=0.0).fit(_tri())
 
 
-def test_bf_bootstrap_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        lr.BF(prior=1.5, bootstrap=True)
+def test_bf_bootstrap_flag_accepted():
+    # bootstrap=True is resolved at fit time; construction must succeed.
+    est = lr.BF(prior=1.5, bootstrap=True)
+    assert est.bootstrap is True
 
 
-def test_bf_bootstrap_dict_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        lr.BF(prior=1.5, bootstrap={"n_sim": 100})
+def test_bf_bootstrap_bad_dict_raises():
+    # a dict missing the loss / premium BootstrapTriangle keys is
+    # rejected at fit time.
+    with pytest.raises(ValueError):
+        lr.BF(prior=1.5, bootstrap={"n_sim": 100}).fit(_tri())
 
 
-def test_bf_non_analytical_type_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
+def test_bf_bad_type_raises():
+    with pytest.raises(ValueError):
         lr.BF(prior=1.5, type="bootstrap")
 
 

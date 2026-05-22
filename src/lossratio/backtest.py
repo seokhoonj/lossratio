@@ -94,6 +94,46 @@ def _build_masked_df(
 _VALID_METRICS = ("ratio", "loss", "premium")
 
 
+def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
+    """Reject an estimator carrying a *pre-built* ``BootstrapTriangle``.
+
+    A backtest masks the most recent calendar diagonals and refits the
+    estimator on the masked triangle per fold. The leakage-safe forms of
+    the estimator's ``bootstrap`` config -- ``"auto"`` / ``True`` / a
+    :class:`~lossratio.bootstrap.Bootstrap` config / a callable
+    ``f(tri) -> BootstrapTriangle`` -- all *rebuild* the bootstrap from
+    whatever triangle the estimator is fitted on, which inside a backtest
+    is the **masked** triangle. No held-out cell ever enters the residual
+    pool.
+
+    A *pre-built* :class:`~lossratio.bootstrap.BootstrapTriangle`, by
+    contrast, was fitted once on the unmasked triangle. Passing it
+    straight through every fold would seed the residual pool with the
+    held-out cells -- look-ahead leakage. There is no way to rebuild it
+    per fold, so the only safe move is to reject it and direct the user
+    to the callable form.
+
+    Mirrors the guidance in R's ``backtest()`` documentation: prefer a
+    ``function(tri) -> BootstrapTriangle`` over a pre-built object.
+    """
+    bootstrap = getattr(estimator, "bootstrap", None)
+    if bootstrap is None:
+        return
+    # Late import to avoid a circular dependency at module load time.
+    from .bootstrap import BootstrapTriangle
+
+    if isinstance(bootstrap, BootstrapTriangle):
+        raise ValueError(
+            "estimator carries a pre-built BootstrapTriangle, which was "
+            "fitted on the full (unmasked) triangle and would leak the "
+            "held-out cells into every backtest fold's residual pool. "
+            "Use a leakage-safe form instead: bootstrap='auto', a "
+            "Bootstrap config (e.g. lr.Bootstrap(B=999)), or a callable "
+            "function(tri) -> BootstrapTriangle -- each rebuilds the "
+            "bootstrap on the masked triangle per fold."
+        )
+
+
 def _is_ratio_fit_estimator(estimator: Any) -> bool:
     """Ratio / ED jointly project loss / premium / lr; CL projects a single
     column. Distinguished by whether the estimator class is a ratio-fit.
@@ -164,6 +204,19 @@ class Backtest:
         An ``lr.CL``, ``lr.ED``, or ``lr.Ratio`` instance (or any
         estimator whose ``fit(triangle)`` returns a result class with
         a ``loss_proj`` column in ``.df``).
+
+        If the estimator carries a ``bootstrap`` config, only the
+        *rebuild-per-fit* forms are leakage-safe: ``bootstrap='auto'``,
+        a :class:`~lossratio.bootstrap.Bootstrap` config, or a callable
+        ``f(tri) -> BootstrapTriangle``. Each rebuilds the bootstrap on
+        the masked triangle every fold, so no held-out cell enters the
+        residual pool. A *pre-built*
+        :class:`~lossratio.bootstrap.BootstrapTriangle` is rejected with
+        a :class:`ValueError`: it was fitted on the unmasked triangle and
+        would leak the hold-out cells. The bootstrap only ever touches
+        the SE / CI columns, never the point projection, so a
+        bootstrap-configured estimator produces the *same* ``ae_err`` as
+        an analytical one -- the only effect is extra compute per fold.
     holdout
         Number of most recent calendar diagonals to mask.
 
@@ -189,6 +242,9 @@ class Backtest:
             raise TypeError(
                 f"estimator must implement .fit(triangle); got {type(estimator).__name__}"
             )
+        # Reject a pre-built BootstrapTriangle on the estimator -- it would
+        # leak held-out cells into every fold (see helper docstring).
+        _assert_leakage_safe_bootstrap(estimator)
         if metric not in _VALID_METRICS:
             raise ValueError(
                 f"metric must be one of {_VALID_METRICS}, got {metric!r}"
