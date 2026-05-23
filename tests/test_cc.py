@@ -241,7 +241,7 @@ def test_cc_credibility_shifts_green_cohorts_toward_pooled_elr():
     elr_cc = cred[green_i]["elr_cc"]
     pooled_ult = elr_cc * premium_ult
 
-    cl_ult = cl[green_i]["ultimate"]
+    cl_ult = cl[green_i]["loss_ult"]
     cred_ult = cred[green_i]["loss_ult"]
     assert abs(cred_ult - pooled_ult) < abs(cl_ult - pooled_ult)
 

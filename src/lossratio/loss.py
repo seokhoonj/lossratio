@@ -1215,6 +1215,10 @@ class LossFit:
     def summary(self) -> pl.DataFrame:
         """Per-cohort ultimate loss, SE, and CV.
 
+        R parity (``summary.LossFit``): columns are ``[groups?, cohort,
+        loss_ult, loss_total_se, loss_total_cv]`` -- the last
+        projected-dev row per cohort.
+
         For ``bf`` / ``cc`` this is the worker's cohort-level reserve
         table (``latest`` / ``loss_ult`` / ``reserve`` / ``elr`` / ``q``
         / analytical SE / CI), since the BF / CC projection summary is
@@ -1233,9 +1237,9 @@ class LossFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("ultimate"),
-                pl.col("loss_total_se").last().alias("ultimate_se"),
-                pl.col("loss_total_cv").last().alias("ultimate_cv"),
+                pl.col("loss_proj").last().alias("loss_ult"),
+                pl.col("loss_total_se").last().alias("loss_total_se"),
+                pl.col("loss_total_cv").last().alias("loss_total_cv"),
             )
             .sort(keys)
         )

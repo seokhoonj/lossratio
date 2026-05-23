@@ -480,7 +480,12 @@ class PremiumFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort ultimate premium, SE, and CV."""
+        """Per-cohort ultimate premium, SE, and CV.
+
+        R parity (``summary.PremiumFit``): columns are ``[groups?,
+        cohort, premium_ult, premium_total_se, premium_total_cv]`` --
+        the last projected-dev row per cohort.
+        """
         df = self._df
         keys: list[str] = []
         if self._groups is not None:
@@ -491,9 +496,9 @@ class PremiumFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("premium_proj").last().alias("ultimate"),
-                pl.col("premium_total_se").last().alias("ultimate_se"),
-                pl.col("premium_total_cv").last().alias("ultimate_cv"),
+                pl.col("premium_proj").last().alias("premium_ult"),
+                pl.col("premium_total_se").last().alias("premium_total_se"),
+                pl.col("premium_total_cv").last().alias("premium_total_cv"),
             )
             .sort(keys)
         )

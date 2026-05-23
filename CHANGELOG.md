@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Summary column-name parity with R. `CLFit.summary()`, `EDFit.summary()`,
+  `LossFit.summary()`, and `PremiumFit.summary()` now emit the R-style
+  role-prefixed columns (`loss_ult` / `loss_proc_se` / `loss_param_se` /
+  `loss_total_se` / `loss_total_cv`; `premium_ult` /
+  `premium_total_se` / `premium_total_cv`) plus a `latest` / `reserve`
+  pair on the loss-side fits. The Python-only `ultimate` / `ultimate_se`
+  / `ultimate_cv` names are gone. `<target>_ult` is dynamic when the
+  worker projects something other than loss (e.g. `ratio_ult` when
+  `CL().fit(tri, target="ratio")`). Code reading the old generic
+  `ultimate*` columns must be updated.
 - `Loss` / `Ratio` default `method` changed from `"sa"` to `"ed"`, and
   default `premium_method` from `"cl"` to `"ed"`, matching the R sibling
   and the documented method ordering (ed -> cl -> sa). Code relying on
@@ -39,6 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `CLFit` / `Ratio(method="cl")` per-cell Mack SE decomposition is no
+  longer all-null on projected cells. The `loss_proc_se` /
+  `loss_param_se` / `loss_proc_cv` / `loss_param_cv` columns (plus the
+  squared `*_se2` companions) are now populated by the additive
+  recursion form of Mack (1993), matching R `fit_cl()$full` to
+  floating-point precision. The `loss_total_se` numbers were already
+  correct (computed via the product form); the splits are now exposed
+  too. Observed cells report SE = 0 (recursion seeded at last observed
+  dev), again matching R.
+- `Backtest.ae_err` / `col_summary` / `diag_summary` now emit the
+  incremental sibling columns (`incr_actual` / `incr_expected` /
+  `incr_aeg` / `incr_ae_err`; `incr_aeg_mean` / `incr_aeg_med` /
+  `incr_ae_err_mean` / `incr_ae_err_med` / `incr_ae_err_wt`) alongside
+  the cumulative ones, matching R `backtest()`'s table layout.
 - `RatioFit.summary()`'s `latest` column was the dev index
   (`max(dev)`), not a value. It now reports the last observed
   cumulative loss (`loss_obs` at the deepest observed dev), matching

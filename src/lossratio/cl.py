@@ -34,9 +34,11 @@ class _MackResult:
 
     cohorts: list
     n_devs: int
-    loss_obs: np.ndarray   # (n_cohorts, n_devs) -- observed (NaN where unobserved)
-    loss_proj: np.ndarray  # (n_cohorts, n_devs) -- projected (filled in unobserved)
-    se_proj: np.ndarray     # (n_cohorts, n_devs) -- Mack SE on projected cells
+    loss_obs: np.ndarray    # (n_cohorts, n_devs) -- observed (NaN where unobserved)
+    loss_proj: np.ndarray   # (n_cohorts, n_devs) -- projected (filled in unobserved)
+    proc_se: np.ndarray     # (n_cohorts, n_devs) -- Mack process SE on projected cells
+    param_se: np.ndarray    # (n_cohorts, n_devs) -- Mack parameter SE on projected cells
+    total_se: np.ndarray    # (n_cohorts, n_devs) -- sqrt(proc^2 + param^2)
     f_k: np.ndarray         # (n_devs - 1,)
     sigma2_k: np.ndarray    # (n_devs - 1,)
     sum_col_k: np.ndarray   # (n_devs - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
@@ -163,12 +165,18 @@ def _fit_mack(
             if np.isnan(loss_proj[i, k]) and not np.isnan(loss_proj[i, k - 1]):
                 loss_proj[i, k] = loss_proj[i, k - 1] * f_k[k - 1]
 
-    # Mack SE on projected ultimate (per cohort, per projected dev).
-    # Mack 1993 product form:
-    #   SE^2(C_{i,K}) = C_{i,K}^2 * sum_{k=last_obs}^{K-1}
-    #                    sigma^2_k / f_k^2 * (1 / C_{i,k} + 1 / sum_j C_{j,k})
-    # Sequential along dev (var_acc accumulates), vectorized across cohorts.
-    se_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    # Mack SE on projected cells (per cohort, per dev), additive recursion
+    # form (Mack 1993). Decomposed into process and parameter variance to
+    # match R's `.mack_proc_var` / `.mack_param_var` columns:
+    #
+    #   proc_{i, k+1}  = f_k^2 * proc_{i, k}  + sigma^2_k * C_{i,k}^alpha
+    #   param_{i, k+1} = f_k^2 * param_{i, k} + C_{i,k}^2  * Var(f_k)
+    #
+    # with Var(f_k) = sigma^2_k / sum_col_k[k]. R parity: observed cells
+    # report 0 (recursion starts at the last observed dev), projected
+    # cells accumulate.
+    proc_var = np.zeros((n_cohorts, n_devs), dtype=np.float64)
+    param_var = np.zeros((n_cohorts, n_devs), dtype=np.float64)
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
@@ -176,37 +184,46 @@ def _fit_mack(
         n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
-    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
-    var_acc = np.zeros(n_cohorts, dtype=np.float64)
+    alpha = 1.0  # only alpha = 1 is supported in this worker
+    # f_var_k = sigma^2_k / sum_col_k -- Mack's Var(f_hat_k).
+    f_var_k = np.full_like(sigma2_k, np.nan)
+    fv_mask = (sum_col_k > 0) & np.isfinite(sigma2_k)
+    f_var_k[fv_mask] = sigma2_k[fv_mask] / sum_col_k[fv_mask]
 
-    for k in range(n_devs - 1):
-        active = eligible & (last_obs <= k)
-        if not active.any():
+    for i in range(n_cohorts):
+        lo = int(last_obs[i])
+        if lo < 0 or lo >= n_devs - 1:
             continue
-        if (
-            sum_col_k[k] == 0
-            or not np.isfinite(sigma2_k[k])
-            or f_k[k] == 0
-            or not np.isfinite(f_k[k])
-        ):
-            continue
-        ck = loss_proj[:, k]
-        pos = active & ~np.isnan(ck) & (ck > 0)
-        if not pos.any():
-            continue
-        var_acc[pos] = var_acc[pos] + (sigma2_k[k] / (f_k[k] ** 2)) * (
-            1.0 / ck[pos] + 1.0 / sum_col_k[k]
-        )
-        ck1 = loss_proj[:, k + 1]
-        sp = pos & ~np.isnan(ck1) & (ck1 > 0) & (var_acc >= 0)
-        se_proj[sp, k + 1] = np.sqrt((ck1[sp] ** 2) * var_acc[sp])
+        for k in range(lo + 1, n_devs):
+            f_prev = f_k[k - 1]
+            v_prev = loss_proj[i, k - 1]
+            if not np.isfinite(f_prev) or np.isnan(v_prev):
+                continue
+
+            proc_prev_acc = (f_prev ** 2) * proc_var[i, k - 1]
+            if np.isfinite(sigma2_k[k - 1]):
+                proc_var[i, k] = proc_prev_acc + sigma2_k[k - 1] * (v_prev ** alpha)
+            else:
+                proc_var[i, k] = proc_prev_acc
+
+            param_prev_acc = (f_prev ** 2) * param_var[i, k - 1]
+            if np.isfinite(f_var_k[k - 1]):
+                param_var[i, k] = param_prev_acc + (v_prev ** 2) * f_var_k[k - 1]
+            else:
+                param_var[i, k] = param_prev_acc
+
+    proc_se = np.sqrt(proc_var)
+    param_se = np.sqrt(param_var)
+    total_se = np.sqrt(proc_var + param_var)
 
     return _MackResult(
         cohorts=[],  # filled by caller (with cohort identifiers)
         n_devs=n_devs,
         loss_obs=loss_obs,
         loss_proj=loss_proj,
-        se_proj=se_proj,
+        proc_se=proc_se,
+        param_se=param_se,
+        total_se=total_se,
         f_k=f_k,
         sigma2_k=sigma2_k,
         sum_col_k=sum_col_k,
@@ -231,15 +248,9 @@ def _result_to_long_df(
     n_cohorts = len(cohorts)
     n_devs = result.n_devs
 
-    # Precompute incremental projection and SE decomposition arrays.
-    # For CL, the only variance component shipped by _fit_mack is
-    # `se_proj` (= sqrt of total variance after Mack's product form).
-    # Process / parameter splits are not exposed individually; we keep
-    # them aligned with the total so downstream consumers see a
-    # consistent target_* schema.
-    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    total_se = result.se_proj
+    proc_se = result.proc_se
+    param_se = result.param_se
+    total_se = result.total_se
     incr_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
     for i in range(n_cohorts):
         prev = 0.0
@@ -258,9 +269,6 @@ def _result_to_long_df(
             row["cohort"] = cohorts[i]
             row["dev"] = k + 1
 
-            ts = total_se[i, k]
-            ts_val = float(ts) if not np.isnan(ts) else None
-
             obs = result.loss_obs[i, k]
             proj = result.loss_proj[i, k]
             incr = incr_proj[i, k]
@@ -271,29 +279,45 @@ def _result_to_long_df(
                 float(incr) if not np.isnan(incr) else None
             )
 
-            # CL: only total Mack SE is exposed; proc/param splits not
-            # available from _fit_mack's product-form recursion. Report
-            # NaN for the breakdown columns and the total in the totals
-            # column, plus CV from total.
-            row["loss_proc_se2"] = None
-            row["loss_param_se2"] = None
+            # Mack SE decomposition (additive recursion). Observed cells
+            # carry 0 (no projection variance); projected cells accumulate.
+            ps = proc_se[i, k]
+            qs = param_se[i, k]
+            ts = total_se[i, k]
+            ps_val = float(ps) if not np.isnan(ps) else None
+            qs_val = float(qs) if not np.isnan(qs) else None
+            ts_val = float(ts) if not np.isnan(ts) else None
+
+            row["loss_proc_se2"] = (
+                ps_val * ps_val if ps_val is not None else None
+            )
+            row["loss_param_se2"] = (
+                qs_val * qs_val if qs_val is not None else None
+            )
             row["loss_total_se2"] = (
                 ts_val * ts_val if ts_val is not None else None
             )
-            row["loss_proc_se"] = None
-            row["loss_param_se"] = None
+            row["loss_proc_se"] = ps_val
+            row["loss_param_se"] = qs_val
             row["loss_total_se"] = ts_val
 
-            cv = None
+            cv_proc = None
+            cv_param = None
+            cv_total = None
             if (
                 row["loss_proj"] is not None
                 and row["loss_proj"] != 0
-                and ts_val is not None
             ):
-                cv = ts_val / row["loss_proj"]
-            row["loss_proc_cv"] = None
-            row["loss_param_cv"] = None
-            row["loss_total_cv"] = cv
+                lp = row["loss_proj"]
+                if ps_val is not None:
+                    cv_proc = ps_val / lp
+                if qs_val is not None:
+                    cv_param = qs_val / lp
+                if ts_val is not None:
+                    cv_total = ts_val / lp
+            row["loss_proc_cv"] = cv_proc
+            row["loss_param_cv"] = cv_param
+            row["loss_total_cv"] = cv_total
 
             out_rows.append(row)
 
@@ -422,7 +446,10 @@ class CLFit:
     ----------
     df : DataFrame (polars or pandas, mirroring the source Triangle)
         Long-format triangle with columns
-        ``[groups (optional), cohort, dev, loss, loss_proj, se_proj]``.
+        ``[groups (optional), cohort, dev, loss_obs, loss_proj,
+        incr_loss_proj, loss_proc_se, loss_param_se, loss_total_se,
+        loss_proc_cv, loss_param_cv, loss_total_cv]`` (plus the squared
+        ``*_se2`` companions).
     f_k : DataFrame
         Per-link ATA factors and variance parameters
         (``dev``, ``f``, ``sigma2``); split by groups if present.
@@ -563,6 +590,14 @@ class CLFit:
     def summary(self) -> pl.DataFrame:
         """Per-cohort summary: ultimate target value, SE, and CV.
 
+        R parity (``summary.CLFit``): columns are ``[groups?, cohort,
+        latest, <target>_ult, reserve, loss_proc_se, loss_param_se,
+        loss_total_se, loss_total_cv]``. ``<target>_ult`` is the
+        cumulative ultimate of the column projected (``loss_ult`` /
+        ``premium_ult`` / ``ratio_ult``); ``reserve`` is the
+        last-projected minus last-observed and is ``NaN`` when
+        ``target == "ratio"``.
+
         Returned as a polars DataFrame regardless of input type — the
         summary is a small diagnostic table and is best inspected
         directly.
@@ -573,30 +608,65 @@ class CLFit:
             keys.append(self._groups)
         keys.append("cohort")
 
-        # Latest observed dev per cohort (NaN-aware)
-        observed = df.filter(pl.col("loss_obs").is_not_null())
-        latest = observed.group_by(keys).agg(
-            pl.col("dev").max().alias("latest"),
-            pl.col("loss_obs").last().alias("latest_observed_loss"),
+        target = getattr(self, "target", "loss")
+        is_ratio = (target == "ratio")
+        ult_col = f"{target}_ult"
+
+        # Latest observed cumulative loss per cohort (R: `latest` =
+        # last observed `loss_proj` row).
+        observed = (
+            df.filter(pl.col("loss_obs").is_not_null())
+            .sort(keys + ["dev"])
+            .group_by(keys)
+            .agg(pl.col("loss_obs").last().alias("latest"))
         )
 
-        # Ultimate (max dev) per cohort
+        # Ultimate (max dev) per cohort, plus the matching SE columns.
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("ultimate"),
-                pl.col("loss_total_se").last().alias("ultimate_se"),
+                pl.col("loss_proj").last().alias(ult_col),
+                pl.col("loss_proc_se").last().alias("loss_proc_se"),
+                pl.col("loss_param_se").last().alias("loss_param_se"),
+                pl.col("loss_total_se").last().alias("loss_total_se"),
             )
         )
 
-        out = (
-            latest.join(ultimate, on=keys, how="inner")
-            .with_columns(
-                (pl.col("ultimate_se") / pl.col("ultimate")).alias("ultimate_cv"),
+        out = observed.join(ultimate, on=keys, how="inner")
+
+        # `reserve` = ultimate projected loss - last observed cumulative
+        # loss; NaN for the ratio target (loss-ratio has no reserve
+        # interpretation).
+        if is_ratio:
+            out = out.with_columns(pl.lit(None, dtype=pl.Float64).alias("reserve"))
+        else:
+            out = out.with_columns(
+                (pl.col(ult_col) - pl.col("latest")).alias("reserve")
             )
-            .sort(keys)
+
+        # `loss_total_cv` derived from the last projected SE / ultimate.
+        out = out.with_columns(
+            pl.when(
+                pl.col(ult_col).is_not_null() & (pl.col(ult_col) != 0.0)
+            )
+            .then(pl.col("loss_total_se") / pl.col(ult_col))
+            .otherwise(None)
+            .alias("loss_total_cv"),
         )
+
+        out = out.select(
+            keys
+            + [
+                "latest",
+                ult_col,
+                "reserve",
+                "loss_proc_se",
+                "loss_param_se",
+                "loss_total_se",
+                "loss_total_cv",
+            ]
+        ).sort(keys)
         return mirror_output(out, self._output_type)
 
     @property

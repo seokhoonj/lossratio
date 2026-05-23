@@ -248,15 +248,20 @@ def test_ed_se_grows_with_distance_from_observed():
 
 
 def test_ed_summary_columns_and_size():
+    """R parity: `summary.EDFit` returns role-prefixed columns
+    (`loss_ult`, `loss_total_se`, `loss_total_cv`) and a `latest` /
+    `reserve` pair, not generic `ultimate*` columns."""
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
         "latest",
-        "latest_observed_loss",
-        "ultimate",
-        "ultimate_se",
-        "ultimate_cv",
+        "loss_ult",
+        "reserve",
+        "loss_proc_se",
+        "loss_param_se",
+        "loss_total_se",
+        "loss_total_cv",
     }
     assert summary.height == 5
 
@@ -265,8 +270,8 @@ def test_ed_summary_fully_observed_cohort():
     fit = lr.ED().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    assert summary["ultimate"].to_list()[0] == pytest.approx(500.0)
-    se = summary["ultimate_se"].to_list()[0]
+    assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
+    se = summary["loss_total_se"].to_list()[0]
     assert se is None or se == pytest.approx(0.0)
 
 
@@ -321,8 +326,8 @@ def test_ed_and_cl_differ_on_same_triangle():
     cl_fit = lr.CL().fit(tri)
     ed_fit = lr.ED().fit(tri)
 
-    cl_ult = cl_fit.summary().sort("cohort")["ultimate"].to_list()
-    ed_ult = ed_fit.summary().sort("cohort")["ultimate"].to_list()
+    cl_ult = cl_fit.summary().sort("cohort")["loss_ult"].to_list()
+    ed_ult = ed_fit.summary().sort("cohort")["loss_ult"].to_list()
     # Numerically distinct (the two models would only coincide in
     # degenerate cases — here they diverge because cohorts have
     # different observed loss histories at the same exposure).

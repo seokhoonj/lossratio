@@ -245,7 +245,7 @@ def test_bf_credibility_shifts_green_cohorts_toward_prior():
     premium_ult = sub["premium_proj"].drop_nulls().to_list()[-1]
     prior_ult = prior * premium_ult
 
-    cl_ult = cl[green_i]["ultimate"]
+    cl_ult = cl[green_i]["loss_ult"]
     cred_ult = cred[green_i]["loss_ult"]
     # The credibility blend pulls the green cohort toward the prior.
     assert abs(cred_ult - prior_ult) < abs(cl_ult - prior_ult)

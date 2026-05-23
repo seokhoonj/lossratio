@@ -58,8 +58,8 @@ def _build_masked_df(
     Returns ``(masked_df, mask_df)``:
 
     * ``masked_df`` has ``loss``, ``incr_loss``, ``premium``,
-      ``incr_premium``, ``lr``, ``incr_ratio`` set to ``None`` for cells
-      whose calendar diagonal is among the top ``holdout``.
+      ``incr_premium``, ``ratio``, ``incr_ratio`` set to ``None`` for
+      cells whose calendar diagonal is among the top ``holdout``.
     * ``mask_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
     """
@@ -179,6 +179,35 @@ def _resolve_expected_column(
         f"Refitted estimator output has no column for metric={metric!r}. "
         f"Available: {fit_df_columns}"
     )
+
+
+def _resolve_incr_expected_column(
+    metric: str, fit_df_columns: list[str], refit: Any
+) -> str | None:
+    """Map ``metric`` to the incremental projection column on the refit
+    output frame, mirroring :func:`_resolve_expected_column` for the
+    cumulative form.
+
+    Returns ``None`` when the refit emits no incremental projection for
+    the chosen metric (some estimator paths only expose cumulative).
+    """
+    legacy = {
+        "ratio":   "incr_ratio_proj",
+        "loss":    "incr_loss_proj",
+        "premium": "incr_premium_proj",
+    }
+    if legacy[metric] in fit_df_columns:
+        return legacy[metric]
+
+    if metric == "ratio" and "incr_ratio_proj" in fit_df_columns:
+        return "incr_ratio_proj"
+    target = getattr(refit, "target", None)
+    if metric == target and "incr_loss_proj" in fit_df_columns:
+        return "incr_loss_proj"
+    exposure = getattr(refit, "exposure", None)
+    if metric == exposure and "incr_premium_proj" in fit_df_columns:
+        return "incr_premium_proj"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +350,9 @@ class BacktestFit:
 
         refit_df = refit.to_polars()
         exp_col = _resolve_expected_column(bt.metric, refit_df.columns, refit)
+        incr_exp_col = _resolve_incr_expected_column(
+            bt.metric, refit_df.columns, refit
+        )
         self.metric = bt.metric
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
@@ -330,13 +362,27 @@ class BacktestFit:
         keys.extend(["cohort", "dev"])
 
         # `actual` is the cumulative column on the original Triangle that
-        # corresponds to the chosen scoring lane.
-        actual_col = bt.metric  # "ratio" / "loss" / "premium"
-        held_out = annotated_df.filter(pl.col("masked")).select(
-            keys + ["cal_idx", actual_col]
-        ).rename({actual_col: "actual"})
+        # corresponds to the chosen scoring lane; `incr_actual` is its
+        # incremental sibling (always present on a Triangle).
+        actual_col = bt.metric                  # "ratio" / "loss" / "premium"
+        incr_actual_col = f"incr_{bt.metric}"   # always present per Triangle schema
 
-        refit_exp = refit_df.select(keys + [exp_col]).rename({exp_col: "expected"})
+        sel_actual = keys + ["cal_idx", actual_col]
+        if incr_actual_col in annotated_df.columns:
+            sel_actual.append(incr_actual_col)
+        held_out = annotated_df.filter(pl.col("masked")).select(sel_actual)
+        renames: dict[str, str] = {actual_col: "actual"}
+        if incr_actual_col in held_out.columns:
+            renames[incr_actual_col] = "incr_actual"
+        held_out = held_out.rename(renames)
+
+        # Pull cumulative + (optional) incremental projection columns.
+        sel_exp = keys + [exp_col]
+        if incr_exp_col is not None:
+            sel_exp.append(incr_exp_col)
+        refit_exp = refit_df.select(sel_exp).rename({exp_col: "expected"})
+        if incr_exp_col is not None:
+            refit_exp = refit_exp.rename({incr_exp_col: "incr_expected"})
 
         # Drop unreachable cells: cohorts whose observations are wholly
         # within the held-out diagonals have no anchor for projection,
@@ -357,53 +403,94 @@ class BacktestFit:
                 .alias("ae_err"),
             )
         )
+
+        # Incremental view — emitted only when both `incr_actual` and
+        # `incr_expected` survived the join. R parity: NA on edge cells
+        # is acceptable on the incremental view (`incr_aeg` /
+        # `incr_ae_err` may be NA when the projection has no upstream
+        # cumulative anchor at dev = 1).
+        has_incr = ("incr_actual" in ae_err.columns) and (
+            "incr_expected" in ae_err.columns
+        )
+        if has_incr:
+            ae_err = ae_err.with_columns(
+                (pl.col("incr_actual") - pl.col("incr_expected")).alias("incr_aeg"),
+                pl.when(
+                    pl.col("incr_expected").is_finite()
+                    & (pl.col("incr_expected") != 0)
+                )
+                .then(pl.col("incr_actual") / pl.col("incr_expected") - 1)
+                .otherwise(None)
+                .alias("incr_ae_err"),
+            )
+
+        # Final column order mirrors R's `setcolorder()` in `backtest()`.
+        col_order = keys + ["actual", "expected", "aeg", "ae_err"]
+        if has_incr:
+            col_order += [
+                "incr_actual", "incr_expected", "incr_aeg", "incr_ae_err",
+            ]
+        col_order.append("cal_idx")
+        ae_err = ae_err.select(col_order)
         self._ae_err = ae_err.sort(keys + ["cal_idx"])
 
-        # 5. Summaries — mean / median / weighted A/E - 1 per dev or
-        #    per calendar diagonal.
+        # 5. Summaries -- mean / median / weighted A/E - 1 per dev or per
+        #    calendar diagonal, with `incr_*` companions when the
+        #    incremental projection is available.
         col_keys: list[str] = []
         if triangle._groups is not None:
             col_keys.append(triangle._groups)
         col_keys.append("dev")
 
-        self._col_summary = (
-            ae_err.group_by(col_keys)
-            .agg(
-                pl.len().alias("n"),
-                pl.col("aeg").mean().alias("aeg_mean"),
-                pl.col("aeg").median().alias("aeg_med"),
-                pl.col("ae_err").mean().alias("ae_err_mean"),
-                pl.col("ae_err").median().alias("ae_err_med"),
-                (
-                    (pl.col("actual") - pl.col("expected")).sum()
-                    / pl.col("expected").sum()
-                ).alias("ae_err_wt"),
-            )
-            .sort(col_keys)
-        )
+        self._col_summary = self._aggregate_ae_err(
+            ae_err, col_keys, has_incr
+        ).sort(col_keys)
 
         diag_keys: list[str] = []
         if triangle._groups is not None:
             diag_keys.append(triangle._groups)
         diag_keys.append("cal_idx")
 
-        self._diag_summary = (
-            ae_err.group_by(diag_keys)
-            .agg(
-                pl.len().alias("n"),
-                pl.col("aeg").mean().alias("aeg_mean"),
-                pl.col("aeg").median().alias("aeg_med"),
-                pl.col("ae_err").mean().alias("ae_err_mean"),
-                pl.col("ae_err").median().alias("ae_err_med"),
-                (
-                    (pl.col("actual") - pl.col("expected")).sum()
-                    / pl.col("expected").sum()
-                ).alias("ae_err_wt"),
-            )
-            .sort(diag_keys)
-        )
+        self._diag_summary = self._aggregate_ae_err(
+            ae_err, diag_keys, has_incr
+        ).sort(diag_keys)
 
         return self
+
+    @staticmethod
+    def _aggregate_ae_err(
+        ae_err: pl.DataFrame, by_cols: list[str], has_incr: bool
+    ) -> pl.DataFrame:
+        """Aggregate cell-level A/E Error to a per-key summary.
+
+        Mirrors R's :func:`.backtest_aggregate`. Always emits the
+        cumulative ``(n, aeg_*, ae_err_*)`` block; emits the
+        ``incr_*`` block iff the refit exposed an incremental
+        projection column.
+        """
+        aggs: list[pl.Expr] = [
+            pl.len().alias("n"),
+            pl.col("aeg").mean().alias("aeg_mean"),
+            pl.col("aeg").median().alias("aeg_med"),
+            pl.col("ae_err").mean().alias("ae_err_mean"),
+            pl.col("ae_err").median().alias("ae_err_med"),
+            (
+                (pl.col("actual") - pl.col("expected")).sum()
+                / pl.col("expected").sum()
+            ).alias("ae_err_wt"),
+        ]
+        if has_incr:
+            aggs += [
+                pl.col("incr_aeg").mean().alias("incr_aeg_mean"),
+                pl.col("incr_aeg").median().alias("incr_aeg_med"),
+                pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
+                pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
+                (
+                    (pl.col("incr_actual") - pl.col("incr_expected")).sum()
+                    / pl.col("incr_expected").sum()
+                ).alias("incr_ae_err_wt"),
+            ]
+        return ae_err.group_by(by_cols).agg(aggs)
 
     @property
     def ae_err(self):

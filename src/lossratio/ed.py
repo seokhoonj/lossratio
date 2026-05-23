@@ -595,35 +595,70 @@ class EDFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort summary: ultimate target value, SE, and CV."""
+        """Per-cohort summary: ultimate target value, SE, and CV.
+
+        R parity (``summary.EDFit`` per the LossFit dispatcher view):
+        columns are ``[groups?, cohort, latest, <target>_ult, reserve,
+        loss_proc_se, loss_param_se, loss_total_se, loss_total_cv]``.
+        """
         df = self._df
         keys: list[str] = []
         if self._groups is not None:
             keys.append(self._groups)
         keys.append("cohort")
 
-        observed = df.filter(pl.col("loss_obs").is_not_null())
-        latest = observed.group_by(keys).agg(
-            pl.col("dev").max().alias("latest"),
-            pl.col("loss_obs").last().alias("latest_observed_loss"),
+        target = getattr(self, "target", "loss")
+        is_ratio = (target == "ratio")
+        ult_col = f"{target}_ult"
+
+        observed = (
+            df.filter(pl.col("loss_obs").is_not_null())
+            .sort(keys + ["dev"])
+            .group_by(keys)
+            .agg(pl.col("loss_obs").last().alias("latest"))
         )
 
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("ultimate"),
-                pl.col("loss_total_se").last().alias("ultimate_se"),
+                pl.col("loss_proj").last().alias(ult_col),
+                pl.col("loss_proc_se").last().alias("loss_proc_se"),
+                pl.col("loss_param_se").last().alias("loss_param_se"),
+                pl.col("loss_total_se").last().alias("loss_total_se"),
             )
         )
 
-        out = (
-            latest.join(ultimate, on=keys, how="inner")
-            .with_columns(
-                (pl.col("ultimate_se") / pl.col("ultimate")).alias("ultimate_cv"),
+        out = observed.join(ultimate, on=keys, how="inner")
+
+        if is_ratio:
+            out = out.with_columns(pl.lit(None, dtype=pl.Float64).alias("reserve"))
+        else:
+            out = out.with_columns(
+                (pl.col(ult_col) - pl.col("latest")).alias("reserve")
             )
-            .sort(keys)
+
+        out = out.with_columns(
+            pl.when(
+                pl.col(ult_col).is_not_null() & (pl.col(ult_col) != 0.0)
+            )
+            .then(pl.col("loss_total_se") / pl.col(ult_col))
+            .otherwise(None)
+            .alias("loss_total_cv"),
         )
+
+        out = out.select(
+            keys
+            + [
+                "latest",
+                ult_col,
+                "reserve",
+                "loss_proc_se",
+                "loss_param_se",
+                "loss_total_se",
+                "loss_total_cv",
+            ]
+        ).sort(keys)
         return mirror_output(out, self._output_type)
 
     @property

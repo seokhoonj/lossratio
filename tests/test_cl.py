@@ -217,12 +217,22 @@ def test_cl_projection_propagates_via_f_k():
 # ---------------------------------------------------------------------------
 
 
-def test_cl_se_observed_cells_null():
+def test_cl_se_observed_cells_zero():
+    """Observed cells carry SE = 0 (Mack additive recursion seeds the
+    process / parameter accumulators at 0 at the last observed dev).
+
+    R parity: ``fit_cl()$full`` reports ``loss_proc_se = loss_param_se =
+    loss_total_se = 0`` on observed cells, not ``NA``. The Python
+    decomposition mirrors that.
+    """
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     df = fit.to_polars()
     observed = df.filter(pl.col("loss_obs").is_not_null())
-    # Observed cells have no projection SE
-    assert observed["loss_total_se"].null_count() == observed.height
+    for col in ("loss_proc_se", "loss_param_se", "loss_total_se"):
+        vals = observed[col].to_list()
+        assert all(v == 0.0 for v in vals), (
+            f"column {col!r} should be 0 on observed cells, got {vals}"
+        )
 
 
 def test_cl_se_proj_positive_for_projected_cells():
@@ -257,29 +267,35 @@ def test_cl_se_grows_with_distance_from_observed():
 
 
 def test_cl_summary_columns_and_size():
+    """R parity: `summary.CLFit` returns role-prefixed columns
+    (`loss_ult`, `loss_total_se`, `loss_total_cv`) and a `latest` /
+    `reserve` pair, not generic `ultimate*` columns."""
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
         "latest",
-        "latest_observed_loss",
-        "ultimate",
-        "ultimate_se",
-        "ultimate_cv",
+        "loss_ult",
+        "reserve",
+        "loss_proc_se",
+        "loss_param_se",
+        "loss_total_se",
+        "loss_total_cv",
     }
     assert summary.height == 5
 
 
 def test_cl_summary_ultimate_for_fully_observed_cohort():
-    """Cohort 2024-01 has all 5 devs observed; ultimate must equal the
-    observed loss at dev 5 = 500.0 with se = 0 (no projection)."""
+    """Cohort 2024-01 has all 5 devs observed; loss_ult must equal the
+    observed loss at dev 5 = 500.0 with SE = 0 (no projection)."""
     fit = lr.CL().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    assert summary["ultimate"].to_list()[0] == pytest.approx(500.0)
-    se = summary["ultimate_se"].to_list()[0]
-    # Fully observed cohort: SE on ultimate is null (no projection)
-    assert se is None or se == pytest.approx(0.0)
+    assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
+    se = summary["loss_total_se"].to_list()[0]
+    # Fully observed cohort: SE on ultimate is 0 (Mack recursion seeded
+    # at last observed dev; R parity).
+    assert se == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

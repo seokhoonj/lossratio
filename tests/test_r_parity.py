@@ -168,7 +168,13 @@ def test_cl_full_matches_r():
 
 
 def test_cl_mack_se_matches_r():
-    """Mack-style SE on the chain ladder projection."""
+    """Mack-style SE decomposition on the chain ladder projection.
+
+    R parity: cell-level ``loss_proc_se`` / ``loss_param_se`` /
+    ``loss_total_se`` (plus their CV companions) must agree with
+    ``fit_cl()$full``. The additive recursion form (Mack 1993) gives
+    finite per-cell values on projected cells and 0 on observed cells.
+    """
     r = _load("cl_mack_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
@@ -176,7 +182,14 @@ def test_cl_mack_se_matches_r():
         .to_polars()
         .sort(["cohort", "dev"])
     )
-    _compare_numeric(py, r, cols=["loss_proj", "loss_total_se"])
+    _compare_numeric(
+        py, r,
+        cols=[
+            "loss_proj", "incr_loss_proj",
+            "loss_proc_se", "loss_param_se", "loss_total_se",
+            "loss_proc_cv", "loss_param_cv", "loss_total_cv",
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +407,8 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     R's `backtest()` is dumped once per `loss_method` ("ed", the
     default, and "sa"); the Python `Backtest` uses the matching
     `Ratio` method. Both languages emit `actual`, `expected`, `aeg`,
-    `ae_err`. The intersect-on-(cohort, dev) guards against drift.
+    `ae_err` plus their `incr_*` siblings. The intersect-on-(cohort,
+    dev) guards against drift.
     """
     r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
@@ -407,12 +421,22 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     py_common = py_aligned.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_common = r.join(py_aligned.select(keys), on=keys, how="inner").sort(keys)
 
-    _compare_numeric(py_common, r_common, cols=["actual", "expected", "ae_err"])
+    _compare_numeric(
+        py_common, r_common,
+        cols=[
+            "actual", "expected", "aeg", "ae_err",
+            "incr_actual", "incr_expected", "incr_aeg", "incr_ae_err",
+        ],
+    )
 
 
 @pytest.mark.parametrize("method", ["ed", "sa"])
 def test_backtest_col_summary_matches_r(method: str):
-    """col_summary aggregates by dev, per loss method."""
+    """col_summary aggregates by dev, per loss method.
+
+    Both the cumulative (`ae_err_*`) and incremental (`incr_ae_err_*`)
+    statistic blocks must match R's `.backtest_aggregate()` output.
+    """
     r = _load(f"backtest_ratio_{method}_col_summary").sort(["dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
@@ -426,7 +450,12 @@ def test_backtest_col_summary_matches_r(method: str):
 
     _compare_numeric(
         py_common, r_common,
-        cols=["ae_err_mean", "ae_err_med", "ae_err_wt"],
+        cols=[
+            "aeg_mean", "aeg_med",
+            "ae_err_mean", "ae_err_med", "ae_err_wt",
+            "incr_aeg_mean", "incr_aeg_med",
+            "incr_ae_err_mean", "incr_ae_err_med", "incr_ae_err_wt",
+        ],
     )
 
 
@@ -446,7 +475,12 @@ def test_backtest_diag_summary_matches_r(method: str):
 
     _compare_numeric(
         py_common, r_common,
-        cols=["ae_err_mean", "ae_err_med", "ae_err_wt"],
+        cols=[
+            "aeg_mean", "aeg_med",
+            "ae_err_mean", "ae_err_med", "ae_err_wt",
+            "incr_aeg_mean", "incr_aeg_med",
+            "incr_ae_err_mean", "incr_ae_err_med", "incr_ae_err_wt",
+        ],
     )
 
 
