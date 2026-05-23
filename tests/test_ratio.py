@@ -45,9 +45,10 @@ def _date(s: str) -> pl.Expr:
 # ---------------------------------------------------------------------------
 
 
-def test_ratio_default_method_is_sa():
+def test_ratio_default_method_is_ed():
+    """R parity: fit_ratio() defaults to method='ed'."""
     fit = lr.Ratio().fit(lr.Triangle(_toy_triangle_input()))
-    assert fit.method == "sa"
+    assert fit.method == "ed"
 
 
 def test_ratio_invalid_method_raises():
@@ -274,3 +275,184 @@ def test_ratio_repr():
     text = repr(fit)
     assert "RatioFit" in text
     assert "ed" in text
+
+
+# ---------------------------------------------------------------------------
+# Default-value parity with R (method='ed', premium_method='ed')
+# ---------------------------------------------------------------------------
+
+
+def test_ratio_default_premium_method_is_ed():
+    """R parity: fit_ratio() defaults premium_method='ed'."""
+    assert lr.Ratio().premium_method == "ed"
+
+
+def test_loss_default_method_is_ed():
+    """R parity: fit_loss() defaults to method='ed'."""
+    assert lr.Loss().method == "ed"
+    fit = lr.Loss().fit(lr.Triangle(_toy_triangle_input()))
+    assert fit.method == "ed"
+
+
+def test_loss_default_premium_method_is_ed():
+    """R parity: fit_loss() defaults premium_method='ed'."""
+    assert lr.Loss().premium_method == "ed"
+
+
+def test_ratio_explicit_method_still_works():
+    """The default change must not affect explicit method= callers."""
+    for m in ("sa", "ed", "cl"):
+        fit = lr.Ratio(method=m).fit(lr.Triangle(_toy_triangle_input()))
+        assert fit.method == m
+
+
+# ---------------------------------------------------------------------------
+# method = "bf" / "cc" on Ratio (threads prior / credibility)
+# ---------------------------------------------------------------------------
+
+
+def test_ratio_bf_loss_proj_matches_standalone_bf():
+    """Ratio(method='bf', prior=1.5).loss_proj equals BF(prior=1.5)."""
+    tri = lr.Triangle(_toy_triangle_input())
+
+    ratio_fit = lr.Ratio(method="bf", prior=1.5).fit(tri)
+    bf_fit = lr.BF(prior=1.5).fit(tri)
+
+    r_loss = (
+        ratio_fit.to_polars()
+        .sort(["cohort", "dev"])["loss_proj"]
+        .to_list()
+    )
+    bf_loss = (
+        bf_fit.to_polars()
+        .sort(["cohort", "dev"])["loss_proj"]
+        .to_list()
+    )
+    assert r_loss == pytest.approx(bf_loss, nan_ok=True)
+
+
+def test_ratio_cc_loss_proj_matches_standalone_cc():
+    """Ratio(method='cc').loss_proj equals standalone CC()."""
+    tri = lr.Triangle(_toy_triangle_input())
+
+    ratio_fit = lr.Ratio(method="cc").fit(tri)
+    cc_fit = lr.CC().fit(tri)
+
+    r_loss = (
+        ratio_fit.to_polars()
+        .sort(["cohort", "dev"])["loss_proj"]
+        .to_list()
+    )
+    cc_loss = (
+        cc_fit.to_polars()
+        .sort(["cohort", "dev"])["loss_proj"]
+        .to_list()
+    )
+    assert r_loss == pytest.approx(cc_loss, nan_ok=True)
+
+
+def test_ratio_bf_requires_prior():
+    """method='bf' without a prior raises (mirrors BF / fit_loss)."""
+    with pytest.raises(ValueError, match="prior"):
+        lr.Ratio(method="bf")
+
+
+def test_ratio_bf_produces_ratio_proj():
+    """Ratio(method='bf') composes ratio_proj = loss_proj / premium_proj."""
+    tri = lr.Triangle(_toy_triangle_input())
+    fit = lr.Ratio(method="bf", prior=1.5).fit(tri)
+    df = fit.to_polars()
+    assert "ratio_proj" in df.columns
+    # at least one projected (unobserved) cell carries a finite ratio
+    proj = df.filter(pl.col("loss_obs").is_null())
+    assert proj["ratio_proj"].drop_nulls().len() > 0
+
+
+def test_ratio_cc_credibility_threads_to_worker():
+    """credibility forwarded into the inner CC fit without error."""
+    tri = lr.Triangle(_toy_triangle_input())
+    fit = lr.Ratio(
+        method="cc", credibility={"method": "bs", "K": None}
+    ).fit(tri)
+    assert fit.method == "cc"
+    assert "ratio_proj" in fit.to_polars().columns
+
+
+# ---------------------------------------------------------------------------
+# maturity 4-type dispatch on Loss / Ratio
+# ---------------------------------------------------------------------------
+
+
+def test_maturity_none_disables_sa_switch():
+    """maturity=None -> SA falls back to ED throughout (mat_k is None)."""
+    tri = lr.Triangle(_toy_triangle_input())
+    fit = lr.Loss(method="sa", maturity=None).fit(tri)
+    assert fit.mat_k is None
+
+
+def test_maturity_auto_is_sa_default():
+    """maturity defaults to 'auto'; loose thresholds detect a switch."""
+    tri = lr.Triangle(_toy_triangle_input())
+    assert lr.Loss(method="sa").maturity == "auto"
+    fit = lr.Loss(
+        method="sa", max_cv=10.0, max_rse=10.0, min_run=2
+    ).fit(tri)
+    assert fit.mat_k is not None
+
+
+def test_maturity_object_overrides_auto_detect():
+    """A passed Maturity object overrides auto-detection."""
+    tri = lr.Triangle(_toy_triangle_input())
+
+    # auto-detect with strict thresholds finds nothing.
+    auto_fit = lr.Loss(
+        method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2
+    ).fit(tri)
+    assert auto_fit.mat_k is None
+
+    # an explicit Maturity object wins regardless of thresholds.
+    mat = lr.maturity_at(change=3)
+    over_fit = lr.Loss(
+        method="sa", maturity=mat, max_cv=1e-9, max_rse=1e-9
+    ).fit(tri)
+    assert over_fit.mat_k == 3
+
+
+def test_maturity_callable_spec_dispatch():
+    """A maturity_spec callable is invoked on the fit triangle."""
+    tri = lr.Triangle(_toy_triangle_input())
+    spec = lr.maturity_spec(max_cv=10.0, max_rse=10.0, min_run=2)
+    fit = lr.Loss(method="sa", maturity=spec).fit(tri)
+    assert fit.mat_k is not None
+
+
+def test_maturity_callable_must_return_maturity():
+    """A callable returning a non-Maturity raises a clear error."""
+    tri = lr.Triangle(_toy_triangle_input())
+    bad = lambda triangle: 3  # noqa: E731 -- returns an int, not Maturity
+    with pytest.raises(TypeError, match="Maturity"):
+        lr.Loss(method="sa", maturity=bad).fit(tri)
+
+
+def test_maturity_invalid_string_raises():
+    """A maturity string other than 'auto' raises."""
+    tri = lr.Triangle(_toy_triangle_input())
+    with pytest.raises(ValueError, match="auto"):
+        lr.Loss(method="sa", maturity="bogus").fit(tri)
+
+
+def test_ratio_maturity_object_overrides_auto_detect():
+    """Ratio threads a Maturity object into the inner Loss fit."""
+    tri = lr.Triangle(_toy_triangle_input())
+    mat = lr.maturity_at(change=3)
+    fit = lr.Ratio(
+        method="sa", maturity=mat, max_cv=1e-9, max_rse=1e-9
+    ).fit(tri)
+    assert fit.mat_k == 3
+
+
+def test_ratio_maturity_none_disables_sa_switch():
+    """Ratio(method='sa', maturity=None) -> no maturity switch."""
+    tri = lr.Triangle(_toy_triangle_input())
+    fit = lr.Ratio(method="sa", maturity=None).fit(tri)
+    assert fit.mat_k is None

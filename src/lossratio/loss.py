@@ -27,7 +27,7 @@ from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
 from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
-from .maturity import _compute_maturity
+from .maturity import Maturity, _compute_maturity, _resolve_maturity
 from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
@@ -195,6 +195,57 @@ def _safe_div(a, b):
     return a / b
 
 
+def _resolve_maturity_override(
+    maturity: Any,
+    triangle: "Triangle",
+) -> "str | Maturity | None":
+    """Resolve the estimator's ``maturity`` input for the SA switch.
+
+    Returns one of three shapes consumed downstream:
+
+    * ``"auto"`` -- the sentinel kept verbatim so ``_fit_loss_single``
+      runs the inline :func:`_compute_maturity` detection, which
+      honours the estimator's ``max_cv`` / ``max_rse`` / ``min_run``
+      thresholds.
+    * ``None`` -- no maturity switch (SA falls back to ED throughout).
+    * a :class:`~lossratio.Maturity` object -- an explicit override
+      (from a passed Maturity, or a ``maturity_spec`` callable). Its
+      per-group ``mat_k`` is read by :func:`_mat_k_for_group`.
+
+    The ``"auto"`` sentinel is *not* routed through
+    :func:`~lossratio.maturity._resolve_maturity` because that path
+    would build the Maturity with default thresholds; keeping the
+    inline detection preserves the estimator's tuning knobs.
+    """
+    if maturity == "auto":
+        return "auto"
+    return _resolve_maturity(maturity, triangle)
+
+
+def _mat_k_for_group(
+    mat_override: "str | Maturity | None",
+    group_value: Any | None,
+) -> int | str | None:
+    """Per-group ``mat_k`` for ``_fit_loss_single`` from a resolved override.
+
+    ``"auto"`` and ``None`` pass straight through. A :class:`Maturity`
+    object yields its ``mat_k`` for ``group_value`` -- a scalar for an
+    ungrouped Maturity, the matching dict entry for a grouped one. A
+    missing or null per-group ``mat_k`` becomes ``None`` (no switch for
+    that group).
+    """
+    if mat_override is None or mat_override == "auto":
+        return mat_override
+
+    # mat_override is a Maturity object.
+    mat_k = mat_override.mat_k
+    if isinstance(mat_k, dict):
+        val = mat_k.get(group_value)
+    else:
+        val = mat_k
+    return None if val is None else int(val)
+
+
 def _fit_loss_single(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -205,6 +256,7 @@ def _fit_loss_single(
     max_rse: float,
     min_run: int,
     recent: int | None = None,
+    mat_k_override: int | str | None = "auto",
 ) -> _LossResult:
     """Project cumulative loss + decompose variance (process / parameter).
 
@@ -219,6 +271,16 @@ def _fit_loss_single(
     estimated from the recent-``N`` calendar wedge while the point
     projection stays seeded from the full triangle. ``None`` (default)
     is the byte-identical no-filter path.
+
+    ``mat_k_override`` controls the SA maturity switch (only consulted
+    when ``method == "sa"``):
+
+    * ``"auto"`` (default) -- auto-detect ``mat_k`` from the loss
+      triangle via :func:`_compute_maturity` (the ``max_cv`` /
+      ``max_rse`` / ``min_run`` thresholds).
+    * an ``int`` -- use this explicit maturity dev (a :class:`Maturity`
+      object's ``mat_k`` for this group); skips auto-detection.
+    * ``None`` -- no maturity switch: SA falls back to ED throughout.
     """
     from ._recent import recent_link_mask
 
@@ -249,13 +311,21 @@ def _fit_loss_single(
     sigma2_f_k = cl_result.sigma2_k
     var_f_k = _mack_f_var(cl_result)
 
-    # Maturity (only for SA)
+    # Maturity (only for SA). `mat_k_override` selects the source:
+    # "auto" -> detect from this group's loss triangle; an int -> use
+    # the explicit value (a Maturity object's mat_k); None -> no switch.
     mat_k: int | None = None
     if method == "sa":
-        mat = _compute_maturity(
-            loss_obs, max_cv, max_rse, min_run, link_mask=loss_link_mask
-        )
-        mat_k = mat.mat_k
+        if mat_k_override == "auto":
+            mat = _compute_maturity(
+                loss_obs, max_cv, max_rse, min_run,
+                link_mask=loss_link_mask,
+            )
+            mat_k = mat.mat_k
+        elif mat_k_override is None:
+            mat_k = None
+        else:
+            mat_k = int(mat_k_override)
 
     # Switch threshold: target dev < mat = ED phase; target dev >= mat = CL.
     if method == "sa":
@@ -453,10 +523,12 @@ class Loss:
     method
         Projection method:
 
-        * ``"sa"`` (default): stage-adaptive — ED before maturity, CL
-          after. Maturity is detected internally per group.
-        * ``"ed"``: pure ED for all dev periods.
+        * ``"ed"`` (default): pure ED for all dev periods. The
+          unconditional safe baseline -- no maturity dependency.
         * ``"cl"``: pure Mack chain ladder.
+        * ``"sa"``: stage-adaptive — ED before maturity, CL after.
+          The maturity switch is resolved from the ``maturity``
+          argument.
         * ``"bf"``: Bornhuetter-Ferguson with an external prior ELR.
           Requires ``prior``.
         * ``"cc"``: Cape Cod with a data-pooled ELR.
@@ -470,10 +542,35 @@ class Loss:
         :class:`Loss` constructs one internally using ``premium_method``
         and ``premium_alpha``.
     premium_method
-        One of ``"cl"`` (default) or ``"ed"``. Used only when
+        One of ``"ed"`` (default) or ``"cl"``. Used only when
         ``premium_fit`` is ``None``.
     premium_alpha
         Variance-structure exponent for the premium fit. Default ``1``.
+    maturity
+        Maturity specification for the ``"sa"`` (stage-adaptive)
+        switch. Four-type dispatch (R parity):
+
+        * ``"auto"`` (default): auto-detect the maturity point per
+          group from the loss triangle, tuned by ``max_cv`` /
+          ``max_rse`` / ``min_run``.
+        * a :class:`~lossratio.Maturity` object (e.g. from
+          :func:`~lossratio.maturity_at` or
+          ``triangle.link().ata().maturity()``): use its ``mat_k``
+          directly, overriding auto-detection.
+        * a callable ``f(triangle) -> Maturity`` (e.g. the lazy spec
+          from :func:`~lossratio.maturity_spec`): invoked on the fit's
+          triangle -- inside backtest this is the masked fold, so the
+          detected switch never peeks at held-out cells.
+        * ``None``: no maturity switch -- ``"sa"`` falls back to ED
+          throughout.
+
+        Consulted only when ``method="sa"``; ignored for the other
+        methods.
+    max_cv, max_rse, min_run
+        Stability thresholds for ``maturity="auto"`` detection
+        (``CV < max_cv`` and ``RSE < max_rse``, sustained for
+        ``min_run`` consecutive links). Ignored when ``maturity`` is a
+        :class:`~lossratio.Maturity` object or a callable.
     conf_level
         Confidence level for analytical CI on ``loss_proj``. Default
         ``0.95``.
@@ -491,6 +588,11 @@ class Loss:
         when ``method="bf"``; ignored otherwise). Either a positive
         scalar or a dict mapping each cohort (or group) to an ELR; see
         :class:`~lossratio.BF`.
+    credibility
+        Optional Buehlmann-Straub credibility blend for ``method="bf"``
+        / ``"cc"``: ``None`` (default, classical q-weighted blend) or
+        ``{"method": "bs", "K": None}``. Forwarded to the inner BF / CC
+        worker; ignored for the other methods.
     bootstrap
         Optional bootstrap specification. Bootstrap is strictly opt-in:
         when ``None`` / ``False`` (the default) the fit is the pure
@@ -517,12 +619,13 @@ class Loss:
 
     def __init__(
         self,
-        method: str = "sa",
+        method: str = "ed",
         alpha: float = 1.0,
         sigma_method: str = "locf",
         premium_fit: PremiumFit | None = None,
-        premium_method: str = "cl",
+        premium_method: str = "ed",
         premium_alpha: float = 1.0,
+        maturity: Any = "auto",
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
@@ -530,6 +633,7 @@ class Loss:
         regime: Any = None,
         recent: int | None = None,
         prior: Any = None,
+        credibility: Any = None,
         bootstrap: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:
@@ -581,6 +685,7 @@ class Loss:
         self.premium_fit = premium_fit
         self.premium_method = premium_method
         self.premium_alpha = premium_alpha
+        self.maturity = maturity
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run
@@ -588,6 +693,7 @@ class Loss:
         self.regime = regime
         self.recent = recent
         self.prior = prior
+        self.credibility = credibility
         self.bootstrap = bootstrap
 
     def fit(self, triangle: "Triangle") -> "LossFit":
@@ -608,7 +714,7 @@ class LossFit:
         incr_premium_proj, maturity_from, loss_proc_se, loss_param_se,
         loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
-        ``"sa"``, ``"ed"``, or ``"cl"``.
+        ``"ed"``, ``"cl"``, ``"sa"``, ``"bf"``, or ``"cc"``.
     mat_k :
         Detected maturity for ``"sa"`` (None elsewhere).
     premium_fit :
@@ -699,6 +805,17 @@ class LossFit:
         tri_df = triangle._df
         groups = triangle._groups
 
+        # Resolve the 4-type `maturity` input (None / Maturity / "auto"
+        # / callable) into a per-group mat_k override consumed by
+        # `_fit_loss_single`. The "auto" sentinel is kept verbatim so
+        # the inline `_compute_maturity` path still honours the
+        # estimator's `max_cv` / `max_rse` / `min_run` thresholds; an
+        # explicit Maturity object / callable is resolved here and its
+        # per-group `mat_k` threaded through.
+        mat_override = _resolve_maturity_override(
+            estimator.maturity, triangle
+        )
+
         # internal-params dict; not exposed to user but kept for Ratio bootstrap
         self._internals: dict[Any, _LossResult] = {}
 
@@ -717,6 +834,7 @@ class LossFit:
                 estimator.max_rse,
                 estimator.min_run,
                 recent=estimator.recent,
+                mat_k_override=_mat_k_for_group(mat_override, None),
             )
             long_df = _loss_long_df(
                 result,
@@ -753,6 +871,7 @@ class LossFit:
                     estimator.max_rse,
                     estimator.min_run,
                     recent=estimator.recent,
+                    mat_k_override=_mat_k_for_group(mat_override, g),
                 )
                 long_parts.append(
                     _loss_long_df(
@@ -979,6 +1098,7 @@ class LossFit:
                 sigma_method=estimator.sigma_method,
                 recent=estimator.recent,
                 conf_level=estimator.conf_level,
+                credibility=estimator.credibility,
             ).fit(triangle)
         else:  # cc
             worker_fit = CC(
@@ -986,6 +1106,7 @@ class LossFit:
                 sigma_method=estimator.sigma_method,
                 recent=estimator.recent,
                 conf_level=estimator.conf_level,
+                credibility=estimator.credibility,
             ).fit(triangle)
 
         self = cls.__new__(cls)

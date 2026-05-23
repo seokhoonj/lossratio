@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- `Loss` / `Ratio` default `method` changed from `"sa"` to `"ed"`, and
+  default `premium_method` from `"cl"` to `"ed"`, matching the R sibling
+  and the documented method ordering (ed -> cl -> sa). Code relying on
+  the old stage-adaptive default must now pass `method="sa"` explicitly.
 - `Link` ED-mode (dual) columns and `EDFit` output columns renamed
   from `exposure_*` to `premium_*`, matching the R sibling. The Link
   table now emits `premium_from` / `premium_to` / `premium_delta`
@@ -42,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Ratio` accepts `method="bf"` / `"cc"`, composing a loss ratio from
+  the BF / CC loss projection over the premium projection. `prior`
+  (required for `bf`) and `credibility` thread through to the inner
+  loss fit.
+- `Loss` / `Ratio` gain a `maturity` argument with 4-type dispatch
+  (`None`, a `Maturity` object, `"auto"`, or a `callable` returning a
+  `Maturity`), matching R. `"auto"` (default) keeps auto-detecting the
+  stage-adaptive switch point; the `max_cv` / `max_rse` / `min_run`
+  knobs tune that detection.
 - `recent=N` argument on `CL` / `ED` / `Loss` / `Premium` / `Ratio` /
   `BF` / `CC` and the `Link.ata()` / `Link.intensity()` diagnostics
   (R parity). It restricts factor estimation to the most-recent N

@@ -446,3 +446,64 @@ def maturity_spec(
         )
 
     return _spec
+
+
+# ---------------------------------------------------------------------------
+# Maturity input dispatcher (R parity: .resolve_maturity)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_maturity(
+    arg: Any,
+    triangle: "Triangle",
+) -> "Maturity | None":
+    """Resolve a 4-type ``maturity`` input to a Maturity object (or None).
+
+    Python sibling of R's ``.resolve_maturity()`` (see ``R/regime.R``).
+    Used by :class:`~lossratio.Loss` / :class:`~lossratio.Ratio` to
+    normalise the ``maturity`` argument into a single representation:
+    either ``None`` (no maturity override -- caller's default behaviour)
+    or a :class:`Maturity` object.
+
+    The four accepted input forms:
+
+    * ``None`` -- returns ``None`` (no maturity; SA falls back to ED
+      throughout).
+    * a :class:`Maturity` object -- returned as-is (eager override).
+    * ``"auto"`` -- runs detection on ``triangle`` via
+      ``triangle.link().ata().maturity()``.
+    * a callable ``f(triangle) -> Maturity`` -- e.g. the closure from
+      :func:`maturity_spec`; invoked with ``triangle``. Its return
+      value must be a :class:`Maturity`.
+
+    Parameters
+    ----------
+    arg
+        The ``maturity`` input.
+    triangle
+        The :class:`~lossratio.Triangle` detection runs against -- the
+        fit's own (already regime / recent-filtered as appropriate)
+        triangle, or, inside backtest, the masked training triangle.
+    """
+    if arg is None:
+        return None
+    if isinstance(arg, Maturity):
+        return arg
+    if isinstance(arg, str):
+        if arg == "auto":
+            return triangle.link().ata().maturity()
+        raise ValueError(
+            f"`maturity` string must be \"auto\", got {arg!r}."
+        )
+    if callable(arg):
+        out = arg(triangle)
+        if not isinstance(out, Maturity):
+            raise TypeError(
+                "`maturity` callable must return a Maturity object; "
+                f"got {type(out).__name__}."
+            )
+        return out
+    raise TypeError(
+        "`maturity` must be None, a Maturity object, \"auto\", or a "
+        f"callable returning a Maturity; got {type(arg).__name__}."
+    )

@@ -5,7 +5,7 @@
 retrieves the embedded :class:`PremiumFit`, and composes the loss-ratio
 point + variance via the delta method.
 
-Python sibling of R ``fit_ratio()`` (see ``R/lr.R``).
+Python sibling of R ``fit_ratio()`` (see ``R/ratio.R``).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("sa", "ed", "cl")
+_VALID_METHODS = ("sa", "ed", "cl", "bf", "cc")
 _VALID_PREMIUM_METHODS = ("cl", "ed")
 _VALID_SE_METHODS = ("fixed", "delta")
 
@@ -37,8 +37,11 @@ class Ratio:
     Parameters
     ----------
     method
-        Loss projection method: ``"sa"`` (default), ``"ed"``, or
-        ``"cl"``. See :class:`Loss`.
+        Loss projection method: ``"ed"`` (default), ``"cl"``, ``"sa"``,
+        ``"bf"``, or ``"cc"``. See :class:`Loss`. The loss-ratio is the
+        composed loss projection over the premium projection, so
+        ``"bf"`` / ``"cc"`` forward to a BF / CC loss fit and the
+        ratio is ``loss_proj / premium_proj`` of that fit.
     loss_alpha
         Variance-structure exponent for the loss fit. Default ``1``.
     loss_regime
@@ -48,10 +51,30 @@ class Ratio:
         spec — re-detected per backtest fold). Cohorts strictly
         before the latest change date are dropped from the loss fit.
     premium_method
-        One of ``"cl"`` (default) or ``"ed"``. Forwarded to
+        One of ``"ed"`` (default) or ``"cl"``. Forwarded to
         :class:`Premium`.
     premium_alpha
         Variance-structure exponent for the premium fit. Default ``1``.
+    maturity
+        Maturity specification for the ``method="sa"`` switch.
+        Four-type dispatch (R parity): ``"auto"`` (default,
+        auto-detect tuned by ``max_cv`` / ``max_rse`` / ``min_run``),
+        a :class:`~lossratio.Maturity` object (explicit override), a
+        callable ``f(triangle) -> Maturity`` (lazy spec — e.g.
+        :func:`~lossratio.maturity_spec`), or ``None`` (no switch, SA
+        falls back to ED). Forwarded to the inner :class:`Loss`.
+        Consulted only when ``method="sa"``.
+    prior
+        The a priori expected loss ratio for ``method="bf"`` (required
+        when ``method="bf"``; ignored otherwise). A positive scalar or
+        a dict mapping each cohort (or group) to an ELR. Forwarded to
+        the inner BF loss fit.
+    credibility
+        Optional Buehlmann-Straub credibility blend for
+        ``method="bf"`` / ``"cc"``: ``None`` (default, classical
+        q-weighted blend) or ``{"method": "bs", "K": None}``.
+        Forwarded to the inner BF / CC loss fit; ignored for other
+        methods.
     premium_regime
         Premium-side regime filter. Same four-type dispatch as
         ``loss_regime``. Defaults to ``None`` (no filter); pass an
@@ -106,20 +129,23 @@ class Ratio:
 
     def __init__(
         self,
-        method: str = "sa",
+        method: str = "ed",
         loss_alpha: float = 1.0,
         loss_regime: Any = None,
-        premium_method: str = "cl",
+        premium_method: str = "ed",
         premium_alpha: float = 1.0,
         premium_regime: Any = None,
         sigma_method: str = "locf",
         recent: int | None = None,
+        maturity: Any = "auto",
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
         se_method: str = "fixed",
         rho: float = 0.95,
         conf_level: float = 0.95,
+        prior: Any = None,
+        credibility: Any = None,
         bootstrap: Any = None,
         B: int = 999,
         seed: int | None = None,
@@ -130,6 +156,8 @@ class Ratio:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
             )
+        if method == "bf" and prior is None:
+            raise ValueError("`prior` is required when method='bf'")
         if premium_method not in _VALID_PREMIUM_METHODS:
             raise ValueError(
                 f"premium_method must be one of {_VALID_PREMIUM_METHODS}, "
@@ -176,12 +204,15 @@ class Ratio:
         self.premium_regime = premium_regime
         self.sigma_method = sigma_method
         self.recent = recent
+        self.maturity = maturity
         self.max_cv = max_cv
         self.max_rse = max_rse
         self.min_run = min_run
         self.se_method = se_method
         self.rho = rho
         self.conf_level = conf_level
+        self.prior = prior
+        self.credibility = credibility
         self.bootstrap = bootstrap
         self.B = B
         self.seed = seed
@@ -209,7 +240,7 @@ class RatioFit:
         ratio_ci_lo, ratio_ci_hi]`` (plus ``premium_total_se`` /
         ``premium_total_cv`` when ``se_method="delta"``).
     method : str
-        ``"sa"``, ``"ed"``, or ``"cl"``.
+        ``"ed"``, ``"cl"``, ``"sa"``, ``"bf"``, or ``"cc"``.
     mat_k :
         Detected maturity for ``"sa"`` (single value or dict per group).
     loss_fit, premium_fit :
@@ -267,20 +298,32 @@ class RatioFit:
         self.premium_fit = premium_fit
 
         # 2) delegate loss-side projection to Loss --------------------------
-        loss_fit = Loss(
+        # `bf` / `cc` build their own inner CL fits and have no maturity
+        # concept; `prior` / `credibility` thread through to the BF / CC
+        # loss fit. For `sa` / `ed` / `cl` the embedded premium_fit is
+        # reused (no prior / credibility).
+        loss_kwargs: dict[str, Any] = dict(
             method=estimator.method,
             alpha=estimator.loss_alpha,
             sigma_method=estimator.sigma_method,
-            premium_fit=premium_fit,
-            premium_method=estimator.premium_method,
-            premium_alpha=estimator.premium_alpha,
-            max_cv=estimator.max_cv,
-            max_rse=estimator.max_rse,
-            min_run=estimator.min_run,
             conf_level=estimator.conf_level,
             regime=estimator.loss_regime,
             recent=estimator.recent,
-        ).fit(triangle)
+        )
+        if estimator.method in ("bf", "cc"):
+            loss_kwargs["prior"] = estimator.prior
+            loss_kwargs["credibility"] = estimator.credibility
+        else:
+            loss_kwargs.update(
+                premium_fit=premium_fit,
+                premium_method=estimator.premium_method,
+                premium_alpha=estimator.premium_alpha,
+                maturity=estimator.maturity,
+                max_cv=estimator.max_cv,
+                max_rse=estimator.max_rse,
+                min_run=estimator.min_run,
+            )
+        loss_fit = Loss(**loss_kwargs).fit(triangle)
         self.loss_fit = loss_fit
 
         full = loss_fit._df.clone()
