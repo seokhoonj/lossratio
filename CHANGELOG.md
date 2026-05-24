@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- `Triangle.detect_regime()` default `window=` changed from `12` to
+  `"auto"`. The new resolver tries the per-group maturity point first
+  (via `detect_maturity`), falls back to the Kneedle elbow on a window
+  sweep, then to a fixed default (`6`) when neither signal is
+  available. Matches the R sibling, but code that did not pass
+  `window=` explicitly now resolves to a (typically smaller) per-group
+  window.
 - Summary column-name parity with R. `CLFit.summary()`, `EDFit.summary()`,
   `LossFit.summary()`, and `PremiumFit.summary()` now emit the R-style
   role-prefixed columns (`loss_ult` / `loss_proc_se` / `loss_param_se` /
@@ -70,6 +77,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Triangle.detect_maturity()` convenience method, the Python sibling
+  of R's `detect_maturity(triangle, ...)`. Wraps the canonical
+  `triangle.link(target=loss, weight=...).ata().maturity(...)` chain
+  in a single entry point so the maturity diagnostic is reachable
+  without manually walking the link / ATA pipeline. Accepts `loss`,
+  `weight`, `max_cv`, `max_rse`, and `min_run`.
+- `Triangle.mask(holdout)` method, mirroring R's `mask_triangle(x,
+  holdout)`. Drops the most-recent `holdout` calendar diagonals per
+  group and returns a fresh Triangle with the same metadata --
+  the standard hold-out used by `Backtest`. `holdout=0` is a no-op.
+- `TriangleValidation` class, the Python sibling of R's
+  `validate_triangle(...)`. Runs two checks on a raw experience frame
+  before aggregation: (1) row-level calendar consistency (`calendar <
+  cohort` flagged as logically impossible), and (2) per-cohort dev
+  sequence gaps. Available as `lr.TriangleValidation`.
+- `Maturity.summary()` now emits the full R-parity schema -- one row
+  per group with `[groups?, ata_from, change, ata_link, mean, median,
+  wt, cv, f, f_se, rse, sigma, n_cohorts, n_valid, n_inf, n_nan,
+  valid_ratio]`. The legacy slim Python schema (`change` only) is
+  gone. Groups with no stable run report `NaN` in every stat column,
+  matching R.
+- `Triangle.detect_regime()` / `Regime._from_triangle()` gain a `by=`
+  override and accept three additional derived `target=` metrics --
+  `"loss_ata"`, `"premium_ata"`, `"loss_ed"`, and the alias
+  `"premium_ed"` -- mirroring R.
 - `Ratio` accepts `method="bf"` / `"cc"`, composing a loss ratio from
   the BF / CC loss projection over the premium projection. `prior`
   (required for `bf`) and `credibility` thread through to the inner

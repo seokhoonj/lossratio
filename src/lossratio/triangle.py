@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -17,6 +18,7 @@ from ._io import detect_input_type, mirror_output, to_polars
 
 if TYPE_CHECKING:
     from .link import Link
+    from .maturity import Maturity
     from .regime import Regime
 
 
@@ -472,17 +474,42 @@ class Triangle:
     def detect_regime(
         self,
         target: str = "ratio",
-        window: int = 12,
+        window: int | str = "auto",
+        by: str | Sequence[str] | None = None,
         method: str = "e_divisive",
         n_regimes: int | None = None,
         sig_level: float = 0.05,
         R: int = 999,
         min_size: int = 3,
         seed: int | None = None,
+        treatment: str = "latest_only",
     ) -> "Regime":
         """Detect structural regime shifts across underwriting cohorts.
 
-        See :class:`Regime` for full description.
+        Mirrors the R sibling's ``detect_regime(triangle, ...)``. The
+        default ``window="auto"`` resolves each group's trajectory
+        window via :meth:`detect_maturity`, falling back to the elbow
+        heuristic and finally to a fixed default (``6``) when neither
+        signal is available.
+
+        Parameters
+        ----------
+        target
+            Metric to drive change-point detection. Native cumulative
+            (``"loss"``, ``"premium"``, ``"ratio"``) or derived
+            (``"loss_ata"``, ``"premium_ata"``, ``"loss_ed"``,
+            ``"premium_ed"``). Default ``"ratio"``.
+        window
+            Trajectory window. Integer (e.g. ``12``) for a fixed
+            window, or ``"auto"`` (default) for the maturity-first
+            elbow-fallback resolver.
+        by
+            Optional override for the per-group dispatch. ``None``
+            (default) uses the Triangle's stored ``groups``; an empty
+            string forces pooled detection; a string names a single
+            group column.
+        method, n_regimes, sig_level, R, min_size, seed, treatment
+            See :class:`Regime` for full description.
         """
         from .regime import Regime
 
@@ -490,13 +517,144 @@ class Triangle:
             self,
             target=target,
             window=window,
+            by=by,
             method=method,
             n_regimes=n_regimes,
             sig_level=sig_level,
             R=R,
             min_size=min_size,
             seed=seed,
+            treatment=treatment,
         )
+
+    def detect_maturity(
+        self,
+        loss: str = "loss",
+        weight: str | None = None,
+        max_cv: float = 0.15,
+        max_rse: float = 0.05,
+        min_run: int = 2,
+    ) -> "Maturity":
+        """Detect the age-to-age maturity point ``k*``.
+
+        Convenience entry point for the canonical chain
+        ``triangle.link(target=loss, weight=weight).ata().maturity(...)``.
+        Mirrors the R sibling's ``detect_maturity(triangle, ...)``.
+
+        Maturity is determined jointly by:
+
+        * cross-cohort ``CV(f_k) < max_cv``
+        * pooled-factor ``RSE(f_k) < max_rse``
+        * sustained for ``min_run`` consecutive stable links
+
+        Parameters
+        ----------
+        loss
+            Cumulative metric used as the link numerator. Default
+            ``"loss"`` (chain-ladder convention). One of ``"loss"``,
+            ``"premium"``, ``"ratio"``. Forwarded to
+            :meth:`Triangle.link` as ``target``.
+        weight
+            Optional WLS weight column. Forwarded to :meth:`Triangle.link`.
+        max_cv
+            Maximum cross-cohort coefficient of variation.
+            Default ``0.15``.
+        max_rse
+            Maximum pooled-factor relative standard error.
+            Default ``0.05``.
+        min_run
+            Minimum consecutive stable links. Default ``2``.
+
+        Returns
+        -------
+        Maturity
+            One :class:`Maturity` per Triangle (per group when
+            ``groups`` is set on the Triangle).
+
+        Notes
+        -----
+        The R sibling additionally exposes ``alpha`` (WLS variance
+        structure), ``groups`` (rebucket to a coarser partition),
+        ``min_valid_ratio`` and ``min_n_valid`` thresholds. Those are
+        not yet plumbed through the Python ATA pipeline; the Python
+        default thresholds (CV / RSE only) are the active subset of the
+        R defaults.
+        """
+        return (
+            self.link(target=loss, weight=weight)
+            .ata()
+            .maturity(max_cv=max_cv, max_rse=max_rse, min_run=min_run)
+        )
+
+    def mask(self, holdout: int = 0) -> "Triangle":
+        """Drop the most-recent ``holdout`` calendar diagonals.
+
+        Returns a new :class:`Triangle` with the most-recent ``holdout``
+        diagonals removed -- the standard hold-out pattern used by
+        :class:`Backtest`. ``holdout=0`` returns a shallow copy with the
+        same underlying frame (no rows removed).
+
+        Mirrors the R sibling's ``mask_triangle(x, holdout)``.
+
+        Parameters
+        ----------
+        holdout
+            Non-negative integer. Number of trailing calendar diagonals
+            to remove per group.
+
+        Returns
+        -------
+        Triangle
+            A masked Triangle with the same metadata (``groups``,
+            ``cohort``, ``calendar``, ``grain``, ``dev``).
+
+        Raises
+        ------
+        ValueError
+            If ``holdout`` is negative, or if masking removes every
+            observation.
+        """
+        if not isinstance(holdout, (int,)) or isinstance(holdout, bool):
+            raise ValueError(
+                f"`holdout` must be a non-negative integer, got "
+                f"{type(holdout).__name__}."
+            )
+        if holdout < 0:
+            raise ValueError(
+                f"`holdout` must be a non-negative integer, got {holdout}."
+            )
+        if holdout == 0:
+            return Triangle._from_masked(self, self._df)
+
+        # Compute per-group calendar index = cohort_rank + dev - 1, where
+        # cohort_rank is the dense rank of distinct cohort values (oldest
+        # = 1). Mirrors R: data.table::frank(cohort, ties.method = "dense").
+        partition = [self._groups] if self._groups is not None else []
+        coh_rank_expr = (
+            pl.col("cohort").rank(method="dense").over(partition)
+            if partition
+            else pl.col("cohort").rank(method="dense")
+        ).cast(pl.Int64).alias("_coh_rank")
+
+        df = self._df.with_columns(coh_rank_expr).with_columns(
+            (pl.col("_coh_rank") + pl.col("dev") - 1).alias("_cal_idx")
+        )
+        max_cal_expr = (
+            pl.col("_cal_idx").max().over(partition)
+            if partition
+            else pl.col("_cal_idx").max()
+        )
+        df = df.with_columns(max_cal_expr.alias("_max_cal")).filter(
+            pl.col("_cal_idx") <= (pl.col("_max_cal") - holdout)
+        ).drop(["_coh_rank", "_cal_idx", "_max_cal"])
+
+        if df.height == 0:
+            raise ValueError(
+                f"After masking with `holdout={holdout}`, no observations "
+                f"remain. Reduce `holdout`."
+            )
+
+        return Triangle._from_masked(self, df)
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
@@ -510,3 +668,294 @@ class Triangle:
 
     def __len__(self) -> int:
         return self._df.height
+
+
+class TriangleValidation:
+    """Validation report for a raw experience-style DataFrame.
+
+    Direct-instantiate result class. Runs two checks on the supplied
+    raw frame -- *before* aggregation by :class:`Triangle` -- and
+    surfaces the findings:
+
+    1. **Row-level calendar consistency**: rows where
+       ``calendar < cohort`` (an event recorded before the cohort
+       starts, which is logically impossible). Available only when
+       ``calendar`` is supplied.
+    2. **Cohort dev-sequence gaps**: per ``(groups?, cohort)``, the
+       observed integer dev sequence is checked for non-consecutive
+       values in ``[dev_min, dev_max]``. When ``dev`` is supplied it is
+       used directly; otherwise it is derived from
+       ``cohort + calendar + grain`` (mirrors the
+       :class:`Triangle` 3-mode dispatch).
+
+    Mirrors the R sibling's ``validate_triangle(...)`` which returns a
+    ``TriangleValidation`` object.
+
+    Parameters
+    ----------
+    df
+        Raw experience DataFrame (polars or pandas).
+    groups, cohort, calendar, dev
+        Column names. ``cohort`` is required; at least one of
+        ``calendar`` / ``dev`` is required.
+    loss, premium
+        Optional column names. Not used by validation itself but
+        accepted for signature symmetry with :class:`Triangle` (so the
+        same kwargs work in both calls).
+    grain
+        Grain for cohort/calendar binning. Default ``"auto"``.
+
+    Attributes
+    ----------
+    gaps : DataFrame
+        One row per ``(groups?, cohort)`` with a non-consecutive dev
+        sequence. Columns: ``[groups?, cohort, dev_min, dev_max,
+        n_dev, n_expected, missing]``. Empty when no gaps were found.
+    invalid_rows : DataFrame
+        One row per input row that fails ``calendar >= cohort``.
+        Columns: original ``(groups?, cohort, calendar, dev?)`` plus
+        ``reason``. Empty when no row-level violations were found
+        (or when no ``calendar`` was supplied).
+    summary : DataFrame
+        Two-row count summary: how many rows / cohorts failed each
+        check.
+    """
+
+    def __init__(
+        self,
+        df: "pl.DataFrame | Any",
+        groups: str | None = None,
+        cohort: str = "uy_m",
+        calendar: str | None = "cy_m",
+        dev: str | None = None,
+        loss: str | None = None,
+        premium: str | None = None,
+        grain: str = "auto",
+    ) -> None:
+        self._output_type = detect_input_type(df)
+        df_pl = to_polars(df)
+
+        if calendar is None and dev is None:
+            raise ValueError(
+                "Must supply at least one of `calendar` or `dev`."
+            )
+
+        # `loss` / `premium` are accepted for kwarg-symmetry with
+        # Triangle but not consumed by validation. Reference them in a
+        # no-op so type checkers don't flag unused params.
+        del loss, premium
+
+        required = {cohort}
+        if groups is not None:
+            required.add(groups)
+        if calendar is not None:
+            required.add(calendar)
+        if dev is not None:
+            required.add(dev)
+        missing = required - set(df_pl.columns)
+        if missing:
+            raise ValueError(
+                f"Missing required columns: {sorted(missing)}. "
+                f"Required: {sorted(required)}"
+            )
+
+        self._groups = groups
+        self._cohort = cohort
+        self._calendar = calendar
+        self._dev_col = dev
+        self._grain_arg = grain
+
+        # --- 1. Row-level calendar < cohort consistency ------------------
+        if calendar is not None:
+            # Coerce both date columns to Date before comparison so int /
+            # str inputs don't slip through silently as text compare.
+            check_df = coerce_cols_to_date(df_pl, [cohort, calendar])
+            bad_mask = (
+                pl.col(cohort).is_not_null()
+                & pl.col(calendar).is_not_null()
+                & (pl.col(calendar) < pl.col(cohort))
+            )
+            invalid = check_df.filter(bad_mask)
+            if invalid.height:
+                keep_cols = [c for c in (
+                    [groups] if groups is not None else []
+                ) + [cohort, calendar] + (
+                    [dev] if dev is not None else []
+                ) if c in invalid.columns]
+                invalid = invalid.select(keep_cols).with_columns(
+                    pl.lit(f"{calendar} < {cohort}").alias("reason")
+                )
+            df_for_gaps = check_df.filter(~bad_mask)
+        else:
+            invalid = pl.DataFrame()
+            df_for_gaps = df_pl
+
+        self._invalid_rows = invalid
+
+        # --- 2. dev-sequence gaps on the cleaned data --------------------
+        # Derive dev when only calendar is supplied (mirrors Triangle's
+        # 3-mode dispatch).
+        if dev is None:
+            input_grain = infer_grain(df_for_gaps[cohort])
+            g = resolve_grain(input_grain, grain)
+            df_for_gaps = df_for_gaps.with_columns(
+                count_periods(pl.col(cohort), pl.col(calendar), g)
+                .alias("_dev_derived")
+            )
+            dev_col_name = "_dev_derived"
+        else:
+            df_for_gaps = df_for_gaps.with_columns(
+                pl.col(dev).cast(pl.Int64).alias("_dev_explicit")
+            )
+            dev_col_name = "_dev_explicit"
+
+        gap_keys: list[str] = []
+        if groups is not None:
+            gap_keys.append(groups)
+        gap_keys.append(cohort)
+
+        # Per (groups?, cohort): dev_min / dev_max / n_dev (distinct) /
+        # n_expected (range length) / missing (list of integers).
+        gap_summary = (
+            df_for_gaps.filter(pl.col(dev_col_name).is_not_null())
+            .group_by(gap_keys)
+            .agg(
+                pl.col(dev_col_name).min().cast(pl.Int64).alias("dev_min"),
+                pl.col(dev_col_name).max().cast(pl.Int64).alias("dev_max"),
+                pl.col(dev_col_name).n_unique().cast(pl.Int64).alias("n_dev"),
+            )
+            .with_columns(
+                (pl.col("dev_max") - pl.col("dev_min") + 1)
+                .cast(pl.Int64)
+                .alias("n_expected"),
+            )
+        )
+
+        gaps = gap_summary.filter(pl.col("n_dev") != pl.col("n_expected"))
+
+        # Per-cohort missing dev values (set difference inside polars
+        # is awkward; do it in Python for the gap rows only).
+        if gaps.height:
+            observed_devs = (
+                df_for_gaps.filter(pl.col(dev_col_name).is_not_null())
+                .group_by(gap_keys)
+                .agg(pl.col(dev_col_name).unique().alias("_obs"))
+            )
+            gaps = gaps.join(observed_devs, on=gap_keys, how="left")
+            missing_lists: list[list[int]] = []
+            for row in gaps.iter_rows(named=True):
+                obs = set(int(v) for v in row["_obs"])
+                rng = range(int(row["dev_min"]), int(row["dev_max"]) + 1)
+                missing_lists.append(sorted(int(v) for v in rng if v not in obs))
+            gaps = gaps.drop("_obs").with_columns(
+                pl.Series("missing", missing_lists)
+            )
+        else:
+            # Add the empty `missing` column to keep schema stable across
+            # the "no gaps" and "has gaps" cases.
+            gaps = gaps.with_columns(
+                pl.lit([]).cast(pl.List(pl.Int64)).alias("missing")
+            )
+
+        self._gaps = gaps
+
+        # --- 3. Summary count table --------------------------------------
+        self._summary = pl.DataFrame(
+            {
+                "check": [
+                    "calendar < cohort (rows)",
+                    "non-consecutive dev (cohorts)",
+                ],
+                "n": [self._invalid_rows.height, self._gaps.height],
+            }
+        )
+
+    # ------------------------------------------------------------------
+    # Public accessors -- mirror Triangle's input-type machinery
+    # ------------------------------------------------------------------
+
+    @property
+    def gaps(self):
+        """DataFrame of cohorts with non-consecutive dev sequences."""
+        return mirror_output(self._gaps, self._output_type)
+
+    @property
+    def invalid_rows(self):
+        """DataFrame of rows where ``calendar < cohort``."""
+        return mirror_output(self._invalid_rows, self._output_type)
+
+    @property
+    def summary(self):
+        """Two-row count summary of findings."""
+        return mirror_output(self._summary, self._output_type)
+
+    @property
+    def is_clean(self) -> bool:
+        """``True`` iff both checks found zero violations."""
+        return self._gaps.height == 0 and self._invalid_rows.height == 0
+
+    @property
+    def groups(self) -> str | None:
+        return self._groups
+
+    @property
+    def cohort(self) -> str:
+        return self._cohort
+
+    @property
+    def calendar(self) -> str | None:
+        return self._calendar
+
+    @property
+    def dev(self) -> str | None:
+        return self._dev_col
+
+    def to_polars(self) -> pl.DataFrame:
+        """The gaps table as a polars DataFrame."""
+        return self._gaps
+
+    def to_pandas(self):
+        """The gaps table as a pandas DataFrame."""
+        return self._gaps.to_pandas()
+
+    def plot(self):
+        """Bar chart of observed vs. expected dev counts per cohort.
+
+        Mirrors R's ``plot.TriangleValidation``. Not yet implemented in
+        the Python sibling -- matplotlib support arrives in phase A.
+        """
+        # TODO(phase-A): matplotlib bar chart (cohort x [n_dev,
+        # n_expected]); faceted by ``groups`` when set.
+        raise NotImplementedError("plotting comes in phase A")
+
+    def plot_triangle(self, view: str = "calendar", show_label: bool = False):
+        """Cohort x (calendar | dev) heatmap of gap positions.
+
+        Mirrors R's ``plot_triangle.TriangleValidation``. Not yet
+        implemented in the Python sibling -- matplotlib support arrives
+        in phase A.
+        """
+        # TODO(phase-A): matplotlib heatmap with observed / missing /
+        # invalid cells colour-coded.
+        del view, show_label
+        raise NotImplementedError("plotting comes in phase A")
+
+    def __repr__(self) -> str:
+        if self.is_clean:
+            tail = "clean"
+        else:
+            bits = []
+            if self._invalid_rows.height:
+                bits.append(
+                    f"{self._invalid_rows.height} invalid row(s)"
+                )
+            if self._gaps.height:
+                bits.append(
+                    f"{self._gaps.height} cohort(s) with gaps"
+                )
+            tail = ", ".join(bits)
+        return f"<TriangleValidation: {tail}>"
+
+    def __len__(self) -> int:
+        """Number of cohorts with dev-sequence gaps."""
+        return self._gaps.height

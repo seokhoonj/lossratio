@@ -5,6 +5,12 @@ import pytest
 
 import lossratio as lr
 
+# `TriangleValidation` is added to ``lossratio.triangle`` in this change
+# but is not yet wired into ``lossratio.__init__`` (that happens in
+# Round 2 by a separate agent). Import directly from the submodule for
+# now so the new tests can run pre-export.
+from lossratio.triangle import TriangleValidation
+
 
 def _exp_input() -> pl.DataFrame:
     """Three-cohort, three-dev sample experience data."""
@@ -331,3 +337,232 @@ def test_calendar_raw_name_mode2_is_none():
     tri = lr.Triangle(e2, calendar=None, dev="dev_m")
     cal = lr.as_calendar(tri)
     assert cal.calendar is None
+
+
+# ---------------------------------------------------------------------------
+# Triangle.mask: calendar-diagonal hold-out
+# ---------------------------------------------------------------------------
+
+
+def test_mask_holdout_zero_no_drop():
+    """holdout=0 returns a Triangle with identical row count + metadata."""
+    tri = lr.Triangle(_exp_input())
+    masked = tri.mask(holdout=0)
+    assert isinstance(masked, lr.Triangle)
+    assert masked.n_rows == tri.n_rows
+    assert masked.cohort == tri.cohort
+    assert masked.calendar == tri.calendar
+    assert masked.dev == tri.dev
+    assert masked.grain == tri.grain
+    # Returned object is a fresh Triangle (not the same instance).
+    assert masked is not tri
+
+
+def test_mask_holdout_drops_last_diagonal():
+    """holdout=1 removes exactly the latest calendar diagonal (3 cells)."""
+    tri = lr.Triangle(_exp_input())
+    # Original triangle: 6 cells across 3 cohorts.
+    # cal_idx = cohort_rank + dev - 1 -> the cells with cal_idx == max
+    # (the trailing diagonal) are dropped. For this fixture, max cal_idx
+    # is 3 and exactly 3 cells live on that diagonal.
+    masked = tri.mask(holdout=1)
+    assert masked.n_rows == tri.n_rows - 3
+    df = masked.to_polars()
+    # Each remaining cohort still starts at dev=1.
+    by_cohort = df.group_by("cohort").agg(pl.col("dev").min().alias("d1"))
+    assert set(by_cohort["d1"].to_list()) == {1}
+
+
+def test_mask_holdout_negative_raises():
+    tri = lr.Triangle(_exp_input())
+    with pytest.raises(ValueError, match="non-negative"):
+        tri.mask(holdout=-1)
+
+
+def test_mask_holdout_too_large_raises():
+    tri = lr.Triangle(_exp_input())
+    with pytest.raises(ValueError, match="no observations remain"):
+        tri.mask(holdout=99)
+
+
+def test_mask_preserves_input_type_polars():
+    """polars in -> polars out."""
+    tri = lr.Triangle(_exp_input())
+    masked = tri.mask(holdout=1)
+    assert isinstance(masked.df, pl.DataFrame)
+
+
+def test_mask_with_groups():
+    """Per-group masking: each group drops its own trailing diagonal."""
+    sur = _exp_input().with_columns(pl.lit("SUR").alias("coverage"))
+    can = _exp_input().with_columns(pl.lit("CAN").alias("coverage"))
+    df = pl.concat([sur, can])
+    tri = lr.Triangle(df, groups="coverage")
+    masked = tri.mask(holdout=1)
+    # Each group independently has 3 cells on its trailing diagonal
+    # in this fixture, so 6 cells total are dropped.
+    assert masked.n_rows == tri.n_rows - 6
+    # Both groups survive.
+    assert set(masked.to_polars()["coverage"].unique().to_list()) == {
+        "SUR", "CAN"
+    }
+
+
+# ---------------------------------------------------------------------------
+# Triangle.detect_maturity: convenience entry point
+# ---------------------------------------------------------------------------
+
+
+def test_detect_maturity_returns_maturity():
+    """Calling Triangle.detect_maturity returns a Maturity instance."""
+    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    tri = lr.Triangle(exp, groups=None)
+    m = tri.detect_maturity()
+    assert isinstance(m, lr.Maturity)
+
+
+def test_detect_maturity_matches_chain():
+    """The convenience entry point is identical to the explicit chain
+    ``triangle.link().ata().maturity(...)``."""
+    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    tri = lr.Triangle(exp, groups=None)
+    direct = tri.detect_maturity(max_cv=0.2, max_rse=0.1, min_run=2)
+    chained = (
+        tri.link(target="loss")
+        .ata()
+        .maturity(max_cv=0.2, max_rse=0.1, min_run=2)
+    )
+    assert direct.mat_k == chained.mat_k
+
+
+def test_detect_maturity_with_groups():
+    """A grouped Triangle yields per-group maturity values."""
+    exp = lr.load_experience().filter(
+        pl.col("coverage").is_in(["SUR", "CI"])
+    )
+    tri = lr.Triangle(exp, groups="coverage")
+    m = tri.detect_maturity()
+    assert isinstance(m, lr.Maturity)
+    # mat_k is a dict {group_value: int|None} for grouped triangles.
+    assert isinstance(m.mat_k, dict)
+    assert set(m.mat_k.keys()) == {"SUR", "CI"}
+
+
+# ---------------------------------------------------------------------------
+# TriangleValidation: gap detection + invalid-row detection
+# ---------------------------------------------------------------------------
+
+
+def test_validation_clean_input():
+    """Well-formed input -> no gaps, no invalid rows, is_clean."""
+    v = TriangleValidation(_exp_input())
+    assert v.is_clean is True
+    assert len(v) == 0
+    assert v.gaps.height == 0
+    assert v.invalid_rows.height == 0
+    # Summary always carries the two-row schema.
+    assert v.summary["n"].to_list() == [0, 0]
+
+
+def test_validation_detects_gap():
+    """Cohort with a missing dev cell shows up in `.gaps` with the gap
+    listed in `missing`."""
+    v = TriangleValidation(_gap_input())
+    assert v.is_clean is False
+    assert len(v) == 1
+    row = v.gaps.row(0, named=True)
+    assert row["dev_min"] == 1
+    assert row["dev_max"] == 4
+    assert row["n_dev"] == 3
+    assert row["n_expected"] == 4
+    assert row["missing"] == [3]
+
+
+def test_validation_detects_invalid_calendar():
+    """A row with calendar < cohort surfaces in `.invalid_rows` and is
+    excluded from the dev-sequence check."""
+    bad = pl.DataFrame(
+        {
+            "cy_m":         ["2024-01-01", "2024-02-01", "2023-12-01"],
+            "uy_m":         ["2024-01-01", "2024-01-01", "2024-01-01"],
+            "incr_loss":    [10.0, 20.0, 5.0],
+            "incr_premium": [100.0, 100.0, 50.0],
+        }
+    )
+    v = TriangleValidation(bad)
+    assert v.invalid_rows.height == 1
+    assert "reason" in v.invalid_rows.columns
+    # The bad row is removed before the gap check; the remaining two
+    # rows (dev=1, dev=2) are a consecutive sequence, so no gaps.
+    assert v.gaps.height == 0
+
+
+def test_validation_with_groups():
+    """Groups column is propagated into the gaps table when supplied."""
+    df = _gap_input().with_columns(pl.lit("SUR").alias("coverage"))
+    v = TriangleValidation(df, groups="coverage")
+    assert "coverage" in v.gaps.columns
+    assert v.gaps["coverage"].to_list() == ["SUR"]
+
+
+def test_validation_pandas_mirror():
+    """pandas in -> pandas out across all accessors."""
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(
+        {
+            "cy_m":         ["2024-01-01", "2024-02-01", "2024-04-01"],
+            "uy_m":         ["2024-01-01", "2024-01-01", "2024-01-01"],
+            "incr_loss":    [10.0, 20.0, 40.0],
+            "incr_premium": [100.0, 100.0, 100.0],
+        }
+    )
+    v = TriangleValidation(df)
+    assert isinstance(v.gaps, pd.DataFrame)
+    assert isinstance(v.summary, pd.DataFrame)
+    assert isinstance(v.invalid_rows, pd.DataFrame)
+
+
+def test_validation_no_calendar_no_dev_raises():
+    """Supplying neither calendar nor dev errors out."""
+    with pytest.raises(ValueError, match="at least one of"):
+        TriangleValidation(_exp_input(), calendar=None)
+
+
+def test_validation_missing_required_column_raises():
+    """A missing required column produces a clear error."""
+    df = _exp_input().drop("cy_m")
+    with pytest.raises(ValueError, match="Missing required columns"):
+        TriangleValidation(df)
+
+
+def test_validation_plot_methods_raise_not_implemented():
+    """plot / plot_triangle are reserved for phase A; explicit error."""
+    v = TriangleValidation(_gap_input())
+    with pytest.raises(NotImplementedError, match="phase A"):
+        v.plot()
+    with pytest.raises(NotImplementedError, match="phase A"):
+        v.plot_triangle()
+
+
+def test_validation_repr():
+    """__repr__ surfaces the dirty-status one-liner."""
+    clean = TriangleValidation(_exp_input())
+    assert "clean" in repr(clean)
+    dirty = TriangleValidation(_gap_input())
+    assert "cohort(s) with gaps" in repr(dirty)
+
+
+def test_validation_dev_mode():
+    """With `dev` supplied (no calendar), the dev-sequence check still
+    runs on the explicit dev column."""
+    df = pl.DataFrame(
+        {
+            "uy_m":         ["2024-01-01", "2024-01-01", "2024-01-01"],
+            "dev_m":        [1, 2, 4],
+            "incr_loss":    [10.0, 20.0, 40.0],
+            "incr_premium": [100.0, 100.0, 100.0],
+        }
+    )
+    v = TriangleValidation(df, calendar=None, dev="dev_m")
+    assert v.gaps.height == 1
+    assert v.gaps.row(0, named=True)["missing"] == [3]

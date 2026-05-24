@@ -127,6 +127,24 @@ def _detect_k_star(stable_k: np.ndarray, min_run: int) -> int | None:
     return None
 
 
+def _detect_first_stable_index(
+    stable_k: np.ndarray, min_run: int
+) -> int | None:
+    """First link *array index* k where stable_k[k : k + min_run] holds.
+
+    Sibling to :func:`_detect_k_star` -- same scan but returns the
+    0-indexed position into the per-link diagnostic frame (so callers
+    can slice the matched row), not the ``ata_to`` dev value.
+    """
+    n_links = len(stable_k)
+    if min_run < 1 or n_links < min_run:
+        return None
+    for k in range(n_links - min_run + 1):
+        if bool(np.all(stable_k[k : k + min_run])):
+            return k
+    return None
+
+
 def _compute_maturity(
     loss_obs: np.ndarray,
     max_cv: float,
@@ -163,6 +181,250 @@ def _compute_maturity(
         mat_k=mat_k,
         n_devs=loss_obs.shape[1],
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-link descriptive stats from Link (R `.summarize_link_ata` parity)
+# ---------------------------------------------------------------------------
+
+
+# R-parity column order for the Maturity output (matches
+# .first_mature_row + .resolve_groups grouping in R/maturity.R).
+_R_STAT_COLS: tuple[str, ...] = (
+    "ata_from",
+    "change",
+    "ata_link",
+    "mean",
+    "median",
+    "wt",
+    "cv",
+    "f",
+    "f_se",
+    "rse",
+    "sigma",
+    "n_cohorts",
+    "n_valid",
+    "n_inf",
+    "n_nan",
+    "valid_ratio",
+)
+
+
+def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
+    """Per-link descriptive stats: mean / median / wt / counts.
+
+    Computed directly off the long-format ``Link`` DataFrame (one row
+    per ``(cohort, ata_from)`` pair, with cell-level ``ata`` and
+    ``loss_from`` / ``loss_to``). Mirrors R's ``.summarize_link_ata()``
+    ``ds`` block (R/ata.R lines 134-152):
+
+    * ``mean``   -- mean of finite per-cohort ``ata`` factors
+    * ``median`` -- median of finite per-cohort ``ata`` factors
+    * ``wt``     -- volume-weighted factor ``sum(loss_to) / sum(loss_from)``
+    * ``n_cohorts``  -- total rows in the link group
+    * ``n_valid``    -- count of finite ``ata`` values
+    * ``n_inf``      -- count of +/- Inf ``ata`` values
+    * ``n_nan``      -- count of NaN ``ata`` values
+    * ``valid_ratio`` -- ``n_valid / n_cohorts``
+
+    Grouping is on ``ata_from`` (plus the upstream ``groups`` column if
+    present). The caller (``Maturity._from_ata``) joins this onto the
+    ATA frame's WLS columns ``f / f_se / sigma / rse / cv``.
+    """
+    if link_df.is_empty():
+        return link_df
+
+    has_group_cols = [
+        c for c in link_df.columns if c not in {
+            "cohort", "ata_from", "ata_to", "ata_link",
+            "loss_from", "loss_to", "loss_delta", "ata",
+            "premium_from", "premium_to", "premium_delta", "intensity",
+            "weight",
+        }
+    ]
+
+    ata_finite = pl.col("ata").is_finite()
+    ata_inf = pl.col("ata").is_infinite()
+    ata_nan = pl.col("ata").is_nan()
+
+    by_cols = [*has_group_cols, "ata_from", "ata_to"]
+    out = link_df.group_by(by_cols, maintain_order=True).agg(
+        [
+            pl.col("ata").filter(ata_finite).mean().alias("mean"),
+            pl.col("ata").filter(ata_finite).median().alias("median"),
+            (
+                pl.col("loss_to").sum()
+                / pl.when(pl.col("loss_from").sum() != 0)
+                .then(pl.col("loss_from").sum())
+                .otherwise(None)
+            ).alias("wt"),
+            pl.len().alias("n_cohorts"),
+            ata_finite.sum().alias("n_valid"),
+            ata_inf.sum().alias("n_inf"),
+            ata_nan.sum().alias("n_nan"),
+        ]
+    )
+
+    out = out.with_columns(
+        (pl.col("n_valid") / pl.col("n_cohorts")).alias("valid_ratio")
+    )
+    # Cast to int64 so they round-trip cleanly with R's numeric-coerced
+    # output (downstream selects cast back to float).
+    out = out.with_columns(
+        [
+            pl.col("n_cohorts").cast(pl.Int64),
+            pl.col("n_valid").cast(pl.Int64),
+            pl.col("n_inf").cast(pl.Int64),
+            pl.col("n_nan").cast(pl.Int64),
+        ]
+    )
+    return out.sort([*has_group_cols, "ata_from"])
+
+
+def _enriched_ata_diagnostic(
+    ata_df: pl.DataFrame,
+    link_df: pl.DataFrame,
+    groups: str | None,
+) -> pl.DataFrame:
+    """Per-link diagnostic with the full R ``ATASummary`` column set.
+
+    Joins three sources keyed on (``groups?``, ``ata_from``):
+
+    * ``ata_df``   -- ATA's per-link Mack outputs (``f``, ``sigma2``,
+      ``cv``, ``rse``, ``n_cohorts``); ``dev`` column there is the
+      ``ata_from`` index.
+    * ``link_df``  -- the underlying long-format Link table; supplies
+      ``mean / median / wt / n_valid / n_inf / n_nan / valid_ratio``
+      via :func:`_link_descriptive_stats`.
+
+    Adds derived R columns:
+
+    * ``ata_to``   = ``ata_from + 1``
+    * ``ata_link`` = ``"<from>-<to>"``
+    * ``sigma``    = ``sqrt(sigma2)``
+    * ``f_se``     = ``rse * f``  (since ``rse = f_se / f``)
+
+    Returns one row per (group, link) with columns ordered to mirror
+    R's ``ATASummary``. Used by :meth:`Maturity._from_ata` -- the
+    per-group "first mature row" pick then slices straight off this.
+    """
+    if ata_df.is_empty():
+        return ata_df
+
+    # ATA frame: dev (= ata_from), f, sigma2, cv, rse, n_cohorts
+    a = ata_df.rename({"dev": "ata_from"})
+
+    stats = _link_descriptive_stats(link_df)
+    if stats.is_empty():
+        return a
+
+    join_keys = [groups, "ata_from"] if groups else ["ata_from"]
+    # Drop overlapping cols from stats (n_cohorts is on both -- keep
+    # stats' which matches R's ``.N`` over the link table).
+    a = a.drop("n_cohorts")
+
+    merged = a.join(stats, on=join_keys, how="left")
+
+    merged = merged.with_columns(
+        [
+            pl.col("ata_to").cast(pl.Int64),
+            pl.format(
+                "{}-{}", pl.col("ata_from"), pl.col("ata_to")
+            ).alias("ata_link"),
+            pl.when(pl.col("sigma2").is_not_null())
+            .then(pl.col("sigma2").sqrt())
+            .otherwise(None)
+            .alias("sigma"),
+            pl.when(
+                pl.col("f").is_not_null() & pl.col("rse").is_not_null()
+            )
+            .then(pl.col("f") * pl.col("rse"))
+            .otherwise(None)
+            .alias("f_se"),
+        ]
+    )
+
+    return merged
+
+
+def _na_row(groups: str | None, group_value: Any | None) -> dict[str, Any]:
+    """All-NaN row for a group where no stable ATA run was found.
+
+    Matches the no-match branch of R's ``.first_mature_row()``
+    (``R/maturity.R`` lines 174-191): every numeric column is
+    ``NA_real_``, ``ata_link`` is ``NA_character_``. Float dtype keeps
+    polars concat/dtype-stable across groups.
+    """
+    row: dict[str, Any] = {}
+    if groups is not None:
+        row[groups] = group_value
+    for col in _R_STAT_COLS:
+        row[col] = None if col == "ata_link" else float("nan")
+    return row
+
+
+def _slice_first_stable_row(
+    diag_df: pl.DataFrame,
+    min_run: int,
+    groups: str | None,
+    group_value: Any | None,
+) -> dict[str, Any]:
+    """Pick the first stable-run row of a single-group diagnostic frame.
+
+    Mirrors R's ``.first_mature_row()`` -- finds the first link where
+    the ``stable`` boolean run holds for ``min_run`` consecutive links
+    and returns that row coerced to the R column dict. Returns an
+    all-NaN row (see :func:`_na_row`) when no such run exists.
+    """
+    stable_arr = diag_df["stable"].to_numpy()
+    idx = _detect_first_stable_index(stable_arr, min_run)
+    if idx is None:
+        return _na_row(groups, group_value)
+
+    matched = diag_df.row(idx, named=True)
+    row: dict[str, Any] = {}
+    if groups is not None:
+        row[groups] = group_value
+    row["ata_from"] = float(matched["ata_from"])
+    row["change"] = float(matched["ata_to"])
+    row["ata_link"] = matched["ata_link"]
+    for col in ("mean", "median", "wt", "cv", "f", "f_se", "rse", "sigma"):
+        v = matched.get(col)
+        row[col] = float(v) if v is not None else float("nan")
+    for col in ("n_cohorts", "n_valid", "n_inf", "n_nan"):
+        v = matched.get(col)
+        # int -> float for column-type stability with NaN branch.
+        row[col] = float(v) if v is not None else float("nan")
+    vr = matched.get("valid_ratio")
+    row["valid_ratio"] = float(vr) if vr is not None else float("nan")
+    return row
+
+
+def _build_kstar_df(
+    diag_df: pl.DataFrame,
+    groups: str | None,
+    min_run: int,
+) -> pl.DataFrame:
+    """Per-group "first mature row" frame -- R ``Maturity`` schema.
+
+    One row per group with columns ``[groups?, *_R_STAT_COLS]``.
+    """
+    if groups is None:
+        row = _slice_first_stable_row(
+            diag_df, min_run, groups=None, group_value=None
+        )
+        return pl.DataFrame([row])
+
+    rows: list[dict[str, Any]] = []
+    group_values = diag_df[groups].unique(maintain_order=True).to_list()
+    for g in group_values:
+        sub = diag_df.filter(pl.col(groups) == g)
+        rows.append(
+            _slice_first_stable_row(sub, min_run, groups=groups, group_value=g)
+        )
+    if not rows:
+        return pl.DataFrame()
+    return pl.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +473,14 @@ class Maturity:
         """Build Maturity by applying stability thresholds on top of an
         existing ATA factor diagnostic. The user-facing chain is
         ``triangle.link().ata().maturity(...)``.
+
+        The output ``summary()`` mirrors the R ``Maturity`` data.table
+        schema -- one row per group with columns
+        ``[groups?, ata_from, change, ata_link, mean, median, wt, cv,
+        f, f_se, rse, sigma, n_cohorts, n_valid, n_inf, n_nan,
+        valid_ratio]``. ``change`` is the maturity point (``ata_to`` of
+        the first stable link). When no stable run is found for a
+        group, the stat columns are filled with ``NaN`` (R parity).
         """
         self = cls.__new__(cls)
         self._output_type = ata._output_type
@@ -221,7 +491,12 @@ class Maturity:
         self.max_rse = max_rse
         self.min_run = min_run
 
-        diag_df = ata._df.with_columns(
+        # Per-link diagnostic enriched with all the R ATASummary columns
+        # (mean / median / wt / counts via the Link long-format frame).
+        link_df = ata._link._df
+        diag_df = _enriched_ata_diagnostic(ata._df, link_df, self._groups)
+
+        diag_df = diag_df.with_columns(
             (
                 pl.col("cv").is_not_null()
                 & pl.col("rse").is_not_null()
@@ -230,37 +505,9 @@ class Maturity:
             ).alias("stable")
         )
 
-        if self._groups is None:
-            stable_arr = diag_df["stable"].to_numpy()
-            mat_k = _detect_k_star(stable_arr, min_run)
-            kstar_df = pl.DataFrame(
-                [
-                    {
-                        "mat_k": mat_k,
-                        "n_links": int(len(stable_arr)),
-                        "n_stable_links": int(stable_arr.sum()),
-                    }
-                ]
-            )
-        else:
-            kstar_rows: list[dict[str, Any]] = []
-            for g in (
-                diag_df[self._groups].unique(maintain_order=True).to_list()
-            ):
-                sub = diag_df.filter(pl.col(self._groups) == g)
-                stable_arr = sub["stable"].to_numpy()
-                mat_k = _detect_k_star(stable_arr, min_run)
-                kstar_rows.append(
-                    {
-                        self._groups: g,
-                        "mat_k": mat_k,
-                        "n_links": int(len(stable_arr)),
-                        "n_stable_links": int(stable_arr.sum()),
-                    }
-                )
-            kstar_df = (
-                pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
-            )
+        kstar_df = _build_kstar_df(
+            diag_df, self._groups, min_run
+        )
 
         self._df = diag_df
         self._kstar_df = kstar_df
@@ -278,7 +525,8 @@ class Maturity:
         Used by :func:`maturity_at` to wrap a user-supplied ``mat_k``
         (and optional per-group values). The per-link diagnostic frame
         is intentionally empty -- there is no factor data behind a
-        manual specification.
+        manual specification, so all stat columns are ``NaN`` (R
+        parity with ``R/maturity.R::maturity_at``).
         """
         self = cls.__new__(cls)
         self._output_type = "polars"
@@ -289,26 +537,27 @@ class Maturity:
         self._dev = ""
 
         n = len(change)
+        ata_from = [c - 1 for c in change]
+        ata_link = [f"{f}-{t}" for f, t in zip(ata_from, change)]
+
+        cols: dict[str, list[Any]] = {}
         if groups:
             group_col = next(iter(groups))
-            group_values = list(groups[group_col])
-            kstar_df = pl.DataFrame(
-                {
-                    group_col: group_values,
-                    "mat_k": change,
-                    "n_links": [0] * n,
-                    "n_stable_links": [0] * n,
-                }
-            )
+            cols[group_col] = list(groups[group_col])
         else:
             group_col = None
-            kstar_df = pl.DataFrame(
-                {
-                    "mat_k": change,
-                    "n_links": [0] * n,
-                    "n_stable_links": [0] * n,
-                }
-            )
+
+        cols["ata_from"] = [float(v) for v in ata_from]
+        cols["change"] = [float(v) for v in change]
+        cols["ata_link"] = ata_link
+        for stat in (
+            "mean", "median", "wt", "cv",
+            "f", "f_se", "rse", "sigma",
+            "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio",
+        ):
+            cols[stat] = [float("nan")] * n
+
+        kstar_df = pl.DataFrame(cols)
 
         self._groups = group_col
         self._df = pl.DataFrame()
@@ -326,19 +575,44 @@ class Maturity:
 
         If the source Triangle has no ``groups``, returns an ``int``
         or ``None``. Otherwise returns ``dict[group_value, int | None]``.
+
+        ``None`` is returned for a group where no stable run was found
+        (R's ``NA_real_`` row).
         """
+        def _coerce(v: Any) -> int | None:
+            if v is None:
+                return None
+            try:
+                if np.isnan(v):
+                    return None
+            except (TypeError, ValueError):
+                pass
+            return int(v)
+
         if self._groups is None:
             row = self._kstar_df.row(0, named=True)
-            return row["mat_k"]
+            return _coerce(row.get("change"))
         return dict(
             zip(
                 self._kstar_df[self._groups].to_list(),
-                self._kstar_df["mat_k"].to_list(),
+                [_coerce(v) for v in self._kstar_df["change"].to_list()],
             )
         )
 
     def summary(self):
-        """One-row-per-group summary of detected mat_k."""
+        """One-row-per-group summary of the detected maturity link.
+
+        Schema (R parity with ``R/maturity.R``)::
+
+            [groups?, ata_from, change, ata_link,
+             mean, median, wt, cv,
+             f, f_se, rse, sigma,
+             n_cohorts, n_valid, n_inf, n_nan, valid_ratio]
+
+        ``change`` is the maturity point (i.e. ``ata_to`` of the first
+        stable link). Groups with no stable run have ``NaN`` in every
+        stat column.
+        """
         return mirror_output(self._kstar_df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:

@@ -32,6 +32,321 @@ if TYPE_CHECKING:
 
 _VALID_METHODS = ("e_divisive", "hclust")
 _VALID_TREATMENTS = ("latest_only", "segment_wise")
+_DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
+# When ``window="auto"`` cannot resolve via the elbow heuristic (flat
+# change-count curve, sweep failure, too few cohorts), fall back to this
+# trajectory window. Matches R's ``WINDOW_AUTO_FALLBACK``.
+_WINDOW_AUTO_FALLBACK = 6
+_WINDOW_AUTO_SEQ = tuple(range(2, 25))  # 2..24, mirrors R default
+
+
+def _derive_regime_target(
+    df: pl.DataFrame,
+    target: str,
+    groups: str | None,
+) -> tuple[pl.DataFrame, str]:
+    """Compute a diagnostic derived metric column on ``df``.
+
+    Mirrors R's ``.derive_regime_target``. The first dev row per (group,
+    cohort) is NA (no predecessor), so it is dropped and ``dev`` is
+    re-indexed so the first surviving observation becomes ``dev = 1``.
+    This lets the downstream eligibility filter (``n >= window``) and the
+    feature-matrix pivot use the same code path as the native columns.
+
+    Supported metrics:
+
+    - ``"loss_ata"``: ``loss[k] / loss[k-1]`` per (group, cohort).
+    - ``"premium_ata"``: ``premium[k] / premium[k-1]`` per (group, cohort).
+    - ``"loss_ed"``: ``(loss[k] - loss[k-1]) / premium[k-1]``.
+
+    ``"premium_ed"`` is an alias of ``"premium_ata"`` (constant offset of
+    1; PCA standardisation removes the shift, so detection results
+    coincide). The caller resolves the alias before calling.
+    """
+    if target not in _DERIVED_TARGETS:
+        raise ValueError(
+            f"Unknown derived metric: {target!r}. "
+            f"Expected one of {_DERIVED_TARGETS}."
+        )
+
+    by_cols = ["cohort"] if groups is None else [groups, "cohort"]
+
+    if target == "loss_ata":
+        derived = pl.col("loss") / pl.col("loss").shift(1).over(by_cols)
+    elif target == "premium_ata":
+        derived = pl.col("premium") / pl.col("premium").shift(1).over(by_cols)
+    else:  # loss_ed
+        derived = (
+            (pl.col("loss") - pl.col("loss").shift(1).over(by_cols))
+            / pl.col("premium").shift(1).over(by_cols)
+        )
+
+    out = df.with_columns(derived.alias(target))
+    # Drop rows where the derived metric is non-finite (first dev per
+    # cohort, plus any zero-denominator cases). polars treats NaN and
+    # null separately, so test both.
+    out = out.filter(
+        pl.col(target).is_not_null() & pl.col(target).is_finite()
+    )
+    # Re-index dev so the first surviving period per cohort becomes 1.
+    out = out.with_columns((pl.col("dev") - 1).alias("dev"))
+    return out, target
+
+
+def _kneedle_elbow(
+    window: np.ndarray, change_count: np.ndarray
+) -> int | None:
+    """Kneedle elbow on a (decreasing) ``change_count`` vs ``window`` curve.
+
+    Direct port of R's ``.kneedle_elbow`` in
+    ``R/regime-optimal-window.R``. Both axes are normalised to ``[0, 1]``
+    and the elbow is the index with the maximum vertical *deficit*
+    below the diagonal line ``y = 1 - x``. Returns ``None`` when the
+    curve is flat (zero range on y) or has fewer than 3 points; the
+    caller then falls back to ``_WINDOW_AUTO_FALLBACK``.
+
+    Tie-breaking deviates from R only in that numpy's ``argmax``
+    returns the first maximum, matching R's ``which.max`` semantics.
+    """
+    window = np.asarray(window, dtype=float)
+    change_count = np.asarray(change_count, dtype=float)
+    n = window.size
+    if n < 3:
+        return None
+    y_min = float(np.nanmin(change_count))
+    y_max = float(np.nanmax(change_count))
+    if not np.isfinite(y_max - y_min) or y_max == y_min:
+        return None
+    x_min = float(np.nanmin(window))
+    x_max = float(np.nanmax(window))
+    if x_max == x_min:
+        return None
+
+    k_norm = (window - x_min) / (x_max - x_min)
+    bc_norm = (change_count - y_min) / (y_max - y_min)
+    deficit = (1.0 - k_norm) - bc_norm
+    idx = int(np.argmax(deficit))
+    return int(window[idx])
+
+
+def _resolve_by(
+    by: str | Sequence[str] | None,
+    triangle: "Triangle",
+) -> str | None:
+    """Normalise the ``by`` argument to a single group column name or ``None``.
+
+    Mirrors R's resolution:
+
+    - ``None``: defer to ``triangle.groups`` (per-group when set, pooled
+      otherwise).
+    - ``""`` or empty sequence: force pooled detection on a grouped
+      triangle.
+    - ``str``: explicit single group column.
+    - non-empty list/tuple of str: not supported yet -- Python
+      ``Triangle._groups`` only stores a single column. Raises
+      ``NotImplementedError`` until multi-column grouping lands.
+    """
+    if by is None:
+        return triangle.groups
+    if isinstance(by, str):
+        if by == "":
+            return None
+        return by
+    if isinstance(by, Sequence):
+        seq = list(by)
+        if not seq:
+            return None
+        if len(seq) == 1:
+            return str(seq[0])
+        raise NotImplementedError(
+            "Multi-column `by` is not yet supported; Triangle currently "
+            "stores a single group column. Pass a single column name "
+            "instead."
+        )
+    raise TypeError(
+        f"`by` must be None, str, or sequence of str; got "
+        f"{type(by).__name__}"
+    )
+
+
+def _detect_regime_single(
+    sub: pl.DataFrame,
+    *,
+    target: str,
+    window: int,
+    method: str,
+    n_regimes: int | None,
+    sig_level: float,
+    R: int,
+    min_size: int,
+    seed: int | None,
+) -> dict[str, Any]:
+    """Single-combo detection. Returns the per-combo result dict.
+
+    Used both by :meth:`Regime._from_triangle` (multi-combo dispatch)
+    and by :func:`_detect_regime_optimal_window` (per-window sweep).
+    Raises ``ValueError`` when the feature matrix cannot be built; the
+    caller decides whether to skip or propagate.
+    """
+    mat, cohorts, dropped = _build_feature_matrix(sub, target, window)
+    n = len(cohorts)
+    if method == "e_divisive":
+        breaks_idx = _e_divisive_breakpoints(
+            mat,
+            sig_level=sig_level,
+            R=R,
+            min_size=min_size,
+            seed=seed,
+        )
+    else:  # hclust
+        n_reg = 2 if n_regimes is None else int(n_regimes)
+        breaks_idx = _hclust_breakpoints(mat, n_regimes=n_reg)
+
+    regime_ids = _regime_ids_from_breaks(n, breaks_idx)
+    breakpoints = [cohorts[i] for i in breaks_idx]
+    return {
+        "cohorts": cohorts,
+        "regime_ids": regime_ids,
+        "breakpoints": breakpoints,
+        "dropped": dropped,
+        "n_regimes": int(regime_ids.max()) if n > 0 else 0,
+    }
+
+
+def _combine_combo_results(
+    per_combo_results: list[tuple[Any, dict[str, Any]]],
+    grp: str | None,
+) -> tuple[pl.DataFrame, pl.DataFrame, list[Any], int, list[Any] | dict[Any, list[Any]]]:
+    """Stack per-combo (labels, changes) into one frame each.
+
+    For pooled detection (``grp is None``) the schemas match the
+    single-group case and ``dropped`` is a flat list. For per-combo
+    detection the group column is *prepended* to both frames, and
+    ``dropped`` becomes ``{combo_value: [cohort, ...]}`` -- mirrors
+    R's named-list shape for multi-group.
+    """
+    label_frames: list[pl.DataFrame] = []
+    change_frames: list[pl.DataFrame] = []
+    all_breakpoints: list[Any] = []
+    n_regimes_max = 0
+    dropped_out: list[Any] | dict[Any, list[Any]]
+
+    if grp is None:
+        # Pooled: single combo expected.
+        _, res = per_combo_results[0]
+        cohorts = res["cohorts"]
+        regime_ids = res["regime_ids"]
+        breakpoints = res["breakpoints"]
+
+        label_frames.append(
+            pl.DataFrame({"cohort": cohorts, "regime_id": regime_ids})
+        )
+        change_frames.append(
+            pl.DataFrame(
+                {
+                    "change": breakpoints,
+                    "regime_id": list(range(2, 2 + len(breakpoints))),
+                },
+                schema_overrides={"regime_id": pl.Int64},
+            )
+        )
+        all_breakpoints.extend(breakpoints)
+        n_regimes_max = max(n_regimes_max, res["n_regimes"])
+        dropped_out = list(res["dropped"])
+    else:
+        dropped_dict: dict[Any, list[Any]] = {}
+        for combo, res in per_combo_results:
+            cohorts = res["cohorts"]
+            regime_ids = res["regime_ids"]
+            breakpoints = res["breakpoints"]
+
+            lab = pl.DataFrame(
+                {
+                    grp: [combo] * len(cohorts),
+                    "cohort": cohorts,
+                    "regime_id": regime_ids,
+                }
+            )
+            label_frames.append(lab)
+
+            if breakpoints:
+                ch = pl.DataFrame(
+                    {
+                        grp: [combo] * len(breakpoints),
+                        "change": breakpoints,
+                        "regime_id": list(range(2, 2 + len(breakpoints))),
+                    },
+                    schema_overrides={"regime_id": pl.Int64},
+                )
+                change_frames.append(ch)
+                all_breakpoints.extend(breakpoints)
+            n_regimes_max = max(n_regimes_max, res["n_regimes"])
+            dropped_dict[combo] = list(res["dropped"])
+        dropped_out = dropped_dict
+
+    labels_df = (
+        pl.concat(label_frames, how="vertical_relaxed")
+        if label_frames
+        else pl.DataFrame()
+    )
+    changes_df = (
+        pl.concat(change_frames, how="vertical_relaxed")
+        if change_frames
+        else pl.DataFrame(
+            {"change": [], "regime_id": []},
+            schema={"change": pl.Date, "regime_id": pl.Int64},
+        )
+    )
+    return labels_df, changes_df, all_breakpoints, n_regimes_max, dropped_out
+
+
+def _detect_regime_optimal_window(
+    tri_df: pl.DataFrame,
+    *,
+    target: str,
+    window_seq: Sequence[int] = _WINDOW_AUTO_SEQ,
+    method: str = "e_divisive",
+    sig_level: float = 0.05,
+    min_size: int = 3,
+    R: int = 999,
+    seed: int | None = None,
+) -> int | None:
+    """Pick a trajectory window via Kneedle elbow on the change-count curve.
+
+    Internal helper, intentionally not exported. Mirrors R's
+    ``detect_regime_optimal_window`` + ``.kneedle_elbow`` pair from
+    ``R/regime-optimal-window.R``. Returns the elbow window or ``None``
+    when no sweep value produced a usable detection (the caller falls
+    back to ``_WINDOW_AUTO_FALLBACK``).
+
+    Errors at individual sweep values (too few cohorts for that window,
+    feature matrix containing NaN, etc.) are swallowed -- the window is
+    simply omitted from the diagnostics curve.
+    """
+    sweep: list[tuple[int, int]] = []  # (window, change_count)
+    for k in window_seq:
+        try:
+            res = _detect_regime_single(
+                tri_df,
+                target=target,
+                window=int(k),
+                method=method,
+                n_regimes=None,
+                sig_level=sig_level,
+                R=R,
+                min_size=min_size,
+                seed=seed,
+            )
+        except ValueError:
+            continue
+        sweep.append((int(k), len(res["breakpoints"])))
+
+    if not sweep:
+        return None
+
+    windows = np.array([w for w, _ in sweep])
+    counts = np.array([c for _, c in sweep])
+    return _kneedle_elbow(windows, counts)
 
 
 def _build_feature_matrix(
@@ -53,16 +368,23 @@ def _build_feature_matrix(
 
     df = tri_df.filter(pl.col("dev") <= K)
 
-    # Count *non-null target* observations per cohort. Counting raw rows
-    # would include cells masked by a backtest hold-out (cells exist with
-    # NaN), giving false eligibility that fails the no-NaN check later.
+    # Count *distinct dev values* with a non-null target per cohort.
+    # When the input frame carries multiple rows per (cohort, dev)
+    # (pooled detection on a multi-group triangle), raw row counts
+    # would overstate eligibility -- the pivot aggregates to one cell
+    # per (cohort, dev), so the eligibility test must do the same.
     counts = (
-        df.group_by("cohort")
-        .agg(pl.col(target).is_not_null().sum().alias("n"))
+        df.filter(pl.col(target).is_not_null())
+        .group_by("cohort")
+        .agg(pl.col("dev").n_unique().alias("n"))
         .sort("cohort")
     )
     eligible = counts.filter(pl.col("n") >= K)["cohort"].to_list()
-    all_cohorts = counts["cohort"].to_list()
+    # ``all_cohorts`` from the unfiltered frame: includes cohorts with
+    # zero non-null target cells (which the filter above would drop).
+    all_cohorts = (
+        df["cohort"].unique().sort().to_list()
+    )
     dropped = [c for c in all_cohorts if c not in set(eligible)]
 
     if not eligible:
@@ -71,10 +393,14 @@ def _build_feature_matrix(
             f"Reduce K."
         )
 
-    # Pivot to wide form: rows = cohort, cols = dev 1..K
+    # Pivot to wide form: rows = cohort, cols = dev 1..K. Use mean as
+    # aggregator so pooled detection on a multi-group triangle (where
+    # each (cohort, dev) cell has one row per group) collapses to a
+    # single value per (cohort, dev). Matches R's
+    # ``fun.aggregate = mean(..., na.rm=TRUE)``.
     wide = (
         df.filter(pl.col("cohort").is_in(eligible))
-        .pivot(on="dev", index="cohort", values=target)
+        .pivot(on="dev", index="cohort", values=target, aggregate_function="mean")
         .sort("cohort")
     )
 
@@ -195,7 +521,8 @@ class Regime:
         triangle: "Triangle",
         *,
         target: str = "ratio",
-        window: int = 12,
+        window: int | str = "auto",
+        by: str | Sequence[str] | None = None,
         method: str = "e_divisive",
         n_regimes: int | None = None,
         sig_level: float = 0.05,
@@ -212,54 +539,181 @@ class Regime:
             raise ValueError(
                 f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
             )
-        if window < 2:
-            raise ValueError(f"window must be >= 2, got {window}")
+
+        # `premium_ed` is an alias of `premium_ata` (constant offset of 1
+        # absorbed by PCA standardisation -- detection produces identical
+        # changes). Resolve before validation. Mirrors R behaviour.
+        if target == "premium_ed":
+            target = "premium_ata"
+
+        # `window="auto"` defers to the optimal-window elbow heuristic.
+        # Plain integer windows pass through after a >= 2 check.
+        window_is_auto = isinstance(window, str) and window == "auto"
+        if isinstance(window, str) and not window_is_auto:
+            raise ValueError(
+                f"`window` must be an integer >= 2 or 'auto'; got {window!r}"
+            )
+        if not window_is_auto:
+            if not isinstance(window, (int, np.integer)) or window < 2:
+                raise ValueError(
+                    f"window must be an integer >= 2, got {window!r}"
+                )
+            window = int(window)
+
+        # Resolve `by`:
+        #   None (default) -> use triangle.groups if set, else pooled
+        #   "" / []        -> force pooled
+        #   str            -> single group column
+        #   list[str]      -> multi-column grouping (NotImplementedError --
+        #                     Triangle currently stores a single group col)
+        grp = _resolve_by(by, triangle)
 
         tri_df = triangle.to_polars()
 
-        # If grouped, require single group
-        if triangle.groups is not None:
-            n_groups = tri_df[triangle.groups].n_unique()
-            if n_groups > 1:
-                raise ValueError(
-                    f"Triangle has {n_groups} groups; subset to a single "
-                    f"group before calling detect_regime()."
-                )
-
-        # Build feature matrix (internal helper still takes the window
-        # value as `K` for math-style brevity inside the loop).
-        mat, cohorts, dropped = _build_feature_matrix(tri_df, target, window)
-        n = len(cohorts)
-
-        # Dispatch to method
-        if method == "e_divisive":
-            breaks_idx = _e_divisive_breakpoints(
-                mat, sig_level=sig_level, R=R, min_size=min_size, seed=seed
+        # Build the source frame: either native column or derived metric.
+        if target in _DERIVED_TARGETS:
+            tri_df, target = _derive_regime_target(
+                tri_df, target, groups=grp
             )
-        else:  # hclust
-            n_reg = 2 if n_regimes is None else int(n_regimes)
-            breaks_idx = _hclust_breakpoints(mat, n_regimes=n_reg)
+        elif target not in tri_df.columns:
+            raise ValueError(
+                f"target={target!r} not found in Triangle columns: "
+                f"{tri_df.columns}"
+            )
 
-        # Regime ids per cohort (1-based)
-        regime_ids = _regime_ids_from_breaks(n, breaks_idx)
-        breakpoints = [cohorts[i] for i in breaks_idx]
+        # Per-combo dispatch. Empty `combos` => pooled (single combo over
+        # the whole frame).
+        if grp is None:
+            combos: list[Any] = [None]
+        else:
+            combos = (
+                tri_df[grp]
+                .unique()
+                .sort()
+                .to_list()
+            )
 
-        labels_df = pl.DataFrame(
-            {
-                "cohort": cohorts,
-                "regime_id": regime_ids,
+        # Resolve trajectory window per combo. ``window="auto"`` first
+        # tries the maturity point (``detect_maturity`` on the Triangle)
+        # for each combo. When maturity is unavailable (pooled
+        # detection, NA maturity, or `by` mismatching the Triangle's
+        # stored groups) it falls back to the Kneedle elbow on the
+        # change-count sweep; if the elbow is also undefined, falls
+        # back to ``_WINDOW_AUTO_FALLBACK``. Mirrors R's
+        # ``detect_regime(window="auto")`` fallback chain in
+        # ``R/regime.R``.
+        if window_is_auto:
+            # Map the regime target -> a valid cumulative target for
+            # detect_maturity (which supports cumulative metrics only).
+            # Derived targets fall back to "ratio".
+            _MAT_LOSS_MAP = {
+                "ratio": "ratio",
+                "loss": "loss",
+                "premium": "premium",
+                "incr_ratio": "ratio",
+                "incr_loss": "loss",
+                "incr_premium": "premium",
             }
-        )
+            mat_loss = _MAT_LOSS_MAP.get(target, "ratio")
 
-        # `_changes_df` mirrors R's `Regime$changes` slot: one row per
-        # detected change point. For auto-detected regimes we only know
-        # the change cohort; pre/post statistics are left null.
-        changes_df = pl.DataFrame(
-            {
-                "change": breakpoints,
-                "regime_id": list(range(2, 2 + len(breakpoints))),
-            },
-            schema_overrides={"regime_id": pl.Int64},
+            # First pass: try maturity. Pooled detection (grp is None)
+            # cannot match maturity rows back to combos, so skip.
+            maturity_by_combo: dict[Any, int | None] = {}
+            if grp is not None:
+                try:
+                    mat = triangle.detect_maturity(loss=mat_loss)
+                    mat_df = mat.summary()
+                    # Coerce mat_df to polars if needed (mirror_output
+                    # may have returned pandas).
+                    if not isinstance(mat_df, pl.DataFrame):
+                        mat_df = pl.from_pandas(mat_df)
+                    if (
+                        grp in mat_df.columns
+                        and "change" in mat_df.columns
+                    ):
+                        for row in mat_df.iter_rows(named=True):
+                            v = row.get("change")
+                            key = row.get(grp)
+                            if v is None:
+                                maturity_by_combo[key] = None
+                                continue
+                            try:
+                                if np.isnan(v):
+                                    maturity_by_combo[key] = None
+                                    continue
+                            except (TypeError, ValueError):
+                                pass
+                            maturity_by_combo[key] = int(v)
+                except (ValueError, KeyError, RuntimeError):
+                    # detect_maturity may raise on degenerate input
+                    # (no valid links, single-cohort triangle, etc.).
+                    # The elbow fallback handles these.
+                    maturity_by_combo = {}
+
+            window_per_combo: list[int] = []
+            for combo in combos:
+                # Maturity-first path (per-combo when grp is set).
+                mat_k = maturity_by_combo.get(combo) if grp is not None else None
+                if mat_k is not None and mat_k >= 2:
+                    window_per_combo.append(mat_k)
+                    continue
+                # Elbow fallback.
+                sub = (
+                    tri_df
+                    if combo is None
+                    else tri_df.filter(pl.col(grp) == combo)
+                )
+                k = _detect_regime_optimal_window(
+                    sub,
+                    target=target,
+                    window_seq=_WINDOW_AUTO_SEQ,
+                    method="e_divisive",
+                    sig_level=sig_level,
+                    min_size=min_size,
+                    R=R,
+                    seed=seed,
+                )
+                window_per_combo.append(
+                    k if k is not None else _WINDOW_AUTO_FALLBACK
+                )
+        else:
+            window_per_combo = [int(window)] * len(combos)
+
+        # Run detection per combo. Failures are skipped (per-combo
+        # robustness: a single short coverage shouldn't kill the whole
+        # multi-group call). Skipped combos contribute zero rows to
+        # `changes`/`labels`.
+        per_combo_results: list[tuple[Any, dict[str, Any]]] = []
+        for combo, k in zip(combos, window_per_combo):
+            sub = (
+                tri_df
+                if combo is None
+                else tri_df.filter(pl.col(grp) == combo)
+            )
+            try:
+                res = _detect_regime_single(
+                    sub,
+                    target=target,
+                    window=k,
+                    method=method,
+                    n_regimes=n_regimes,
+                    sig_level=sig_level,
+                    R=R,
+                    min_size=min_size,
+                    seed=seed,
+                )
+            except ValueError:
+                continue
+            per_combo_results.append((combo, res))
+
+        if not per_combo_results:
+            raise ValueError(
+                "No group / combo produced a usable detection result. "
+                "Check `window`, `min_size`, and input coverage."
+            )
+
+        labels_df, changes_df, breakpoints, n_regimes_total, dropped = (
+            _combine_combo_results(per_combo_results, grp)
         )
 
         self = cls.__new__(cls)
@@ -268,12 +722,22 @@ class Regime:
         self._output_type = triangle._output_type
         self.method = method
         self.target = target
-        self.window = window
+        # ``window`` is scalar for single-combo, list[int] for multi-combo.
+        # Matches R's single-vs-vector unwrap.
+        self.window = (
+            window_per_combo[0]
+            if len(per_combo_results) == 1 and grp is None
+            else (
+                window_per_combo[0]
+                if len(window_per_combo) == 1
+                else list(window_per_combo)
+            )
+        )
         self.cohort = triangle.cohort
         self.dev = triangle.dev
-        self.groups = triangle.groups
+        self.groups = grp
         self.breakpoints = breakpoints
-        self.n_regimes = int(regime_ids.max()) if n > 0 else 0
+        self.n_regimes = n_regimes_total
         self.dropped = dropped
         self.treatment = treatment
         return self

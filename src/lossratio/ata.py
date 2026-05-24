@@ -161,6 +161,7 @@ class ATA:
 
     def __init__(self) -> None:
         self._df: pl.DataFrame
+        self._link: "Link"
         self._output_type: str
         self._groups: str | None
         self._cohort: str
@@ -175,6 +176,7 @@ class ATA:
     ) -> "ATA":
         _validate_recent(recent)
         self = cls.__new__(cls)
+        self._link = link
         self._output_type = link._output_type
         self._groups = link._groups
         self._cohort = link._cohort

@@ -26,7 +26,7 @@ from .maturity import Maturity, maturity_at, maturity_spec
 from .premium import Premium, PremiumFit
 from .regime import Regime, regime_at, regime_spec
 from .total import Total, as_total
-from .triangle import Triangle
+from .triangle import Triangle, TriangleValidation
 
 __version__ = "0.0.1.dev10"
 
@@ -58,6 +58,7 @@ __all__ = [
     "Regime",
     "Total",
     "Triangle",
+    "TriangleValidation",
     "__version__",
     "as_calendar",
     "as_total",
