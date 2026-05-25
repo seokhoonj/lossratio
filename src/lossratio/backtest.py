@@ -550,39 +550,106 @@ class BacktestFit:
 
     def plot_triangle(
         self,
+        view: str = "value",
         cell_type: str = "cumulative",
         label_size: float = 7.0,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
+        *,
+        recent: int | None = None,
+        regime: Any = None,
+        maturity: Any = None,
     ) -> Any:
-        """A/E error heatmap on the held-out wedge, backed by matplotlib.
-
-        Diverging palette: red marks under-projection (actual >
-        expected), blue marks over-projection. Faceted by group.
+        """A/E error heatmap (``view='value'``) or cell-status
+        heatmap (``view='usage'``), backed by matplotlib.
 
         Parameters
         ----------
+        view
+            ``"value"`` (default; diverging A/E-error heatmap on the
+            held-out wedge) or ``"usage"`` (categorical status
+            heatmap of training / held-out / regime-excluded /
+            future cells, driven by the masking + filter metadata
+            inherited from this Backtest's estimator).
         cell_type
-            ``"cumulative"`` (default) or ``"incremental"``.
+            (``view='value'`` only) ``"cumulative"`` (default; uses
+            ``ae_err``) or ``"incremental"`` (uses ``incr_ae_err``).
         label_size
-            Matplotlib font size for the per-cell percent labels.
+            (``view='value'`` only) matplotlib font size for the
+            per-cell percent labels.
         nrow, ncol
             Facet layout.
         figsize
             Passed to ``plt.subplots``.
+        recent, regime, maturity
+            (``view='usage'`` only) override values for the filter
+            overlays. By default the usage view reads ``recent`` and
+            ``regime`` from the estimator that drove the backtest
+            (``recent`` from ``CL`` / ``Loss`` / ``Ratio``; ``regime``
+            from the loss-side of ``Ratio``, or ``regime`` of
+            ``Loss``); ``maturity`` defaults to ``None`` -- callers
+            who want a maturity hline overlay must pass an explicit
+            :class:`Maturity` instance or scalar (R parity:
+            R's ``backtest()`` runs a 2-pass ATA fit to detect
+            maturity automatically; Python defers that to the
+            caller).
 
         Returns
         -------
         matplotlib.figure.Figure
         """
-        from ._backtest_vis import plot_triangle_backtest
-        return plot_triangle_backtest(
-            self,
-            cell_type=cell_type,
-            label_size=label_size,
+        if view not in ("value", "usage"):
+            raise ValueError(
+                f"`view` must be 'value' or 'usage'; got {view!r}."
+            )
+        if view == "value":
+            from ._backtest_vis import plot_triangle_backtest
+            return plot_triangle_backtest(
+                self,
+                cell_type=cell_type,
+                label_size=label_size,
+                nrow=nrow, ncol=ncol, figsize=figsize,
+            )
+        # view == "usage": forward to the Triangle-side usage
+        # renderer with `holdout=self.holdout` and filter args
+        # inherited from `self.estimator` (overridable via kwargs).
+        from ._triangle_vis import _plot_triangle_usage
+        eff_recent = recent if recent is not None else self._infer_recent()
+        eff_regime = regime if regime is not None else self._infer_regime()
+        return _plot_triangle_usage(
+            self._triangle,
+            recent=eff_recent,
+            regime=eff_regime,
+            holdout=self.holdout,
+            maturity=maturity,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
+
+    def _infer_recent(self) -> int | None:
+        """Extract `recent` from `self.estimator`, if present."""
+        return getattr(self.estimator, "recent", None)
+
+    def _infer_regime(self) -> Any:
+        """Extract the loss-side regime from `self.estimator`, if any.
+
+        For ``lr.Ratio``, prefer ``loss_regime`` (the Ratio's
+        loss-side); for ``lr.Loss`` / ``lr.CL``, ``regime``.
+        Returns ``None`` when neither attr is set or its value is
+        ``"auto"`` (which the usage-view renderer can't resolve
+        without re-running detection on the masked triangle).
+        """
+        est = self.estimator
+        cand = (
+            getattr(est, "loss_regime", None)
+            if hasattr(est, "loss_regime")
+            else getattr(est, "regime", None)
+        )
+        # `"auto"` requires running detect_regime inline; we don't try
+        # to do that here -- the caller can pass an explicit Regime.
+        if isinstance(cand, str) and cand == "auto":
+            return None
+        return cand
 
     def __repr__(self) -> str:
         n_cells = self._ae_err.height

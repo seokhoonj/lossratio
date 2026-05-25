@@ -77,6 +77,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BacktestFit.plot_triangle(view="usage")` -- cell-status heatmap
+  (training / held-out / regime-excluded / future) on the
+  underlying triangle, mirroring R `plot_triangle.Backtest(view =
+  "usage")`. Forwards to the shared `_plot_triangle_usage` helper
+  with `holdout=self.holdout` plus filter args inherited from the
+  estimator (``recent`` from `CL` / `Loss` / `Ratio`; loss-side
+  ``regime`` from `Ratio.loss_regime` or `Loss.regime` / `CL.regime`).
+  Callers can override any of `recent` / `regime` / `maturity` via
+  kwargs. Estimator values of ``regime="auto"`` are dropped silently
+  (the view doesn't re-run detection on the masked triangle); pass
+  an explicit :class:`Regime` if the regime overlay is needed.
+  Python doesn't precompute a `usage` slot on `BacktestFit`; the
+  renderer rebuilds the per-cell status grid on the fly.
 - `tail` argument on `CL` / `Loss(method="cl", ...)` /
   `Ratio(method="cl", ...)` enabling Mack-style tail-factor
   extrapolation past the last observed development period. Mirrors R

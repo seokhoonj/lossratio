@@ -18,16 +18,24 @@ import lossratio as lr
 
 
 @pytest.fixture
-def bt_multi():
-    tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
-    return lr.Backtest(estimator=lr.CL(), holdout=4, metric="loss").fit(tri)
+def tri_multi():
+    return lr.Triangle(lr.make_experience(seed=1), groups="coverage")
 
 
 @pytest.fixture
-def bt_single():
+def tri_single():
     df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CAN")
-    tri = lr.Triangle(df)
-    return lr.Backtest(estimator=lr.CL(), holdout=4, metric="loss").fit(tri)
+    return lr.Triangle(df)
+
+
+@pytest.fixture
+def bt_multi(tri_multi):
+    return lr.Backtest(estimator=lr.CL(), holdout=4, metric="loss").fit(tri_multi)
+
+
+@pytest.fixture
+def bt_single(tri_single):
+    return lr.Backtest(estimator=lr.CL(), holdout=4, metric="loss").fit(tri_single)
 
 
 def _close(fig):
@@ -112,3 +120,92 @@ def test_backtest_plot_triangle_incremental(bt_single):
 def test_backtest_plot_triangle_invalid_cell_type(bt_single):
     with pytest.raises(ValueError, match="cell_type"):
         bt_single.plot_triangle(cell_type="bogus")
+
+
+# --- view='usage' ---------------------------------------------------------
+
+
+def test_backtest_plot_triangle_usage_multi(bt_multi):
+    fig = bt_multi.plot_triangle(view="usage")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_usage_single(bt_single):
+    fig = bt_single.plot_triangle(view="usage")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_invalid_view(bt_single):
+    with pytest.raises(ValueError, match="view"):
+        bt_single.plot_triangle(view="bogus")
+
+
+def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single):
+    # Backtest built on a CL with recent=12 -- usage view should
+    # respect that recent without the caller re-passing it.
+    bt = lr.Backtest(
+        estimator=lr.CL(recent=12), holdout=4, metric="loss"
+    ).fit(tri_single)
+    assert bt._infer_recent() == 12
+    fig = bt.plot_triangle(view="usage")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_usage_inherits_regime_from_estimator(tri_multi):
+    reg = tri_multi.detect_regime(window=12)
+    bt = lr.Backtest(
+        estimator=lr.Loss(method="cl", regime=reg),
+        holdout=4, metric="loss",
+    ).fit(tri_multi)
+    inferred = bt._infer_regime()
+    assert inferred is reg
+    fig = bt.plot_triangle(view="usage")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_usage_loss_regime_for_ratio(tri_multi):
+    reg = tri_multi.detect_regime(window=12)
+    bt = lr.Backtest(
+        estimator=lr.Ratio(method="cl", loss_regime=reg),
+        holdout=4, metric="ratio",
+    ).fit(tri_multi)
+    inferred = bt._infer_regime()
+    assert inferred is reg
+
+
+def test_backtest_plot_triangle_usage_auto_regime_dropped(tri_multi):
+    # `regime='auto'` on the estimator cannot be resolved at usage-plot
+    # time; _infer_regime should return None and the view should still
+    # render (no regime overlay).
+    bt = lr.Backtest(
+        estimator=lr.Loss(method="cl", regime="auto"),
+        holdout=4, metric="loss",
+    ).fit(tri_multi)
+    assert bt._infer_regime() is None
+    fig = bt.plot_triangle(view="usage")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_usage_explicit_maturity(bt_single):
+    from lossratio import maturity_at
+    mat = maturity_at(change=6)
+    fig = bt_single.plot_triangle(view="usage", maturity=mat)
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
