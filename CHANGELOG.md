@@ -77,6 +77,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tail` argument on `CL` / `Loss(method="cl", ...)` /
+  `Ratio(method="cl", ...)` enabling Mack-style tail-factor
+  extrapolation past the last observed development period. Mirrors R
+  `fit_cl(tail=)`: `False` (default) is a no-op; `True` runs the
+  log-linear regression of `log(f_sel - 1)` against the position
+  index over the `f_sel > 1` subset, projects 100 steps, and takes
+  the product (with R's guards: needs >=3 finite factors, >=2 above
+  1, product of the last two above 1.0001, and the extrapolated
+  factor must be finite and <=2 -- else falls back to 1.0). A
+  numeric value is used as the tail factor directly. The tail factor
+  is applied as ``loss_tail`` / ``loss_proc_se_tail`` /
+  ``loss_param_se_tail`` / ``loss_total_se_tail`` and matching CV
+  companions on the *last-dev row of each cohort* -- the non-tail
+  columns stay byte-identical to the no-tail fit, so existing code
+  paths are unaffected. Per-group tail factors are stored in
+  `CLFit.tail_factor` (dict for multi-group fits, scalar otherwise);
+  `LossFit.tail_factor` / `RatioFit.tail` mirror via the dispatcher
+  forward. Passing `tail` to `Loss` / `Ratio` with `method != "cl"`
+  raises a `UserWarning` and silently drops the tail (R parity:
+  `fit_sa` declares `tail` but never uses it; `fit_ed` / `fit_bf` /
+  `fit_cc` don't declare it). 22 new tests in
+  `tests/test_cl_tail.py`.
 - `BacktestFit.plot(type=...)` -- per-development / per-calendar-
   diagonal / per-cell A/E error aggregates (three type variants
   mirroring R `plot.Backtest`). Stat lines for mean / median /

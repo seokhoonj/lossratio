@@ -92,6 +92,159 @@ def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     return _build_value_matrix(df, value_col="loss")
 
 
+def _validate_tail(tail: Any) -> None:
+    """Validate the ``tail`` argument shape."""
+    if isinstance(tail, bool):
+        return
+    if isinstance(tail, (int, float)) and not isinstance(tail, bool):
+        if not np.isfinite(tail):
+            raise ValueError(
+                f"`tail` must be a finite numeric or boolean; got {tail!r}."
+            )
+        return
+    raise TypeError(
+        f"`tail` must be bool or numeric; got {type(tail).__name__}."
+    )
+
+
+def _compute_tail_factor(f_sel: np.ndarray, tail: bool | float) -> float:
+    """R `.compute_tail_factor` (`R/cl.R:514`) Python port.
+
+    Computes the scalar tail factor from selected ATA factors:
+
+    - ``tail=False`` -> ``1.0`` (no-op).
+    - ``tail=True`` -> log-linear regression of ``log(f_sel - 1)`` on
+      the position index over the entries with ``f_sel > 1`` (need
+      >=2 such); extrapolate 100 steps and take the product. Guards
+      against unstable / runaway regressions: require >=3 finite
+      f_sel and require the product of the last two ``f > 1`` entries
+      to exceed ``1.0001``. If the extrapolated factor isn't finite or
+      exceeds ``2``, clamps to ``1.0``.
+    - numeric scalar -> used directly.
+    """
+    if isinstance(tail, bool):
+        if not tail:
+            return 1.0
+        f_vals = f_sel[np.isfinite(f_sel)]
+        if f_vals.size < 3 or np.any(f_vals <= 0):
+            return 1.0
+        idx = np.flatnonzero(f_vals > 1.0) + 1  # 1-indexed to match R `which`
+        if idx.size < 2:
+            return 1.0
+        ff = f_vals[idx - 1]
+        if ff[-2] * ff[-1] <= 1.0001:
+            return 1.0
+        # log(f - 1) = a + b * i  via OLS over the f > 1 subset
+        X = np.column_stack([np.ones_like(idx, dtype=float), idx.astype(float)])
+        y = np.log(ff - 1.0)
+        coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+        a, b = float(coef[0]), float(coef[1])
+        future_i = np.arange(int(idx.max()) + 1, int(idx.max()) + 101, dtype=float)
+        future_f = np.exp(a + b * future_i) + 1.0
+        tail_factor = float(np.prod(future_f))
+        if not np.isfinite(tail_factor) or tail_factor > 2.0:
+            return 1.0
+        return tail_factor
+    return float(tail)
+
+
+def _apply_tail_to_long_df(
+    long_df: pl.DataFrame,
+    tail_factor: float,
+    groups: str | None,
+    role: str = "loss",
+) -> pl.DataFrame:
+    """Append ``_tail``-suffixed companion columns to the last-dev row
+    of each cohort. Mirrors R `.cl_tail_factor` (`R/cl.R:729`).
+
+    The non-tail columns are left untouched; users can read
+    ``<role>_tail`` from the long table as the tail-adjusted ultimate.
+    """
+    if tail_factor <= 1.0 or not np.isfinite(tail_factor):
+        return long_df
+
+    proj_col = f"{role}_proj"
+    proc_se2 = f"{role}_proc_se2"
+    param_se2 = f"{role}_param_se2"
+    total_se2 = f"{role}_total_se2"
+    proc_se = f"{role}_proc_se"
+    param_se = f"{role}_param_se"
+    total_se = f"{role}_total_se"
+
+    keys = ([groups] if groups is not None else []) + ["cohort"]
+    # Identify the last-dev row per cohort: rank by `dev` descending and pick rank==1.
+    last_marker = (
+        long_df.with_columns(
+            pl.col("dev").rank(method="dense", descending=True).over(keys).alias("_dev_rank")
+        )
+    )
+    is_last = pl.col("_dev_rank") == 1
+
+    # Some columns may be absent in worker-level CLFit (no SE^2 cache);
+    # fall back to deriving from the SE columns.
+    has_se2 = proc_se2 in long_df.columns
+
+    def _se2_expr(col_name: str, se_col: str) -> pl.Expr:
+        if has_se2:
+            return pl.col(col_name) * (tail_factor ** 2)
+        return (pl.col(se_col) ** 2) * (tail_factor ** 2)
+
+    out = last_marker.with_columns(
+        pl.when(is_last)
+        .then(pl.col(proj_col) * tail_factor)
+        .otherwise(None)
+        .alias(f"{role}_tail"),
+        pl.when(is_last)
+        .then(_se2_expr(proc_se2, proc_se))
+        .otherwise(None)
+        .alias(f"{role}_proc_se2_tail"),
+        pl.when(is_last)
+        .then(_se2_expr(param_se2, param_se))
+        .otherwise(None)
+        .alias(f"{role}_param_se2_tail"),
+        pl.when(is_last)
+        .then(_se2_expr(total_se2, total_se))
+        .otherwise(None)
+        .alias(f"{role}_total_se2_tail"),
+    )
+
+    out = out.with_columns(
+        pl.col(f"{role}_proc_se2_tail").sqrt().alias(f"{role}_proc_se_tail"),
+        pl.col(f"{role}_param_se2_tail").sqrt().alias(f"{role}_param_se_tail"),
+        pl.col(f"{role}_total_se2_tail").sqrt().alias(f"{role}_total_se_tail"),
+    )
+
+    tail_col = f"{role}_tail"
+    out = out.with_columns(
+        pl.when(
+            pl.col(tail_col).is_not_null()
+            & pl.col(tail_col).is_finite()
+            & (pl.col(tail_col) != 0.0)
+        )
+        .then(pl.col(f"{role}_proc_se_tail") / pl.col(tail_col).abs())
+        .otherwise(None)
+        .alias(f"{role}_proc_cv_tail"),
+        pl.when(
+            pl.col(tail_col).is_not_null()
+            & pl.col(tail_col).is_finite()
+            & (pl.col(tail_col) != 0.0)
+        )
+        .then(pl.col(f"{role}_param_se_tail") / pl.col(tail_col).abs())
+        .otherwise(None)
+        .alias(f"{role}_param_cv_tail"),
+        pl.when(
+            pl.col(tail_col).is_not_null()
+            & pl.col(tail_col).is_finite()
+            & (pl.col(tail_col) != 0.0)
+        )
+        .then(pl.col(f"{role}_total_se_tail") / pl.col(tail_col).abs())
+        .otherwise(None)
+        .alias(f"{role}_total_cv_tail"),
+    )
+
+    return out.drop("_dev_rank")
+
+
 def _fit_mack(
     loss_obs: np.ndarray,
     sigma_method: str = "locf",
@@ -391,6 +544,7 @@ class CL:
         alpha: float = 1.0,
         sigma_method: str = "locf",
         recent: int | None = None,
+        tail: bool | float = False,
         bootstrap: Any = None,
     ) -> None:
         if alpha != 1.0:
@@ -404,9 +558,11 @@ class CL:
                 f"got {sigma_method!r}"
             )
         _validate_recent(recent)
+        _validate_tail(tail)
         self.alpha = alpha
         self.sigma_method = sigma_method
         self.recent = recent
+        self.tail = tail
         self.bootstrap = bootstrap
 
     def fit(
@@ -435,6 +591,7 @@ class CL:
             target=target,
             weight=weight,
             recent=self.recent,
+            tail=self.tail,
             bootstrap=self.bootstrap,
         )
 
@@ -477,6 +634,7 @@ class CLFit:
         target: str = "loss",
         weight: str | None = None,
         recent: int | None = None,
+        tail: bool | float = False,
         bootstrap: Any = None,
     ) -> "CLFit":
         self = cls.__new__(cls)
@@ -489,6 +647,7 @@ class CLFit:
         self.target = target
         self.weight = weight
         self.recent = recent
+        self.tail = tail
         # Bootstrap slots default to the pure-analytical state.
         self.boots = None
         self.ci_type = "analytical"
@@ -502,6 +661,10 @@ class CLFit:
                 f"Available columns: {tri_df.columns}"
             )
 
+        # Tail-factor storage: per-group dict when groups is set, scalar
+        # otherwise. Always populated (1.0 when tail=False).
+        self.tail_factor: float | dict[Any, float]
+
         if groups is None:
             value_obs, cohorts, _ = _build_value_matrix(tri_df, target)
             result = _fit_mack(
@@ -513,9 +676,16 @@ class CLFit:
                 result, cohorts, groups=None, group_value=None
             )
             fk_df = _factors_to_df(result, groups=None, group_value=None)
+            tail_factor = _compute_tail_factor(result.f_k, tail)
+            self.tail_factor = tail_factor
+            if tail_factor > 1.0 and np.isfinite(tail_factor):
+                long_df = _apply_tail_to_long_df(
+                    long_df, tail_factor, groups=None, role=target,
+                )
         else:
             long_parts: list[pl.DataFrame] = []
             fk_parts: list[pl.DataFrame] = []
+            tail_factor_map: dict[Any, float] = {}
             group_values = (
                 tri_df[groups].unique(maintain_order=True).to_list()
             )
@@ -527,14 +697,22 @@ class CLFit:
                     sigma_method=sigma_method,
                     link_mask=recent_link_mask(value_obs, recent),
                 )
-                long_parts.append(
-                    _result_to_long_df(result, cohorts, groups=groups, group_value=g)
+                grp_long = _result_to_long_df(
+                    result, cohorts, groups=groups, group_value=g
                 )
+                tf = _compute_tail_factor(result.f_k, tail)
+                tail_factor_map[g] = tf
+                if tf > 1.0 and np.isfinite(tf):
+                    grp_long = _apply_tail_to_long_df(
+                        grp_long, tf, groups=groups, role=target,
+                    )
+                long_parts.append(grp_long)
                 fk_parts.append(
                     _factors_to_df(result, groups=groups, group_value=g)
                 )
             long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
             fk_df = pl.concat(fk_parts) if fk_parts else pl.DataFrame()
+            self.tail_factor = tail_factor_map
 
         # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
         # With no bootstrap, `long_df` is the pure analytical Mack fit and

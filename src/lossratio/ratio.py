@@ -146,6 +146,7 @@ class Ratio:
         conf_level: float = 0.95,
         prior: Any = None,
         credibility: Any = None,
+        tail: bool | float = False,
         bootstrap: Any = None,
         B: int = 999,
         seed: int | None = None,
@@ -195,6 +196,17 @@ class Ratio:
         if not isinstance(B, int) or B < 1:
             raise ValueError(f"B must be a positive integer, got {B!r}")
         _validate_recent(recent)
+        from .cl import _validate_tail
+        _validate_tail(tail)
+        # R parity: tail is meaningful only when method='cl'. Warn on
+        # other methods (same as Loss).
+        if tail is not False and method != "cl":
+            import warnings as _warnings
+            _warnings.warn(
+                f"`tail` has no effect when method={method!r} (effective "
+                f"only for method='cl'); ignoring.",
+                stacklevel=3,
+            )
 
         self.method = method
         self.loss_alpha = loss_alpha
@@ -213,6 +225,7 @@ class Ratio:
         self.conf_level = conf_level
         self.prior = prior
         self.credibility = credibility
+        self.tail = tail
         self.bootstrap = bootstrap
         self.B = B
         self.seed = seed
@@ -281,6 +294,7 @@ class RatioFit:
         self.rho = estimator.rho
         self.recent = estimator.recent
         self.conf_level = estimator.conf_level
+        self.tail = estimator.tail
         # Bootstrap slots default to the pure-analytical state.
         self.boots = None
         self.ci_type = "analytical"
@@ -323,6 +337,10 @@ class RatioFit:
                 max_rse=estimator.max_rse,
                 min_run=estimator.min_run,
             )
+        # Forward tail factor to the loss-side Loss; the Loss constructor
+        # itself warns + drops when method != 'cl'.
+        if estimator.method == "cl":
+            loss_kwargs["tail"] = estimator.tail
         loss_fit = Loss(**loss_kwargs).fit(triangle)
         self.loss_fit = loss_fit
 

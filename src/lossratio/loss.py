@@ -634,6 +634,7 @@ class Loss:
         recent: int | None = None,
         prior: Any = None,
         credibility: Any = None,
+        tail: bool | float = False,
         bootstrap: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:
@@ -679,6 +680,18 @@ class Loss:
                 "premium_fit must be a PremiumFit instance or None"
             )
         _validate_recent(recent)
+        from .cl import _validate_tail
+        _validate_tail(tail)
+        # R parity: `tail` is effective only when method='cl'. For other
+        # methods the arg is accepted but no-op (matches R fit_sa, which
+        # declares tail but never uses it; ed / bf / cc don't declare it).
+        if tail is not False and method != "cl":
+            import warnings as _warnings
+            _warnings.warn(
+                f"`tail` has no effect when method={method!r} (effective "
+                f"only for method='cl'); ignoring.",
+                stacklevel=3,
+            )
         self.method = method
         self.alpha = alpha
         self.sigma_method = sigma_method
@@ -694,6 +707,7 @@ class Loss:
         self.recent = recent
         self.prior = prior
         self.credibility = credibility
+        self.tail = tail
         self.bootstrap = bootstrap
 
     def fit(self, triangle: "Triangle") -> "LossFit":
@@ -895,6 +909,44 @@ class LossFit:
             kstar_df = (
                 pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
             )
+
+        # ----- Tail factor (method='cl' only; R parity) --------------------
+        # Apply per-group `_tail`-suffixed companion columns to the last-dev
+        # row when `tail` is truthy AND method='cl'. For other methods the
+        # constructor already warned + dropped the user's tail; here we keep
+        # the no-op silent. Always populate `self.tail_factor` for
+        # introspection (1.0 / per-group dict).
+        from .cl import _apply_tail_to_long_df, _compute_tail_factor
+
+        self.tail = estimator.tail
+        if estimator.method == "cl" and estimator.tail is not False:
+            if groups is None:
+                result = self._internals[None]
+                tf = _compute_tail_factor(result.f_sel, estimator.tail)
+                self.tail_factor = tf
+                if tf > 1.0 and np.isfinite(tf):
+                    long_df = _apply_tail_to_long_df(
+                        long_df, tf, groups=None, role="loss",
+                    )
+            else:
+                tail_factor_map: dict[Any, float] = {}
+                parts: list[pl.DataFrame] = []
+                for g, sub_result in self._internals.items():
+                    tf = _compute_tail_factor(sub_result.f_sel, estimator.tail)
+                    tail_factor_map[g] = tf
+                    grp_long = long_df.filter(pl.col(groups) == g)
+                    if tf > 1.0 and np.isfinite(tf):
+                        grp_long = _apply_tail_to_long_df(
+                            grp_long, tf, groups=groups, role="loss",
+                        )
+                    parts.append(grp_long)
+                long_df = pl.concat(parts) if parts else long_df
+                self.tail_factor = tail_factor_map
+        else:
+            if groups is None:
+                self.tail_factor = 1.0
+            else:
+                self.tail_factor = {g: 1.0 for g in self._internals.keys()}
 
         # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
         # With no bootstrap, `long_df` is the pure analytical SA / ED / CL
