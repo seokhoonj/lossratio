@@ -694,6 +694,72 @@ class RatioFit:
     def n_rows(self) -> int:
         return self._df.height
 
+    def plot(
+        self,
+        metric: str = "ratio",
+        cell_type: str = "cumulative",
+        per_group: bool | None = None,
+        conf_level: float | None = None,
+        show_interval: bool = True,
+        amount_divisor: float | str = "auto",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Projection-curve plot, backed by matplotlib.
+
+        Parameters
+        ----------
+        metric
+            ``"ratio"`` (default), ``"loss"``, or ``"premium"``.
+        cell_type
+            ``"cumulative"`` (default) or ``"incremental"``. Confidence
+            bands are drawn only for cumulative metrics.
+        per_group
+            When ``True`` (auto for multi-group fits), produce one
+            figure per group and return ``list[Figure]``. When ``False``
+            (auto for single-group fits), facets every
+            ``(group, cohort)`` pair in a single figure.
+        conf_level
+            Override the fit's stored ``conf_level``. Used only for the
+            caption label; CI columns were computed at fit time.
+        show_interval
+            Draw a confidence ribbon on projected cells. No-op when the
+            requested metric has no CI columns (incremental metrics
+            always; premium-side CI only exists when the Ratio was fit
+            with ``se_method="delta"``).
+        amount_divisor
+            ``"auto"`` (default) picks the largest divisor in
+            ``{1, 1e3, 1e6, 1e9, 1e12}`` such that the median plotted
+            value formats as a non-zero label at ``%.1f``. Ignored for
+            ratio metrics.
+        nrow, ncol
+            Facet layout. Defaults to a near-square grid.
+        figsize
+            Passed to ``plt.subplots``. Defaults to a size scaled by
+            facet count.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            Single figure for the combined-facet form.
+        list of matplotlib.figure.Figure
+            One figure per group when ``per_group=True``.
+        """
+        from ._ratio_vis import plot_ratio_fit
+        return plot_ratio_fit(
+            self,
+            metric=metric,
+            cell_type=cell_type,
+            per_group=per_group,
+            conf_level=conf_level,
+            show_interval=show_interval,
+            amount_divisor=amount_divisor,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:

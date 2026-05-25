@@ -1249,6 +1249,53 @@ class LossFit:
     def n_rows(self) -> int:
         return self._df.height
 
+    def plot(
+        self,
+        conf_level: float | None = None,
+        show_interval: bool = True,
+        amount_divisor: float | str = "auto",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Loss projection-curve plot, backed by matplotlib.
+
+        Per-cohort cumulative observed loss (solid) -> bridge segment ->
+        projected loss (dashed). When ``show_interval=True`` and
+        ``loss_total_se`` is available, an analytical / bootstrap
+        confidence ribbon is drawn around the projected segment.
+
+        Parameters
+        ----------
+        conf_level
+            Override the fit's stored ``conf_level`` when constructing
+            the ribbon.
+        show_interval
+            Draw a confidence ribbon. No-op if the fit has no per-cell
+            standard errors.
+        amount_divisor
+            ``"auto"`` (default) auto-selects the y-axis scale.
+        nrow, ncol
+            Facet layout. Defaults to a near-square grid.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._ratio_vis import plot_projection_fit
+        return plot_projection_fit(
+            self,
+            role="loss",
+            conf_level=conf_level,
+            show_interval=show_interval,
+            amount_divisor=amount_divisor,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:

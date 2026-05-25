@@ -77,6 +77,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `RatioFit.plot()` -- projection-curve plot for a loss ratio fit.
+  Per-cohort observed cumulative value (solid) -> bridge segment ->
+  projected value (dashed), with an optional analytical / bootstrap
+  confidence ribbon on cumulative metrics. Mirrors the R sibling's
+  `plot.RatioFit` -- same `metric x cell_type` cross product
+  (`"ratio"` / `"loss"` / `"premium"` times
+  `"cumulative"` / `"incremental"`, six combinations), same
+  `per_group` dispatch (single figure for single-group fits, one
+  figure per group for multi-group fits), same `conf_level` /
+  `show_interval` / `amount_divisor` semantics, same hline at 100%
+  for cumulative ratio. Bootstrap fits caption their interval as
+  `(bootstrap)` and analytical fits as `(analytical)`.
+- `LossFit.plot()` / `PremiumFit.plot()` -- projection-curve plots for
+  the single-role projection fits. Same observed / bridge / projected
+  rendering as `RatioFit.plot()`, with the role-appropriate metric
+  (`loss` / `premium`) and a confidence ribbon derived from
+  `<role>_total_se`. Mirrors the R sibling's `.plot_projection_fit`
+  (`R/cl-vis.R`) which backs `plot.SAFit` / `plot.BFFit` /
+  `plot.CCFit` / `plot.PremiumFit`. Worker-level `plot.CLFit` /
+  `plot.EDFit` / `plot.ATAFit` are deferred to a later pass.
 - `Triangle.plot_triangle()` -- cell-value heatmap of one metric on a
   cohort x dev grid, faceted by `groups` when present. Mirrors the R
   sibling's `plot_triangle.Triangle(view = "value")`: same metric set
