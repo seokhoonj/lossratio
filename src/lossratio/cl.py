@@ -766,7 +766,7 @@ class CLFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort summary: ultimate target value, SE, and CV.
+        """Per-cohort summary: ultimate target value, reserve, SE, CV.
 
         R parity (``summary.CLFit``): columns are ``[groups?, cohort,
         latest, <target>_ult, reserve, loss_proc_se, loss_param_se,
@@ -776,8 +776,14 @@ class CLFit:
         last-projected minus last-observed and is ``NaN`` when
         ``target == "ratio"``.
 
-        Returned as a polars DataFrame regardless of input type — the
-        summary is a small diagnostic table and is best inspected
+        For the per-link ATA factor diagnostic (with mean / median /
+        weighted f / SE / cohort counts -- the equivalent of R's
+        ``ATASummary``), call ``triangle.link().ata()`` for the slim
+        diagnostic or :meth:`Maturity.summary` for the rich
+        17-column schema.
+
+        Returned as a polars DataFrame regardless of input type --
+        the summary is a small diagnostic table and is best inspected
         directly.
         """
         df = self._df

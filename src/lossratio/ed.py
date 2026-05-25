@@ -595,11 +595,22 @@ class EDFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort summary: ultimate target value, SE, and CV.
+        """Per-cohort summary: ultimate target value, reserve, SE, CV.
 
-        R parity (``summary.EDFit`` per the LossFit dispatcher view):
-        columns are ``[groups?, cohort, latest, <target>_ult, reserve,
+        Columns: ``[groups?, cohort, latest, <target>_ult, reserve,
         loss_proc_se, loss_param_se, loss_total_se, loss_total_cv]``.
+
+        **R divergence:** R's ``summary(EDFit)`` returns the *factor-level*
+        diagnostic (``EDFit$factor``, an ``EDSummary`` with one row per
+        development link), while ``EDFit$summary`` carries this
+        cohort-level table. Python flattens this asymmetry --
+        ``EDFit.summary()`` returns the cohort-level reserve summary,
+        matching the more conventional ``CLFit.summary()`` /
+        ``LossFit.summary()`` pattern. For the rich per-link diagnostic
+        (mean / median / weighted ``g`` / standard error / cohort
+        counts), call ``triangle.link().intensity()`` and read
+        ``.df``, or :meth:`Maturity.summary` on the ATA side for the
+        equivalent rich schema.
         """
         df = self._df
         keys: list[str] = []

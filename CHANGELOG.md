@@ -75,6 +75,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cumulative loss (`loss_obs` at the deepest observed dev), matching
   the R sibling.
 
+### Changed
+
+- `CLFit.summary()` / `EDFit.summary()` docstrings now accurately
+  describe what they return (cohort-level reserve summary) and
+  point at the per-link diagnostic alternatives
+  (``triangle.link().ata()`` / ``.intensity()`` for the slim
+  diagnostic; :meth:`Maturity.summary` for the rich 17-column R
+  parity schema). Behavioural unchanged. R's ``summary(EDFit)``
+  returns the factor-level diagnostic via ``$factor``; Python
+  flattens that asymmetry and ``EDFit.summary()`` returns the
+  cohort-level reserve summary instead, matching the
+  ``CLFit.summary()`` / ``LossFit.summary()`` pattern. This was
+  the last open audit item in the lossratio-py parity follow-up
+  list -- ``BacktestFit`` summaries already match R column-for-column
+  after the earlier ``incr_*`` aggregate sweep.
+
 ### Added
 
 - `Triangle.plot_triangle(view="usage")` now respects the
