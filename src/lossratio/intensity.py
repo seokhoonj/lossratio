@@ -203,6 +203,7 @@ class Intensity:
 
     def __init__(self) -> None:
         self._df: pl.DataFrame
+        self._link: "Link"
         self._output_type: str
         self._groups: str | None
         self._cohort: str
@@ -217,6 +218,7 @@ class Intensity:
     ) -> "Intensity":
         _validate_recent(recent)
         self = cls.__new__(cls)
+        self._link = link
         self._output_type = link._output_type
         self._groups = link._groups
         self._cohort = link._cohort
@@ -279,6 +281,17 @@ class Intensity:
         :meth:`Maturity.summary`; ED has no separate ``mat_k``
         summary because there is no maturity concept."""
         return mirror_output(self._df, self._output_type)
+
+    def plot(self, **kwargs: Any) -> Any:
+        """ED intensity diagnostic plot (matplotlib).
+
+        Delegates to :meth:`Link.plot` with ``model='ed'`` on the
+        underlying :class:`Link`. Accepts ``type`` (``"summary"`` /
+        ``"box"`` / ``"point"``), ``alpha``, ``nrow``, ``ncol``,
+        ``figsize``.
+        """
+        from ._link_vis import plot_link
+        return plot_link(self._link, model="ed", **kwargs)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

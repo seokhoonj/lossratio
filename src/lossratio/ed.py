@@ -665,6 +665,43 @@ class EDFit:
     def n_rows(self) -> int:
         return self._df.height
 
+    def plot(
+        self,
+        conf_level: float = 0.95,
+        show_interval: bool = True,
+        amount_divisor: float | str = "auto",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """ED projection-curve plot, backed by matplotlib.
+
+        Per-cohort observed cumulative loss (solid) -> bridge segment
+        -> projected loss (dashed), with an analytical confidence
+        ribbon derived from ``loss_total_se``.
+
+        Note: this differs from the R sibling, where ``plot.EDFit``
+        delegates to the link-factor diagnostic
+        (``plot.Link(x$link, model="ed")``). The Python R-parity for
+        the link diagnostic lives on :class:`Intensity` -- call
+        ``tri.link(target=..., exposure=...).intensity().plot()`` (or
+        equivalently ``ATA.plot(model="ed")``). ``EDFit.plot()`` here
+        is the projection-level companion to
+        :meth:`CLFit.plot(type="projection")`.
+        """
+        from ._ratio_vis import plot_projection_fit
+        return plot_projection_fit(
+            self,
+            role="loss",
+            conf_level=conf_level,
+            show_interval=show_interval,
+            amount_divisor=amount_divisor,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
+            method_label="ed",
+        )
+
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:

@@ -77,6 +77,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Link.plot()` / `ATA.plot()` / `Intensity.plot()` -- link-factor
+  diagnostic plots. `Link.plot(model="ata", ...)` exposes 5 type
+  variants (`"cv"`, `"rse"`, `"summary"`, `"box"`, `"point"`) and
+  `model="ed"` exposes 3 (`"summary"`, `"box"`, `"point"`),
+  mirroring the R sibling's `plot.Link(model=...)` dispatcher and
+  its two internal branches (`.plot_link_ata` / `.plot_link_ed`).
+  ATA-mode plots also overlay a per-group maturity vline + shaded
+  region + label box when CV / RSE thresholds (`max_cv`, `max_rse`,
+  `min_run`) detect a stable point. `ATA.plot()` / `Intensity.plot()`
+  forward to `Link.plot(model="ata"|"ed", ...)` on the underlying
+  Link (a new `_link` reference is now stored on `Intensity`,
+  matching the existing one on `ATA`). Per-link `mean` / `median` /
+  weighted aggregates are derived inline from the Link cell-level
+  `ata` / `intensity` column -- Python `ATA` / `Intensity` only
+  carry the pooled Mack factor diagnostic, not the full R
+  `summary.Link` schema.
+- `CLFit.plot(type="projection" | "reserve")` -- mirrors the R
+  sibling's `plot.CLFit` two-type dispatcher. `"projection"`
+  forwards to the shared `plot_projection_fit` helper (same
+  cohort-curve renderer used by `RatioFit` / `LossFit` /
+  `PremiumFit`). `"reserve"` is a new horizontal-bar chart of
+  per-cohort reserve with normal-approximation error bars
+  (analytical CI from `loss_total_se`), faceted by group when
+  present.
+- `EDFit.plot()` -- projection-curve plot for an ED fit, mirroring
+  `CLFit.plot(type="projection")`. **R divergence:** the R sibling's
+  `plot.EDFit` delegates to the link-factor diagnostic
+  (`plot.Link(x$link, model="ed")`); Python places the link
+  diagnostic on the parallel `Intensity` class (call
+  `tri.link(target=..., exposure=...).intensity().plot()`) and uses
+  `EDFit.plot()` as the projection-curve companion to
+  `CLFit.plot(type="projection")`.
 - `RatioFit.plot()` -- projection-curve plot for a loss ratio fit.
   Per-cohort observed cumulative value (solid) -> bridge segment ->
   projected value (dashed), with an optional analytical / bootstrap

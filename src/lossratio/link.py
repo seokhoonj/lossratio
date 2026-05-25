@@ -338,6 +338,35 @@ class Link:
             self, sigma_method=sigma_method, recent=recent
         )
 
+    def plot(
+        self,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Link-factor diagnostic plot, backed by matplotlib.
+
+        Dispatches on ``model``: ``"ata"`` (multiplicative ATA factor
+        diagnostic, 5 type variants) or ``"ed"`` (additive exposure-
+        driven intensity diagnostic, 3 type variants). Default
+        ``model`` is ``"ed"`` when the Link was built with
+        ``exposure``, otherwise ``"ata"``.
+
+        For ``model="ata"`` accepts:
+        ``type ∈ {"cv","rse","summary","box","point"}``,
+        ``alpha``, ``show_maturity``, ``max_cv``, ``max_rse``,
+        ``min_run``, ``nrow``, ``ncol``, ``figsize``.
+
+        For ``model="ed"`` accepts:
+        ``type ∈ {"summary","box","point"}``, ``alpha``, ``nrow``,
+        ``ncol``, ``figsize``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._link_vis import plot_link
+        return plot_link(self, model=model, **kwargs)
+
     def to_polars(self) -> pl.DataFrame:
         return self._df
 

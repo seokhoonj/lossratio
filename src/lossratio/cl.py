@@ -673,6 +673,74 @@ class CLFit:
     def n_rows(self) -> int:
         return self._df.height
 
+    def plot(
+        self,
+        type: str = "projection",
+        conf_level: float = 0.95,
+        show_interval: bool = True,
+        amount_divisor: float | str = "auto",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Plot a Mack chain ladder fit, backed by matplotlib.
+
+        Parameters
+        ----------
+        type
+            ``"projection"`` (default) or ``"reserve"``.
+
+            * ``"projection"`` -- per-cohort observed -> projected
+              cumulative loss curves with an optional analytical /
+              bootstrap confidence ribbon.
+            * ``"reserve"`` -- per-cohort reserve bar chart with
+              optional normal-approximation error bars.
+        conf_level
+            Confidence level for the interval band / error bar.
+        show_interval
+            Draw the interval band (``projection``) or error bars
+            (``reserve``).
+        amount_divisor
+            ``"auto"`` (default) picks a y-axis divisor.
+        nrow, ncol
+            Facet layout when ``groups`` is set.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        if type not in ("projection", "reserve"):
+            raise ValueError(
+                f"`type` must be 'projection' or 'reserve'; got {type!r}."
+            )
+        if type == "projection":
+            from ._ratio_vis import plot_projection_fit
+            target = getattr(self, "target", "loss")
+            role = target if target in ("loss", "premium", "ratio") else "loss"
+            return plot_projection_fit(
+                self,
+                role=role,
+                conf_level=conf_level,
+                show_interval=show_interval,
+                amount_divisor=amount_divisor,
+                nrow=nrow,
+                ncol=ncol,
+                figsize=figsize,
+                method_label="cl",
+            )
+        from ._cl_vis import plot_cl_reserve
+        return plot_cl_reserve(
+            self,
+            conf_level=conf_level,
+            show_interval=show_interval,
+            amount_divisor=amount_divisor,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:

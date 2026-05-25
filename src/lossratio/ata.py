@@ -261,6 +261,18 @@ class ATA:
             min_run=min_run,
         )
 
+    def plot(self, **kwargs: Any) -> Any:
+        """ATA factor diagnostic plot (matplotlib).
+
+        Delegates to :meth:`Link.plot` with ``model='ata'`` on the
+        underlying :class:`Link`. Accepts the same kwargs as
+        ``Link.plot(model='ata', ...)``: ``type``, ``alpha``,
+        ``show_maturity``, ``max_cv``, ``max_rse``, ``min_run``,
+        ``nrow``, ``ncol``, ``figsize``.
+        """
+        from ._link_vis import plot_link
+        return plot_link(self._link, model="ata", **kwargs)
+
     def to_polars(self) -> pl.DataFrame:
         return self._df
 

@@ -217,21 +217,31 @@ def plot_projection_fit(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
+    method_label: str | None = None,
 ) -> Any:
-    """Shared projection-curve plot for LossFit / PremiumFit.
+    """Shared projection-curve plot for LossFit / PremiumFit / CLFit / EDFit.
 
     Cumulative ``<role>_obs`` (solid) + bridge + ``<role>_proj`` (dashed)
     by cohort. CI ribbon derived from ``<role>_total_se`` when present.
+    ``conf_level`` and method label fall back to
+    ``getattr(fit, ..., default)`` so worker-level fits without those
+    attributes still render correctly.
     """
-    if role not in ("loss", "premium"):
-        raise ValueError(f"`role` must be 'loss' or 'premium'; got {role!r}.")
+    if role not in ("loss", "premium", "ratio"):
+        raise ValueError(
+            f"`role` must be 'loss', 'premium', or 'ratio'; got {role!r}."
+        )
 
     df = fit._df
     groups = fit._groups
     coh = fit._cohort
     dev = fit._dev
-    conf = float(conf_level) if conf_level is not None else float(fit.conf_level)
+    conf = float(
+        conf_level if conf_level is not None
+        else getattr(fit, "conf_level", 0.95)
+    )
     ci_type = getattr(fit, "ci_type", "analytical")
+    method = method_label if method_label is not None else getattr(fit, "method", "")
 
     obs_col = f"{role}_obs"
     proj_col = f"{role}_proj"
@@ -276,8 +286,11 @@ def plot_projection_fit(
     coh_labels = _cohort_label_series(work["cohort"], coh_type)
     work = work.with_columns(pl.Series(name="_coh_lbl", values=coh_labels))
 
-    base_lab = "Loss" if role == "loss" else "Premium"
-    title = f"Projected Cumulative {base_lab} (method: {fit.method})"
+    base_lab = {"loss": "Loss", "premium": "Premium", "ratio": "Loss Ratio"}[role]
+    title = (
+        f"Projected Cumulative {base_lab}"
+        + (f" (method: {method})" if method else "")
+    )
     caption = (
         f"Interval: {round(conf * 100)}% ({ci_type})"
         if show_band
