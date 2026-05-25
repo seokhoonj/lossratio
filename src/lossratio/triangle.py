@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from ._io import detect_input_type, mirror_output, to_polars
 from ._period import (
     coerce_cols_to_date,
     count_periods,
@@ -14,7 +15,6 @@ from ._period import (
     infer_grain,
     resolve_grain,
 )
-from ._io import detect_input_type, mirror_output, to_polars
 
 if TYPE_CHECKING:
     from .link import Link
@@ -83,7 +83,7 @@ class Triangle:
 
     def __init__(
         self,
-        df: "pl.DataFrame | Any",
+        df: pl.DataFrame | Any,
         groups: str | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
@@ -394,7 +394,7 @@ class Triangle:
         return self._grain
 
     @classmethod
-    def _from_masked(cls, original: "Triangle", masked_df: pl.DataFrame) -> "Triangle":
+    def _from_masked(cls, original: Triangle, masked_df: pl.DataFrame) -> Triangle:
         """Build a Triangle from a pre-built (masked) DataFrame.
 
         Used internally by Backtest. ``masked_df`` must already have
@@ -420,7 +420,7 @@ class Triangle:
         weight: str | None = None,
         min_denom: float = 0.0,
         drop_invalid: bool = False,
-    ) -> "Link":
+    ) -> Link:
         """Build the long-format link table.
 
         Returns a :class:`Link` data class — one row per (cohort,
@@ -483,7 +483,7 @@ class Triangle:
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "latest_only",
-    ) -> "Regime":
+    ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
         Mirrors the R sibling's ``detect_regime(triangle, ...)``. The
@@ -534,7 +534,7 @@ class Triangle:
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
-    ) -> "Maturity":
+    ) -> Maturity:
         """Detect the age-to-age maturity point ``k*``.
 
         Convenience entry point for the canonical chain
@@ -586,7 +586,7 @@ class Triangle:
             .maturity(max_cv=max_cv, max_rse=max_rse, min_run=min_run)
         )
 
-    def mask(self, holdout: int = 0) -> "Triangle":
+    def mask(self, holdout: int = 0) -> Triangle:
         """Drop the most-recent ``holdout`` calendar diagonals.
 
         Returns a new :class:`Triangle` with the most-recent ``holdout``
@@ -656,6 +656,70 @@ class Triangle:
 
         return Triangle._from_masked(self, df)
 
+    def plot_triangle(
+        self,
+        view: str = "value",
+        metric: str = "ratio",
+        label_style: str = "value",
+        label_size: float | None = None,
+        amount_divisor: float | str = "auto",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Cell-value heatmap of one Triangle metric.
+
+        cohort x dev grid, per-group facets, cell labels formatted
+        per metric. Backed by matplotlib.
+
+        Parameters
+        ----------
+        view
+            ``"value"`` (the cell-value heatmap, this method's main
+            mode). ``"usage"`` is reserved for a later pass and
+            currently raises ``NotImplementedError``.
+        metric
+            One of: ``"ratio"``, ``"incr_ratio"``, ``"loss"``,
+            ``"incr_loss"``, ``"premium"``, ``"incr_premium"``,
+            ``"margin"``, ``"incr_margin"``, ``"loss_share"``,
+            ``"incr_loss_share"``, ``"premium_share"``,
+            ``"incr_premium_share"``.
+        label_style
+            ``"value"`` (default; one number per cell) or ``"detail"``
+            (ratio metrics get a second-line ``"(loss/premium)"``
+            breakdown).
+        label_size
+            matplotlib font size for cell labels. Defaults to ``8`` for
+            ``"value"`` and ``7`` for ``"detail"``.
+        amount_divisor
+            Numeric divisor for amount metrics (and for the ratio
+            ``"detail"`` breakdown). ``"auto"`` selects the largest of
+            ``{1, 1e3, 1e6, 1e9, 1e12}`` that keeps the median
+            formatting non-zero at ``%.1f``.
+        nrow, ncol
+            Facet wrap layout when ``groups`` is set. Defaults to a
+            near-square grid.
+        figsize
+            Passed to ``plt.subplots``. Defaults to a size scaled by
+            the cell count.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._triangle_vis import plot_triangle as _impl
+        return _impl(
+            self,
+            view=view,
+            metric=metric,
+            label_style=label_style,
+            label_size=label_size,
+            amount_divisor=amount_divisor,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
         if self._groups is not None:
@@ -723,7 +787,7 @@ class TriangleValidation:
 
     def __init__(
         self,
-        df: "pl.DataFrame | Any",
+        df: pl.DataFrame | Any,
         groups: str | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",

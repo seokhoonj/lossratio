@@ -77,6 +77,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Triangle.plot_triangle()` -- cell-value heatmap of one metric on a
+  cohort x dev grid, faceted by `groups` when present. Mirrors the R
+  sibling's `plot_triangle.Triangle(view = "value")`: same metric set
+  (12 valid values across ratio / amount / proportion), same
+  `label_style ∈ {"value", "detail"}`, same `amount_divisor = "auto"`
+  selection in `{1, 1e3, 1e6, 1e9, 1e12}`, same threshold-based fill
+  palette (`mistyrose` / `white`), and the same axis-label and
+  caption text. `view="usage"` is reserved for a later pass and
+  currently raises `NotImplementedError`. Backend is matplotlib --
+  ggplot bit-parity is intentionally out of scope. `matplotlib>=3.7`
+  is now a required dependency (parity with R's `ggplot2` `Imports`).
 - `Triangle.detect_maturity()` convenience method, the Python sibling
   of R's `detect_maturity(triangle, ...)`. Wraps the canonical
   `triangle.link(target=loss, weight=...).ata().maturity(...)` chain
