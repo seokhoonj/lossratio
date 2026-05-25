@@ -230,3 +230,75 @@ def test_classifier_status_levels_complete(tri_with_groups):
     df = _compute_triangle_usage(tri_with_groups, recent=12, holdout=6)
     seen = set(df["status"].unique().to_list())
     assert seen.issubset({"unused", "used", "holdout", "future"})
+
+
+# --- segment_wise mini-triangle filter ---------------------------------
+
+
+def test_segment_wise_filter_affects_only_changed_groups(tri_with_groups):
+    """Mini-triangle only carves out cells in groups listed in `regime.changes`.
+    Other groups stay fully "used"."""
+    reg = tri_with_groups.detect_regime(window=12, treatment="segment_wise")
+    changed_groups = set(reg.changes["coverage"].unique().to_list())
+    usage = _compute_triangle_usage(tri_with_groups, regime=reg)
+    for g, sub in usage.group_by("coverage"):
+        gv = g[0]
+        statuses = set(sub["status"].unique().to_list())
+        if gv in changed_groups:
+            # affected group: some cells should be `unused`
+            assert "unused" in statuses, (
+                f"expected `unused` cells in group {gv} under segment_wise"
+            )
+        else:
+            # untouched group: no `unused` (all observed cells are `used`)
+            assert "unused" not in statuses, (
+                f"unexpected `unused` cells in untouched group {gv}"
+            )
+
+
+def test_segment_wise_render_with_changes(tri_with_groups):
+    reg = tri_with_groups.detect_regime(window=12, treatment="segment_wise")
+    fig = tri_with_groups.plot_triangle(view="usage", regime=reg)
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_segment_wise_pooled_render(tri_single):
+    """Pooled (single-group) Triangle + segment_wise regime."""
+    reg = tri_single.detect_regime(window=12, treatment="segment_wise")
+    # Skip if no changes detected -- depends on the synthetic data.
+    if reg.changes.height == 0:
+        pytest.skip("no change points detected for this fixture")
+    fig = tri_single.plot_triangle(view="usage", regime=reg)
+    try:
+        assert isinstance(fig, plt.Figure)
+        usage = _compute_triangle_usage(tri_single, regime=reg)
+        seen = set(usage["status"].unique().to_list())
+        # mini-triangle should mark some cells unused
+        assert "unused" in seen
+    finally:
+        _close(fig)
+
+
+def test_segment_wise_latest_only_diverge(tri_with_groups):
+    """Same change points under `latest_only` vs `segment_wise` should
+    classify a different set of cells."""
+    reg_lo = tri_with_groups.detect_regime(window=12, treatment="latest_only")
+    reg_sw = tri_with_groups.detect_regime(window=12, treatment="segment_wise")
+    if reg_lo.changes.height == 0 or reg_sw.changes.height == 0:
+        pytest.skip("no change points detected for this fixture")
+    usage_lo = _compute_triangle_usage(tri_with_groups, regime=reg_lo)
+    usage_sw = _compute_triangle_usage(tri_with_groups, regime=reg_sw)
+    # Different classifications expected on at least some cells in the
+    # affected group(s).
+    changed_groups = set(reg_sw.changes["coverage"].unique().to_list())
+    for g in changed_groups:
+        a = usage_lo.filter(pl.col("coverage") == g).sort(["cohort", "dev"])["status"].to_list()
+        b = usage_sw.filter(pl.col("coverage") == g).sort(["cohort", "dev"])["status"].to_list()
+        assert a != b, (
+            f"latest_only and segment_wise produced identical "
+            f"classification for group {g}"
+        )
+

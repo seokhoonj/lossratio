@@ -77,6 +77,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Triangle.plot_triangle(view="usage")` now respects the
+  ``segment_wise`` regime treatment: cells in groups listed in
+  ``regime.changes`` are classified relative to their segment's
+  mini-triangle anchored on the latest calendar diagonal
+  (``dev_min = max_cal - seg_last_rank + 1``), so cells outside the
+  segment's mini-triangle drop from ``used`` to ``unused``. Mirrors
+  R's ``.compute_triangle_usage`` segment_wise branch
+  (``R/triangle-vis.R:1182``). Untouched groups (no change rows in
+  the Regime) are unaffected. Maturity (``m_k``) does not shrink
+  the mini-triangle (R parity: it's a separate dashed-vline
+  reference only). Previously segment_wise regimes were classified
+  identically to ``latest_only``.
 - `TriangleValidation.plot_triangle(view="calendar")` -- cohort x
   calendar layout of the gap heatmap, mirroring the R sibling's
   `view = "calendar"` branch (`R/triangle.R`). Per-cell calendar

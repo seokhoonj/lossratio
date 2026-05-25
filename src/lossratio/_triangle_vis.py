@@ -429,6 +429,46 @@ def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
     )
 
 
+def _seg_dev_min(
+    grp_rows: pl.DataFrame,
+    cd_vec: list,
+    group_col: str | None,
+    group_value: Any,
+) -> pl.DataFrame:
+    """Compute per-cell ``dev_min`` for the segment_wise mini-triangle.
+
+    For each cell in ``grp_rows``, classify its cohort into a segment
+    via ``np.searchsorted(cd_vec, cohort, side='right')`` (i.e. the
+    R ``findInterval`` semantic + 1). For each segment, the last
+    cohort rank inside the segment sets ``dev_min = _max_cal -
+    seg_last_rank + 1``. The returned frame has columns ``[group_col?,
+    cohort, dev, _seg_dev_min]`` that the caller joins back onto the
+    expanded grid to override ``is_fit_data``.
+    """
+    cohorts = grp_rows["cohort"].to_numpy()
+    cd_arr = np.array(cd_vec, dtype="datetime64[D]")
+    coh_arr = np.array(cohorts, dtype="datetime64[D]")
+    # `findInterval(coh, cd) + 1` in R == np.searchsorted(cd, coh,
+    # side='right') + 1, mapping each cohort to a 1-indexed segment.
+    seg_id = np.searchsorted(cd_arr, coh_arr, side="right") + 1
+
+    work = grp_rows.with_columns(pl.Series("_seg_id", seg_id))
+    # seg_last_rank per segment = max(_coh_rank within that segment)
+    seg_last = (
+        work.group_by("_seg_id")
+        .agg(pl.col("_coh_rank").max().alias("_seg_last_rank"))
+    )
+    work = work.join(seg_last, on="_seg_id", how="left").with_columns(
+        (pl.col("_max_cal") - pl.col("_seg_last_rank") + 1).alias(
+            "_seg_dev_min"
+        )
+    )
+    keep_cols = (
+        [group_col] if group_col is not None else []
+    ) + ["cohort", "dev", "_seg_dev_min"]
+    return work.select(keep_cols)
+
+
 def _compute_triangle_usage(
     triangle: Triangle,
     recent: int | None = None,
@@ -443,11 +483,12 @@ def _compute_triangle_usage(
     ``cohort``, ``dev``, ``status`` (one of ``"unused" | "used" |
     "holdout" | "future"``).
 
-    Notes
-    -----
-    The ``segment_wise`` regime treatment's mini-triangle filter is
-    reserved for a later pass; for now segment_wise regimes only emit
-    hlines and otherwise classify cells as if ``latest_only``.
+    ``segment_wise`` regimes carve out a mini-triangle per segment
+    anchored on the latest calendar diagonal -- cells in an affected
+    group but outside their segment's mini-triangle drop from
+    ``used`` to ``unused``. Maturity (``m_k``) does not shrink the
+    mini-triangle (R parity: it's a separate dashed-vline reference
+    only).
     """
     if recent is not None and (recent < 1 or not isinstance(recent, (int, np.integer))):
         raise ValueError(f"`recent` must be a positive integer; got {recent!r}.")
@@ -609,7 +650,72 @@ def _compute_triangle_usage(
             & ~pl.col("is_held_out")
             & pl.col("_pass_filter")
         ).alias("is_fit_data")
-    ).with_columns(
+    )
+
+    # 8b. segment_wise mini-triangle override. Each regime segment carves
+    # out its own mini-triangle anchored on the latest cal diagonal:
+    #
+    #   dev_min(segment) = max_cal - seg_last_cohort_rank + 1
+    #
+    # Cells in an affected group but outside their segment's
+    # mini-triangle drop from `used` to `unused`. Maturity (`m_k`) does
+    # not shrink the mini-triangle here (R parity: it's a separate
+    # vline only).
+    if is_segment_wise and regime is not None:
+        bp = (
+            regime._changes_df
+            if hasattr(regime, "_changes_df")
+            else regime.changes
+        )
+        if bp is not None and bp.height > 0 and "change" in bp.columns:
+            reg_groups = getattr(regime, "groups", None)
+            if reg_groups is not None and reg_groups in expanded.columns:
+                # per-group segments
+                gb_iter = bp.sort([reg_groups, "change"])
+                affected_groups = (
+                    gb_iter.select(reg_groups).unique(maintain_order=True)
+                )
+                dev_min_parts: list[pl.DataFrame] = []
+                for g_row in affected_groups.iter_rows(named=True):
+                    g_val = g_row[reg_groups]
+                    cd_vec = (
+                        bp.filter(pl.col(reg_groups) == g_val)
+                        .sort("change")["change"]
+                        .to_list()
+                    )
+                    grp_rows = expanded.filter(pl.col(reg_groups) == g_val)
+                    if grp_rows.height == 0 or not cd_vec:
+                        continue
+                    dev_min_parts.append(
+                        _seg_dev_min(grp_rows, cd_vec, reg_groups, g_val)
+                    )
+                if dev_min_parts:
+                    dev_min_df = pl.concat(dev_min_parts)
+                    expanded = expanded.join(
+                        dev_min_df,
+                        on=[reg_groups, "cohort", "dev"],
+                        how="left",
+                    ).with_columns(
+                        pl.when(pl.col("_seg_dev_min").is_not_null())
+                        .then(pl.col("is_fit_data") & (pl.col("dev") >= pl.col("_seg_dev_min")))
+                        .otherwise(pl.col("is_fit_data"))
+                        .alias("is_fit_data")
+                    ).drop("_seg_dev_min")
+            else:
+                # pooled segments
+                cd_vec = bp.sort("change")["change"].to_list()
+                if cd_vec:
+                    dev_min_df = _seg_dev_min(expanded, cd_vec, None, None)
+                    expanded = expanded.join(
+                        dev_min_df, on=["cohort", "dev"], how="left",
+                    ).with_columns(
+                        pl.when(pl.col("_seg_dev_min").is_not_null())
+                        .then(pl.col("is_fit_data") & (pl.col("dev") >= pl.col("_seg_dev_min")))
+                        .otherwise(pl.col("is_fit_data"))
+                        .alias("is_fit_data")
+                    ).drop("_seg_dev_min")
+
+    expanded = expanded.with_columns(
         (
             pl.col("is_observed")
             & ~pl.col("is_held_out")
