@@ -86,11 +86,6 @@ def test_invalid_view_raises(tri_with_groups):
         tri_with_groups.plot_triangle(view="bogus")
 
 
-def test_view_usage_is_not_implemented(tri_with_groups):
-    with pytest.raises(NotImplementedError):
-        tri_with_groups.plot_triangle(view="usage")
-
-
 def test_invalid_label_style_raises(tri_with_groups):
     with pytest.raises(ValueError, match="label_style"):
         tri_with_groups.plot_triangle(label_style="bogus")

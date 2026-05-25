@@ -84,10 +84,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `label_style ∈ {"value", "detail"}`, same `amount_divisor = "auto"`
   selection in `{1, 1e3, 1e6, 1e9, 1e12}`, same threshold-based fill
   palette (`mistyrose` / `white`), and the same axis-label and
-  caption text. `view="usage"` is reserved for a later pass and
-  currently raises `NotImplementedError`. Backend is matplotlib --
-  ggplot bit-parity is intentionally out of scope. `matplotlib>=3.7`
-  is now a required dependency (parity with R's `ggplot2` `Imports`).
+  caption text. Backend is matplotlib -- ggplot bit-parity is
+  intentionally out of scope. `matplotlib>=3.7` is now a required
+  dependency (parity with R's `ggplot2` `Imports`).
+- `Triangle.plot_triangle(view="usage", ...)` -- categorical status
+  heatmap that surfaces which cells the fit would use, hold out, or
+  drop under a given combination of `recent` / `regime` / `holdout` /
+  `maturity` filters. Mirrors R's `plot_triangle.Triangle(view =
+  "usage")` cell-state classifier (`used` / `unused` / `holdout` /
+  `future`, identical palette `#1f77b4` / `#dcdcdc` / `#d62728` /
+  `#ffffff`) and the matching overlays (dashed regime hline at the
+  first post-change cohort row; dashed maturity vline at `dev = k*`
+  when `maturity` is supplied alongside `regime`). The full hybrid
+  filter is implemented: `recent + regime + maturity` uses the cohort
+  cut on `dev < k*` (ED region) and the calendar-diagonal cut on
+  `dev >= k*` (CL region). `maturity` accepts `None`, an integer
+  `k*`, or a `Maturity` instance; `"auto"` and segment_wise
+  mini-triangle filtering are reserved for a follow-up pass and raise
+  `NotImplementedError`.
 - `Triangle.detect_maturity()` convenience method, the Python sibling
   of R's `detect_maturity(triangle, ...)`. Wraps the canonical
   `triangle.link(target=loss, weight=...).ata().maturity(...)` chain

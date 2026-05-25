@@ -666,36 +666,58 @@ class Triangle:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
+        *,
+        recent: int | None = None,
+        regime: Any = None,
+        holdout: int | None = None,
+        maturity: Any = None,
     ) -> Any:
-        """Cell-value heatmap of one Triangle metric.
-
-        cohort x dev grid, per-group facets, cell labels formatted
-        per metric. Backed by matplotlib.
+        """Triangle heatmap (cell-value or status), backed by matplotlib.
 
         Parameters
         ----------
         view
-            ``"value"`` (the cell-value heatmap, this method's main
-            mode). ``"usage"`` is reserved for a later pass and
-            currently raises ``NotImplementedError``.
+            ``"value"`` (default; cell-value heatmap of one metric) or
+            ``"usage"`` (status heatmap showing which cells the fit
+            would use vs. drop under the given ``recent`` / ``regime`` /
+            ``holdout`` / ``maturity`` masks).
         metric
-            One of: ``"ratio"``, ``"incr_ratio"``, ``"loss"``,
-            ``"incr_loss"``, ``"premium"``, ``"incr_premium"``,
-            ``"margin"``, ``"incr_margin"``, ``"loss_share"``,
-            ``"incr_loss_share"``, ``"premium_share"``,
+            (value view) One of: ``"ratio"``, ``"incr_ratio"``,
+            ``"loss"``, ``"incr_loss"``, ``"premium"``,
+            ``"incr_premium"``, ``"margin"``, ``"incr_margin"``,
+            ``"loss_share"``, ``"incr_loss_share"``, ``"premium_share"``,
             ``"incr_premium_share"``.
         label_style
-            ``"value"`` (default; one number per cell) or ``"detail"``
-            (ratio metrics get a second-line ``"(loss/premium)"``
-            breakdown).
+            (value view) ``"value"`` (default; one number per cell) or
+            ``"detail"`` (ratio metrics get a second-line
+            ``"(loss/premium)"`` breakdown).
         label_size
-            matplotlib font size for cell labels. Defaults to ``8`` for
-            ``"value"`` and ``7`` for ``"detail"``.
+            (value view) matplotlib font size for cell labels. Defaults
+            to ``8`` for ``"value"`` and ``7`` for ``"detail"``.
         amount_divisor
-            Numeric divisor for amount metrics (and for the ratio
-            ``"detail"`` breakdown). ``"auto"`` selects the largest of
-            ``{1, 1e3, 1e6, 1e9, 1e12}`` that keeps the median
-            formatting non-zero at ``%.1f``.
+            (value view) Numeric divisor for amount metrics (and for the
+            ratio ``"detail"`` breakdown). ``"auto"`` selects the
+            largest of ``{1, 1e3, 1e6, 1e9, 1e12}`` that keeps the
+            median formatting non-zero at ``%.1f``.
+        recent
+            (usage view) Number of trailing calendar diagonals to keep
+            as "used".
+        regime
+            (usage view) ``None``, a :class:`Regime` instance, or a
+            callable ``triangle -> Regime``. Under ``latest_only``
+            treatment the latest change date per group cuts pre-change
+            cohorts to "unused".
+        holdout
+            (usage view) Number of trailing calendar diagonals to flag
+            as "holdout" (the hold-out pattern used by
+            :class:`Backtest`).
+        maturity
+            (usage view) ``None``, an integer ``k*``, or a
+            :class:`Maturity` instance. When supplied alongside
+            ``regime``, switches to hybrid filtering -- cohort cut on
+            ``dev < k*`` (ED region), calendar cut on ``dev >= k*``
+            (CL region). Also draws a dashed vertical line at
+            ``dev = k*``. ``"auto"`` is reserved for a later pass.
         nrow, ncol
             Facet wrap layout when ``groups`` is set. Defaults to a
             near-square grid.
@@ -718,6 +740,10 @@ class Triangle:
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
+            recent=recent,
+            regime=regime,
+            holdout=holdout,
+            maturity=maturity,
         )
 
     def __repr__(self) -> str:
