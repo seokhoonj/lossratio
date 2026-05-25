@@ -785,6 +785,47 @@ class Regime:
         """Per-cohort regime labels in the original input format."""
         return mirror_output(self._labels_df, self._output_type)
 
+    def plot(
+        self,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+        palette: str = "tab10",
+    ) -> Any:
+        """Cohort timeline plot, backed by matplotlib.
+
+        One panel per group; each panel shows cohorts coloured by
+        their detected ``regime_id`` with vertical dashed lines at
+        change points.
+
+        **R divergence:** the R sibling's ``plot.Regime`` draws a PCA
+        scatter of cohort trajectories with loading arrows and 90%
+        ellipses, sourced from the Regime object's ``trajectory`` /
+        ``pca`` / ``labels`` slots. Python ``Regime`` carries only
+        the per-cohort labels + change points; the trajectory + PCA
+        would require a heavier-state refactor of ``_from_triangle``.
+        The cohort-timeline plot answers the same "what regimes / where
+        do they switch" question without that cost.
+
+        Parameters
+        ----------
+        nrow, ncol
+            Facet layout. Defaults to one row per group.
+        figsize
+            Passed to ``plt.subplots``.
+        palette
+            Matplotlib colormap name used for regime_id colouring.
+            Default ``"tab10"``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._regime_vis import plot_regime
+        return plot_regime(
+            self, nrow=nrow, ncol=ncol, figsize=figsize, palette=palette
+        )
+
     def to_polars(self) -> pl.DataFrame:
         return self._labels_df
 

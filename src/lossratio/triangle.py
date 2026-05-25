@@ -1008,27 +1008,57 @@ class TriangleValidation:
         """The gaps table as a pandas DataFrame."""
         return self._gaps.to_pandas()
 
-    def plot(self):
-        """Bar chart of observed vs. expected dev counts per cohort.
+    def plot(
+        self,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Bar chart of observed vs expected dev counts per cohort.
 
-        Mirrors R's ``plot.TriangleValidation``. Not yet implemented in
-        the Python sibling -- matplotlib support arrives in phase A.
+        Mirrors R's ``plot.TriangleValidation`` -- one panel per
+        group, with two bars per cohort (``n_dev`` blue, ``n_expected``
+        grey). When the validation found no gaps, returns a
+        figure containing only a "nothing to visualise" placeholder.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
-        # TODO(phase-A): matplotlib bar chart (cohort x [n_dev,
-        # n_expected]); faceted by ``groups`` when set.
-        raise NotImplementedError("plotting comes in phase A")
+        from ._validation_vis import plot_validation
+        return plot_validation(self, nrow=nrow, ncol=ncol, figsize=figsize)
 
-    def plot_triangle(self, view: str = "calendar", show_label: bool = False):
-        """Cohort x (calendar | dev) heatmap of gap positions.
+    def plot_triangle(
+        self,
+        show_label: bool = False,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Cohort x dev heatmap of observed / missing cells.
 
-        Mirrors R's ``plot_triangle.TriangleValidation``. Not yet
-        implemented in the Python sibling -- matplotlib support arrives
-        in phase A.
+        Mirrors R's ``plot_triangle.TriangleValidation`` (dev-axis
+        layout only). For each cohort with gaps, the dev grid is
+        coloured blue (observed) or red (missing). Only the cohorts
+        in the gaps table appear in the heatmap (clean cohorts are
+        omitted).
+
+        **Note:** R supports a ``view="calendar"`` axis layout as
+        well; the Python sibling currently only ships the dev-axis
+        view -- the calendar layout would require reconstructing the
+        per-cell calendar values from the gaps frame, which is a
+        deferred follow-up.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
-        # TODO(phase-A): matplotlib heatmap with observed / missing /
-        # invalid cells colour-coded.
-        del view, show_label
-        raise NotImplementedError("plotting comes in phase A")
+        from ._validation_vis import plot_triangle_validation
+        return plot_triangle_validation(
+            self,
+            show_label=show_label,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
 
     def __repr__(self) -> str:
         if self.is_clean:

@@ -496,6 +496,31 @@ class Convergence:
     def df(self) -> Any:
         return self.summary()
 
+    def plot(
+        self,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """5-panel convergence diagnostic plot (matplotlib).
+
+        Stacked column of ``ratio``, ``drift_window``, ``drift_tail``,
+        ``|slope|``, ``dispersion`` series across candidate dev
+        cutoffs. Threshold hlines, maturity (``mat_k``) dotted vline,
+        and detected convergence (``conv_k``) solid green vline are
+        overlaid on every panel.
+
+        Parameters
+        ----------
+        figsize
+            Passed to ``plt.subplots``. Defaults to a vertical layout
+            sized for 5 panels.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._convergence_vis import plot_convergence
+        return plot_convergence(self, figsize=figsize)
+
     def __repr__(self) -> str:
         n = len(self.dev_cand)
         n_win = int(np.nansum(self.pass_window))

@@ -77,6 +77,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BacktestFit.plot(type=...)` -- per-development / per-calendar-
+  diagonal / per-cell A/E error aggregates (three type variants
+  mirroring R `plot.Backtest`). Stat lines for mean / median /
+  exposure-weighted, with a 10% reference band shaded around 0. The
+  `cell_type` switch (`"cumulative"` / `"incremental"`) selects the
+  matching ae_err column family.
+- `BacktestFit.plot_triangle(cell_type=...)` -- held-out wedge heatmap
+  of A/E error with a diverging red/blue palette around 0. Mirrors R
+  `plot_triangle.Backtest(view = "value")`. The `view = "usage"` mode
+  (cell-status heatmap with regime / holdout overlays) is deferred
+  -- R precomputes a `usage` slot on the Backtest object that the
+  Python build does not yet emit.
+- `Regime.plot()` -- per-group cohort timeline coloured by
+  `regime_id`, with change-point vertical lines. **R divergence:** the
+  R sibling's `plot.Regime` is a PCA scatter of cohort trajectories
+  with loading arrows and 90% ellipses (sourced from
+  `Regime$trajectory` / `$pca` / `$labels`). Python `Regime` carries
+  only the per-cohort labels + change points; the trajectory + PCA
+  would require a heavier-state refactor of `_from_triangle`. The
+  cohort-timeline plot answers the same "what regimes / where do they
+  switch" question without that cost.
+- `Convergence.plot()` -- 5-panel stability diagnostic stacked column
+  (`ratio` / `drift_window` / `drift_tail` / `|slope|` / `dispersion`)
+  across candidate dev cutoffs, with threshold hlines, a maturity
+  (`mat_k`) dotted vline, and the detected convergence (`conv_k`)
+  green solid vline. Mirrors R `plot.Convergence` (`R/convergence.R`).
+- `TriangleValidation.plot()` / `.plot_triangle()` -- bar chart of
+  observed vs expected dev counts per cohort, and a cohort x dev
+  observed/missing heatmap. Replaces the previous `NotImplementedError`
+  placeholders. The R sibling supports a `view = "calendar"` axis
+  layout in addition to the dev layout; the Python build currently
+  only ships dev-axis.
 - `Link.plot()` / `ATA.plot()` / `Intensity.plot()` -- link-factor
   diagnostic plots. `Link.plot(model="ata", ...)` exposes 5 type
   variants (`"cv"`, `"rse"`, `"summary"`, `"box"`, `"point"`) and

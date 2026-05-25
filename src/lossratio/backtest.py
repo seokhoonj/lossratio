@@ -323,6 +323,9 @@ class BacktestFit:
         self._refit: Any
         self._output_type: str
         self._groups: str | None
+        self._cohort: str
+        self._dev: str
+        self._triangle: "Triangle"
         self.holdout: int
         self.estimator: Any
 
@@ -333,6 +336,9 @@ class BacktestFit:
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._groups = triangle._groups
+        self._cohort = triangle._cohort
+        self._dev = triangle._dev
+        self._triangle = triangle
         self.holdout = bt.holdout
         self.estimator = bt.estimator
 
@@ -507,6 +513,76 @@ class BacktestFit:
     @property
     def fit(self):
         return self._refit
+
+    def plot(
+        self,
+        type: str = "col",
+        cell_type: str = "cumulative",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Backtest A/E error plot, backed by matplotlib.
+
+        Parameters
+        ----------
+        type
+            ``"col"`` (default; aggregated by development period),
+            ``"diag"`` (aggregated by calendar diagonal), or
+            ``"cell"`` (per-cell scatter / line, one line per cohort).
+        cell_type
+            ``"cumulative"`` (default; uses ``ae_err_*`` columns) or
+            ``"incremental"`` (uses ``incr_ae_err_*`` columns).
+        nrow, ncol
+            Facet layout when ``groups`` is set.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._backtest_vis import plot_backtest
+        return plot_backtest(
+            self, type=type, cell_type=cell_type,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
+    def plot_triangle(
+        self,
+        cell_type: str = "cumulative",
+        label_size: float = 7.0,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """A/E error heatmap on the held-out wedge, backed by matplotlib.
+
+        Diverging palette: red marks under-projection (actual >
+        expected), blue marks over-projection. Faceted by group.
+
+        Parameters
+        ----------
+        cell_type
+            ``"cumulative"`` (default) or ``"incremental"``.
+        label_size
+            Matplotlib font size for the per-cell percent labels.
+        nrow, ncol
+            Facet layout.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._backtest_vis import plot_triangle_backtest
+        return plot_triangle_backtest(
+            self,
+            cell_type=cell_type,
+            label_size=label_size,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
 
     def __repr__(self) -> str:
         n_cells = self._ae_err.height

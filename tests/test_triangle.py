@@ -535,13 +535,22 @@ def test_validation_missing_required_column_raises():
         TriangleValidation(df)
 
 
-def test_validation_plot_methods_raise_not_implemented():
-    """plot / plot_triangle are reserved for phase A; explicit error."""
+def test_validation_plot_methods_render():
+    """plot / plot_triangle now ship as matplotlib smoke renders."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
     v = TriangleValidation(_gap_input())
-    with pytest.raises(NotImplementedError, match="phase A"):
-        v.plot()
-    with pytest.raises(NotImplementedError, match="phase A"):
-        v.plot_triangle()
+    fig = v.plot()
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        plt.close(fig)
+    fig = v.plot_triangle()
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        plt.close(fig)
 
 
 def test_validation_repr():
