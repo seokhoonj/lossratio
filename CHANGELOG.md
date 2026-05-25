@@ -77,6 +77,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `TriangleValidation.plot_triangle(view="calendar")` -- cohort x
+  calendar layout of the gap heatmap, mirroring the R sibling's
+  `view = "calendar"` branch (`R/triangle.R`). Per-cell calendar
+  values are synthesised inline as ``cohort + (dev - 1) * grain_step``
+  via the shared :func:`add_periods` helper, so the calendar layout
+  works even though Python's TriangleValidation doesn't carry an
+  `observed_pairs` slot. Requires a ``calendar`` column on the
+  validation input (raises ``ValueError`` if absent). The previous
+  dev-axis layout remains the default (``view="dev"``).
 - `Triangle.plot_triangle(view="usage")` now accepts
   ``maturity="auto"`` and ``regime="auto"``: the renderer resolves
   them inline via :meth:`Triangle.detect_maturity` /

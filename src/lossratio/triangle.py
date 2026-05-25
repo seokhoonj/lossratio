@@ -1030,24 +1030,31 @@ class TriangleValidation:
 
     def plot_triangle(
         self,
+        view: str = "dev",
         show_label: bool = False,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> Any:
-        """Cohort x dev heatmap of observed / missing cells.
+        """Cohort x dev / cohort x calendar heatmap of observed /
+        missing cells.
 
-        Mirrors R's ``plot_triangle.TriangleValidation`` (dev-axis
-        layout only). For each cohort with gaps, the dev grid is
-        coloured blue (observed) or red (missing). Only the cohorts
-        in the gaps table appear in the heatmap (clean cohorts are
-        omitted).
+        Mirrors R's ``plot_triangle.TriangleValidation``. For each
+        cohort with gaps, the cell grid is coloured blue (observed)
+        or red (missing); clean cohorts are omitted (R divergence:
+        R uses a stored ``observed_pairs`` slot to paint every
+        cohort -- Python carries only the gaps frame, so non-gappy
+        cohorts don't appear).
 
-        **Note:** R supports a ``view="calendar"`` axis layout as
-        well; the Python sibling currently only ships the dev-axis
-        view -- the calendar layout would require reconstructing the
-        per-cell calendar values from the gaps frame, which is a
-        deferred follow-up.
+        Parameters
+        ----------
+        view
+            ``"dev"`` (default) or ``"calendar"``. The calendar
+            layout synthesises per-cell calendar values via
+            ``cohort + (dev - 1) * grain_step`` and requires the
+            cohort series to have an inferable grain. Raises if no
+            ``calendar`` column was supplied to
+            :class:`TriangleValidation`.
 
         Returns
         -------
@@ -1056,6 +1063,7 @@ class TriangleValidation:
         from ._validation_vis import plot_triangle_validation
         return plot_triangle_validation(
             self,
+            view=view,
             show_label=show_label,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )

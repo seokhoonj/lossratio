@@ -73,3 +73,41 @@ def test_validation_plot_triangle_show_label(tv_with_gaps):
         assert isinstance(fig, plt.Figure)
     finally:
         _close(fig)
+
+
+# --- view='calendar' -----------------------------------------------------
+
+
+def test_validation_plot_triangle_calendar_view(tv_with_gaps):
+    fig = tv_with_gaps.plot_triangle(view="calendar")
+    try:
+        assert isinstance(fig, plt.Figure)
+        assert "calendar" in fig._suptitle.get_text()
+    finally:
+        _close(fig)
+
+
+def test_validation_plot_triangle_calendar_show_label(tv_with_gaps):
+    fig = tv_with_gaps.plot_triangle(view="calendar", show_label=True)
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_validation_plot_triangle_invalid_view(tv_with_gaps):
+    with pytest.raises(ValueError, match="view"):
+        tv_with_gaps.plot_triangle(view="bogus")
+
+
+def test_validation_plot_triangle_calendar_requires_calendar_col():
+    exp = lr.make_experience(seed=1)
+    leaky = exp.filter(
+        ~((pl.col("coverage") == "CAN") & (pl.col("dev_m").is_in([3, 7])))
+    )
+    tv = lr.TriangleValidation(
+        leaky, groups="coverage",
+        cohort="uy_m", calendar=None, dev="dev_m",
+    )
+    with pytest.raises(ValueError, match="calendar"):
+        tv.plot_triangle(view="calendar")

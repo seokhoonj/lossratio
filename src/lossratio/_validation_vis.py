@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
+from ._period import add_periods, infer_grain, resolve_grain
 from ._plot import (
     _format_period_series,
     _get_period_type,
@@ -109,17 +110,31 @@ def plot_validation(
 
 def plot_triangle_validation(
     tv: TriangleValidation,
+    view: str = "dev",
     show_label: bool = False,
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """Cohort x dev heatmap of observed / missing cells.
+    """Cohort x dev (or cohort x calendar) heatmap of observed /
+    missing cells.
 
-    For each cohort with gaps, paints the dev grid as observed (blue)
-    or missing (red). Only the cohorts in the gaps table appear (no
-    gap means no row -- the cohort is fine).
+    For each cohort with gaps, paints the cell grid as observed (blue)
+    or missing (red). Only the cohorts in the gaps table appear -- if
+    a cohort has no gap it isn't drawn. ``view="dev"`` uses the dev
+    axis; ``view="calendar"`` synthesises the calendar value per cell
+    as ``cohort + (dev - 1) * grain_step`` and uses the resulting
+    calendar series as the x-axis.
+
+    R divergence: R's ``plot_triangle.TriangleValidation`` paints
+    *all* cohorts using a stored ``observed_pairs`` slot. Python's
+    TriangleValidation only carries the gaps frame, so non-gappy
+    cohorts are omitted from the heatmap.
     """
+    if view not in ("dev", "calendar"):
+        raise ValueError(
+            f"`view` must be 'dev' or 'calendar'; got {view!r}."
+        )
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
@@ -136,6 +151,23 @@ def plot_triangle_validation(
     groups = tv.groups
     coh = tv.cohort
     coh_type = _get_period_type(coh)
+
+    if view == "calendar":
+        if tv.calendar is None:
+            raise ValueError(
+                "`view='calendar'` requires a calendar column on the "
+                "TriangleValidation input. Pass calendar=... to "
+                "TriangleValidation(...) or use view='dev'."
+            )
+        try:
+            grain = resolve_grain(
+                infer_grain(gaps[coh]), tv._grain_arg
+            )
+        except Exception as e:
+            raise ValueError(
+                f"`view='calendar'` could not infer the cohort grain "
+                f"from {coh!r}: {e}"
+            ) from e
 
     if groups is None:
         facets = [(None, gaps)]
@@ -177,25 +209,21 @@ def plot_triangle_validation(
         else:
             lab = [str(v) for v in cohorts]
 
-        for row_idx, row in enumerate(sub_sorted.iter_rows(named=True)):
-            d_max = int(row["dev_max"])
-            missing = list(row["missing"]) if row["missing"] is not None else []
-            for k in range(1, d_max + 1):
-                color = miss_color if k in missing else obs_color
-                ax.add_patch(Rectangle(
-                    (k - 0.5, row_idx - 0.5), 1.0, 1.0,
-                    facecolor=color, edgecolor="white", linewidth=0.4,
-                ))
-                if show_label:
-                    ax.text(
-                        k, row_idx, "·" if k not in missing else "X",
-                        ha="center", va="center", fontsize=6,
-                        color="white",
-                    )
+        if view == "dev":
+            _draw_dev_panel(
+                ax, sub_sorted, lab, max_dev,
+                obs_color=obs_color, miss_color=miss_color,
+                show_label=show_label,
+            )
+        else:
+            _draw_calendar_panel(
+                ax, sub_sorted, lab, max_dev, coh=coh,
+                grain=grain, coh_type=coh_type,
+                obs_color=obs_color, miss_color=miss_color,
+                show_label=show_label,
+            )
 
-        ax.set_xlim(0.5, max_dev + 0.5)
         ax.set_ylim(-0.5, len(lab) - 0.5)
-        ax.set_xticks(range(1, max_dev + 1, max(1, max_dev // 12)))
         ax.set_yticks(range(len(lab)))
         ax.set_yticklabels(lab, fontsize=7)
         ax.invert_yaxis()
@@ -210,10 +238,116 @@ def plot_triangle_validation(
         r, c = divmod(idx, ncol)
         axes[r][c].set_visible(False)
 
-    fig.suptitle(
-        "Gap positions (blue = observed, red = missing)",
-        fontsize=11, fontweight="bold",
+    title = (
+        "Gap positions (blue = observed, red = missing)"
+        if view == "dev"
+        else "Gap positions on calendar axis"
+        + " (blue = observed, red = missing)"
     )
-    fig.supxlabel("dev", fontsize=10)
+    fig.suptitle(title, fontsize=11, fontweight="bold")
+    fig.supxlabel("dev" if view == "dev" else "calendar", fontsize=10)
     fig.supylabel("cohort", fontsize=10)
     return fig
+
+
+def _draw_dev_panel(
+    ax,
+    sub_sorted: pl.DataFrame,
+    lab: list[str],
+    max_dev: int,
+    *,
+    obs_color: str,
+    miss_color: str,
+    show_label: bool,
+) -> None:
+    """Draw observed / missing cells on a cohort x dev grid."""
+    from matplotlib.patches import Rectangle
+
+    for row_idx, row in enumerate(sub_sorted.iter_rows(named=True)):
+        d_max = int(row["dev_max"])
+        missing = list(row["missing"]) if row["missing"] is not None else []
+        for k in range(1, d_max + 1):
+            color = miss_color if k in missing else obs_color
+            ax.add_patch(Rectangle(
+                (k - 0.5, row_idx - 0.5), 1.0, 1.0,
+                facecolor=color, edgecolor="white", linewidth=0.4,
+            ))
+            if show_label:
+                ax.text(
+                    k, row_idx, "·" if k not in missing else "X",
+                    ha="center", va="center", fontsize=6,
+                    color="white",
+                )
+    ax.set_xlim(0.5, max_dev + 0.5)
+    ax.set_xticks(range(1, max_dev + 1, max(1, max_dev // 12)))
+
+
+def _draw_calendar_panel(
+    ax,
+    sub_sorted: pl.DataFrame,
+    lab: list[str],
+    max_dev: int,
+    *,
+    coh: str,
+    grain: str,
+    coh_type: str | None,
+    obs_color: str,
+    miss_color: str,
+    show_label: bool,
+) -> None:
+    """Draw observed / missing cells on a cohort x calendar grid.
+
+    Calendar value per cell is derived inline as ``cohort + (dev - 1)
+    * grain_step`` via :func:`add_periods`.
+    """
+    from matplotlib.patches import Rectangle
+
+    # Build per-row calendar values for every dev in [1..dev_max].
+    # Collect the unique calendar set across the facet for x-axis levels.
+    per_row_cells: list[tuple[int, list[tuple[Any, bool]]]] = []  # (row_idx, list[(cal, is_missing)])
+    all_cals: set[Any] = set()
+    for row_idx, row in enumerate(sub_sorted.iter_rows(named=True)):
+        d_max = int(row["dev_max"])
+        missing = set(int(v) for v in (row["missing"] or []))
+        coh_val = row[coh]
+        # Use polars add_periods on a single-row frame to compute
+        # calendar values for each k in [1..d_max].
+        devs = pl.Series("dev", list(range(1, d_max + 1)), dtype=pl.Int64)
+        cal_series = pl.DataFrame({coh: [coh_val] * d_max, "dev": devs}).with_columns(
+            add_periods(pl.col(coh), pl.col("dev"), grain).alias("cal")
+        )["cal"].to_list()
+        cell_pairs = [(cal_series[k - 1], k in missing) for k in range(1, d_max + 1)]
+        per_row_cells.append((row_idx, cell_pairs))
+        all_cals.update(cal_series)
+
+    sorted_cals = sorted(all_cals)
+    cal_idx = {c: i for i, c in enumerate(sorted_cals)}
+
+    for row_idx, pairs in per_row_cells:
+        for cal_val, is_miss in pairs:
+            xi = cal_idx[cal_val]
+            color = miss_color if is_miss else obs_color
+            ax.add_patch(Rectangle(
+                (xi - 0.5, row_idx - 0.5), 1.0, 1.0,
+                facecolor=color, edgecolor="white", linewidth=0.4,
+            ))
+            if show_label:
+                ax.text(
+                    xi, row_idx, "X" if is_miss else "·",
+                    ha="center", va="center", fontsize=6,
+                    color="white",
+                )
+
+    # x-axis: thin out ticks for readability.
+    n_cals = len(sorted_cals)
+    stride = max(1, n_cals // 12)
+    tick_pos = list(range(0, n_cals, stride))
+    if coh_type is not None:
+        labels = _format_period_series(
+            pl.Series("c", [sorted_cals[i] for i in tick_pos]), coh_type
+        )
+    else:
+        labels = [str(sorted_cals[i]) for i in tick_pos]
+    ax.set_xlim(-0.5, n_cals - 0.5)
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels(labels, fontsize=7, rotation=45, ha="right")
