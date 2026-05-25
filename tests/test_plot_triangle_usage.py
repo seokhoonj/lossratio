@@ -123,14 +123,47 @@ def test_legend_present_with_four_states(tri_with_groups):
 # --- Arg validation --------------------------------------------------
 
 
-def test_maturity_auto_not_implemented(tri_with_groups):
-    with pytest.raises(NotImplementedError, match="maturity='auto'"):
-        tri_with_groups.plot_triangle(view="usage", maturity="auto")
+def test_maturity_auto_renders(tri_with_groups):
+    # `maturity='auto'` runs detect_maturity inline and renders without
+    # raising. The exact k* depends on the synthetic experience fixture,
+    # but the figure must render and surface a maturity vline overlay.
+    fig = tri_with_groups.plot_triangle(view="usage", maturity="auto")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
 
 
-def test_regime_auto_not_implemented(tri_with_groups):
-    with pytest.raises(NotImplementedError, match="regime='auto'"):
-        tri_with_groups.plot_triangle(view="usage", regime="auto")
+def test_regime_auto_renders(tri_with_groups):
+    # `regime='auto'` runs detect_regime inline. If detection raises
+    # internally (degenerate triangle), the resolver returns None and the
+    # view still renders without a regime overlay.
+    fig = tri_with_groups.plot_triangle(view="usage", regime="auto")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_maturity_callable_renders(tri_with_groups):
+    fig = tri_with_groups.plot_triangle(
+        view="usage", maturity=lambda t: 6
+    )
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_regime_callable_renders(tri_with_groups):
+    fig = tri_with_groups.plot_triangle(
+        view="usage",
+        regime=lambda t: t.detect_regime(window=12),
+    )
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
 
 
 def test_negative_recent_rejected(tri_with_groups):

@@ -614,15 +614,18 @@ class BacktestFit:
         # view == "usage": forward to the Triangle-side usage
         # renderer with `holdout=self.holdout` and filter args
         # inherited from `self.estimator` (overridable via kwargs).
+        # The Triangle renderer resolves `"auto"` for both regime and
+        # maturity via inline `detect_*` calls.
         from ._triangle_vis import _plot_triangle_usage
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
+        eff_maturity = maturity if maturity is not None else self._infer_maturity()
         return _plot_triangle_usage(
             self._triangle,
             recent=eff_recent,
             regime=eff_regime,
             holdout=self.holdout,
-            maturity=maturity,
+            maturity=eff_maturity,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
@@ -634,22 +637,26 @@ class BacktestFit:
         """Extract the loss-side regime from `self.estimator`, if any.
 
         For ``lr.Ratio``, prefer ``loss_regime`` (the Ratio's
-        loss-side); for ``lr.Loss`` / ``lr.CL``, ``regime``.
-        Returns ``None`` when neither attr is set or its value is
-        ``"auto"`` (which the usage-view renderer can't resolve
-        without re-running detection on the masked triangle).
+        loss-side); for ``lr.Loss`` / ``lr.CL``, ``regime``. The
+        Triangle renderer accepts ``"auto"`` directly and runs
+        :meth:`Triangle.detect_regime` inline, so a literal
+        ``"auto"`` is forwarded as-is.
         """
         est = self.estimator
-        cand = (
-            getattr(est, "loss_regime", None)
-            if hasattr(est, "loss_regime")
-            else getattr(est, "regime", None)
-        )
-        # `"auto"` requires running detect_regime inline; we don't try
-        # to do that here -- the caller can pass an explicit Regime.
-        if isinstance(cand, str) and cand == "auto":
-            return None
-        return cand
+        if hasattr(est, "loss_regime"):
+            return getattr(est, "loss_regime")
+        return getattr(est, "regime", None)
+
+    def _infer_maturity(self) -> Any:
+        """Extract maturity from `self.estimator`, if any.
+
+        ``lr.Loss`` / ``lr.Ratio`` carry a ``maturity`` slot. The
+        Triangle renderer accepts ``"auto"`` directly and runs
+        :meth:`Triangle.detect_maturity` inline, so a literal
+        ``"auto"`` is forwarded as-is. ``lr.CL`` has no maturity
+        concept and returns ``None``.
+        """
+        return getattr(self.estimator, "maturity", None)
 
     def __repr__(self) -> str:
         n_cells = self._ae_err.height

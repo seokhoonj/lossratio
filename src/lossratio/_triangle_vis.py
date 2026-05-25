@@ -335,16 +335,23 @@ def _threshold_color(v: float, threshold: float, when: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_maturity_k(maturity: Any) -> int | None:
-    """Resolve the `maturity` arg to an integer `k*` or None.
+def _resolve_maturity_k(
+    maturity: Any,
+    triangle: Triangle | None = None,
+) -> int | None:
+    """Resolve the ``maturity`` arg to an integer ``k*`` or ``None``.
 
     ``None``: no maturity, no overlay, no hybrid threshold.
-    ``int``: scalar k*, used directly.
-    ``Maturity`` instance: read its ``change`` (R parity: maturity link's
-    ``ata_to``).
-
-    ``"auto"`` and ``function`` callable values are reserved for a later
-    pass -- they require 2-pass ATA fitting on the triangle.
+    ``int``: scalar ``k*``, used directly.
+    :class:`Maturity` instance: read its ``change`` column (R parity:
+    the maturity link's to-index).
+    ``"auto"``: when ``triangle`` is supplied, runs
+    :meth:`Triangle.detect_maturity` and collapses the per-group result
+    to a single scalar via ``max(k*)`` (matches R's per-group fallback
+    used by the SA fitter); when ``triangle`` is ``None``, returns
+    ``None`` silently so the caller can detect upstream.
+    Callable: invoked with ``triangle`` (when supplied) and the result
+    is re-resolved.
     """
     from .maturity import Maturity
 
@@ -352,22 +359,18 @@ def _resolve_maturity_k(maturity: Any) -> int | None:
         return None
     if isinstance(maturity, str):
         if maturity == "auto":
-            raise NotImplementedError(
-                "maturity='auto' for plot_triangle(view='usage') is not "
-                "yet implemented in Python; pass a scalar k (e.g. "
-                "maturity=6) or a Maturity instance from "
-                "triangle.detect_maturity()."
-            )
+            if triangle is None:
+                return None
+            try:
+                mat = triangle.detect_maturity()
+            except Exception:
+                return None
+            return _resolve_maturity_k(mat, triangle=triangle)
         raise ValueError(
-            f"`maturity` must be None, an int, or a Maturity instance; "
-            f"got {maturity!r}."
+            f"`maturity` must be None, an int, 'auto', a Maturity "
+            f"instance, or a callable; got {maturity!r}."
         )
     if isinstance(maturity, Maturity):
-        # R-parity: `Maturity` carries the resolved `change` column with
-        # the maturity link's to-index. `mat_k` returns int / None /
-        # dict[group, int|None]; collapse the dict to a scalar by taking
-        # the maximum (matches R's per-group max(k*) fallback used by the
-        # SA fitter in `R/loss.R`).
         k = maturity.mat_k
         if k is None:
             return None
@@ -382,18 +385,26 @@ def _resolve_maturity_k(maturity: Any) -> int | None:
             )
         return int(maturity)
     if callable(maturity):
-        raise NotImplementedError(
-            "callable `maturity` for plot_triangle(view='usage') is not "
-            "yet implemented in Python."
-        )
+        if triangle is None:
+            return None
+        return _resolve_maturity_k(maturity(triangle), triangle=triangle)
     raise ValueError(
-        f"`maturity` must be None, an int, 'auto', or a Maturity "
-        f"instance; got {maturity!r}."
+        f"`maturity` must be None, an int, 'auto', a Maturity instance, "
+        f"or a callable; got {maturity!r}."
     )
 
 
 def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
-    """Resolve a regime input to a Regime instance, or None."""
+    """Resolve a regime input to a Regime instance, or None.
+
+    ``None``: no regime overlay.
+    :class:`Regime` instance: used directly.
+    ``"auto"``: runs :meth:`Triangle.detect_regime` (default
+    ``window="auto"``, ``method="e_divisive"``); returns ``None`` if
+    detection raises (e.g. degenerate triangle), so the usage view
+    still renders without a regime overlay.
+    Callable: invoked with ``triangle``.
+    """
     from .regime import Regime
 
     if regime is None:
@@ -402,12 +413,14 @@ def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
         return regime
     if isinstance(regime, str):
         if regime == "auto":
-            raise NotImplementedError(
-                "regime='auto' for plot_triangle(view='usage') is not "
-                "yet implemented in Python; pass a Regime instance from "
-                "triangle.detect_regime() or build one via regime_at()."
-            )
-        raise ValueError(f"`regime` must be None or a Regime; got {regime!r}.")
+            try:
+                return triangle.detect_regime()
+            except Exception:
+                return None
+        raise ValueError(
+            f"`regime` must be None, a Regime instance, 'auto', or a "
+            f"callable; got {regime!r}."
+        )
     if callable(regime):
         return regime(triangle)
     raise ValueError(
@@ -653,7 +666,7 @@ def _plot_triangle_usage(
     from matplotlib.patches import Patch, Rectangle
 
     regime_obj = _resolve_regime_for_usage(triangle, regime)
-    m_k = _resolve_maturity_k(maturity)
+    m_k = _resolve_maturity_k(maturity, triangle=triangle)
 
     usage_df = _compute_triangle_usage(
         triangle,

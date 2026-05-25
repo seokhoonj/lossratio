@@ -77,6 +77,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Triangle.plot_triangle(view="usage")` now accepts
+  ``maturity="auto"`` and ``regime="auto"``: the renderer resolves
+  them inline via :meth:`Triangle.detect_maturity` /
+  :meth:`Triangle.detect_regime` so the usage view auto-detects the
+  maturity vline and regime hline overlays without the caller
+  pre-computing them. Callables (``maturity=lambda t: ...`` /
+  ``regime=lambda t: ...``) are also fully supported now. Replaces
+  the prior ``NotImplementedError`` for both keywords. When the
+  inline detection raises (degenerate triangle, no detectable
+  maturity), the resolver returns ``None`` silently and the view
+  still renders without the overlay.
+- `BacktestFit.plot_triangle(view="usage")` extends the auto-inheritance
+  to ``maturity`` as well -- ``Loss(method="sa")`` carries
+  ``maturity="auto"`` by default, and the backtest usage view now
+  passes that through to the Triangle renderer for inline detection.
+  The estimator's ``regime`` is also forwarded as-is, including the
+  ``"auto"`` literal (previously dropped silently).
 - `BacktestFit.plot_triangle(view="usage")` -- cell-status heatmap
   (training / held-out / regime-excluded / future) on the
   underlying triangle, mirroring R `plot_triangle.Backtest(view =

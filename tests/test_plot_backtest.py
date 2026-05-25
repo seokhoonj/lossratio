@@ -185,15 +185,29 @@ def test_backtest_plot_triangle_usage_loss_regime_for_ratio(tri_multi):
     assert inferred is reg
 
 
-def test_backtest_plot_triangle_usage_auto_regime_dropped(tri_multi):
-    # `regime='auto'` on the estimator cannot be resolved at usage-plot
-    # time; _infer_regime should return None and the view should still
-    # render (no regime overlay).
+def test_backtest_plot_triangle_usage_auto_regime_resolved(tri_multi):
+    # `regime='auto'` on the estimator is forwarded as-is; the
+    # Triangle renderer resolves it via inline detect_regime().
     bt = lr.Backtest(
         estimator=lr.Loss(method="cl", regime="auto"),
         holdout=4, metric="loss",
     ).fit(tri_multi)
-    assert bt._infer_regime() is None
+    assert bt._infer_regime() == "auto"
+    fig = bt.plot_triangle(view="usage")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
+    # method='sa' carries `maturity='auto'` by default; the usage view
+    # resolves it via inline detect_maturity().
+    bt = lr.Backtest(
+        estimator=lr.Loss(method="sa"),
+        holdout=4, metric="loss",
+    ).fit(tri_multi)
+    assert bt._infer_maturity() == "auto"
     fig = bt.plot_triangle(view="usage")
     try:
         assert isinstance(fig, plt.Figure)
