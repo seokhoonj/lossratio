@@ -137,14 +137,14 @@ def plot_triangle_backtest(
     else:
         coh_labels = [str(v) for v in dt["cohort"].to_list()]
 
-    work = dt.with_columns(pl.Series(name=".y_lab", values=coh_labels))
+    work = dt.with_columns(pl.Series(name="_y_lab", values=coh_labels))
     # Coherent axes:
     # x = dev (numeric)
     # y = cohort labels, oldest at top (matches plot_triangle.<other>).
     dev_levels = sorted(work["dev"].unique().to_list())
     # raw cohort sorted ascending; reverse so oldest sits at top.
-    raw_sorted = work.select(["cohort", ".y_lab"]).unique().sort("cohort")
-    y_levels_top_to_bottom = list(reversed(raw_sorted[".y_lab"].to_list()))
+    raw_sorted = work.select(["cohort", "_y_lab"]).unique().sort("cohort")
+    y_levels_top_to_bottom = list(reversed(raw_sorted["_y_lab"].to_list()))
 
     # Color limits: symmetric around 0.
     err = work[ae_err_col].to_numpy()
@@ -196,7 +196,7 @@ def plot_triangle_backtest(
         ax = axes[r][c]
         for row in sub.iter_rows(named=True):
             xi = x_idx.get(int(row["dev"]))
-            yi = y_idx.get(row[".y_lab"])
+            yi = y_idx.get(row["_y_lab"])
             if xi is None or yi is None:
                 continue
             v = row[ae_err_col]

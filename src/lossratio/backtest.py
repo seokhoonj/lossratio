@@ -42,9 +42,9 @@ def _add_cal_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
         cohort_idx_expr = pl.col("cohort").rank(method="dense").cast(pl.Int64)
 
     return tri_df.with_columns(
-        cohort_idx_expr.alias("__cohort_idx"),
+        cohort_idx_expr.alias("_cohort_idx"),
     ).with_columns(
-        (pl.col("__cohort_idx") + pl.col("dev") - 1).alias("cal_idx"),
+        (pl.col("_cohort_idx") + pl.col("dev") - 1).alias("cal_idx"),
     )
 
 
@@ -68,15 +68,15 @@ def _build_masked_df(
     # Determine the calendar-diagonal cutoff per group
     if groups is not None:
         max_per_group = df.group_by(groups).agg(
-            pl.col("cal_idx").max().alias("__max_cal")
+            pl.col("cal_idx").max().alias("_max_cal")
         )
         df = df.join(max_per_group, on=groups, how="left")
     else:
         max_cal = int(df["cal_idx"].max())
-        df = df.with_columns(pl.lit(max_cal).alias("__max_cal"))
+        df = df.with_columns(pl.lit(max_cal).alias("_max_cal"))
 
     df = df.with_columns(
-        (pl.col("cal_idx") > pl.col("__max_cal") - holdout).alias("masked")
+        (pl.col("cal_idx") > pl.col("_max_cal") - holdout).alias("masked")
     )
 
     masked_df = df.with_columns(
@@ -85,9 +85,9 @@ def _build_masked_df(
             for c in ("loss", "incr_loss", "premium", "incr_premium", "ratio", "incr_ratio")
             if c in df.columns
         ]
-    ).drop("__cohort_idx", "__max_cal", "cal_idx", "masked")
+    ).drop("_cohort_idx", "_max_cal", "cal_idx", "masked")
 
-    annotated_df = df.drop("__cohort_idx", "__max_cal")  # keeps cal_idx + masked
+    annotated_df = df.drop("_cohort_idx", "_max_cal")  # keeps cal_idx + masked
     return masked_df, annotated_df
 
 

@@ -34,8 +34,8 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("sa", "ed", "cl", "bf", "cc")
-_VALID_PREMIUM_METHODS = ("cl", "ed")
+_VALID_METHODS = ("ed", "cl", "sa", "bf", "cc")
+_VALID_PREMIUM_METHODS = ("ed", "cl")
 
 
 # ---------------------------------------------------------------------------

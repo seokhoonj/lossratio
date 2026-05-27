@@ -105,11 +105,11 @@ def _str_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
         for fmt in _STR_DATE_FORMATS
     ]
     mapping = mapping.with_columns(
-        pl.coalesce(parse_exprs).alias("__parsed")
+        pl.coalesce(parse_exprs).alias("_parsed")
     )
 
     bad = mapping.filter(
-        pl.col(var_name).is_not_null() & pl.col("__parsed").is_null()
+        pl.col(var_name).is_not_null() & pl.col("_parsed").is_null()
     )
     if bad.height > 0:
         bad_vals = bad[var_name].to_list()
@@ -124,7 +124,7 @@ def _str_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
     return (
         df.join(mapping, on=var_name, how="left")
         .drop(var_name)
-        .rename({"__parsed": var_name})
+        .rename({"_parsed": var_name})
     )
 
 

@@ -142,9 +142,9 @@ def plot_triangle(
     x_levels = [lbl for _, lbl in dev_pairs]   # dev, smallest -> largest
 
     df = df.with_columns(
-        pl.Series(name=".y_lbl", values=cohort_labels),
-        pl.Series(name=".x_lbl", values=dev_labels),
-        pl.Series(name=".label", values=_cell_labels(df, metric, label_style, amount_divisor)),
+        pl.Series(name="_y_lbl", values=cohort_labels),
+        pl.Series(name="_x_lbl", values=dev_labels),
+        pl.Series(name="_label", values=_cell_labels(df, metric, label_style, amount_divisor)),
     )
 
     # Faceting setup.
@@ -267,9 +267,9 @@ def _draw_cell_grid(
     y_idx = {lbl: i for i, lbl in enumerate(y_levels)}
 
     metric_vals = sub[metric].to_numpy()
-    x_pos = [x_idx[lbl] for lbl in sub[".x_lbl"].to_list()]
-    y_pos = [y_idx[lbl] for lbl in sub[".y_lbl"].to_list()]
-    labels = sub[".label"].to_list()
+    x_pos = [x_idx[lbl] for lbl in sub["_x_lbl"].to_list()]
+    y_pos = [y_idx[lbl] for lbl in sub["_y_lbl"].to_list()]
+    labels = sub["_label"].to_list()
 
     for xi, yi, v, lab in zip(x_pos, y_pos, metric_vals, labels):
         color = _threshold_color(v, threshold, when)
@@ -589,12 +589,12 @@ def _compute_triangle_usage(
             from .regime import _regime_cutoff_map
             cutoff_map = _regime_cutoff_map(regime)
             if cutoff_map is not None:
-                if "__cutoff" in cutoff_map.columns and cutoff_map.height == 1 and (
+                if "_cutoff" in cutoff_map.columns and cutoff_map.height == 1 and (
                     regime.groups is None or regime.groups not in cutoff_map.columns
                 ):
-                    cd_scalar = cutoff_map["__cutoff"][0]
+                    cd_scalar = cutoff_map["_cutoff"][0]
                 else:
-                    cd_df = cutoff_map.rename({"__cutoff": "_cd_join"})
+                    cd_df = cutoff_map.rename({"_cutoff": "_cd_join"})
 
     # 7. Build the pass_filter boolean.
     has_recent = recent is not None
@@ -790,7 +790,7 @@ def _plot_triangle_usage(
 
     cohort_labels = _format_axis(usage_df["cohort"], coh_type)
     usage_df = usage_df.with_columns(
-        pl.Series(name=".y_lbl", values=cohort_labels)
+        pl.Series(name="_y_lbl", values=cohort_labels)
     )
 
     # Ordered cohort levels: newest at top (descending).
@@ -849,11 +849,11 @@ def _plot_triangle_usage(
         if cm is not None:
             if regime_obj.groups is not None and regime_obj.groups in cm.columns:
                 per_group_cd = {
-                    row[regime_obj.groups]: row["__cutoff"]
+                    row[regime_obj.groups]: row["_cutoff"]
                     for row in cm.iter_rows(named=True)
                 }
             else:
-                cd_scalar = cm["__cutoff"][0]
+                cd_scalar = cm["_cutoff"][0]
 
     # Segment_wise hlines come from raw changes (one per change point).
     seg_changes: list = []
@@ -871,7 +871,7 @@ def _plot_triangle_usage(
 
         for row in sub.iter_rows(named=True):
             xi = x_idx[row["dev"]]
-            yi = y_idx[row[".y_lbl"]]
+            yi = y_idx[row["_y_lbl"]]
             color = _USAGE_COLORS[row["status"]]
             ax.add_patch(
                 Rectangle(

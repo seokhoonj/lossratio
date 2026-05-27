@@ -1064,11 +1064,11 @@ def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
     changes = regime._changes_df
     if regime.groups is None or regime.groups not in changes.columns:
         cutoff = max(regime.breakpoints)
-        return pl.DataFrame({"__cutoff": [cutoff]}, schema={"__cutoff": pl.Date})
+        return pl.DataFrame({"_cutoff": [cutoff]}, schema={"_cutoff": pl.Date})
 
     return (
         changes.group_by(regime.groups)
-        .agg(pl.col("change").max().alias("__cutoff"))
+        .agg(pl.col("change").max().alias("_cutoff"))
     )
 
 
@@ -1135,23 +1135,23 @@ def _apply_mini_triangle_filter(
     rank_keys = [grp] if grp else []
 
     df = df.with_columns(
-        pl.col("cohort").rank(method="dense").over(rank_keys or pl.lit(1)).cast(pl.Int64).alias("__coh_rank"),
+        pl.col("cohort").rank(method="dense").over(rank_keys or pl.lit(1)).cast(pl.Int64).alias("_coh_rank"),
     )
     df = df.with_columns(
-        (pl.col("__coh_rank") + pl.col("dev") - 1).alias("__cal_idx"),
+        (pl.col("_coh_rank") + pl.col("dev") - 1).alias("_cal_idx"),
     )
     df = df.with_columns(
-        pl.col("__cal_idx").max().over(rank_keys or pl.lit(1)).alias("__max_cal"),
-        pl.col("__coh_rank")
+        pl.col("_cal_idx").max().over(rank_keys or pl.lit(1)).alias("_max_cal"),
+        pl.col("_coh_rank")
             .max()
             .over((rank_keys or []) + ["segment_id"])
-            .alias("__seg_last"),
+            .alias("_seg_last"),
     )
     df = df.with_columns(
-        (pl.col("__max_cal") - pl.col("__seg_last") + 1).alias("__dev_min")
+        (pl.col("_max_cal") - pl.col("_seg_last") + 1).alias("_dev_min")
     )
-    df = df.filter(pl.col("dev") >= pl.col("__dev_min")).drop(
-        "__coh_rank", "__cal_idx", "__max_cal", "__seg_last", "__dev_min"
+    df = df.filter(pl.col("dev") >= pl.col("_dev_min")).drop(
+        "_coh_rank", "_cal_idx", "_max_cal", "_seg_last", "_dev_min"
     )
     return df
 
@@ -1198,19 +1198,19 @@ def _apply_regime_filter(
     if cutoff_map is None:
         return triangle
 
-    if "__cutoff" in df.columns:  # defensive: should never collide
-        df = df.drop("__cutoff")
+    if "_cutoff" in df.columns:  # defensive: should never collide
+        df = df.drop("_cutoff")
 
     if regime.groups is not None and regime.groups in df.columns:
         df = df.join(cutoff_map, on=regime.groups, how="left")
     else:
         df = df.with_columns(
-            pl.lit(cutoff_map["__cutoff"][0]).alias("__cutoff")
+            pl.lit(cutoff_map["_cutoff"][0]).alias("_cutoff")
         )
 
     df = df.filter(
-        pl.col("__cutoff").is_null() | (pl.col("cohort") >= pl.col("__cutoff"))
-    ).drop("__cutoff")
+        pl.col("_cutoff").is_null() | (pl.col("cohort") >= pl.col("_cutoff"))
+    ).drop("_cutoff")
 
     return Triangle._from_masked(triangle, df)
 
@@ -1259,18 +1259,18 @@ def _split_into_segment_triangles(
     if cutoff_map is None:
         return triangle
 
-    if "__cutoff" in df.columns:  # defensive: should never collide
-        df = df.drop("__cutoff")
+    if "_cutoff" in df.columns:  # defensive: should never collide
+        df = df.drop("_cutoff")
 
     if regime.groups is not None and regime.groups in df.columns:
         df = df.join(cutoff_map, on=regime.groups, how="left")
     else:
         df = df.with_columns(
-            pl.lit(cutoff_map["__cutoff"][0]).alias("__cutoff")
+            pl.lit(cutoff_map["_cutoff"][0]).alias("_cutoff")
         )
 
     df = df.filter(
-        pl.col("__cutoff").is_null() | (pl.col("cohort") >= pl.col("__cutoff"))
-    ).drop("__cutoff")
+        pl.col("_cutoff").is_null() | (pl.col("cohort") >= pl.col("_cutoff"))
+    ).drop("_cutoff")
 
     return Triangle._from_masked(triangle, df)
