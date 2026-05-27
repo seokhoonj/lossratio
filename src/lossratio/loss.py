@@ -22,7 +22,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import mirror_output
+from ._io import _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
@@ -439,74 +439,82 @@ def _loss_long_df(
     pull ``premium_*`` columns straight through onto the loss output.
     """
     z_alpha = float(norm.ppf((1 + conf_level) / 2))
+    n_cohorts = len(cohorts)
+    n_devs = result.n_devs
 
-    # Build index by (cohort, dev) into pf_sub for lookup
-    pf_rows = pf_sub.to_dicts() if pf_sub.height else []
-    pf_idx: dict[tuple[Any, int], dict[str, Any]] = {
-        (r["cohort"], r["dev"]): r for r in pf_rows
-    }
+    loss_obs = result.loss_obs
+    loss_proj = result.loss_proj
+    proc_se = result.proc_se
+    param_se = result.param_se
+    total_se = result.total_se
 
-    out_rows: list[dict[str, Any]] = []
-    for i in range(len(cohorts)):
-        prev_loss_proj: float | None = None
-        for k in range(result.n_devs):
-            row: dict[str, Any] = {}
-            if groups is not None:
-                row[groups] = group_value
-            row["cohort"] = cohorts[i]
-            row["dev"] = k + 1
+    incr_proj = _nan_skip_diff(loss_proj)
 
-            lo = result.loss_obs[i, k]
-            lp = result.loss_proj[i, k]
-            proc = result.proc_se[i, k]
-            par = result.param_se[i, k]
-            tot = result.total_se[i, k]
+    safe_lp = np.where(
+        np.isnan(loss_proj) | (loss_proj == 0.0), np.nan, loss_proj
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        total_cv = total_se / np.abs(safe_lp)
 
-            row["loss_obs"] = float(lo) if not np.isnan(lo) else None
-            row["loss_proj"] = float(lp) if not np.isnan(lp) else None
-            if row["loss_proj"] is None:
-                row["incr_loss_proj"] = None
-            elif prev_loss_proj is None:
-                row["incr_loss_proj"] = row["loss_proj"]
-            else:
-                row["incr_loss_proj"] = row["loss_proj"] - prev_loss_proj
-            prev_loss_proj = row["loss_proj"]
+    both_finite = np.isfinite(total_se) & np.isfinite(loss_proj)
+    ci_lo_raw = loss_proj - z_alpha * total_se
+    loss_ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
+    loss_ci_hi = np.where(both_finite, loss_proj + z_alpha * total_se, np.nan)
 
-            # premium_* — copied from PremiumFit slice
-            pf_row = pf_idx.get((cohorts[i], k + 1), {})
-            row["premium_obs"] = pf_row.get("premium_obs")
-            row["premium_proj"] = pf_row.get("premium_proj")
-            row["incr_premium_proj"] = pf_row.get("incr_premium_proj")
+    maturity_from = getattr(result, "maturity_from", None)
 
-            # SA maturity switch point (constant per group; None for ed/cl)
-            row["maturity_from"] = getattr(result, "maturity_from", None)
+    cohort_flat = [c for c in cohorts for _ in range(n_devs)]
+    dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
+    total = n_cohorts * n_devs
 
-            row["loss_proc_se"] = float(proc) if not np.isnan(proc) else None
-            row["loss_param_se"] = float(par) if not np.isnan(par) else None
-            row["loss_total_se"] = float(tot) if not np.isnan(tot) else None
-            row["loss_total_cv"] = (
-                row["loss_total_se"] / abs(row["loss_proj"])
-                if row["loss_total_se"] is not None
-                and row["loss_proj"] not in (None, 0.0)
-                else None
-            )
+    df_data: dict[str, Any] = {}
+    if groups is not None:
+        df_data[groups] = [group_value] * total
+    df_data["cohort"] = cohort_flat
+    df_data["dev"] = dev_flat
+    df_data["loss_obs"] = loss_obs.flatten()
+    df_data["loss_proj"] = loss_proj.flatten()
+    df_data["incr_loss_proj"] = incr_proj.flatten()
+    df_data["maturity_from"] = [maturity_from] * total
+    df_data["loss_proc_se"] = proc_se.flatten()
+    df_data["loss_param_se"] = param_se.flatten()
+    df_data["loss_total_se"] = total_se.flatten()
+    df_data["loss_total_cv"] = total_cv.flatten()
+    df_data["loss_ci_lo"] = loss_ci_lo.flatten()
+    df_data["loss_ci_hi"] = loss_ci_hi.flatten()
 
-            if (
-                row["loss_total_se"] is not None
-                and row["loss_proj"] is not None
-            ):
-                lci = row["loss_proj"] - z_alpha * row["loss_total_se"]
-                row["loss_ci_lo"] = max(0.0, lci)
-                row["loss_ci_hi"] = (
-                    row["loss_proj"] + z_alpha * row["loss_total_se"]
-                )
-            else:
-                row["loss_ci_lo"] = None
-                row["loss_ci_hi"] = None
+    df = _nan_to_null(pl.DataFrame(df_data))
 
-            out_rows.append(row)
+    # Join premium_* columns from the PremiumFit slice (cohort, dev).
+    premium_cols = [
+        c
+        for c in ("premium_obs", "premium_proj", "incr_premium_proj")
+        if c in pf_sub.columns
+    ]
+    if pf_sub.height > 0 and premium_cols:
+        df = df.join(
+            pf_sub.select(["cohort", "dev", *premium_cols]),
+            on=["cohort", "dev"],
+            how="left",
+        )
+    else:
+        df = df.with_columns(
+            [
+                pl.lit(None, dtype=pl.Float64).alias(c)
+                for c in ("premium_obs", "premium_proj", "incr_premium_proj")
+            ]
+        )
 
-    return pl.DataFrame(out_rows, infer_schema_length=None)
+    # Restore the original column order (premium columns sit between
+    # incr_loss_proj and maturity_from).
+    desired = ["cohort", "dev", "loss_obs", "loss_proj", "incr_loss_proj",
+               "premium_obs", "premium_proj", "incr_premium_proj",
+               "maturity_from",
+               "loss_proc_se", "loss_param_se", "loss_total_se",
+               "loss_total_cv", "loss_ci_lo", "loss_ci_hi"]
+    if groups is not None:
+        desired = [groups, *desired]
+    return df.select(desired)
 
 
 # ---------------------------------------------------------------------------

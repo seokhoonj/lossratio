@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import polars as pl
 
 
@@ -36,3 +37,38 @@ def mirror_output(df_pl: pl.DataFrame, output_type: str):
     if output_type == "pandas":
         return df_pl.to_pandas()
     return df_pl
+
+
+def _nan_skip_diff(arr: np.ndarray) -> np.ndarray:
+    """Per-row incremental: ``cur - last_finite_prev`` (prev = 0 initially).
+
+    NaN cells stay NaN; the previous-value chain only advances at finite
+    cells. Mirrors the prior row-loop semantics in the long-format
+    builders. Vectorised per row via numpy.
+    """
+    n_rows, _ = arr.shape
+    out = np.full_like(arr, np.nan, dtype=np.float64)
+    for i in range(n_rows):
+        row = arr[i]
+        idx = np.where(~np.isnan(row))[0]
+        if idx.size == 0:
+            continue
+        vals = row[idx]
+        out[i, idx[0]] = vals[0]
+        if vals.size > 1:
+            out[i, idx[1:]] = vals[1:] - vals[:-1]
+    return out
+
+
+def _nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert ``NaN`` to ``null`` in all float columns of ``df``.
+
+    Mirrors the prior row-builder semantics where ``None`` was inserted
+    for missing values (which polars stores as null, not NaN).
+    """
+    float_cols = [
+        c for c, dt in zip(df.columns, df.dtypes) if dt == pl.Float64
+    ]
+    if not float_cols:
+        return df
+    return df.with_columns([pl.col(c).fill_nan(None) for c in float_cols])

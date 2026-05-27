@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import mirror_output
+from ._io import _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 
@@ -401,80 +401,55 @@ def _result_to_long_df(
     n_cohorts = len(cohorts)
     n_devs = result.n_devs
 
+    loss_obs = result.loss_obs
+    loss_proj = result.loss_proj
     proc_se = result.proc_se
     param_se = result.param_se
     total_se = result.total_se
-    incr_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    for i in range(n_cohorts):
-        prev = 0.0
-        for k in range(n_devs):
-            v = result.loss_proj[i, k]
-            if not np.isnan(v):
-                incr_proj[i, k] = v - prev
-                prev = v
 
-    out_rows = []
-    for i in range(n_cohorts):
-        for k in range(n_devs):
-            row: dict[str, Any] = {}
-            if groups is not None:
-                row[groups] = group_value
-            row["cohort"] = cohorts[i]
-            row["dev"] = k + 1
+    # NaN-skipping per-cohort incremental: previous = last finite cum value
+    # (starts at 0). NaN cells stay NaN, finite cells get (cur - prev).
+    incr_proj = _nan_skip_diff(loss_proj)
 
-            obs = result.loss_obs[i, k]
-            proj = result.loss_proj[i, k]
-            incr = incr_proj[i, k]
+    # SE^2 from SE (NaN propagates).
+    with np.errstate(invalid="ignore"):
+        proc_se2 = proc_se * proc_se
+        param_se2 = param_se * param_se
+        total_se2 = total_se * total_se
 
-            row["loss_obs"] = float(obs) if not np.isnan(obs) else None
-            row["loss_proj"] = float(proj) if not np.isnan(proj) else None
-            row["incr_loss_proj"] = (
-                float(incr) if not np.isnan(incr) else None
-            )
+    # CV = SE / loss_proj. Treat zero / NaN denominator as NaN.
+    safe_lp = np.where(
+        np.isnan(loss_proj) | (loss_proj == 0.0), np.nan, loss_proj
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        proc_cv = proc_se / safe_lp
+        param_cv = param_se / safe_lp
+        total_cv = total_se / safe_lp
 
-            # Mack SE decomposition (additive recursion). Observed cells
-            # carry 0 (no projection variance); projected cells accumulate.
-            ps = proc_se[i, k]
-            qs = param_se[i, k]
-            ts = total_se[i, k]
-            ps_val = float(ps) if not np.isnan(ps) else None
-            qs_val = float(qs) if not np.isnan(qs) else None
-            ts_val = float(ts) if not np.isnan(ts) else None
+    cohort_flat = [c for c in cohorts for _ in range(n_devs)]
+    dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
+    total = n_cohorts * n_devs
 
-            row["loss_proc_se2"] = (
-                ps_val * ps_val if ps_val is not None else None
-            )
-            row["loss_param_se2"] = (
-                qs_val * qs_val if qs_val is not None else None
-            )
-            row["loss_total_se2"] = (
-                ts_val * ts_val if ts_val is not None else None
-            )
-            row["loss_proc_se"] = ps_val
-            row["loss_param_se"] = qs_val
-            row["loss_total_se"] = ts_val
+    df_data: dict[str, Any] = {}
+    if groups is not None:
+        df_data[groups] = [group_value] * total
+    df_data["cohort"] = cohort_flat
+    df_data["dev"] = dev_flat
+    df_data["loss_obs"] = loss_obs.flatten()
+    df_data["loss_proj"] = loss_proj.flatten()
+    df_data["incr_loss_proj"] = incr_proj.flatten()
+    df_data["loss_proc_se2"] = proc_se2.flatten()
+    df_data["loss_param_se2"] = param_se2.flatten()
+    df_data["loss_total_se2"] = total_se2.flatten()
+    df_data["loss_proc_se"] = proc_se.flatten()
+    df_data["loss_param_se"] = param_se.flatten()
+    df_data["loss_total_se"] = total_se.flatten()
+    df_data["loss_proc_cv"] = proc_cv.flatten()
+    df_data["loss_param_cv"] = param_cv.flatten()
+    df_data["loss_total_cv"] = total_cv.flatten()
 
-            cv_proc = None
-            cv_param = None
-            cv_total = None
-            if (
-                row["loss_proj"] is not None
-                and row["loss_proj"] != 0
-            ):
-                lp = row["loss_proj"]
-                if ps_val is not None:
-                    cv_proc = ps_val / lp
-                if qs_val is not None:
-                    cv_param = qs_val / lp
-                if ts_val is not None:
-                    cv_total = ts_val / lp
-            row["loss_proc_cv"] = cv_proc
-            row["loss_param_cv"] = cv_param
-            row["loss_total_cv"] = cv_total
-
-            out_rows.append(row)
-
-    return pl.DataFrame(out_rows, infer_schema_length=None)
+    df = pl.DataFrame(df_data)
+    return _nan_to_null(df)
 
 
 def _factors_to_df(

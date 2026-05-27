@@ -329,40 +329,39 @@ def _boot_kernel_cl_analytical(
     cum_mean[neg] = 0.0
 
     # ----- Stage 2 -- cum_sampled: chain-Markov noisy recursion ------------
+    # Vectorised across cohorts at each dev step (loop-carry stays within
+    # the dev axis -- prev[:, :] feeds into the next j). RNG draws happen
+    # in dev-major order rather than cohort-major; statistical properties
+    # are unchanged but bit-exact seed-output mapping differs from any
+    # pre-vectorisation snapshot.
     cum_sampled = cum_mean.copy()
-    for i in range(n_cohorts):
-        lj = last_obs[i]
-        if lj < 0 or lj >= n_devs - 1:
-            continue  # no observation, or fully observed cohort
-        prev = cum_sampled[i, lj, :].astype(np.float64, copy=True)
-        finite_prev = np.isfinite(prev)
-        if not finite_prev.any():
+    for j in range(1, n_devs):
+        k = j - 1
+        active = (last_obs >= 0) & (last_obs < j)
+        if not active.any():
             continue
-        for j in range(lj + 1, n_devs):
-            k = j - 1
-            f_b = f_star[k, :]
-            f_b = np.where(np.isfinite(f_b), f_b, 1.0)
-            mu_step = f_b * prev
-            s2_k    = anchor.sigma2[k] if 0 <= k < n_links else np.nan
+        prev = cum_sampled[active, j - 1, :]
+        f_b = f_star[k, :]
+        f_b = np.where(np.isfinite(f_b), f_b, 1.0)
+        mu_step = f_b[None, :] * prev
+        s2_k = anchor.sigma2[k] if 0 <= k < n_links else np.nan
 
-            new_sampled = mu_step.copy()
-            if np.isfinite(s2_k) and s2_k > 0.0:
-                var = s2_k * np.power(np.abs(prev), alpha)
-                noisy = (
-                    np.isfinite(var) & (var > 0.0)
-                    & np.isfinite(mu_step) & (mu_step > 0.0)
-                    & np.isfinite(prev) & (prev > 0.0)
+        new_sampled = mu_step.copy()
+        if np.isfinite(s2_k) and s2_k > 0.0:
+            var = s2_k * np.power(np.abs(prev), alpha)
+            noisy = (
+                np.isfinite(var) & (var > 0.0)
+                & np.isfinite(mu_step) & (mu_step > 0.0)
+                & np.isfinite(prev) & (prev > 0.0)
+            )
+            if noisy.any():
+                eps = rng.normal(0.0, 1.0, size=int(noisy.sum()))
+                new_sampled[noisy] = (
+                    mu_step[noisy] + eps * np.sqrt(var[noisy])
                 )
-                if noisy.any():
-                    eps = rng.normal(0.0, 1.0, size=int(noisy.sum()))
-                    new_sampled[noisy] = (
-                        mu_step[noisy] + eps * np.sqrt(var[noisy])
-                    )
-            # Clip finite negatives to zero (mirrors the link kernel).
-            neg_s = np.isfinite(new_sampled) & (new_sampled < 0.0)
-            new_sampled[neg_s] = 0.0
-            cum_sampled[i, j, :] = new_sampled
-            prev = new_sampled
+        neg_s = np.isfinite(new_sampled) & (new_sampled < 0.0)
+        new_sampled[neg_s] = 0.0
+        cum_sampled[active, j, :] = new_sampled
 
     return _Stage1Result(
         cum_mean    = cum_mean,

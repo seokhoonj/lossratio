@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import mirror_output
+from ._io import _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from .cl import _build_loss_matrix, _build_value_matrix, _fit_mack
@@ -254,102 +254,80 @@ def _result_to_long_df(
             )
 
     # Mask observed cells: SE columns are only meaningful on projected cells.
-    for i in range(n_cohorts):
-        for k in range(n_devs):
-            if obs_mask[i, k]:
-                proc_se2[i, k] = np.nan
-                param_se2[i, k] = np.nan
+    proc_se2[obs_mask] = np.nan
+    param_se2[obs_mask] = np.nan
 
-    # Incremental projections (target + premium)
-    target_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    premium_incr = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    for i in range(n_cohorts):
-        prev_t = 0.0
-        prev_e = 0.0
-        for k in range(n_devs):
-            t = result.loss_proj[i, k]
-            e = result.premium_proj[i, k]
-            if not np.isnan(t):
-                target_incr[i, k] = t - prev_t
-                prev_t = t
-            if not np.isnan(e):
-                premium_incr[i, k] = e - prev_e
-                prev_e = e
+    # Incremental projections (NaN-skip per-cohort first-difference).
+    loss_proj = result.loss_proj
+    premium_proj = result.premium_proj
+    target_incr = _nan_skip_diff(loss_proj)
+    premium_incr = _nan_skip_diff(premium_proj)
 
-    rows = []
-    for i in range(n_cohorts):
-        for k in range(n_devs):
-            row: dict[str, Any] = {}
-            if groups is not None:
-                row[groups] = group_value
-            row["cohort"] = cohorts[i]
-            row["dev"] = k + 1
+    # total_se2 = proc_se2 + param_se2 with NaN treated as 0, but if both
+    # are NaN the sum is NaN. Matches the original per-cell logic.
+    proc_finite = np.isfinite(proc_se2)
+    param_finite = np.isfinite(param_se2)
+    any_finite = proc_finite | param_finite
+    total_se2 = np.where(
+        any_finite,
+        np.where(proc_finite, proc_se2, 0.0)
+        + np.where(param_finite, param_se2, 0.0),
+        np.nan,
+    )
 
-            t_obs = result.loss_obs[i, k]
-            t_proj = result.loss_proj[i, k]
-            t_inc = target_incr[i, k]
-            e_obs = result.premium_obs[i, k]
-            e_proj = result.premium_proj[i, k]
-            e_inc = premium_incr[i, k]
+    # SE = sqrt(SE^2), NaN where SE^2 is NaN or negative.
+    with np.errstate(invalid="ignore"):
+        proc_se = np.where(proc_finite & (proc_se2 >= 0), np.sqrt(proc_se2), np.nan)
+        param_se = np.where(
+            param_finite & (param_se2 >= 0), np.sqrt(param_se2), np.nan
+        )
+        total_se = np.where(
+            np.isfinite(total_se2) & (total_se2 >= 0), np.sqrt(total_se2), np.nan
+        )
 
-            row["loss_obs"] = float(t_obs) if not np.isnan(t_obs) else None
-            row["loss_proj"] = float(t_proj) if not np.isnan(t_proj) else None
-            row["incr_loss_proj"] = (
-                float(t_inc) if not np.isnan(t_inc) else None
-            )
-            row["premium_obs"] = float(e_obs) if not np.isnan(e_obs) else None
-            row["premium_proj"] = (
-                float(e_proj) if not np.isnan(e_proj) else None
-            )
-            row["incr_premium_proj"] = (
-                float(e_inc) if not np.isnan(e_inc) else None
-            )
+    # CV = SE / loss_proj. Zero or NaN denominator -> NaN.
+    safe_lp = np.where(
+        np.isnan(loss_proj) | (loss_proj == 0.0), np.nan, loss_proj
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        proc_cv = proc_se / safe_lp
+        param_cv = param_se / safe_lp
+        total_cv = total_se / safe_lp
 
-            ps2 = proc_se2[i, k]
-            qs2 = param_se2[i, k]
-            ts2 = (
-                (ps2 if np.isfinite(ps2) else 0.0)
-                + (qs2 if np.isfinite(qs2) else 0.0)
-                if (np.isfinite(ps2) or np.isfinite(qs2))
-                else np.nan
-            )
-            row["loss_proc_se2"] = float(ps2) if np.isfinite(ps2) else None
-            row["loss_param_se2"] = float(qs2) if np.isfinite(qs2) else None
-            row["loss_total_se2"] = float(ts2) if np.isfinite(ts2) else None
-            row["loss_proc_se"] = (
-                float(np.sqrt(ps2)) if np.isfinite(ps2) and ps2 >= 0 else None
-            )
-            row["loss_param_se"] = (
-                float(np.sqrt(qs2)) if np.isfinite(qs2) and qs2 >= 0 else None
-            )
-            row["loss_total_se"] = (
-                float(np.sqrt(ts2)) if np.isfinite(ts2) and ts2 >= 0 else None
-            )
+    # ratio_proj = loss_proj / premium_proj. Zero/NaN premium -> NaN.
+    safe_pp = np.where(
+        np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio_proj = loss_proj / safe_pp
 
-            def _cv(numer):
-                if (
-                    numer is None
-                    or row["loss_proj"] is None
-                    or row["loss_proj"] == 0
-                ):
-                    return None
-                return numer / row["loss_proj"]
+    cohort_flat = [c for c in cohorts for _ in range(n_devs)]
+    dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
+    total = n_cohorts * n_devs
 
-            row["loss_proc_cv"] = _cv(row["loss_proc_se"])
-            row["loss_param_cv"] = _cv(row["loss_param_se"])
-            row["loss_total_cv"] = _cv(row["loss_total_se"])
+    df_data: dict[str, Any] = {}
+    if groups is not None:
+        df_data[groups] = [group_value] * total
+    df_data["cohort"] = cohort_flat
+    df_data["dev"] = dev_flat
+    df_data["loss_obs"] = result.loss_obs.flatten()
+    df_data["loss_proj"] = loss_proj.flatten()
+    df_data["incr_loss_proj"] = target_incr.flatten()
+    df_data["premium_obs"] = result.premium_obs.flatten()
+    df_data["premium_proj"] = premium_proj.flatten()
+    df_data["incr_premium_proj"] = premium_incr.flatten()
+    df_data["loss_proc_se2"] = proc_se2.flatten()
+    df_data["loss_param_se2"] = param_se2.flatten()
+    df_data["loss_total_se2"] = total_se2.flatten()
+    df_data["loss_proc_se"] = proc_se.flatten()
+    df_data["loss_param_se"] = param_se.flatten()
+    df_data["loss_total_se"] = total_se.flatten()
+    df_data["loss_proc_cv"] = proc_cv.flatten()
+    df_data["loss_param_cv"] = param_cv.flatten()
+    df_data["loss_total_cv"] = total_cv.flatten()
+    df_data["ratio_proj"] = ratio_proj.flatten()
 
-            # ratio_proj = loss_proj / premium_proj
-            if (
-                row["loss_proj"] is not None
-                and row["premium_proj"] is not None
-                and row["premium_proj"] != 0
-            ):
-                row["ratio_proj"] = row["loss_proj"] / row["premium_proj"]
-            else:
-                row["ratio_proj"] = None
-            rows.append(row)
-    return pl.DataFrame(rows, infer_schema_length=None)
+    return _nan_to_null(pl.DataFrame(df_data))
 
 
 def _params_to_df(

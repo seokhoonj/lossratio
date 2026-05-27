@@ -18,7 +18,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import mirror_output
+from ._io import _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
@@ -157,76 +157,53 @@ def _premium_long_df(
 ) -> pl.DataFrame:
     """Convert a Premium result into a long-format polars DataFrame."""
     z_alpha = float(norm.ppf((1 + conf_level) / 2))
-    rows: list[dict[str, Any]] = []
-    for i in range(len(cohorts)):
-        prev_proj = None
-        for k in range(result.n_devs):
-            row: dict[str, Any] = {}
-            if groups is not None:
-                row[groups] = group_value
-            row["cohort"] = cohorts[i]
-            row["dev"] = k + 1
+    n_cohorts = len(cohorts)
+    n_devs = result.n_devs
 
-            p_obs = result.premium_obs[i, k]
-            p_proj = result.premium_proj[i, k]
-            proc = result.proc_se[i, k]
-            par = result.param_se[i, k]
-            tot = result.total_se[i, k]
+    premium_obs = result.premium_obs
+    premium_proj = result.premium_proj
+    proc_se = result.proc_se
+    param_se = result.param_se
+    total_se = result.total_se
 
-            row["premium_obs"] = float(p_obs) if not np.isnan(p_obs) else None
-            row["premium_proj"] = (
-                float(p_proj) if not np.isnan(p_proj) else None
-            )
-            # incremental: per-cohort first difference of cum
-            if row["premium_proj"] is None:
-                row["incr_premium_proj"] = None
-            elif prev_proj is None:
-                row["incr_premium_proj"] = row["premium_proj"]
-            else:
-                row["incr_premium_proj"] = row["premium_proj"] - prev_proj
-            prev_proj = row["premium_proj"]
+    incr_proj = _nan_skip_diff(premium_proj)
 
-            row["premium_proc_se"] = float(proc) if not np.isnan(proc) else None
-            row["premium_param_se"] = (
-                float(par) if not np.isnan(par) else None
-            )
-            row["premium_total_se"] = (
-                float(tot) if not np.isnan(tot) else None
-            )
-            row["premium_proc_cv"] = (
-                row["premium_proc_se"] / row["premium_proj"]
-                if row["premium_proc_se"] is not None
-                and row["premium_proj"] not in (None, 0.0)
-                else None
-            )
-            row["premium_param_cv"] = (
-                row["premium_param_se"] / row["premium_proj"]
-                if row["premium_param_se"] is not None
-                and row["premium_proj"] not in (None, 0.0)
-                else None
-            )
-            row["premium_total_cv"] = (
-                row["premium_total_se"] / row["premium_proj"]
-                if row["premium_total_se"] is not None
-                and row["premium_proj"] not in (None, 0.0)
-                else None
-            )
+    safe_pp = np.where(
+        np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        proc_cv = proc_se / safe_pp
+        param_cv = param_se / safe_pp
+        total_cv = total_se / safe_pp
 
-            if (
-                row["premium_total_se"] is not None
-                and row["premium_proj"] is not None
-            ):
-                lo = row["premium_proj"] - z_alpha * row["premium_total_se"]
-                row["premium_ci_lo"] = max(0.0, lo)
-                row["premium_ci_hi"] = (
-                    row["premium_proj"] + z_alpha * row["premium_total_se"]
-                )
-            else:
-                row["premium_ci_lo"] = None
-                row["premium_ci_hi"] = None
+    # CI bounds: only valid when both total_se and premium_proj are finite.
+    both_finite = np.isfinite(total_se) & np.isfinite(premium_proj)
+    ci_lo_raw = premium_proj - z_alpha * total_se
+    ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
+    ci_hi = np.where(both_finite, premium_proj + z_alpha * total_se, np.nan)
 
-            rows.append(row)
-    return pl.DataFrame(rows, infer_schema_length=None)
+    cohort_flat = [c for c in cohorts for _ in range(n_devs)]
+    dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
+    total = n_cohorts * n_devs
+
+    df_data: dict[str, Any] = {}
+    if groups is not None:
+        df_data[groups] = [group_value] * total
+    df_data["cohort"] = cohort_flat
+    df_data["dev"] = dev_flat
+    df_data["premium_obs"] = premium_obs.flatten()
+    df_data["premium_proj"] = premium_proj.flatten()
+    df_data["incr_premium_proj"] = incr_proj.flatten()
+    df_data["premium_proc_se"] = proc_se.flatten()
+    df_data["premium_param_se"] = param_se.flatten()
+    df_data["premium_total_se"] = total_se.flatten()
+    df_data["premium_proc_cv"] = proc_cv.flatten()
+    df_data["premium_param_cv"] = param_cv.flatten()
+    df_data["premium_total_cv"] = total_cv.flatten()
+    df_data["premium_ci_lo"] = ci_lo.flatten()
+    df_data["premium_ci_hi"] = ci_hi.flatten()
+
+    return _nan_to_null(pl.DataFrame(df_data))
 
 
 # ---------------------------------------------------------------------------
