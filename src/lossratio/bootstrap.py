@@ -205,6 +205,10 @@ class _Stage1Result:
 
 _PROCESS_CODES = {"gamma": 1, "od_pois": 2, "normal": 3}
 
+# Maturity sentinel: a cohort whose mat_k is this never enters the CL stage
+# (mirrors R's INT_MAX "no maturity point" marker).
+_NO_MATURITY = np.iinfo(np.int64).max
+
 
 def _boot_kernel_cl_analytical(
     loss_obs:      np.ndarray,
@@ -1483,7 +1487,6 @@ def _fwd_proj_sa(
     ``mat_k[i]`` is finite). CL step multiplies; ED step adds.
     """
     n_coh, n_dev, B = cum.shape
-    big = np.iinfo(np.int64).max
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
@@ -1496,7 +1499,7 @@ def _fwd_proj_sa(
                 cum[i, j, :] = prev
                 continue
             mk = int(mat_k[i])
-            stage_cl = (mk != big) and (j >= mk)
+            stage_cl = (mk != _NO_MATURITY) and (j >= mk)
             if stage_cl:
                 f_b = f_star[k, :]
                 f_b = np.where(np.isfinite(f_b), f_b, 1.0)
@@ -1509,6 +1512,22 @@ def _fwd_proj_sa(
                 cum[i, j, :] = prev + inc
     neg = np.isfinite(cum) & (cum < 0.0)
     cum[neg] = 0.0
+
+
+def _cum_diff_inc_mean3(cum_mean: np.ndarray) -> np.ndarray:
+    """Per-cell mean increment from the noise-free cumulative grid.
+
+    ``inc_mean3[:, j] = cum_mean[:, j] - cum_mean[:, j-1]`` where both
+    devs are finite, NaN otherwise (and NaN at dev 0). 3-D
+    ``(n_coh, n_dev, B)``. Shared by the CL and SA cell forward-sim.
+    """
+    n_coh, n_dev, B = cum_mean.shape
+    inc_mean3 = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
+    both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
+    inc_mean3[:, 1:, :] = np.where(
+        both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
+    )
+    return inc_mean3
 
 
 def _fwd_sim_cell_bulk(
@@ -1611,14 +1630,9 @@ def _fwd_sim_cl_cell(
     ``cum_sampled`` accumulates additively. The upper triangle is copied
     from ``cum_mean`` unchanged.
     """
-    n_coh, n_dev, B = cum_mean.shape
     if not (np.isfinite(phi) and phi > 0.0):
         return cum_mean.copy()
-    inc_mean3 = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
-    both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
-    inc_mean3[:, 1:, :] = np.where(
-        both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
-    )
+    inc_mean3 = _cum_diff_inc_mean3(cum_mean)
     return _fwd_sim_cell_bulk(
         rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
         masked=True,
@@ -1684,16 +1698,11 @@ def _fwd_sim_sa_cell(
     dispersion ``phi`` is selected per cell -- ``phi_cl`` when the cell
     is in the CL stage (``j >= mat_k[i]``), else ``phi_ed``.
     """
-    n_coh, n_dev, B = cum_mean.shape
-    big = np.iinfo(np.int64).max
-    inc_mean3 = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
-    both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
-    inc_mean3[:, 1:, :] = np.where(
-        both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
-    )
+    n_dev = cum_mean.shape[1]
+    inc_mean3 = _cum_diff_inc_mean3(cum_mean)
     # per-cell dispersion: phi_cl in the CL stage (j >= mat_k), else phi_ed.
     mk = mat_k.astype(np.int64)
-    stage_cl = (mk[:, None] != big) & (np.arange(n_dev)[None, :] >= mk[:, None])
+    stage_cl = (mk[:, None] != _NO_MATURITY) & (np.arange(n_dev)[None, :] >= mk[:, None])
     phi = np.where(stage_cl, phi_cl, phi_ed)
     return _fwd_sim_cell_bulk(
         rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
@@ -1729,10 +1738,11 @@ def _fwd_sim_cl_link(
     noise within the statistical R-parity tolerance.
     """
     n_coh, n_dev, B = cum_mean.shape
-    n_links = f_star.shape[0]
     cum_sampled = cum_mean.copy()
     lj = last_obs.astype(np.int64)
     valid = (lj >= 0) & (lj <= n_dev - 2)
+    # clip is only to keep the gather in-bounds for invalid (lj == -1)
+    # cohorts; those rows are dropped by `cohort_ok` and never read.
     seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_dev - 1), :]
     cohort_ok = valid & np.isfinite(seed).any(axis=1)
     if not cohort_ok.any():
@@ -1749,7 +1759,7 @@ def _fwd_sim_cl_link(
             continue
         k = k_1 - 1
         f_b = np.where(np.isfinite(f_star[k, :]), f_star[k, :], 1.0)   # (B,)
-        s2_k = sigma2[k] if 0 <= k < n_links else np.nan
+        s2_k = sigma2[k] if 0 <= k < sigma2.shape[0] else np.nan
         prev_a = prev[active]                # (n_active, B)
         mu_step = f_b[None, :] * prev_a
 
@@ -2339,7 +2349,6 @@ def _boot_kernel_sa_cell(
     """
     loss_obs = gi.loss_obs
     n_coh, n_dev = loss_obs.shape
-    big = np.iinfo(np.int64).max
 
     # Active upper cells -- a cell is active iff its paradigm-appropriate
     # fitted grid is finite.
@@ -2352,7 +2361,7 @@ def _boot_kernel_sa_cell(
     a_i = lin_all % n_coh
     a_j = lin_all // n_coh
     # CL iff the to-dev j reaches the CL-start from-dev mat_k[i].
-    is_cl = (mat_k[a_i] != big) & (a_j >= mat_k[a_i])
+    is_cl = (mat_k[a_i] != _NO_MATURITY) & (a_j >= mat_k[a_i])
 
     cl_fin = np.isfinite(mu_cl_grid.flatten(order="F")[lin_all])
     ed_fin = np.isfinite(mu_ed_grid.flatten(order="F")[lin_all])
@@ -2425,7 +2434,7 @@ def _boot_kernel_cl_parametric(
     """
     loss_obs = gi.loss_obs
     n_coh, n_dev = loss_obs.shape
-    coh_idx, dev_idx, lin = _active_upper_cells(gi.last_obs, mu_grid)
+    _, _, lin = _active_upper_cells(gi.last_obs, mu_grid)
     mu_active = mu_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
@@ -2455,7 +2464,7 @@ def _boot_kernel_ed_parametric(
     """ED parametric kernel (textbook England-Verrall 1999, additive)."""
     loss_obs = gi.loss_obs
     n_coh, n_dev = loss_obs.shape
-    coh_idx, dev_idx, lin = _active_upper_cells(gi.last_obs, mu_ed_grid)
+    _, _, lin = _active_upper_cells(gi.last_obs, mu_ed_grid)
     mu_active = mu_ed_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
@@ -2495,7 +2504,6 @@ def _boot_kernel_sa_parametric(
     """
     loss_obs = gi.loss_obs
     n_coh, n_dev = loss_obs.shape
-    big = np.iinfo(np.int64).max
     pc = _process_code(process)
 
     upper = np.zeros((n_coh, n_dev), dtype=bool)
@@ -2506,7 +2514,7 @@ def _boot_kernel_sa_parametric(
     lin_all = np.where(upper.flatten(order="F"))[0]
     a_i = lin_all % n_coh
     a_j = lin_all // n_coh
-    is_cl = (mat_k[a_i] != big) & (a_j >= mat_k[a_i])
+    is_cl = (mat_k[a_i] != _NO_MATURITY) & (a_j >= mat_k[a_i])
 
     mu_cl_flat = mu_cl_grid.flatten(order="F")
     mu_ed_flat = mu_ed_grid.flatten(order="F")
@@ -3157,9 +3165,8 @@ class Bootstrap:
         from-dev ``>= mat_k - 1``. ``None`` -> all-ED
         (``iinfo(int64).max`` sentinel).
         """
-        big = np.iinfo(np.int64).max
         if mat_k is None or not np.isfinite(mat_k):
-            return np.full(n_coh, big, dtype=np.int64)
+            return np.full(n_coh, _NO_MATURITY, dtype=np.int64)
         # mat_k = ata_to (= change); from-dev where CL begins is mat_k - 1.
         return np.full(n_coh, max(int(mat_k) - 1, 0), dtype=np.int64)
 

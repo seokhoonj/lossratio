@@ -126,6 +126,7 @@ def _last_non_nan_per_row(mat: np.ndarray) -> np.ndarray:
 
     ``inf`` counts as present, matching the ``~np.isnan`` mask of the
     per-row loops this replaces (only NaN is treated as missing).
+    Assumes at least one dev column (a Triangle always has ``dev >= 1``).
     """
     present = ~np.isnan(mat)
     has_any = present.any(axis=1)
