@@ -121,6 +121,19 @@ def _resolve_credibility(credibility: Any) -> dict[str, Any] | None:
     return {"method": "bs", "K": None if K is None else float(K)}
 
 
+def _last_finite_per_row(mat: np.ndarray) -> np.ndarray:
+    """Last non-NaN value along axis 1 per row (NaN if a row is all NaN).
+
+    ``inf`` counts as present, matching the ``~np.isnan`` mask of the
+    per-row loops this replaces (only NaN is treated as missing).
+    """
+    present = ~np.isnan(mat)
+    has_any = present.any(axis=1)
+    last_idx = mat.shape[1] - 1 - present[:, ::-1].argmax(axis=1)
+    vals = mat[np.arange(mat.shape[0]), last_idx]
+    return np.where(has_any, vals, np.nan)
+
+
 def _compute_q_table(
     loss_result: Any,
     premium_result: Any,
@@ -141,23 +154,9 @@ def _compute_q_table(
     premium_proj = premium_result.premium_proj
     n_cohorts = loss_obs.shape[0]
 
-    loss_latest = np.full(n_cohorts, np.nan, dtype=np.float64)
-    loss_ult_cl = np.full(n_cohorts, np.nan, dtype=np.float64)
-    premium_ult = np.full(n_cohorts, np.nan, dtype=np.float64)
-
-    for i in range(n_cohorts):
-        obs_row = loss_obs[i]
-        obs_idx = np.where(~np.isnan(obs_row))[0]
-        if obs_idx.size > 0:
-            loss_latest[i] = obs_row[obs_idx[-1]]
-        proj_row = loss_proj[i]
-        proj_idx = np.where(~np.isnan(proj_row))[0]
-        if proj_idx.size > 0:
-            loss_ult_cl[i] = proj_row[proj_idx[-1]]
-        prem_row = premium_proj[i]
-        prem_idx = np.where(~np.isnan(prem_row))[0]
-        if prem_idx.size > 0:
-            premium_ult[i] = prem_row[prem_idx[-1]]
+    loss_latest = _last_finite_per_row(loss_obs)
+    loss_ult_cl = _last_finite_per_row(loss_proj)
+    premium_ult = _last_finite_per_row(premium_proj)
 
     q = np.full(n_cohorts, np.nan, dtype=np.float64)
     ok = np.isfinite(loss_ult_cl) & (loss_ult_cl > 0)
@@ -297,6 +296,27 @@ def _bf_analytical_se(
     return loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi
 
 
+def _masked_first_diff(mat: np.ndarray) -> np.ndarray:
+    """Per-row first difference over non-NaN cells (NaN cells skipped).
+
+    At each finite cell the increment is its value minus the previous
+    finite value in the row (0 if it is the first), so a NaN gap is
+    bridged rather than restarted; NaN cells stay NaN. Mirrors the
+    carry-``prev``-over-NaN accumulation loop it replaces.
+    """
+    n_cohorts, n_devs = mat.shape
+    finite = ~np.isnan(mat)
+    pos = np.where(finite, np.arange(n_devs)[None, :], -1)
+    last_idx = np.maximum.accumulate(pos, axis=1)
+    prev_idx = np.full((n_cohorts, n_devs), -1, dtype=np.int64)
+    prev_idx[:, 1:] = last_idx[:, :-1]
+    gathered = np.take_along_axis(
+        np.where(finite, mat, 0.0), np.clip(prev_idx, 0, None), axis=1
+    )
+    prev_val = np.where(prev_idx >= 0, gathered, 0.0)
+    return np.where(finite, mat - prev_val, np.nan)
+
+
 def _bf_cell_projection(
     loss_obs: np.ndarray,
     loss_proj_cl: np.ndarray,
@@ -323,43 +343,27 @@ def _bf_cell_projection(
     """
     n_cohorts, n_devs = loss_obs.shape
     eps = np.finfo(np.float64).eps  # R uses .Machine$double.eps
+    unobs = ~is_observed
+
+    # Unobserved cell. R: loss_latest + cl_remainder *
+    # (bf_remainder / cl_remainder) -- cl_remainder cancels, so the cell
+    # collapses to loss_ult wherever CL projects development; where CL is
+    # flat (cl_remainder ~ 0) it is held at loss_latest; where CL is
+    # unfittable (cl_remainder non-finite) it stays NaN.
+    cl_remainder = loss_proj_cl - loss_latest[:, None]
+    finite_rem = np.isfinite(cl_remainder)
+    developing = finite_rem & (np.abs(cl_remainder) > eps)
 
     loss_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    incr_loss_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    incr_premium_proj = np.full(
-        (n_cohorts, n_devs), np.nan, dtype=np.float64
+    loss_proj = np.where(is_observed, loss_obs, loss_proj)
+    loss_proj = np.where(unobs & developing, loss_ult[:, None], loss_proj)
+    loss_proj = np.where(
+        unobs & finite_rem & ~developing, loss_latest[:, None], loss_proj
     )
 
-    for i in range(n_cohorts):
-        for k in range(n_devs):
-            if is_observed[i, k]:
-                loss_proj[i, k] = loss_obs[i, k]
-                continue
-            # Unobserved cell. R: loss_latest + cl_remainder *
-            # (bf_remainder / cl_remainder) -- cl_remainder cancels, so
-            # the cell collapses to loss_ult wherever CL projects
-            # development; where CL is flat (cl_remainder ~ 0) the cell
-            # is held at loss_latest.
-            cl_remainder = loss_proj_cl[i, k] - loss_latest[i]
-            if not np.isfinite(cl_remainder):
-                continue  # CL unfittable here -> leave NaN
-            if abs(cl_remainder) > eps:
-                loss_proj[i, k] = loss_ult[i]
-            else:
-                loss_proj[i, k] = loss_latest[i]
-
-        # incremental projections (per-cohort first difference, fill=0)
-        prev_l = 0.0
-        prev_p = 0.0
-        for k in range(n_devs):
-            lv = loss_proj[i, k]
-            if not np.isnan(lv):
-                incr_loss_proj[i, k] = lv - prev_l
-                prev_l = lv
-            pv = premium_proj[i, k]
-            if not np.isnan(pv):
-                incr_premium_proj[i, k] = pv - prev_p
-                prev_p = pv
+    # incremental projections (per-cohort first difference, fill=0)
+    incr_loss_proj = _masked_first_diff(loss_proj)
+    incr_premium_proj = _masked_first_diff(premium_proj)
 
     return loss_proj, incr_loss_proj, incr_premium_proj
 
@@ -697,12 +701,8 @@ def _last_proj_value(
     matching R's ``.SD[.N, ...]`` read on a fit grid where the ultimate
     cell SE is 0 when there is nothing to project.
     """
-    n_cohorts, n_devs = se_grid.shape
-    out = np.zeros(n_cohorts, dtype=np.float64)
-    for i in range(n_cohorts):
-        v = se_grid[i, n_devs - 1]
-        out[i] = float(v) if np.isfinite(v) else 0.0
-    return out
+    last = se_grid[:, -1].astype(np.float64)
+    return np.where(np.isfinite(last), last, 0.0)
 
 
 # ---------------------------------------------------------------------------
