@@ -1278,9 +1278,12 @@ class LossFit:
         # One full-range masked triangle, carrying segment_id.
         masked = _apply_regime_filter(triangle, regime)
 
-        # Premium side: plain PremiumFit on the unfiltered triangle (the
-        # loss-side regime has no premium semantic), full-dev for every
-        # cohort so the ED projection has a denominator at every dev.
+        # Premium side: develop premium under the SAME regime so the ED
+        # loss recursion (loss += g * premium_proj) anchors on a premium
+        # projection consistent with the band-masked g factors (R parity:
+        # R's loss-ED uses the loss-regime premium, not an unfiltered
+        # one). For the CL loss method premium is not consumed by the
+        # projection, so this is a no-op there.
         if estimator.premium_fit is not None:
             pf = estimator.premium_fit
         else:
@@ -1290,6 +1293,7 @@ class LossFit:
                 sigma_method=estimator.sigma_method,
                 recent=estimator.recent,
                 conf_level=estimator.conf_level,
+                regime=regime,
             ).fit(triangle)
         pf_df = pf._df
 

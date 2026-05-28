@@ -51,6 +51,139 @@ class _PremiumResult:
     sigma2_k: np.ndarray
 
 
+def _project_premium(
+    premium_obs: np.ndarray,
+    f_k: np.ndarray,
+    sigma2_k: np.ndarray,
+    f_var: np.ndarray,
+    method: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Premium projection + SE recursion driven by external factors.
+
+    The point projection is always the CL multiplicative recursion
+    (``premium_proj[k+1] = f_k[k] * premium_proj[k]``); ``method`` only
+    selects the SE form (CL scales the accumulators by ``f^2``, ED does
+    not). Used by the ``segment_bridged_borrowed`` premium path to
+    re-project each segment with donor-augmented factor arrays.
+    """
+    n_cohorts, n_devs = premium_obs.shape
+    n_links = n_devs - 1
+
+    premium_proj = premium_obs.copy()
+    obs_mask = ~np.isnan(premium_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+
+    proc_var = np.zeros(n_cohorts, dtype=np.float64)
+    param_var = np.zeros(n_cohorts, dtype=np.float64)
+    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+
+    for k in range(n_links):
+        active = eligible & (last_obs <= k)
+        if not active.any():
+            continue
+        ck = premium_proj[:, k]
+        pos = active & ~np.isnan(ck) & (ck > 0)
+        if not pos.any():
+            continue
+
+        if np.isfinite(f_k[k]):
+            premium_proj[pos, k + 1] = f_k[k] * ck[pos]
+
+        if method == "cl":
+            if np.isfinite(f_k[k]):
+                proc_var[pos] = (f_k[k] ** 2) * proc_var[pos]
+                param_var[pos] = (f_k[k] ** 2) * param_var[pos]
+            if np.isfinite(sigma2_k[k]):
+                proc_var[pos] = proc_var[pos] + sigma2_k[k] * ck[pos]
+            if np.isfinite(f_var[k]):
+                param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
+        else:  # ed
+            if np.isfinite(sigma2_k[k]):
+                proc_var[pos] = proc_var[pos] + sigma2_k[k] * ck[pos]
+            if np.isfinite(f_var[k]):
+                param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
+
+        ck1 = premium_proj[:, k + 1]
+        sp = pos & ~np.isnan(ck1)
+        proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_var[sp], 0))
+        param_se[sp, k + 1] = np.sqrt(np.maximum(param_var[sp], 0))
+        total_se[sp, k + 1] = np.sqrt(
+            np.maximum(proc_var[sp] + param_var[sp], 0)
+        )
+
+    proc_se[obs_mask] = np.nan
+    param_se[obs_mask] = np.nan
+    total_se[obs_mask] = np.nan
+    return premium_proj, proc_se, param_se, total_se
+
+
+def _borrowed_premium_group(
+    premium_obs: np.ndarray,
+    seg_of_cohort: np.ndarray,
+    method: str,
+    sigma_method: str,
+    recent: int | None,
+) -> tuple[dict[int, _PremiumResult], dict[int, np.ndarray]]:
+    """Per-group ``segment_bridged_borrowed`` premium fit.
+
+    Mirrors the loss-side borrow: ``premium_obs`` is the group's
+    full-range matrix; estimate factors per segment on its row subset,
+    donor-augment the late-dev factors (via the shared
+    :func:`lossratio.loss._augment_segment_factors`), then re-project
+    each segment with the augmented factors so every cohort's premium
+    reaches full development. Returns ``({segment_id: _PremiumResult},
+    {segment_id: row_indices})``.
+    """
+    from ._recent import recent_link_mask
+    from .loss import _augment_segment_factors
+
+    n_cohorts, n_devs = premium_obs.shape
+    segs = sorted({int(s) for s in seg_of_cohort})
+
+    seg_arrays: dict[int, dict[str, np.ndarray]] = {}
+    seg_rows: dict[int, np.ndarray] = {}
+    for s in segs:
+        rows = np.where(seg_of_cohort == s)[0]
+        seg_rows[s] = rows
+        po = premium_obs[rows]
+        mack = _fit_mack(
+            po, sigma_method=sigma_method,
+            link_mask=recent_link_mask(po, recent),
+        )
+        seg_arrays[s] = {
+            "f_k": mack.f_k,
+            "sigma2_k": mack.sigma2_k,
+            "f_var": _mack_f_var(mack),
+        }
+
+    aug = _augment_segment_factors(seg_arrays, "f_k")
+
+    results: dict[int, _PremiumResult] = {}
+    for s in segs:
+        po = premium_obs[seg_rows[s]]
+        a = aug[s]
+        pp, proc_se, param_se, total_se = _project_premium(
+            po, a["f_k"], a["sigma2_k"], a["f_var"], method
+        )
+        results[s] = _PremiumResult(
+            n_devs=n_devs,
+            premium_obs=po,
+            premium_proj=pp,
+            proc_se=proc_se,
+            param_se=param_se,
+            total_se=total_se,
+            f_k=a["f_k"],
+            sigma2_k=a["sigma2_k"],
+        )
+    return results, seg_rows
+
+
 def _fit_premium_single(
     premium_obs: np.ndarray,
     method: str,
@@ -347,7 +480,7 @@ class PremiumFit:
             and regime.treatment == "segment_bridged_borrowed"
             and regime.breakpoints
         ):
-            return cls._segment_wise_fit(triangle, estimator, regime)
+            return cls._segment_borrowed_fit(triangle, estimator, regime)
 
         triangle = _apply_regime_filter(triangle, regime)
 
@@ -398,51 +531,73 @@ class PremiumFit:
         return self
 
     @classmethod
-    def _segment_wise_fit(
+    def _segment_borrowed_fit(
         cls,
         triangle: "Triangle",
         estimator: "Premium",
         regime: Any,
     ) -> "PremiumFit":
-        """Fit premium projection per regime segment, then concat."""
-        import copy as _copy
+        """Fit ``segment_bridged_borrowed`` premium: per-segment + borrow.
 
-        from .regime import _split_into_segment_triangles
+        Mirrors the loss-side borrow: mask ONE full-range triangle with
+        ``segment_id``, build the full-range matrices per group, subset
+        rows per segment (factors absolute-dev-aligned), estimate
+        per-segment factors, donor-borrow the late-dev factors, and
+        re-project each segment to full development.
+        """
+        from .loss import _expand_to_full_grid
+        from .regime import _apply_regime_filter
 
-        sub_estimator = _copy.copy(estimator)
-        sub_estimator.regime = None
+        masked = _apply_regime_filter(triangle, regime)
 
-        sub_tris = _split_into_segment_triangles(triangle, regime)
-        if not sub_tris:
-            return cls._from_triangle(triangle, sub_estimator)
-
-        parts: list[pl.DataFrame] = []
-        last_self: PremiumFit | None = None
-        for seg_id, sub_tri in sub_tris.items():
-            sub_fit = cls._from_triangle(sub_tri, sub_estimator)
-            parts.append(
-                sub_fit._df.with_columns(
-                    pl.lit(seg_id, dtype=pl.Int64).alias("segment_id")
-                )
-            )
-            last_self = sub_fit
-
-        assert last_self is not None
         self = cls.__new__(cls)
-        self._output_type = last_self._output_type
-        self._groups = last_self._groups
-        self._cohort = last_self._cohort
-        self._dev = last_self._dev
+        self._output_type = masked._output_type
+        self._groups = masked._groups
+        self._cohort = masked._cohort
+        self._dev = masked._dev
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
+        self.recent = estimator.recent
+
+        tri_df = masked._df
+        groups = masked._groups
+
+        parts: list[pl.DataFrame] = []
+        group_values: list[Any] = (
+            [None]
+            if groups is None
+            else tri_df[groups].unique(maintain_order=True).to_list()
+        )
+        for g in group_values:
+            sub = tri_df if g is None else tri_df.filter(pl.col(groups) == g)
+            premium_obs, cohorts, _ = _build_premium_matrix(sub)
+            seg_map = {
+                c: int(s)
+                for c, s in sub.select(["cohort", "segment_id"])
+                .unique()
+                .iter_rows()
+            }
+            seg_of_cohort = np.array(
+                [seg_map[c] for c in cohorts], dtype=np.int64
+            )
+            results, seg_rows = _borrowed_premium_group(
+                premium_obs, seg_of_cohort, estimator.method,
+                estimator.sigma_method, estimator.recent,
+            )
+            for s in sorted(results):
+                cohorts_s = [cohorts[i] for i in seg_rows[s]]
+                df_s = _premium_long_df(
+                    results[s], cohorts_s, groups, g, estimator.conf_level
+                ).with_columns(pl.lit(s, dtype=pl.Int64).alias("segment_id"))
+                parts.append(df_s)
+
         combined = pl.concat(parts, how="diagonal")
         # Match R fit_premium $full shape: full cohort × dev grid.
-        from .loss import _expand_to_full_grid
         self._df = _expand_to_full_grid(
-            combined, triangle, self._groups, last_self._cohort
+            combined, triangle, self._groups, self._cohort
         )
         return self
 
