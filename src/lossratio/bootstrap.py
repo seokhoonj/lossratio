@@ -768,14 +768,16 @@ def _build_obs_matrix_from_df(
     devs    = sorted(df["dev"].unique().to_list())
     n_coh, n_dev = len(cohorts), len(devs)
 
-    coh_pos = {c: i for i, c in enumerate(cohorts)}
-    dev_pos = {d: j for j, d in enumerate(devs)}
-
-    mat = np.full((n_coh, n_dev), np.nan, dtype=np.float64)
-    for row in df.iter_rows(named=True):
-        v = row[target]
-        if v is not None:
-            mat[coh_pos[row["cohort"]], dev_pos[row["dev"]]] = float(v)
+    # Left-join observed cells onto the full (cohort x dev) grid; the cross
+    # join is cohort-major so a row-major reshape lands each value at
+    # mat[cohort_i, dev_j]. Missing cells stay null -> NaN.
+    grid = pl.DataFrame({"cohort": cohorts}).join(
+        pl.DataFrame({"dev": devs}), how="cross"
+    )
+    filled = grid.join(
+        df.select(["cohort", "dev", target]), on=["cohort", "dev"], how="left"
+    )
+    mat = filled[target].cast(pl.Float64).to_numpy().reshape(n_coh, n_dev)
     return mat, cohorts, devs
 
 
@@ -1951,18 +1953,19 @@ def _premium_obs_matrix(
 ) -> np.ndarray:
     """Observed cumulative premium matrix, aligned to ``cohorts`` / ``devs``."""
     n_coh, n_dev = len(cohorts), len(devs)
-    coh_pos = {c: i for i, c in enumerate(cohorts)}
-    dev_pos = {d: j for j, d in enumerate(devs)}
-    mat = np.full((n_coh, n_dev), np.nan, dtype=np.float64)
     if "premium" not in df.columns:
-        return mat
-    for row in df.iter_rows(named=True):
-        i = coh_pos.get(row["cohort"])
-        j = dev_pos.get(row["dev"])
-        v = row["premium"]
-        if i is not None and j is not None and v is not None:
-            mat[i, j] = float(v)
-    return mat
+        return np.full((n_coh, n_dev), np.nan, dtype=np.float64)
+    # Reindex onto the fixed (cohorts x devs) grid: df rows outside the grid
+    # (unknown cohort / dev) drop out; missing cells stay null -> NaN.
+    grid = pl.DataFrame({"cohort": cohorts}).join(
+        pl.DataFrame({"dev": devs}), how="cross"
+    )
+    filled = grid.join(
+        df.select(["cohort", "dev", "premium"]),
+        on=["cohort", "dev"],
+        how="left",
+    )
+    return filled["premium"].cast(pl.Float64).to_numpy().reshape(n_coh, n_dev)
 
 
 def _premium_anchor_proj(
@@ -3150,16 +3153,17 @@ class Bootstrap:
         n_cohorts = len(cohorts)
         n_devs    = len(devs)
 
-        cohort_index = {c: i for i, c in enumerate(cohorts)}
-        dev_index    = {d: j for j, d in enumerate(devs)}
-
-        mat = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-        for row in df.iter_rows(named=True):
-            i = cohort_index[row["cohort"]]
-            j = dev_index[row["dev"]]
-            v = row[target]
-            if v is not None:
-                mat[i, j] = v
+        grid = pl.DataFrame({"cohort": cohorts}).join(
+            pl.DataFrame({"dev": devs}), how="cross"
+        )
+        filled = grid.join(
+            df.select(["cohort", "dev", target]),
+            on=["cohort", "dev"],
+            how="left",
+        )
+        mat = filled[target].cast(pl.Float64).to_numpy().reshape(
+            n_cohorts, n_devs
+        )
         return mat, cohorts, devs
 
     @staticmethod
