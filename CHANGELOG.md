@@ -23,11 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the segment boundaries so every cohort projects to full development.
   `"segment_bridged"` (default) pools the whole band into a single
   factor set and drops the `segment_id` tag; `"segment_bridged_borrowed"`
-  estimates factors per segment (early-dev factors stay regime-specific)
-  and keeps `segment_id`. Note: the `"segment_bridged_borrowed"`
-  late-dev *borrow* step is not yet ported (a follow-up), so under that
-  treatment the newest segment's late-dev cells are still unprojected;
-  use `"segment_bridged"` for full-development projection today.
+  estimates factors per segment (early-dev factors stay regime-specific),
+  keeps `segment_id`, and *borrows* the late-dev factors a segment cannot
+  reach from the most recent donor segment that can -- so it too projects
+  every cohort to full development. The borrow builds one full-range
+  masked triangle and subsets rows per segment (so factors are
+  absolute-dev-aligned), augments missing late-dev factors + their
+  variance companions from the donor (mirrors R `.borrow_segment_factors`),
+  and re-projects via the extracted `_project_loss` recursion.
 - `Triangle.detect_regime()` default `window=` changed from `12` to
   `"auto"`. The new resolver tries the per-group maturity point first
   (via `detect_maturity`), falls back to the Kneedle elbow on a window

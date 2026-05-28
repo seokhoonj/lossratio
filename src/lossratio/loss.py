@@ -246,6 +246,150 @@ def _mat_k_for_group(
     return None if val is None else int(val)
 
 
+def _project_loss(
+    loss_obs: np.ndarray,
+    premium_proj_from_fit: np.ndarray,
+    f_k: np.ndarray,
+    sigma2_f_k: np.ndarray,
+    var_f_k: np.ndarray,
+    g_k: np.ndarray,
+    sigma2_g_k: np.ndarray,
+    var_g_k: np.ndarray,
+    mat_threshold: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Cumulative-loss projection + Mack variance recursion.
+
+    Given the per-link factor arrays (CL ``f_k`` and ED ``g_k`` with
+    their sigma2 / Mack-variance companions) and the SA switch
+    ``mat_threshold`` (``0`` = pure CL, ``inf`` = pure ED, finite =
+    ED below / CL at-or-above that target dev), seeds each cohort from
+    its last observed cell and recurses forward. Returns
+    ``(loss_proj, proc_se, param_se, total_se)``.
+
+    Extracted from :func:`_fit_loss_single` so the
+    ``segment_bridged_borrowed`` path can re-drive it with donor-
+    augmented factor arrays (each segment projects to full development
+    using its own factors where available and borrowed factors beyond
+    its own reach).
+    """
+    n_cohorts, n_devs = loss_obs.shape
+    n_links = n_devs - 1
+
+    loss_proj = loss_obs.copy()
+    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs_idx = np.where(
+        has_obs,
+        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+    eligible = (last_obs_idx >= 0) & (last_obs_idx < n_devs - 1)
+
+    proc_acc = np.zeros(n_cohorts, dtype=np.float64)
+    param_acc = np.zeros(n_cohorts, dtype=np.float64)
+
+    for k in range(n_links):
+        active = eligible & (last_obs_idx <= k)
+        if not active.any():
+            continue
+
+        target_dev = k + 2  # link from dev (k+1) to dev (k+2)
+        ck = loss_proj[:, k]
+        pk = premium_proj_from_fit[:, k]
+
+        if target_dev < mat_threshold:
+            # ED phase: additive
+            pos = active & ~np.isnan(pk) & (pk > 0)
+            if pos.any():
+                if np.isfinite(g_k[k]):
+                    loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
+                if np.isfinite(sigma2_g_k[k]):
+                    proc_acc[pos] = proc_acc[pos] + sigma2_g_k[k] * pk[pos]
+                if np.isfinite(var_g_k[k]):
+                    param_acc[pos] = (
+                        param_acc[pos] + (pk[pos] ** 2) * var_g_k[k]
+                    )
+        else:
+            # CL phase: multiplicative
+            pos = active & ~np.isnan(ck) & (ck > 0)
+            if pos.any():
+                if np.isfinite(f_k[k]):
+                    loss_proj[pos, k + 1] = f_k[k] * ck[pos]
+                    proc_acc[pos] = (f_k[k] ** 2) * proc_acc[pos]
+                    param_acc[pos] = (f_k[k] ** 2) * param_acc[pos]
+                if np.isfinite(sigma2_f_k[k]):
+                    proc_acc[pos] = proc_acc[pos] + sigma2_f_k[k] * ck[pos]
+                if np.isfinite(var_f_k[k]):
+                    param_acc[pos] = (
+                        param_acc[pos] + (ck[pos] ** 2) * var_f_k[k]
+                    )
+
+        ck1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(ck1)
+        proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
+        param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
+        total_se[sp, k + 1] = np.sqrt(
+            np.maximum(proc_acc[sp] + param_acc[sp], 0)
+        )
+
+    # mask SE on observed cells (no projection uncertainty there)
+    proc_se[obs_mask] = np.nan
+    param_se[obs_mask] = np.nan
+    total_se[obs_mask] = np.nan
+
+    return loss_proj, proc_se, param_se, total_se
+
+
+def _augment_segment_factors(
+    seg_arrays: dict[int, dict[str, np.ndarray]],
+    primary: str,
+) -> dict[int, dict[str, np.ndarray]]:
+    """Donor-augment per-segment factor arrays (segment_bridged_borrowed).
+
+    ``seg_arrays`` maps ``segment_id -> {factor_name: array(n_links)}``,
+    all arrays indexed by the SAME absolute development axis (the borrow
+    builds one full-range matrix and subsets rows per segment, so a link
+    index means the same dev across segments). A NaN at link ``k`` means
+    the segment never developed that far.
+
+    For each link the donor is the segment with the LARGEST id whose
+    ``primary`` factor is finite there -- the most recent regime that
+    reached that development (matches R ``.borrow_segment_factors``). A
+    segment missing the primary at link ``k`` copies ALL its factor
+    arrays at ``k`` from that one donor, so the borrowed factor and its
+    sigma2 / Mack-variance companions stay mutually consistent. Returns
+    the augmented arrays (own where present, borrowed otherwise).
+    """
+    segs = sorted(seg_arrays)
+    if len(segs) < 2:
+        return seg_arrays
+    keys = list(seg_arrays[segs[0]].keys())
+    n_links = len(seg_arrays[segs[0]][primary])
+
+    donor: list[int | None] = [None] * n_links
+    for k in range(n_links):
+        for s in reversed(segs):
+            if np.isfinite(seg_arrays[s][primary][k]):
+                donor[k] = s
+                break
+
+    out: dict[int, dict[str, np.ndarray]] = {}
+    for s in segs:
+        aug = {key: seg_arrays[s][key].copy() for key in keys}
+        own = seg_arrays[s][primary]
+        for k in range(n_links):
+            if not np.isfinite(own[k]) and donor[k] is not None:
+                d = donor[k]
+                for key in keys:
+                    aug[key][k] = seg_arrays[d][key][k]
+        out[s] = aug
+    return out
+
+
 def _fit_loss_single(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -338,71 +482,18 @@ def _fit_loss_single(
     else:  # cl
         mat_threshold = 0.0
 
-    loss_proj = loss_obs.copy()
-    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-
+    loss_proj, proc_se, param_se, total_se = _project_loss(
+        loss_obs, premium_proj_from_fit,
+        f_k, sigma2_f_k, var_f_k,
+        g_k, sigma2_g_k, var_g_k,
+        mat_threshold,
+    )
     obs_mask = ~np.isnan(loss_obs)
-    has_obs = obs_mask.any(axis=1)
     last_obs_idx = np.where(
-        has_obs,
+        obs_mask.any(axis=1),
         n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
-    eligible = (last_obs_idx >= 0) & (last_obs_idx < n_devs - 1)
-
-    proc_acc = np.zeros(n_cohorts, dtype=np.float64)
-    param_acc = np.zeros(n_cohorts, dtype=np.float64)
-
-    for k in range(n_links):
-        active = eligible & (last_obs_idx <= k)
-        if not active.any():
-            continue
-
-        target_dev = k + 2  # link from dev (k+1) to dev (k+2)
-        ck = loss_proj[:, k]
-        pk = premium_proj_from_fit[:, k]
-
-        if target_dev < mat_threshold:
-            # ED phase: additive
-            pos = active & ~np.isnan(pk) & (pk > 0)
-            if pos.any():
-                if np.isfinite(g_k[k]):
-                    loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
-                if np.isfinite(sigma2_g_k[k]):
-                    proc_acc[pos] = proc_acc[pos] + sigma2_g_k[k] * pk[pos]
-                if np.isfinite(var_g_k[k]):
-                    param_acc[pos] = (
-                        param_acc[pos] + (pk[pos] ** 2) * var_g_k[k]
-                    )
-        else:
-            # CL phase: multiplicative
-            pos = active & ~np.isnan(ck) & (ck > 0)
-            if pos.any():
-                if np.isfinite(f_k[k]):
-                    loss_proj[pos, k + 1] = f_k[k] * ck[pos]
-                    proc_acc[pos] = (f_k[k] ** 2) * proc_acc[pos]
-                    param_acc[pos] = (f_k[k] ** 2) * param_acc[pos]
-                if np.isfinite(sigma2_f_k[k]):
-                    proc_acc[pos] = proc_acc[pos] + sigma2_f_k[k] * ck[pos]
-                if np.isfinite(var_f_k[k]):
-                    param_acc[pos] = (
-                        param_acc[pos] + (ck[pos] ** 2) * var_f_k[k]
-                    )
-
-        ck1 = loss_proj[:, k + 1]
-        sp = active & ~np.isnan(ck1)
-        proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
-        param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
-        total_se[sp, k + 1] = np.sqrt(
-            np.maximum(proc_acc[sp] + param_acc[sp], 0)
-        )
-
-    # mask SE on observed cells (no projection uncertainty there)
-    proc_se[obs_mask] = np.nan
-    param_se[obs_mask] = np.nan
-    total_se[obs_mask] = np.nan
 
     return _LossResult(
         n_devs=n_devs,
@@ -423,6 +514,132 @@ def _fit_loss_single(
         last_obs=last_obs_idx,
         maturity_from=mat_k,
     )
+
+
+def _borrowed_loss_group(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    premium_proj: np.ndarray,
+    seg_of_cohort: np.ndarray,
+    method: str,
+    sigma_method: str,
+    max_cv: float,
+    max_rse: float,
+    min_run: int,
+    recent: int | None,
+    mat_k_override: int | str | None,
+) -> tuple[dict[int, _LossResult], dict[int, np.ndarray]]:
+    """Per-group ``segment_bridged_borrowed`` fit.
+
+    ``loss_obs`` / ``premium_obs`` / ``premium_proj`` are the group's
+    FULL-range matrices (cohorts x full dev axis, band-masked cells
+    NaN). ``seg_of_cohort`` is the segment id per cohort row. Because
+    every segment shares the same dev columns, the per-segment factor
+    arrays are absolute-dev-indexed and the donor borrow aligns by link
+    index.
+
+    Steps: (1) estimate factors per segment on its row-subset (own
+    early-dev factors); (2) donor-augment the late-dev factors a segment
+    cannot reach (:func:`_augment_segment_factors`); (3) re-project each
+    segment's cohorts with the augmented factors so every cohort reaches
+    full development. Returns ``({segment_id: _LossResult},
+    {segment_id: row_indices})``.
+    """
+    from ._recent import recent_link_mask
+
+    n_cohorts, n_devs = loss_obs.shape
+    segs = sorted({int(s) for s in seg_of_cohort})
+
+    # 1) per-segment factor estimation (full-range row subsets).
+    seg_arrays: dict[int, dict[str, np.ndarray]] = {}
+    seg_rows: dict[int, np.ndarray] = {}
+    seg_mat_k: dict[int, int | None] = {}
+    for s in segs:
+        rows = np.where(seg_of_cohort == s)[0]
+        seg_rows[s] = rows
+        lo = loss_obs[rows]
+        po = premium_obs[rows]
+        lmask = recent_link_mask(lo, recent)
+        pmask = recent_link_mask(po, recent)
+        ed = _fit_ed(
+            lo, po, sigma_method=sigma_method,
+            loss_link_mask=lmask, premium_link_mask=pmask,
+        )
+        cl = _fit_mack(lo, sigma_method=sigma_method, link_mask=lmask)
+        seg_arrays[s] = {
+            "f_k": cl.f_k,
+            "sigma2_f_k": cl.sigma2_k,
+            "var_f_k": _mack_f_var(cl),
+            "g_k": ed.g_k,
+            "sigma2_g_k": ed.sigma2_g_k,
+            "var_g_k": _mack_g_var(ed),
+        }
+        mk: int | None = None
+        if method == "sa":
+            if mat_k_override == "auto":
+                mk = _compute_maturity(
+                    lo, max_cv, max_rse, min_run, link_mask=lmask
+                ).mat_k
+            elif mat_k_override is None:
+                mk = None
+            else:
+                mk = int(mat_k_override)
+        seg_mat_k[s] = mk
+
+    # 2) donor-augment. Donor selection keys off the factor the
+    # projection's late-dev region uses: g_k for pure ED, f_k otherwise
+    # (CL, and SA whose late-dev CL region is what needs borrowing).
+    primary = "g_k" if method == "ed" else "f_k"
+    aug = _augment_segment_factors(seg_arrays, primary)
+
+    # 3) re-project each segment with its augmented factors.
+    results: dict[int, _LossResult] = {}
+    for s in segs:
+        rows = seg_rows[s]
+        lo = loss_obs[rows]
+        po = premium_obs[rows]
+        pp = premium_proj[rows]
+        a = aug[s]
+        mk = seg_mat_k[s]
+        if method == "cl":
+            mat_threshold = 0.0
+        elif method == "ed":
+            mat_threshold = float("inf")
+        else:  # sa
+            mat_threshold = float(mk) if mk is not None else float("inf")
+
+        loss_proj, proc_se, param_se, total_se = _project_loss(
+            lo, pp,
+            a["f_k"], a["sigma2_f_k"], a["var_f_k"],
+            a["g_k"], a["sigma2_g_k"], a["var_g_k"],
+            mat_threshold,
+        )
+        obs_mask = ~np.isnan(lo)
+        last_obs = np.where(
+            obs_mask.any(axis=1),
+            n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+            -1,
+        )
+        results[s] = _LossResult(
+            n_devs=n_devs,
+            loss_obs=lo,
+            loss_proj=loss_proj,
+            proc_se=proc_se,
+            param_se=param_se,
+            total_se=total_se,
+            premium_obs=po,
+            premium_proj=pp,
+            mat_k=mk,
+            g_sel=a["g_k"],
+            g_sigma2=a["sigma2_g_k"],
+            g_var=a["var_g_k"],
+            f_sel=a["f_k"],
+            f_sigma2=a["sigma2_f_k"],
+            f_var=a["var_f_k"],
+            last_obs=last_obs,
+            maturity_from=mk,
+        )
+    return results, seg_rows
 
 
 def _loss_long_df(
@@ -794,7 +1011,7 @@ class LossFit:
             and regime.treatment == "segment_bridged_borrowed"
             and regime.breakpoints
         ):
-            return cls._segment_wise_fit(triangle, estimator, regime)
+            return cls._segment_borrowed_fit(triangle, estimator, regime)
 
         triangle = _apply_regime_filter(triangle, regime)
 
@@ -1039,94 +1256,120 @@ class LossFit:
         return long_df
 
     @classmethod
-    def _segment_wise_fit(
+    def _segment_borrowed_fit(
         cls,
         triangle: "Triangle",
         estimator: "Loss",
         regime: Any,
     ) -> "LossFit":
-        """Fit loss projection per regime segment, then concat.
+        """Fit ``segment_bridged_borrowed``: per-segment factors + borrow.
 
-        Each segment becomes a mini-Triangle (post mini-triangle
-        filter); the standard single-segment fit runs on it with
-        ``regime=None`` to skip the recursion guard. Outputs are
-        concatenated with a ``segment_id`` column for transparency.
-
-        Late-segment cohorts whose dev range is short cannot project
-        past their segment's max observed dev (factors at later dev
-        are unestimable). A ``Regime.fallback`` knob to extrapolate
-        from neighbouring segments is not yet implemented (R Phase 2C).
+        Masks the triangle to the bridged band (one full-range triangle
+        carrying ``segment_id``), estimates factors per segment on its
+        cohort row-subset (early-dev factors stay regime-specific), then
+        donor-borrows the late-dev factors a segment cannot reach so
+        every cohort projects to full development. Because all segments
+        share the parent dev axis, the borrow aligns by absolute dev (no
+        truncated mini-triangles -- contrast the split that this
+        replaces).
         """
-        import copy as _copy
+        from .regime import _apply_regime_filter
 
-        from .regime import _split_into_segment_triangles
+        # One full-range masked triangle, carrying segment_id.
+        masked = _apply_regime_filter(triangle, regime)
 
-        sub_estimator = _copy.copy(estimator)
-        sub_estimator.regime = None
-        # Bootstrap once on the assembled grid below -- not per segment.
-        sub_estimator.bootstrap = None
+        # Premium side: plain PremiumFit on the unfiltered triangle (the
+        # loss-side regime has no premium semantic), full-dev for every
+        # cohort so the ED projection has a denominator at every dev.
+        if estimator.premium_fit is not None:
+            pf = estimator.premium_fit
+        else:
+            pf = Premium(
+                method=estimator.premium_method,
+                alpha=estimator.premium_alpha,
+                sigma_method=estimator.sigma_method,
+                recent=estimator.recent,
+                conf_level=estimator.conf_level,
+            ).fit(triangle)
+        pf_df = pf._df
 
-        sub_tris = _split_into_segment_triangles(triangle, regime)
-        if not sub_tris:
-            # Defensive fallback — no segments yielded data; behave as
-            # an unfiltered fit.
-            sub_estimator.regime = None
-            return cls._from_triangle(triangle, sub_estimator)
+        tri_df = masked._df
+        groups = masked._groups
+        mat_override = _resolve_maturity_override(estimator.maturity, masked)
 
         long_parts: list[pl.DataFrame] = []
-        kstar_parts: list[pl.DataFrame] = []
+        kstar_rows: list[dict[str, Any]] = []
         internals_combined: dict[Any, _LossResult] = {}
-        last_self: LossFit | None = None
-        for seg_id, sub_tri in sub_tris.items():
-            sub_fit = cls._from_triangle(sub_tri, sub_estimator)
-            long_parts.append(
-                sub_fit._df.with_columns(pl.lit(seg_id, dtype=pl.Int64).alias("segment_id"))
-            )
-            kstar_parts.append(
-                sub_fit._kstar_df.with_columns(
-                    pl.lit(seg_id, dtype=pl.Int64).alias("segment_id")
-                )
-            )
-            for key, value in sub_fit._internals.items():
-                internals_combined[(seg_id, key)] = value
-            last_self = sub_fit
 
-        # Assemble the composite fit. Metadata comes from any sub-fit
-        # (they all share the parent triangle's group / cohort / dev).
-        assert last_self is not None
+        group_values: list[Any] = (
+            [None]
+            if groups is None
+            else tri_df[groups].unique(maintain_order=True).to_list()
+        )
+        for g in group_values:
+            sub = tri_df if g is None else tri_df.filter(pl.col(groups) == g)
+            pf_sub = pf_df if g is None else pf_df.filter(pl.col(groups) == g)
+            loss_obs, cohorts, _ = _build_loss_matrix(sub)
+            premium_obs, _, _ = _build_premium_matrix(sub)
+            premium_proj = _premium_proj_matrix(
+                pf_sub, cohorts, loss_obs.shape[1]
+            )
+            seg_map = {
+                c: int(s)
+                for c, s in sub.select(["cohort", "segment_id"])
+                .unique()
+                .iter_rows()
+            }
+            seg_of_cohort = np.array(
+                [seg_map[c] for c in cohorts], dtype=np.int64
+            )
+            results, seg_rows = _borrowed_loss_group(
+                loss_obs, premium_obs, premium_proj, seg_of_cohort,
+                estimator.method, estimator.sigma_method,
+                estimator.max_cv, estimator.max_rse, estimator.min_run,
+                estimator.recent, _mat_k_for_group(mat_override, g),
+            )
+            for s in sorted(results):
+                res = results[s]
+                cohorts_s = [cohorts[i] for i in seg_rows[s]]
+                df_s = _loss_long_df(
+                    res, cohorts_s, pf_sub, groups, g, estimator.conf_level
+                ).with_columns(pl.lit(s, dtype=pl.Int64).alias("segment_id"))
+                long_parts.append(df_s)
+                row: dict[str, Any] = {
+                    "segment_id": s,
+                    "mat_k": res.mat_k,
+                    "method": estimator.method,
+                }
+                if groups is not None:
+                    row[groups] = g
+                kstar_rows.append(row)
+                internals_combined[(g, s) if groups is not None else s] = res
+
         self = cls.__new__(cls)
-        self._output_type = last_self._output_type
-        self._groups = last_self._groups
-        self._cohort = last_self._cohort
-        self._dev = last_self._dev
+        self._output_type = masked._output_type
+        self._groups = groups
+        self._cohort = masked._cohort
+        self._dev = masked._dev
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
         self.conf_level = estimator.conf_level
         self.regime = regime
         self.recent = estimator.recent
-        self.premium_fit = last_self.premium_fit
+        self.premium_fit = pf
         self._internals = internals_combined
-        # Bootstrap slots default to the pure-analytical state.
         self.boots = None
         self.ci_type = "analytical"
 
         combined = pl.concat(long_parts, how="diagonal")
-
-        # Expand to the full parent (group?, cohort, dev) grid so the
-        # output shape matches R's fit_loss / fit_ratio `$full`. Cells past
-        # each segment's reach stay as null (no factor extrapolation
-        # without a fallback knob — R Phase 2C parity).
         full_df = _expand_to_full_grid(
-            combined, triangle, self._groups, last_self._cohort
+            combined, triangle, self._groups, self._cohort
         )
-        self._kstar_df = pl.concat(kstar_parts, how="diagonal")
-
-        # Bootstrap overlay -- a single run on the parent triangle (the
-        # per-segment fits ran with bootstrap disabled above).
-        full_df = self._maybe_overlay_bootstrap(
-            full_df, triangle, estimator
+        self._kstar_df = (
+            pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
         )
+        full_df = self._maybe_overlay_bootstrap(full_df, triangle, estimator)
 
         self._df = full_df
         return self
