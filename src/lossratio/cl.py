@@ -316,12 +316,14 @@ def _fit_mack(
     from ._sigma import extrapolate_tail_sigma2
     sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
 
-    # Point projection: fill missing cells via f_k
+    # Point projection: fill missing cells via f_k. The dev recursion is
+    # sequential (each dev reads the prior, already-filled dev) but the
+    # cohort axis is independent, so vectorise across cohorts per dev.
     loss_proj = loss_obs.copy()
-    for i in range(n_cohorts):
-        for k in range(1, n_devs):
-            if np.isnan(loss_proj[i, k]) and not np.isnan(loss_proj[i, k - 1]):
-                loss_proj[i, k] = loss_proj[i, k - 1] * f_k[k - 1]
+    for k in range(1, n_devs):
+        prev = loss_proj[:, k - 1]
+        fill = np.isnan(loss_proj[:, k]) & ~np.isnan(prev)
+        loss_proj[fill, k] = prev[fill] * f_k[k - 1]
 
     # Mack SE on projected cells (per cohort, per dev), additive recursion
     # form (Mack 1993). Decomposed into process and parameter variance to
@@ -348,27 +350,29 @@ def _fit_mack(
     fv_mask = (sum_col_k > 0) & np.isfinite(sigma2_k)
     f_var_k[fv_mask] = sigma2_k[fv_mask] / sum_col_k[fv_mask]
 
-    for i in range(n_cohorts):
-        lo = int(last_obs[i])
-        if lo < 0 or lo >= n_devs - 1:
+    # Sequential along dev, vectorised across cohorts. Each cohort starts
+    # accumulating at its first projected dev (last_obs + 1); cohorts not
+    # yet projected at dev k, or whose chain broke (NaN prev / unfittable
+    # link), keep variance 0 at that cell (R parity).
+    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+    for k in range(1, n_devs):
+        f_prev = f_k[k - 1]
+        if not np.isfinite(f_prev):
             continue
-        for k in range(lo + 1, n_devs):
-            f_prev = f_k[k - 1]
-            v_prev = loss_proj[i, k - 1]
-            if not np.isfinite(f_prev) or np.isnan(v_prev):
-                continue
-
-            proc_prev_acc = (f_prev ** 2) * proc_var[i, k - 1]
-            if np.isfinite(sigma2_k[k - 1]):
-                proc_var[i, k] = proc_prev_acc + sigma2_k[k - 1] * (v_prev ** alpha)
-            else:
-                proc_var[i, k] = proc_prev_acc
-
-            param_prev_acc = (f_prev ** 2) * param_var[i, k - 1]
-            if np.isfinite(f_var_k[k - 1]):
-                param_var[i, k] = param_prev_acc + (v_prev ** 2) * f_var_k[k - 1]
-            else:
-                param_var[i, k] = param_prev_acc
+        v_prev = loss_proj[:, k - 1]
+        upd = eligible & (k > last_obs) & ~np.isnan(v_prev)
+        if not upd.any():
+            continue
+        f2 = f_prev ** 2
+        vp = v_prev[upd]
+        proc_acc = f2 * proc_var[upd, k - 1]
+        if np.isfinite(sigma2_k[k - 1]):
+            proc_acc = proc_acc + sigma2_k[k - 1] * (vp ** alpha)
+        proc_var[upd, k] = proc_acc
+        param_acc = f2 * param_var[upd, k - 1]
+        if np.isfinite(f_var_k[k - 1]):
+            param_acc = param_acc + (vp ** 2) * f_var_k[k - 1]
+        param_var[upd, k] = param_acc
 
     proc_se = np.sqrt(proc_var)
     param_se = np.sqrt(param_var)
