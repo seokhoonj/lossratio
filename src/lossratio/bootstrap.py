@@ -1762,34 +1762,52 @@ def _fwd_sim_cl_link(
     return cum_sampled
 
 
-def _draw_parametric_cell(
-    rng:          np.random.Generator,
-    mu:           float,
-    phi:          float,
-    alpha:        float,
-    process_code: int,
-    size:         int,
+def _draw_parametric_cells(
+    rng:   np.random.Generator,
+    mu:    np.ndarray,
+    phi:   "float | np.ndarray",
+    alpha: float,
+    pc:    int,
+    B:     int,
 ) -> np.ndarray:
-    """Parametric Stage-1 cell draw, ``size`` replicates of one cell.
+    """Vectorised parametric Stage-1 draw for many cells at once.
 
-    Mirrors R's ``bootstrap_kernel_*_param`` phase (a). Gamma:
-    ``Gamma(shape=mu/phi, scale=phi)``; Normal: ``mu + N(0,
-    sqrt(phi*|mu|^alpha))`` clipped to ``>= 0``. Non-positive ``mu`` or
-    non-positive ``phi`` -> deterministic ``mu``.
+    Mirrors R's ``bootstrap_kernel_*_param`` phase (a). ``mu``
+    (n_cells,) is the per-cell mean, ``phi`` a scalar or per-cell
+    dispersion. Gamma: ``Gamma(shape=mu/phi, scale=phi)``; Normal:
+    ``mu + N(0, sqrt(phi*|mu|^alpha))`` clipped to ``>= 0``; a
+    non-positive ``mu`` / ``phi`` keeps the deterministic ``mu``.
+    Returns ``(n_cells, B)``. The active-draw subset (same per-process
+    guards) is drawn in cell-major row order via a single ``rng`` call,
+    so the stream is consumed exactly as a per-cell loop would.
     """
-    if not np.isfinite(mu):
-        return np.full(size, mu, dtype=np.float64)
-    if process_code in (1, 2):       # gamma / od_pois
-        if mu <= 0.0 or not (np.isfinite(phi) and phi > 0.0):
-            return np.full(size, mu, dtype=np.float64)
-        return rng.gamma(shape=mu / phi, scale=phi, size=size)
-    if process_code == 3:            # normal
-        if not (np.isfinite(phi) and phi > 0.0):
-            return np.full(size, mu, dtype=np.float64)
-        sd = np.sqrt(phi * np.power(abs(mu), alpha))
-        x = mu + rng.normal(0.0, 1.0, size=size) * sd
-        return np.where(x < 0.0, 0.0, x)
-    return np.full(size, mu, dtype=np.float64)
+    n = mu.shape[0]
+    out = np.repeat(mu[:, None], B, axis=1)
+    phi_arr = np.broadcast_to(
+        np.asarray(phi, dtype=np.float64), (n,)
+    )
+    mu_fin = np.isfinite(mu)
+    phi_ok = np.isfinite(phi_arr) & (phi_arr > 0.0)
+    if pc in (1, 2):                 # gamma / od_pois
+        draw = mu_fin & (mu > 0.0) & phi_ok
+    elif pc == 3:                    # normal
+        draw = mu_fin & phi_ok
+    else:
+        draw = np.zeros(n, dtype=bool)
+    m = int(draw.sum())
+    if m:
+        if pc in (1, 2):
+            shape = np.broadcast_to(
+                (mu[draw] / phi_arr[draw])[:, None], (m, B)
+            )
+            scale = np.broadcast_to(phi_arr[draw][:, None], (m, B))
+            out[draw, :] = rng.gamma(shape=shape, scale=scale)
+        else:                        # normal: mu + N(0, sqrt(phi|mu|^a))
+            sd = np.sqrt(phi_arr[draw] * np.power(np.abs(mu[draw]), alpha))
+            eps = rng.normal(0.0, 1.0, size=(m, B))
+            x = mu[draw][:, None] + eps * sd[:, None]
+            out[draw, :] = np.where(x < 0.0, 0.0, x)
+    return out
 
 
 def _pool_dev_subpools(
@@ -2397,11 +2415,7 @@ def _boot_kernel_cl_parametric(
     mu_active = mu_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
-    inc = np.empty((lin.size, B), dtype=np.float64)
-    for a in range(lin.size):
-        inc[a, :] = _draw_parametric_cell(
-            rng, float(mu_active[a]), phi, alpha, pc, B
-        )
+    inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, B)
     cum = _place_increments(inc, lin, n_coh, n_dev, B)
     _cumsum_mask(cum, gi.last_obs)
 
@@ -2431,11 +2445,7 @@ def _boot_kernel_ed_parametric(
     mu_active = mu_ed_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
-    inc = np.empty((lin.size, B), dtype=np.float64)
-    for a in range(lin.size):
-        inc[a, :] = _draw_parametric_cell(
-            rng, float(mu_active[a]), phi, alpha, pc, B
-        )
+    inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, B)
     cum = _place_increments(inc, lin, n_coh, n_dev, B)
     _cumsum_mask(cum, gi.last_obs)
 
@@ -2493,12 +2503,8 @@ def _boot_kernel_sa_parametric(
     is_cl   = is_cl[keep]
     mu_active = np.where(is_cl, mu_cl_flat[lin_all], mu_ed_flat[lin_all])
 
-    inc = np.empty((mu_active.shape[0], B), dtype=np.float64)
-    for a in range(mu_active.shape[0]):
-        phi_use = phi_cl if is_cl[a] else phi_ed
-        inc[a, :] = _draw_parametric_cell(
-            rng, float(mu_active[a]), phi_use, alpha, pc, B
-        )
+    phi_active = np.where(is_cl, phi_cl, phi_ed)
+    inc = _draw_parametric_cells(rng, mu_active, phi_active, alpha, pc, B)
     cum = _place_increments(inc, lin_all, n_coh, n_dev, B)
     _cumsum_mask(cum, gi.last_obs)
 
