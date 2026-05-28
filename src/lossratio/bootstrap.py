@@ -1511,58 +1511,87 @@ def _fwd_proj_sa(
     cum[neg] = 0.0
 
 
-def _draw_gamma_cell(
-    rng:      np.random.Generator,
-    inc_mean: np.ndarray,
-    phi:      float,
+def _fwd_sim_cell_bulk(
+    rng:       np.random.Generator,
+    cum_mean:  np.ndarray,
+    last_obs:  np.ndarray,
+    inc_mean3: np.ndarray,
+    phi3:      "float | np.ndarray",
+    alpha:     float,
+    pc:        int,
+    masked:    bool,
 ) -> np.ndarray:
-    """Cell-paradigm Gamma draw: ``shape = mu/phi``, ``scale = phi``.
+    """Vectorised cell-independent Stage-2 accumulation (shared cl/ed/sa).
 
-    Moment-matched ODP -- ``mean = mu``, ``var = phi * mu``. Cells with
-    a non-positive / non-finite ``inc_mean`` keep the deterministic mean
-    (no noise). ``rng.gamma`` is called only on the active subset.
+    ``inc_mean3`` (n_coh, n_dev, B) is the per-cell mean increment, NaN
+    where a draw must propagate NaN and 0 where the cell carries the
+    previous level with no contribution. ``phi3`` is a scalar or a
+    per-cell (n_coh, n_dev) dispersion. ``masked=True`` applies the
+    CL/SA ``both`` semantics (``cum_sampled`` is NaN where the
+    ``cum_mean`` dev-pair is not both finite); ``masked=False`` is the
+    ED rule (the running sum is written across the whole projected
+    region). The active-draw subset is drawn in (cohort, dev, B) C-order
+    via one ``rng`` call -- the same order a per-cell loop consumes the
+    stream -- and accumulation is a base-seeded cumsum so the float
+    addition order matches the recursion exactly.
     """
-    out = inc_mean.copy()
-    active = np.isfinite(inc_mean) & (inc_mean > 0.0)
-    if active.any() and np.isfinite(phi) and phi > 0.0:
-        shape = inc_mean[active] / phi
-        out[active] = rng.gamma(shape=shape, scale=phi)
-    return out
+    n_coh, n_dev, B = cum_mean.shape
+    cum_sampled = cum_mean.copy()
+    lj = last_obs.astype(np.int64)
 
+    # Processed region: cohorts with a valid last-obs and a finite seed,
+    # cells at dev > lj.
+    valid = (lj >= 0) & (lj <= n_dev - 2)
+    seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_dev - 1), :]
+    cohort_ok = valid & np.isfinite(seed).any(axis=1)
+    processed2 = cohort_ok[:, None] & (np.arange(n_dev)[None, :] > lj[:, None])
+    processed3 = np.broadcast_to(processed2[:, :, None], (n_coh, n_dev, B))
 
-def _draw_normal_cell(
-    rng:      np.random.Generator,
-    inc_mean: np.ndarray,
-    phi:      float,
-    alpha:    float,
-) -> np.ndarray:
-    """Cell-paradigm Normal draw: ``mu + N(0, sqrt(phi*|mu|^alpha))``.
+    if np.ndim(phi3) == 0:
+        phi3b = np.full((n_coh, n_dev, B), float(phi3), dtype=np.float64)
+    else:
+        phi3b = np.broadcast_to(
+            np.asarray(phi3, dtype=np.float64)[:, :, None], (n_coh, n_dev, B)
+        )
 
-    Cells with non-positive / non-finite ``inc_mean`` keep the
-    deterministic mean.
-    """
-    out = inc_mean.copy()
-    active = np.isfinite(inc_mean) & (inc_mean > 0.0)
-    if active.any() and np.isfinite(phi) and phi > 0.0:
-        sd = np.sqrt(phi * np.power(np.abs(inc_mean[active]), alpha))
-        out[active] = inc_mean[active] + rng.normal(0.0, 1.0,
-                                                    size=int(active.sum())) * sd
-    return out
+    # Active cell-paradigm draws: finite positive mean, positive phi.
+    active3 = (
+        processed3 & np.isfinite(inc_mean3) & (inc_mean3 > 0.0)
+        & np.isfinite(phi3b) & (phi3b > 0.0)
+    )
+    inc_sampled3 = inc_mean3.copy()
+    if active3.any():
+        idx = np.where(active3)        # C-order == (cohort, dev, B) loop order
+        if pc in (1, 2):               # gamma / od_pois
+            inc_sampled3[idx] = rng.gamma(
+                shape=inc_mean3[idx] / phi3b[idx], scale=phi3b[idx]
+            )
+        elif pc == 3:                  # normal
+            sd = np.sqrt(phi3b[idx] * np.power(np.abs(inc_mean3[idx]), alpha))
+            inc_sampled3[idx] = (
+                inc_mean3[idx] + rng.normal(0.0, 1.0, size=idx[0].size) * sd
+            )
 
-
-def _fwd_sim_cell_step(
-    rng:          np.random.Generator,
-    inc_mean:     np.ndarray,
-    phi:          float,
-    alpha:        float,
-    process_code: int,
-) -> np.ndarray:
-    """One cell-independent Stage-2 increment draw across the B axis."""
-    if process_code in (1, 2):       # gamma / od_pois (moment-matched)
-        return _draw_gamma_cell(rng, inc_mean, phi)
-    if process_code == 3:            # normal
-        return _draw_normal_cell(rng, inc_mean, phi, alpha)
-    return inc_mean
+    # Accumulation: seed the base at each cohort's lj, add increments, and
+    # cumsum along dev (left-to-right, matching the recursion's add order).
+    contrib = np.zeros((n_coh, n_dev, B), dtype=np.float64)
+    rows = np.where(cohort_ok)[0]
+    contrib[rows, lj[rows], :] = cum_mean[rows, lj[rows], :]
+    if masked:
+        both3 = np.zeros((n_coh, n_dev, B), dtype=bool)
+        both3[:, 1:, :] = (
+            np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
+        )
+        place = processed3 & both3
+        contrib = np.where(place, inc_sampled3, contrib)
+        csum = np.cumsum(contrib, axis=1)
+        cum_sampled = np.where(place, csum, cum_sampled)
+        cum_sampled = np.where(processed3 & ~both3, np.nan, cum_sampled)
+    else:
+        contrib = np.where(processed3, inc_sampled3, contrib)
+        csum = np.cumsum(contrib, axis=1)
+        cum_sampled = np.where(processed3, csum, cum_sampled)
+    return cum_sampled
 
 
 def _fwd_sim_cl_cell(
@@ -1582,28 +1611,17 @@ def _fwd_sim_cl_cell(
     from ``cum_mean`` unchanged.
     """
     n_coh, n_dev, B = cum_mean.shape
-    cum_sampled = cum_mean.copy()
     if not (np.isfinite(phi) and phi > 0.0):
-        return cum_sampled
-    for i in range(n_coh):
-        lj = int(last_obs[i])           # 0-indexed last observed dev
-        if lj < 0 or lj >= n_dev - 1:
-            continue                    # no obs, or fully observed
-        prev = cum_sampled[i, lj, :].astype(np.float64, copy=True)
-        if not np.isfinite(prev).any():
-            continue
-        for j in range(lj + 1, n_dev):
-            cur = cum_mean[i, j, :]
-            pre = cum_mean[i, j - 1, :]
-            both = np.isfinite(cur) & np.isfinite(pre)
-            inc_mean = np.where(both, cur - pre, np.nan)
-            inc_sampled = _fwd_sim_cell_step(
-                rng, inc_mean, phi, alpha, process_code
-            )
-            new = np.where(both, prev + inc_sampled, np.nan)
-            cum_sampled[i, j, :] = new
-            prev = np.where(both, new, prev)
-    return cum_sampled
+        return cum_mean.copy()
+    inc_mean3 = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
+    both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
+    inc_mean3[:, 1:, :] = np.where(
+        both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
+    )
+    return _fwd_sim_cell_bulk(
+        rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
+        masked=True,
+    )
 
 
 def _fwd_sim_ed_cell(
@@ -1625,35 +1643,27 @@ def _fwd_sim_ed_cell(
     """
     n_coh, n_dev, B = cum_mean.shape
     n_links = g_star.shape[0]
-    cum_sampled = cum_mean.copy()
     if not (np.isfinite(phi) and phi > 0.0):
-        return cum_sampled
-    for i in range(n_coh):
-        lj = int(last_obs[i])           # 0-indexed last observed dev
-        if lj < 0 or lj >= n_dev - 1:
+        return cum_mean.copy()
+    # Additive ED increment g_star[k] * premium_proj[j-1]; a missing link
+    # (k_1 == -1) or non-finite premium carries the level forward (0
+    # contribution), an unfittable g propagates NaN.
+    inc_mean3 = np.zeros((n_coh, n_dev, B), dtype=np.float64)
+    for j in range(1, n_dev):
+        k_1 = int(k_idx_by_j[j])
+        if k_1 == -1:
             continue
-        prev = cum_sampled[i, lj, :].astype(np.float64, copy=True)
-        if not np.isfinite(prev).any():
-            continue
-        for j in range(lj + 1, n_dev):
-            k_1 = int(k_idx_by_j[j])
-            if k_1 == -1:
-                cum_sampled[i, j, :] = prev
-                continue
-            k = k_1 - 1
-            g_b = g_star[k, :] if 0 <= k < n_links else np.full(B, np.nan)
-            p_prev = premium_proj[i, j - 1]
-            if not np.isfinite(p_prev):
-                cum_sampled[i, j, :] = prev
-                continue
-            inc_mean = np.where(np.isfinite(g_b), g_b * p_prev, np.nan)
-            inc_sampled = _fwd_sim_cell_step(
-                rng, inc_mean, phi, alpha, process_code
-            )
-            new = prev + inc_sampled
-            cum_sampled[i, j, :] = new
-            prev = new
-    return cum_sampled
+        k = k_1 - 1
+        g_b = g_star[k, :] if 0 <= k < n_links else np.full(B, np.nan)
+        p_prev = premium_proj[:, j - 1]                       # (n_coh,)
+        val = np.where(
+            np.isfinite(g_b)[None, :], g_b[None, :] * p_prev[:, None], np.nan
+        )
+        inc_mean3[:, j, :] = np.where(np.isfinite(p_prev)[:, None], val, 0.0)
+    return _fwd_sim_cell_bulk(
+        rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
+        masked=False,
+    )
 
 
 def _fwd_sim_sa_cell(
@@ -1674,30 +1684,20 @@ def _fwd_sim_sa_cell(
     is in the CL stage (``j >= mat_k[i]``), else ``phi_ed``.
     """
     n_coh, n_dev, B = cum_mean.shape
-    cum_sampled = cum_mean.copy()
     big = np.iinfo(np.int64).max
-    for i in range(n_coh):
-        lj = int(last_obs[i])           # 0-indexed last observed dev
-        if lj < 0 or lj >= n_dev - 1:
-            continue
-        prev = cum_sampled[i, lj, :].astype(np.float64, copy=True)
-        if not np.isfinite(prev).any():
-            continue
-        mk = int(mat_k[i])
-        for j in range(lj + 1, n_dev):
-            cur = cum_mean[i, j, :]
-            pre = cum_mean[i, j - 1, :]
-            both = np.isfinite(cur) & np.isfinite(pre)
-            inc_mean = np.where(both, cur - pre, np.nan)
-            stage_cl = (mk != big) and (j >= mk)
-            phi_use = phi_cl if stage_cl else phi_ed
-            inc_sampled = _fwd_sim_cell_step(
-                rng, inc_mean, phi_use, alpha, process_code
-            )
-            new = np.where(both, prev + inc_sampled, np.nan)
-            cum_sampled[i, j, :] = new
-            prev = np.where(both, new, prev)
-    return cum_sampled
+    inc_mean3 = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
+    both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
+    inc_mean3[:, 1:, :] = np.where(
+        both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
+    )
+    # per-cell dispersion: phi_cl in the CL stage (j >= mat_k), else phi_ed.
+    mk = mat_k.astype(np.int64)
+    stage_cl = (mk[:, None] != big) & (np.arange(n_dev)[None, :] >= mk[:, None])
+    phi3 = np.where(stage_cl, phi_cl, phi_ed)
+    return _fwd_sim_cell_bulk(
+        rng, cum_mean, last_obs, inc_mean3, phi3, alpha, process_code,
+        masked=True,
+    )
 
 
 def _fwd_sim_cl_link(
