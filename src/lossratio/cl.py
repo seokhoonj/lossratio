@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _nan_skip_diff, _nan_to_null, mirror_output
+from ._io import _arrays_to_long_df, _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 
@@ -457,17 +457,20 @@ def _factors_to_df(
     groups: str | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
-    """Convert ATA factors to a long-format polars DataFrame."""
-    rows = []
-    for k, (f, s2) in enumerate(zip(result.f_k, result.sigma2_k)):
-        row: dict[str, Any] = {}
-        if groups is not None:
-            row[groups] = group_value
-        row["dev"] = k + 1  # link from dev k+1 to dev k+2 (label by source dev)
-        row["f"] = float(f) if not np.isnan(f) else None
-        row["sigma2"] = float(s2) if not np.isnan(s2) else None
-        rows.append(row)
-    return pl.DataFrame(rows)
+    """Convert ATA factors to a long-format polars DataFrame.
+
+    ``dev`` labels the link by its source dev (k+1 -> k+2).
+    """
+    n = len(result.f_k)
+    return _arrays_to_long_df(
+        {
+            "dev": np.arange(1, n + 1, dtype=np.int64),
+            "f": result.f_k,
+            "sigma2": result.sigma2_k,
+        },
+        groups,
+        group_value,
+    )
 
 
 # ---------------------------------------------------------------------------

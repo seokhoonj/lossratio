@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _nan_skip_diff, _nan_to_null, mirror_output
+from ._io import _arrays_to_long_df, _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from .cl import _build_loss_matrix, _build_value_matrix, _fit_mack
@@ -341,26 +341,18 @@ def _params_to_df(
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Per-link parameters: g_k, sigma2_g_k, f_p_k, sigma2_f_p_k."""
-    rows = []
-    for k in range(len(result.g_k)):
-        row: dict[str, Any] = {}
-        if groups is not None:
-            row[groups] = group_value
-        row["dev"] = k + 1
-        row["g"] = float(result.g_k[k]) if not np.isnan(result.g_k[k]) else None
-        row["sigma2_g"] = (
-            float(result.sigma2_g_k[k])
-            if not np.isnan(result.sigma2_g_k[k])
-            else None
-        )
-        row["f_p"] = float(result.f_p_k[k]) if not np.isnan(result.f_p_k[k]) else None
-        row["sigma2_f_p"] = (
-            float(result.sigma2_f_p_k[k])
-            if not np.isnan(result.sigma2_f_p_k[k])
-            else None
-        )
-        rows.append(row)
-    return pl.DataFrame(rows)
+    n = len(result.g_k)
+    return _arrays_to_long_df(
+        {
+            "dev": np.arange(1, n + 1, dtype=np.int64),
+            "g": result.g_k,
+            "sigma2_g": result.sigma2_g_k,
+            "f_p": result.f_p_k,
+            "sigma2_f_p": result.sigma2_f_p_k,
+        },
+        groups,
+        group_value,
+    )
 
 
 # ---------------------------------------------------------------------------

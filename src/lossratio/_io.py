@@ -72,3 +72,25 @@ def _nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
     if not float_cols:
         return df
     return df.with_columns([pl.col(c).fill_nan(None) for c in float_cols])
+
+
+def _arrays_to_long_df(
+    cols: dict[str, np.ndarray],
+    groups: str | None = None,
+    group_value: Any = None,
+) -> pl.DataFrame:
+    """Build a long-format DataFrame column-wise from per-link arrays.
+
+    Float columns get ``NaN -> null`` coercion (matching the prior
+    row-by-row ``float(x) if not isnan else None`` builders). When
+    ``groups`` is given a constant group-id column is prepended;
+    otherwise column order follows ``cols`` insertion order. Each array
+    carries its own dtype (pass int arrays for integer columns).
+    """
+    df = pl.DataFrame(cols)
+    if groups is not None:
+        df = df.select(
+            pl.lit(group_value).alias(groups),
+            *[pl.col(c) for c in cols],
+        )
+    return _nan_to_null(df)

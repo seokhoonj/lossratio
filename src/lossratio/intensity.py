@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import mirror_output
+from ._io import _arrays_to_long_df, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from .cl import _build_value_matrix
@@ -152,24 +152,18 @@ def _diagnostic_to_df(
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert an intensity result into a long-format diagnostic DataFrame."""
-    rows = []
-    for k in range(len(result.g_k)):
-        row: dict[str, Any] = {}
-        if groups is not None:
-            row[groups] = group_value
-        row["dev"] = k + 1
-        row["g"] = float(result.g_k[k]) if not np.isnan(result.g_k[k]) else None
-        row["g_se"] = (
-            float(result.g_se_k[k]) if not np.isnan(result.g_se_k[k]) else None
-        )
-        row["sigma2"] = (
-            float(result.sigma2_k[k])
-            if not np.isnan(result.sigma2_k[k])
-            else None
-        )
-        row["n_cohorts"] = int(result.n_obs_k[k])
-        rows.append(row)
-    return pl.DataFrame(rows)
+    n = len(result.g_k)
+    return _arrays_to_long_df(
+        {
+            "dev": np.arange(1, n + 1, dtype=np.int64),
+            "g": result.g_k,
+            "g_se": result.g_se_k,
+            "sigma2": result.sigma2_k,
+            "n_cohorts": np.asarray(result.n_obs_k, dtype=np.int64),
+        },
+        groups,
+        group_value,
+    )
 
 
 # ---------------------------------------------------------------------------
