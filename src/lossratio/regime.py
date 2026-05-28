@@ -461,17 +461,15 @@ def _hclust_breakpoints(
 
 
 def _regime_ids_from_breaks(n: int, breaks: list[int]) -> np.ndarray:
-    """Assign 1-based regime ids in cohort order."""
-    ids = np.empty(n, dtype=np.int64)
-    cur = 1
-    bk = sorted(set(breaks))
-    j = 0
-    for i in range(n):
-        if j < len(bk) and i >= bk[j]:
-            cur += 1
-            j += 1
-        ids[i] = cur
-    return ids
+    """Assign 1-based regime ids in cohort order.
+
+    Cohort ``i`` gets ``1 + (number of break indices <= i)`` -- a
+    right-side searchsorted over the sorted unique breaks.
+    """
+    bk = np.array(sorted(set(breaks)), dtype=np.int64)
+    return (1 + np.searchsorted(bk, np.arange(n), side="right")).astype(
+        np.int64
+    )
 
 
 class Regime:

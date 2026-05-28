@@ -283,15 +283,15 @@ def detect_convergence(
     if len(dev_cand) >= 2:
         revision[1:] = np.abs(np.diff(ratio_arr))
 
-    # 5. drift_window over [i, i + window - 1].
+    # 5. drift_window: max - min over each length-`window` slice
+    # [i, i+window-1]. NaN-propagating max/min naturally leave NaN where a
+    # window has any gap (matching the original all-finite guard); slices
+    # that would run past the end stay NaN.
     drift_window = np.full(len(dev_cand), np.nan)
-    for i in range(len(dev_cand)):
-        j = i + window - 1
-        if j >= len(dev_cand):
-            break
-        w = ratio_arr[i:j + 1]
-        if np.all(np.isfinite(w)):
-            drift_window[i] = float(np.max(w) - np.min(w))
+    if len(dev_cand) >= window:
+        from numpy.lib.stride_tricks import sliding_window_view
+        w = sliding_window_view(ratio_arr, window)
+        drift_window[: w.shape[0]] = np.max(w, axis=1) - np.min(w, axis=1)
 
     # 6. drift_tail over [i, end].
     drift_tail = np.full(len(dev_cand), np.nan)
