@@ -39,6 +39,7 @@ from .bootstrap import (
     CCBootstrap,
     _bf_compose_bootstrap,
     _resolve_bootstrap_bf,
+    _sd_and_type1_ci,
 )
 from .cl import _build_value_matrix
 
@@ -77,25 +78,15 @@ def _cc_overlay_elr_uncertainty(
         grouped = [((None,), elr_cc_replicates)]
     for key, sub in grouped:
         vals = sub["elr_cc_b"].to_numpy().astype(np.float64)
-        finite = vals[np.isfinite(vals)]
         row: dict[str, Any] = {}
         if by_grp:
             key_tuple = key if isinstance(key, tuple) else (key,)
             for col, kv in zip(by_grp, key_tuple):
                 row[col] = kv
-        row["elr_cc_se"] = (
-            float(np.std(finite, ddof=1)) if finite.size >= 2
-            else (0.0 if finite.size == 1 else None)
-        )
-        row["elr_cc_ci_lo"] = (
-            float(np.quantile(finite, alpha2, method="inverted_cdf"))
-            if finite.size else None
-        )
-        row["elr_cc_ci_hi"] = (
-            float(np.quantile(finite, 1.0 - alpha2,
-                              method="inverted_cdf"))
-            if finite.size else None
-        )
+        se, ci_lo, ci_hi = _sd_and_type1_ci(vals, alpha2)
+        row["elr_cc_se"] = se
+        row["elr_cc_ci_lo"] = ci_lo
+        row["elr_cc_ci_hi"] = ci_hi
         rows.append(row)
     elr_se = pl.DataFrame(rows, infer_schema_length=None)
 

@@ -3734,6 +3734,22 @@ def _quantile_type1(x: np.ndarray, p: float) -> float:
     return float(np.quantile(finite, p, method="inverted_cdf"))
 
 
+def _sd_and_type1_ci(
+    vals: np.ndarray, alpha2: float
+) -> tuple["float | None", float, float]:
+    """Per-group bootstrap SE + type-1 percentile CI of ``vals``.
+
+    Returns ``(se, ci_lo, ci_hi)``: ``se`` is the replicate standard
+    deviation (``ddof = 1``), ``None`` for fewer than two finite values
+    (matching R ``stats::sd``, which is ``NA`` for ``n < 2``); the CI
+    bounds are the inverted-CDF (R ``type = 1``) quantiles, ``NaN`` when
+    no finite replicate exists.
+    """
+    finite = vals[np.isfinite(vals)]
+    se = float(np.std(finite, ddof=1)) if finite.size >= 2 else None
+    return se, _quantile_type1(vals, alpha2), _quantile_type1(vals, 1.0 - alpha2)
+
+
 def _bf_compose_bootstrap(
     boots:           "dict[str, BootstrapTriangle]",
     *,
@@ -3981,19 +3997,14 @@ def _agg_sd_quantile(
     rows: list[dict[str, Any]] = []
     for key, sub in df.group_by(by_cols, maintain_order=True):
         vals = sub[value].to_numpy().astype(np.float64)
-        finite = vals[np.isfinite(vals)]
         row: dict[str, Any] = {}
         key_tuple = key if isinstance(key, tuple) else (key,)
         for col, kv in zip(by_cols, key_tuple):
             row[col] = kv
-        if finite.size >= 2:
-            row["loss_total_se"] = float(np.std(finite, ddof=1))
-        elif finite.size == 1:
-            row["loss_total_se"] = 0.0
-        else:
-            row["loss_total_se"] = None
-        row["loss_ci_lo"] = _quantile_type1(vals, alpha2)
-        row["loss_ci_hi"] = _quantile_type1(vals, 1.0 - alpha2)
+        se, ci_lo, ci_hi = _sd_and_type1_ci(vals, alpha2)
+        row["loss_total_se"] = se
+        row["loss_ci_lo"] = ci_lo
+        row["loss_ci_hi"] = ci_hi
         rows.append(row)
     return pl.DataFrame(rows, infer_schema_length=None)
 
