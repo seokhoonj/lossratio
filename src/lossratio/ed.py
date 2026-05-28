@@ -141,14 +141,14 @@ def _fit_ed(
 
     # 3. Project loss forward using ED rule:
     #    loss[i, k+1] = loss[i, k] + g_k * premium_proj[i, k]
+    # The dev recursion is sequential (each dev reads the prior, filled
+    # dev); the cohort axis is independent, so vectorise across cohorts.
     loss_proj = loss_obs.copy()
-    for i in range(n_cohorts):
-        for k in range(1, n_devs):
-            if np.isnan(loss_proj[i, k]) and not np.isnan(loss_proj[i, k - 1]):
-                if not np.isnan(premium_proj[i, k - 1]):
-                    loss_proj[i, k] = (
-                        loss_proj[i, k - 1] + g_k[k - 1] * premium_proj[i, k - 1]
-                    )
+    for k in range(1, n_devs):
+        prev = loss_proj[:, k - 1]
+        pe = premium_proj[:, k - 1]
+        fill = np.isnan(loss_proj[:, k]) & ~np.isnan(prev) & ~np.isnan(pe)
+        loss_proj[fill, k] = prev[fill] + g_k[k - 1] * pe[fill]
 
     # SE on projected loss is computed (decomposed into process /
     # parameter) downstream in `_result_to_long_df`, which is the single
@@ -205,24 +205,26 @@ def _result_to_long_df(
         n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
-    for i in range(n_cohorts):
-        lo = last_obs[i]
-        if lo < 0:
+    # Sequential along dev, vectorised across cohorts. A cohort accumulates
+    # from its last observed dev (last_obs); a link with non-positive /
+    # non-finite projected premium carries the prior variance forward.
+    for k in range(n_devs - 1):
+        active = (last_obs >= 0) & (k >= last_obs)
+        if not active.any():
             continue
-        for k in range(lo, n_devs - 1):
-            e = result.premium_proj[i, k]
-            if not np.isfinite(e) or e <= 0:
-                proc_se2[i, k + 1] = proc_se2[i, k]
-                param_se2[i, k + 1] = param_se2[i, k]
-                continue
-            s2 = sigma2_g_k[k]
-            vg = var_g_k[k]
-            proc_prev = proc_se2[i, k]
-            param_prev = param_se2[i, k]
-            proc_se2[i, k + 1] = proc_prev + (s2 if np.isfinite(s2) else 0.0) * e
-            param_se2[i, k + 1] = (
-                param_prev + (vg if np.isfinite(vg) else 0.0) * (e ** 2)
-            )
+        e = result.premium_proj[:, k]
+        proc_prev = proc_se2[:, k]
+        param_prev = param_se2[:, k]
+        good = active & np.isfinite(e) & (e > 0)
+        carry = active & ~good
+        proc_se2[carry, k + 1] = proc_prev[carry]
+        param_se2[carry, k + 1] = param_prev[carry]
+        s2 = sigma2_g_k[k]
+        vg = var_g_k[k]
+        s2_term = s2 if np.isfinite(s2) else 0.0
+        vg_term = vg if np.isfinite(vg) else 0.0
+        proc_se2[good, k + 1] = proc_prev[good] + s2_term * e[good]
+        param_se2[good, k + 1] = param_prev[good] + vg_term * (e[good] ** 2)
 
     # Mask observed cells: SE columns are only meaningful on projected cells.
     proc_se2[obs_mask] = np.nan
