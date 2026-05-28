@@ -26,6 +26,7 @@ Davison & Hinkley (1997) -- type-1 ordinal percentile CI.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -456,19 +457,19 @@ def _boot_summary_decompose(
     }
 
     if quantile_ci:
-        ci_lo = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-        ci_hi = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-        for i in range(n_cohorts):
-            for j in range(n_devs):
-                vals = cum_sampled[i, j, :]
-                finite = vals[np.isfinite(vals)]
-                if finite.size >= 2:
-                    # method="inverted_cdf" == R stats::quantile type = 1.
-                    q = np.quantile(
-                        finite, _CI_PROBS, method="inverted_cdf"
-                    )
-                    ci_lo[i, j] = q[0]
-                    ci_hi[i, j] = q[-1]
+        # method="inverted_cdf" == R stats::quantile type = 1; inf is
+        # treated as missing and only cells with >= 2 finite samples
+        # get a CI. nanquantile over the rep axis matches the per-cell
+        # quantile of the finite subset exactly.
+        masked = np.where(np.isfinite(cum_sampled), cum_sampled, np.nan)
+        enough_q = np.isfinite(cum_sampled).sum(axis=2) >= 2
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            q = np.nanquantile(
+                masked, _CI_PROBS, axis=2, method="inverted_cdf"
+            )
+        ci_lo = np.where(enough_q, q[0], np.nan)
+        ci_hi = np.where(enough_q, q[-1], np.nan)
         out["ci_lo"] = ci_lo.flatten(order="F")
         out["ci_hi"] = ci_hi.flatten(order="F")
 
@@ -3990,30 +3991,34 @@ def _cell_proj_per_rep(
     ``loss_proj_b = loss_latest + cl_rem * scale_b``. Mirrors the
     ``loss_proj_b`` block of R's ``.bf_compose_bootstrap()``.
     """
-    eps = float(np.finfo(np.float64).eps)
-    parts: list[pl.DataFrame] = []
-    for _key, sub in cell.group_by(
-        by_cols + ["rep"], maintain_order=True
-    ):
-        sub = sub.sort("dev")
-        loss_mean   = sub["loss_mean"].to_numpy().astype(np.float64)
-        loss_latest = sub["loss_latest"].to_numpy().astype(np.float64)
-        loss_ult_b  = sub["loss_ult_b"].to_numpy().astype(np.float64)
-        cl_rem      = loss_mean - loss_latest
-        cl_rem_last = cl_rem[-1] if cl_rem.size else np.nan
-        ult_rem     = loss_ult_b[0] - loss_latest[0] if loss_ult_b.size \
-            else np.nan
-        if np.isfinite(cl_rem_last) and abs(cl_rem_last) > eps:
-            scale_b = ult_rem / cl_rem_last
-        else:
-            scale_b = 0.0
-        loss_proj_b = loss_latest + cl_rem * scale_b
-        parts.append(
-            sub.with_columns(pl.Series("loss_proj_b", loss_proj_b))
+    if cell.height == 0:
+        return cell.with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("loss_proj_b")
         )
-    return pl.concat(parts) if parts else cell.with_columns(
-        pl.lit(None, dtype=pl.Float64).alias("loss_proj_b")
+    eps = float(np.finfo(np.float64).eps)
+    grp = by_cols + ["rep"]
+    # cl_rem at the group's last dev and (loss_ult_b - loss_latest) at its
+    # first dev are per-group scalars (both broadcast over the dev rows);
+    # scale_b collapses to 0 when CL projects no remainder.
+    out = cell.with_columns(
+        (pl.col("loss_mean") - pl.col("loss_latest")).alias("_cl_rem")
+    ).with_columns(
+        pl.col("_cl_rem").sort_by("dev").last().over(grp).alias("_cl_rem_last"),
+        (pl.col("loss_ult_b") - pl.col("loss_latest"))
+        .sort_by("dev").first().over(grp).alias("_ult_rem"),
+    ).with_columns(
+        pl.when(
+            pl.col("_cl_rem_last").is_finite()
+            & (pl.col("_cl_rem_last").abs() > eps)
+        )
+        .then(pl.col("_ult_rem") / pl.col("_cl_rem_last"))
+        .otherwise(0.0)
+        .alias("_scale_b")
+    ).with_columns(
+        (pl.col("loss_latest") + pl.col("_cl_rem") * pl.col("_scale_b"))
+        .alias("loss_proj_b")
     )
+    return out.drop(["_cl_rem", "_cl_rem_last", "_ult_rem", "_scale_b"])
 
 
 def _overlay_cohort_se(
