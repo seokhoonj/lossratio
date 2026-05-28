@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import mirror_output
+from ._io import _iter_group_frames, mirror_output
 from .cl import _fit_mack
 
 if TYPE_CHECKING:
@@ -409,22 +409,11 @@ def _build_kstar_df(
 
     One row per group with columns ``[groups?, *_R_STAT_COLS]``.
     """
-    if groups is None:
-        row = _slice_first_stable_row(
-            diag_df, min_run, groups=None, group_value=None
-        )
-        return pl.DataFrame([row])
-
-    rows: list[dict[str, Any]] = []
-    group_values = diag_df[groups].unique(maintain_order=True).to_list()
-    for g in group_values:
-        sub = diag_df.filter(pl.col(groups) == g)
-        rows.append(
-            _slice_first_stable_row(sub, min_run, groups=groups, group_value=g)
-        )
-    if not rows:
-        return pl.DataFrame()
-    return pl.DataFrame(rows)
+    rows = [
+        _slice_first_stable_row(sub, min_run, groups=groups, group_value=g)
+        for g, sub in _iter_group_frames(diag_df, groups)
+    ]
+    return pl.DataFrame(rows) if rows else pl.DataFrame()
 
 
 # ---------------------------------------------------------------------------

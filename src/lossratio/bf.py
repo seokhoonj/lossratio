@@ -28,7 +28,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import _iter_group_frames, mirror_output
+from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .bootstrap import (
@@ -721,24 +721,19 @@ def _bf_full_df(
     incr_loss_proj, premium_obs, premium_proj, incr_premium_proj]`` --
     point estimates only (no per-cell SE on the analytical path).
     """
-    rows: list[dict[str, Any]] = []
-    for i, coh in enumerate(result.cohorts):
-        for k in range(result.n_devs):
-            row: dict[str, Any] = {}
-            if groups is not None:
-                row[groups] = group_value
-            row["cohort"] = coh
-            row["dev"] = k + 1
-            row["loss_obs"] = _opt(result.loss_obs[i, k])
-            row["loss_proj"] = _opt(result.loss_proj[i, k])
-            row["incr_loss_proj"] = _opt(result.incr_loss_proj[i, k])
-            row["premium_obs"] = _opt(result.premium_obs[i, k])
-            row["premium_proj"] = _opt(result.premium_proj[i, k])
-            row["incr_premium_proj"] = _opt(
-                result.incr_premium_proj[i, k]
-            )
-            rows.append(row)
-    return pl.DataFrame(rows, infer_schema_length=None)
+    cohorts = result.cohorts
+    n_devs = result.n_devs
+    cols: dict[str, Any] = {
+        "cohort": [c for c in cohorts for _ in range(n_devs)],
+        "dev": np.tile(np.arange(1, n_devs + 1, dtype=np.int64), len(cohorts)),
+        "loss_obs": result.loss_obs.flatten(),
+        "loss_proj": result.loss_proj.flatten(),
+        "incr_loss_proj": result.incr_loss_proj.flatten(),
+        "premium_obs": result.premium_obs.flatten(),
+        "premium_proj": result.premium_proj.flatten(),
+        "incr_premium_proj": result.incr_premium_proj.flatten(),
+    }
+    return _arrays_to_long_df(cols, groups, group_value)
 
 
 def _bf_summary_df(
@@ -753,43 +748,25 @@ def _bf_summary_df(
     loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     CC: same plus ``elr_cc`` and the four ``elr_cc_*`` columns.
     """
-    rows: list[dict[str, Any]] = []
-    for i, coh in enumerate(result.cohorts):
-        row: dict[str, Any] = {}
-        if groups is not None:
-            row[groups] = group_value
-        row["cohort"] = coh
-        row["latest"] = _opt(result.loss_latest[i])
-        row["loss_ult"] = _opt(result.loss_ult[i])
-        row["reserve"] = _opt(result.reserve[i])
-        row["elr"] = _opt(result.elr[i])
-        row["q"] = _opt(result.q[i])
-        row["loss_total_se"] = _opt(result.loss_total_se[i])
-        row["loss_total_cv"] = _opt(result.loss_total_cv[i])
-        row["loss_ci_lo"] = _opt(result.loss_ci_lo[i])
-        row["loss_ci_hi"] = _opt(result.loss_ci_hi[i])
-        if cape_cod:
-            row["elr_cc"] = _opt(result.cc_extra.get("elr_cc", np.nan))
-            row["elr_cc_se"] = _opt(
-                result.cc_extra.get("elr_cc_se", np.nan)
-            )
-            row["elr_cc_cv"] = _opt(
-                result.cc_extra.get("elr_cc_cv", np.nan)
-            )
-            row["elr_cc_ci_lo"] = _opt(
-                result.cc_extra.get("elr_cc_ci_lo", np.nan)
-            )
-            row["elr_cc_ci_hi"] = _opt(
-                result.cc_extra.get("elr_cc_ci_hi", np.nan)
-            )
-        rows.append(row)
-    return pl.DataFrame(rows, infer_schema_length=None)
-
-
-def _opt(v: Any) -> float | None:
-    """Convert a numpy scalar to ``float`` or ``None`` (for NaN)."""
-    fv = float(v)
-    return None if np.isnan(fv) else fv
+    n = len(result.cohorts)
+    cols: dict[str, Any] = {
+        "cohort": list(result.cohorts),
+        "latest": result.loss_latest,
+        "loss_ult": result.loss_ult,
+        "reserve": result.reserve,
+        "elr": result.elr,
+        "q": result.q,
+        "loss_total_se": result.loss_total_se,
+        "loss_total_cv": result.loss_total_cv,
+        "loss_ci_lo": result.loss_ci_lo,
+        "loss_ci_hi": result.loss_ci_hi,
+    }
+    if cape_cod:
+        for c in (
+            "elr_cc", "elr_cc_se", "elr_cc_cv", "elr_cc_ci_lo", "elr_cc_ci_hi"
+        ):
+            cols[c] = np.full(n, result.cc_extra.get(c, np.nan), dtype=np.float64)
+    return _arrays_to_long_df(cols, groups, group_value)
 
 
 # ---------------------------------------------------------------------------
