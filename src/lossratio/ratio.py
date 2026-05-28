@@ -31,6 +31,98 @@ _VALID_PREMIUM_METHODS = ("ed", "cl")
 _VALID_SE_METHODS = ("fixed", "delta")
 
 
+def _compose_ratio_stats(
+    full: pl.DataFrame,
+    se_method: str,
+    rho: float,
+    conf_level: float,
+) -> pl.DataFrame:
+    """Attach ``ratio_se`` / ``ratio_cv`` / ``ratio_ci_lo`` / ``ratio_ci_hi``.
+
+    ``ratio_se`` is the fixed-premium ratio ``SE_L / P`` when
+    ``se_method == "fixed"``, else the full delta-method standard error
+    including premium uncertainty and the loss-premium correlation
+    ``rho``. Shared by the analytical RatioFit build and its
+    bootstrap-overlay recompute; the two differ only in the upstream
+    ``loss_total_se`` feeding it. Assumes ``ratio_proj`` already present.
+    """
+    if se_method == "fixed":
+        full = full.with_columns(
+            pl.when(
+                pl.col("loss_total_se").is_not_null()
+                & pl.col("premium_proj").is_not_null()
+                & (pl.col("premium_proj") != 0.0)
+            )
+            .then(pl.col("loss_total_se") / pl.col("premium_proj"))
+            .otherwise(None)
+            .alias("ratio_se")
+        )
+    else:
+        # delta: Var(L/P) ~ (SE_L / P)^2 + (L * SE_P / P^2)^2
+        #                   - 2 rho L SE_L SE_P / P^3
+        full = full.with_columns(
+            (
+                (pl.col("loss_total_se") / pl.col("premium_proj")) ** 2
+                + (
+                    pl.col("loss_proj")
+                    * pl.col("premium_total_se")
+                    / (pl.col("premium_proj") ** 2)
+                )
+                ** 2
+                - 2
+                * rho
+                * pl.col("loss_proj")
+                * pl.col("loss_total_se")
+                * pl.col("premium_total_se")
+                / (pl.col("premium_proj") ** 3)
+            ).alias("_var_ratio")
+        )
+        full = full.with_columns(
+            pl.when(
+                pl.col("loss_proj").is_not_null()
+                & pl.col("premium_proj").is_not_null()
+                & (pl.col("premium_proj") > 0.0)
+                & pl.col("loss_total_se").is_not_null()
+                & pl.col("premium_total_se").is_not_null()
+            )
+            .then(pl.col("_var_ratio").clip(lower_bound=0.0).sqrt())
+            .otherwise(None)
+            .alias("ratio_se")
+        ).drop("_var_ratio")
+
+    z_alpha = float(norm.ppf((1 + conf_level) / 2))
+    full = full.with_columns(
+        pl.when(
+            pl.col("ratio_proj").is_not_null()
+            & (pl.col("ratio_proj") != 0.0)
+            & pl.col("ratio_se").is_not_null()
+        )
+        .then(pl.col("ratio_se") / pl.col("ratio_proj").abs())
+        .otherwise(None)
+        .alias("ratio_cv"),
+    )
+    full = full.with_columns(
+        pl.when(
+            pl.col("ratio_proj").is_not_null() & pl.col("ratio_se").is_not_null()
+        )
+        .then(
+            pl.max_horizontal(
+                pl.lit(0.0),
+                pl.col("ratio_proj") - z_alpha * pl.col("ratio_se"),
+            )
+        )
+        .otherwise(None)
+        .alias("ratio_ci_lo"),
+        pl.when(
+            pl.col("ratio_proj").is_not_null() & pl.col("ratio_se").is_not_null()
+        )
+        .then(pl.col("ratio_proj") + z_alpha * pl.col("ratio_se"))
+        .otherwise(None)
+        .alias("ratio_ci_hi"),
+    )
+    return full
+
+
 class Ratio:
     """Loss-ratio estimator (composition over :class:`Loss` + :class:`Premium`).
 
@@ -378,85 +470,12 @@ class RatioFit:
             .alias("incr_ratio_proj"),
         )
 
-        # 4) ratio_se via fixed-premium or delta method -----------------------
-        if estimator.se_method == "fixed":
-            full = full.with_columns(
-                pl.when(
-                    pl.col("loss_total_se").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") != 0.0)
-                )
-                .then(pl.col("loss_total_se") / pl.col("premium_proj"))
-                .otherwise(None)
-                .alias("ratio_se")
-            )
-        else:
-            # delta: Var(L/P) ~ (SE_L / P)^2 + (L * SE_P / P^2)^2
-            #                   - 2 rho L SE_L SE_P / P^3
-            rho = estimator.rho
-            full = full.with_columns(
-                (
-                    (pl.col("loss_total_se") / pl.col("premium_proj")) ** 2
-                    + (
-                        pl.col("loss_proj")
-                        * pl.col("premium_total_se")
-                        / (pl.col("premium_proj") ** 2)
-                    )
-                    ** 2
-                    - 2
-                    * rho
-                    * pl.col("loss_proj")
-                    * pl.col("loss_total_se")
-                    * pl.col("premium_total_se")
-                    / (pl.col("premium_proj") ** 3)
-                ).alias("_var_ratio")
-            )
-            full = full.with_columns(
-                pl.when(
-                    pl.col("loss_proj").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") > 0.0)
-                    & pl.col("loss_total_se").is_not_null()
-                    & pl.col("premium_total_se").is_not_null()
-                )
-                .then(pl.col("_var_ratio").clip(lower_bound=0.0).sqrt())
-                .otherwise(None)
-                .alias("ratio_se")
-            ).drop("_var_ratio")
-
-        # 5) ratio_cv + analytical CI -----------------------------------------
-        z_alpha = float(norm.ppf((1 + estimator.conf_level) / 2))
-        full = full.with_columns(
-            pl.when(
-                pl.col("ratio_proj").is_not_null()
-                & (pl.col("ratio_proj") != 0.0)
-                & pl.col("ratio_se").is_not_null()
-            )
-            .then(pl.col("ratio_se") / pl.col("ratio_proj").abs())
-            .otherwise(None)
-            .alias("ratio_cv"),
-        )
-        full = full.with_columns(
-            pl.when(
-                pl.col("ratio_proj").is_not_null() & pl.col("ratio_se").is_not_null()
-            )
-            .then(
-                pl.max_horizontal(
-                    pl.lit(0.0),
-                    pl.col("ratio_proj") - z_alpha * pl.col("ratio_se"),
-                )
-            )
-            .otherwise(None)
-            .alias("ratio_ci_lo"),
-            pl.when(
-                pl.col("ratio_proj").is_not_null() & pl.col("ratio_se").is_not_null()
-            )
-            .then(pl.col("ratio_proj") + z_alpha * pl.col("ratio_se"))
-            .otherwise(None)
-            .alias("ratio_ci_hi"),
+        # 4) ratio_se / ratio_cv / analytical CI ------------------------------
+        full = _compose_ratio_stats(
+            full, estimator.se_method, estimator.rho, estimator.conf_level
         )
 
-        # 6) optional loss-side bootstrap overlay (strictly opt-in) -----------
+        # 5) optional loss-side bootstrap overlay (strictly opt-in) -----------
         # With no bootstrap, `full` is the pure analytical ratio fit and is
         # left byte-unchanged. Otherwise the loss SE columns are overlaid
         # from a loss-side bootstrap and the ratio SE / CV / CI are
@@ -531,82 +550,8 @@ class RatioFit:
         # Recompute ratio SE / CV / CI from the bootstrap-derived
         # `loss_total_se`. `ratio_proj` and observed cells are unchanged --
         # the overlay only touched projected-cell loss SE columns.
-        z_alpha = float(norm.ppf((1 + estimator.conf_level) / 2))
-        if estimator.se_method == "fixed":
-            full = full.with_columns(
-                pl.when(
-                    pl.col("loss_total_se").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") != 0.0)
-                )
-                .then(pl.col("loss_total_se") / pl.col("premium_proj"))
-                .otherwise(None)
-                .alias("ratio_se")
-            )
-        else:
-            # delta: Var(L/P) ~ (SE_L / P)^2 + (L * SE_P / P^2)^2
-            #                   - 2 rho L SE_L SE_P / P^3
-            rho = estimator.rho
-            full = full.with_columns(
-                (
-                    (pl.col("loss_total_se") / pl.col("premium_proj")) ** 2
-                    + (
-                        pl.col("loss_proj")
-                        * pl.col("premium_total_se")
-                        / (pl.col("premium_proj") ** 2)
-                    )
-                    ** 2
-                    - 2
-                    * rho
-                    * pl.col("loss_proj")
-                    * pl.col("loss_total_se")
-                    * pl.col("premium_total_se")
-                    / (pl.col("premium_proj") ** 3)
-                ).alias("_var_ratio")
-            )
-            full = full.with_columns(
-                pl.when(
-                    pl.col("loss_proj").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") > 0.0)
-                    & pl.col("loss_total_se").is_not_null()
-                    & pl.col("premium_total_se").is_not_null()
-                )
-                .then(pl.col("_var_ratio").clip(lower_bound=0.0).sqrt())
-                .otherwise(None)
-                .alias("ratio_se")
-            ).drop("_var_ratio")
-
-        full = full.with_columns(
-            pl.when(
-                pl.col("ratio_proj").is_not_null()
-                & (pl.col("ratio_proj") != 0.0)
-                & pl.col("ratio_se").is_not_null()
-            )
-            .then(pl.col("ratio_se") / pl.col("ratio_proj").abs())
-            .otherwise(None)
-            .alias("ratio_cv"),
-        )
-        full = full.with_columns(
-            pl.when(
-                pl.col("ratio_proj").is_not_null()
-                & pl.col("ratio_se").is_not_null()
-            )
-            .then(
-                pl.max_horizontal(
-                    pl.lit(0.0),
-                    pl.col("ratio_proj") - z_alpha * pl.col("ratio_se"),
-                )
-            )
-            .otherwise(None)
-            .alias("ratio_ci_lo"),
-            pl.when(
-                pl.col("ratio_proj").is_not_null()
-                & pl.col("ratio_se").is_not_null()
-            )
-            .then(pl.col("ratio_proj") + z_alpha * pl.col("ratio_se"))
-            .otherwise(None)
-            .alias("ratio_ci_hi"),
+        full = _compose_ratio_stats(
+            full, estimator.se_method, estimator.rho, estimator.conf_level
         )
 
         self.boots = boots
