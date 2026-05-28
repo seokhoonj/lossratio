@@ -93,6 +93,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `Regime` treatment ``"segment_wise_bridged"``. Same per-segment
+  factor estimation as ``"segment_wise"`` but each older segment's
+  mini-triangle is widened with a calendar-diagonal *bridge* anchored
+  at the next (newer) segment's first-cohort midpoint dev, so older
+  segments connect through to their successor instead of fitting in
+  isolation. The bridge only ever widens; the newest segment has no
+  successor and keeps its natural mini-triangle. Wired into
+  ``regime_at(treatment=...)`` / ``regime_spec(treatment=...)`` and
+  the same dispatch path as ``"segment_wise"`` in ``Loss`` / ``Ratio``
+  / ``Premium`` fits and ``Triangle.plot_triangle(view="usage")``.
+  New helper :func:`lossratio.regime._compute_segment_mini_tri_bounds`
+  carries the per-cell effective ``dev_min`` math shared by the
+  fit-time filter and the usage heatmap. Mirrors R commit
+  ``3f60df1``.
 - `Triangle.plot_triangle(view="usage")` now respects the
   ``segment_wise`` regime treatment: cells in groups listed in
   ``regime.changes`` are classified relative to their segment's

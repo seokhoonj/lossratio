@@ -434,17 +434,24 @@ def _seg_dev_min(
     cd_vec: list,
     group_col: str | None,
     group_value: Any,
+    bridge: bool = False,
 ) -> pl.DataFrame:
     """Compute per-cell ``dev_min`` for the segment_wise mini-triangle.
 
     For each cell in ``grp_rows``, classify its cohort into a segment
     via ``np.searchsorted(cd_vec, cohort, side='right')`` (i.e. the
-    R ``findInterval`` semantic + 1). For each segment, the last
-    cohort rank inside the segment sets ``dev_min = _max_cal -
-    seg_last_rank + 1``. The returned frame has columns ``[group_col?,
-    cohort, dev, _seg_dev_min]`` that the caller joins back onto the
-    expanded grid to override ``is_fit_data``.
+    R ``findInterval`` semantic + 1) and delegate the bounds math to
+    :func:`lossratio.regime._compute_segment_mini_tri_bounds`. When
+    ``bridge`` is ``True`` the older segments' walls are widened by
+    the calendar-diagonal bridge (segment_wise_bridged treatment);
+    when ``False`` only the natural wall applies.
+
+    The returned frame has columns ``[group_col?, cohort, dev,
+    _seg_dev_min]`` that the caller joins back onto the expanded grid
+    to override ``is_fit_data``.
     """
+    from .regime import _compute_segment_mini_tri_bounds
+
     cohorts = grp_rows["cohort"].to_numpy()
     cd_arr = np.array(cd_vec, dtype="datetime64[D]")
     coh_arr = np.array(cohorts, dtype="datetime64[D]")
@@ -452,17 +459,17 @@ def _seg_dev_min(
     # side='right') + 1, mapping each cohort to a 1-indexed segment.
     seg_id = np.searchsorted(cd_arr, coh_arr, side="right") + 1
 
-    work = grp_rows.with_columns(pl.Series("_seg_id", seg_id))
-    # seg_last_rank per segment = max(_coh_rank within that segment)
-    seg_last = (
-        work.group_by("_seg_id")
-        .agg(pl.col("_coh_rank").max().alias("_seg_last_rank"))
+    coh_ranks = grp_rows["_coh_rank"].to_numpy()
+    max_cal = int(grp_rows["_max_cal"][0])
+
+    dev_min_arr = _compute_segment_mini_tri_bounds(
+        coh_ranks=coh_ranks,
+        seg_ids=seg_id,
+        max_cal=max_cal,
+        bridge=bridge,
     )
-    work = work.join(seg_last, on="_seg_id", how="left").with_columns(
-        (pl.col("_max_cal") - pl.col("_seg_last_rank") + 1).alias(
-            "_seg_dev_min"
-        )
-    )
+
+    work = grp_rows.with_columns(pl.Series("_seg_dev_min", dev_min_arr))
     keep_cols = (
         [group_col] if group_col is not None else []
     ) + ["cohort", "dev", "_seg_dev_min"]
@@ -582,9 +589,12 @@ def _compute_triangle_usage(
     cd_scalar: Any = None
     cd_df: pl.DataFrame | None = None
     is_segment_wise = False
+    is_bridged = False
 
     if regime is not None:
-        is_segment_wise = getattr(regime, "treatment", None) == "segment_wise"
+        treatment = getattr(regime, "treatment", None)
+        is_segment_wise = treatment in ("segment_wise", "segment_wise_bridged")
+        is_bridged = treatment == "segment_wise_bridged"
         if not is_segment_wise:
             from .regime import _regime_cutoff_map
             cutoff_map = _regime_cutoff_map(regime)
@@ -687,7 +697,10 @@ def _compute_triangle_usage(
                     if grp_rows.height == 0 or not cd_vec:
                         continue
                     dev_min_parts.append(
-                        _seg_dev_min(grp_rows, cd_vec, reg_groups, g_val)
+                        _seg_dev_min(
+                            grp_rows, cd_vec, reg_groups, g_val,
+                            bridge=is_bridged,
+                        )
                     )
                 if dev_min_parts:
                     dev_min_df = pl.concat(dev_min_parts)
@@ -705,7 +718,9 @@ def _compute_triangle_usage(
                 # pooled segments
                 cd_vec = bp.sort("change")["change"].to_list()
                 if cd_vec:
-                    dev_min_df = _seg_dev_min(expanded, cd_vec, None, None)
+                    dev_min_df = _seg_dev_min(
+                        expanded, cd_vec, None, None, bridge=is_bridged,
+                    )
                     expanded = expanded.join(
                         dev_min_df, on=["cohort", "dev"], how="left",
                     ).with_columns(
@@ -841,7 +856,8 @@ def _plot_triangle_usage(
     cd_scalar: Any = None
     is_segment_wise = (
         regime_obj is not None
-        and getattr(regime_obj, "treatment", None) == "segment_wise"
+        and getattr(regime_obj, "treatment", None)
+        in ("segment_wise", "segment_wise_bridged")
     )
     if regime_obj is not None and not is_segment_wise:
         from .regime import _regime_cutoff_map

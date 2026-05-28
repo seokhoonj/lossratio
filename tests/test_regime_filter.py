@@ -286,3 +286,160 @@ def test_segment_wise_with_auto_detection():
     # (regime drop is in the data), making segment_wise meaningful.
     if fit.loss_fit.regime and fit.loss_fit.regime.breakpoints:
         assert "segment_id" in df.columns
+
+
+# ---------------------------------------------------------------------------
+# Phase D: segment_wise_bridged treatment
+# ---------------------------------------------------------------------------
+
+
+def test_compute_segment_mini_tri_bounds_natural_wall_default():
+    """Default (bridge=False) returns the natural mini-triangle wall:
+    dev_min = max_cal - seg_last + 1 per segment."""
+    import numpy as np
+    from lossratio.regime import _compute_segment_mini_tri_bounds
+
+    bounds = _compute_segment_mini_tri_bounds(
+        coh_ranks=np.array([1, 2, 3, 4]),
+        seg_ids=np.array([1, 1, 2, 2]),
+        max_cal=4,
+    )
+    # seg_last(1) = 2 -> dev_min 3; seg_last(2) = 4 -> dev_min 1.
+    assert list(bounds) == [3, 3, 1, 1]
+
+
+def test_compute_segment_mini_tri_bounds_bridge_widens_older_only():
+    """Two segments, bridge anchor in seg 2 puts ext_cal_idx(seg 1) = 2,
+    so seg 1's wall (natural = 3) widens to 2/1 by cohort rank. Seg 2
+    (newest) has no successor and keeps its natural wall."""
+    import numpy as np
+    from lossratio.regime import _compute_segment_mini_tri_bounds
+
+    # Mirrors the R unit test in tests/testthat/test-utils.R.
+    bounds = _compute_segment_mini_tri_bounds(
+        coh_ranks=np.array([1, 2, 3, 4]),
+        seg_ids=np.array([1, 1, 2, 2]),
+        max_cal=4,
+        bridge=True,
+    )
+    assert list(bounds) == [2, 1, 1, 1]
+
+
+def test_compute_segment_mini_tri_bounds_single_segment_passthrough():
+    """Single segment -> no successor to bridge from; bridge=True equals
+    bridge=False."""
+    import numpy as np
+    from lossratio.regime import _compute_segment_mini_tri_bounds
+
+    pure = _compute_segment_mini_tri_bounds(
+        coh_ranks=np.array([1, 2, 3]),
+        seg_ids=np.array([1, 1, 1]),
+        max_cal=3,
+    )
+    bridged = _compute_segment_mini_tri_bounds(
+        coh_ranks=np.array([1, 2, 3]),
+        seg_ids=np.array([1, 1, 1]),
+        max_cal=3,
+        bridge=True,
+    )
+    # seg_last = 3, max_cal = 3 -> dev_min = 1 for every cohort.
+    assert list(pure) == [1, 1, 1]
+    assert list(bridged) == [1, 1, 1]
+
+
+def _ten_cohort_triangular_grid() -> lr.Triangle:
+    """A 10-cohort monthly triangular grid where cohort i has dev 1..(11-i).
+    Cohorts start 2023-01-01. Loss/premium are placeholders -- the filter
+    tests only care about (cohort, dev) coverage."""
+    import datetime
+
+    rows: list[dict] = []
+    for i in range(1, 11):
+        cohort = datetime.date(2023, i, 1)
+        for d in range(1, 11 - i + 1):
+            rows.append(
+                {
+                    "uy_m": cohort,
+                    "dev_m": d,
+                    "incr_loss": 1.0,
+                    "incr_premium": 1.0,
+                }
+            )
+    df = pl.DataFrame(rows)
+    return lr.Triangle(df, calendar=None, dev="dev_m")
+
+
+def test_segment_wise_bridged_widens_older_segments_on_triangular_grid():
+    """End-to-end Triangle filter with three segments on a 10-cohort
+    triangular grid. Verifies that segment_wise_bridged widens seg 1
+    and seg 2's dev coverage relative to the natural mini-triangle, and
+    that the per-cohort minimum dev matches the R unit test's
+    hand-derived values."""
+    tri = _ten_cohort_triangular_grid()
+    reg = lr.regime_at(
+        change=["2023-04-01", "2023-08-01"],
+        treatment="segment_wise_bridged",
+    )
+
+    out = _apply_regime_filter(tri, reg).to_polars()
+    assert "segment_id" in out.columns
+    assert sorted(out["segment_id"].unique().to_list()) == [1, 2, 3]
+
+    # Union of devs per segment (matches R: seg 1 -> 5..10, seg 2 -> 2..7,
+    # seg 3 -> 1..3).
+    seg1_devs = sorted(out.filter(pl.col("segment_id") == 1)["dev"].unique().to_list())
+    seg2_devs = sorted(out.filter(pl.col("segment_id") == 2)["dev"].unique().to_list())
+    seg3_devs = sorted(out.filter(pl.col("segment_id") == 3)["dev"].unique().to_list())
+    assert seg1_devs == list(range(5, 11))
+    assert seg2_devs == list(range(2, 8))
+    assert seg3_devs == list(range(1, 4))
+
+    # Per-cohort min dev: bridge sweeps seg 1 down by one dev per
+    # cohort step away from the segment's last cohort until reaching
+    # the natural wall. R parity: seg 1 = [7, 6, 5], seg 2 = [4, 4, 3, 2].
+    min_dev = (
+        out.group_by(["cohort", "segment_id"])
+        .agg(pl.col("dev").min().alias("min_dev"))
+        .sort(["segment_id", "cohort"])
+    )
+    assert min_dev.filter(pl.col("segment_id") == 1)["min_dev"].to_list() == [7, 6, 5]
+    assert min_dev.filter(pl.col("segment_id") == 2)["min_dev"].to_list() == [4, 4, 3, 2]
+
+
+def test_segment_wise_bridged_is_a_superset_of_pure_segment_wise():
+    """The bridge only ever *widens* a segment's mini-triangle, so the
+    bridged filter must keep every row that pure segment_wise keeps."""
+    tri = _ten_cohort_triangular_grid()
+    changes = ["2023-04-01", "2023-08-01"]
+
+    pure = _apply_regime_filter(
+        tri, lr.regime_at(change=changes, treatment="segment_wise")
+    ).to_polars()
+    bridged = _apply_regime_filter(
+        tri, lr.regime_at(change=changes, treatment="segment_wise_bridged")
+    ).to_polars()
+
+    pure_keys = set(zip(pure["cohort"].to_list(), pure["dev"].to_list()))
+    bridged_keys = set(zip(bridged["cohort"].to_list(), bridged["dev"].to_list()))
+    assert pure_keys.issubset(bridged_keys)
+    # Bridge must strictly widen on this multi-segment grid.
+    assert bridged.height > pure.height
+
+
+def test_segment_wise_bridged_dispatch_into_segment_wise_fit():
+    """Ratio fits with treatment='segment_wise_bridged' must route
+    through the same per-segment fit path as 'segment_wise' (segment_id
+    column on the output)."""
+    tri = _sur_triangle()
+    reg = lr.regime_at(
+        change="2024-07-01", treatment="segment_wise_bridged"
+    )
+    fit = lr.Ratio(method="cl", loss_regime=reg, premium_regime=reg).fit(tri)
+    df = fit.to_polars()
+    assert "segment_id" in df.columns
+    assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
+
+
+def test_regime_at_rejects_unknown_treatment():
+    with pytest.raises(ValueError, match="treatment must be one of"):
+        lr.regime_at(change="2024-07-01", treatment="not_a_mode")

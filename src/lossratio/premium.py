@@ -344,7 +344,7 @@ class PremiumFit:
 
         if (
             regime is not None
-            and regime.treatment == "segment_wise"
+            and regime.treatment in ("segment_wise", "segment_wise_bridged")
             and regime.breakpoints
         ):
             return cls._segment_wise_fit(triangle, estimator, regime)

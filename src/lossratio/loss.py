@@ -786,9 +786,12 @@ class LossFit:
         # the triangle into per-segment mini-Triangles (mini-triangle
         # filter applied) and recurse with regime=None on each, then
         # concat the long-format outputs with a `segment_id` annotation.
+        # `"segment_wise_bridged"` follows the same dispatch path; the
+        # bridge only widens each older segment's mini-triangle and the
+        # split / fit logic is identical.
         if (
             regime is not None
-            and regime.treatment == "segment_wise"
+            and regime.treatment in ("segment_wise", "segment_wise_bridged")
             and regime.breakpoints
         ):
             return cls._segment_wise_fit(triangle, estimator, regime)

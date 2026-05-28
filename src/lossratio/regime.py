@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
-_VALID_TREATMENTS = ("latest_only", "segment_wise")
+_VALID_TREATMENTS = ("latest_only", "segment_wise", "segment_wise_bridged")
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -896,8 +896,16 @@ def regime_at(
     treatment
         Regime application mode. ``"latest_only"`` (default) drops
         cohorts before the most recent change. ``"segment_wise"``
-        (R parity, not yet wired into Python fit / backtest) estimates
-        factors separately per segment.
+        keeps all cohorts and estimates factors separately per
+        segment, restricting each segment to its natural mini-triangle
+        wall (``dev >= max_cal - seg_last + 1``).
+        ``"segment_wise_bridged"`` is the same but each older
+        segment's mini-triangle is widened with a calendar-diagonal
+        bridge anchored at the next segment's first-cohort midpoint
+        dev -- so older segments can connect through to their
+        successor instead of fitting in isolation. The newest segment
+        is not bridged (no successor) and keeps its natural
+        mini-triangle.
 
     Returns
     -------
@@ -1120,38 +1128,178 @@ def _segment_id_expr(
     return expr
 
 
+def _compute_segment_mini_tri_bounds(
+    coh_ranks: np.ndarray,
+    seg_ids: np.ndarray,
+    max_cal: int,
+    bridge: bool = False,
+) -> np.ndarray:
+    """Per-cell effective ``dev_min`` for the segment_wise mini-triangle.
+
+    For each cell, returns the minimum dev that keeps it inside its
+    segment's fit mask. The mask is the union of two regions:
+
+    1. The segment's natural mini-triangle:
+       ``dev >= max_cal - seg_last + 1``.
+    2. A *bridge* extension along the calendar diagonal anchored at the
+       *next* (newer) segment's first-cohort midpoint dev. The bridge
+       lets each older segment connect to its successor, filling the
+       late-dev cells of its early cohorts that would otherwise be cut
+       by the natural mini-triangle wall.
+
+    Bridge construction (segments ordered by ``seg_id``, lower id =
+    older cohorts). For each segment ``s`` except the newest (no
+    successor), find segment ``s+1``'s
+
+    * ``first_rank`` -- cohort rank of ``s+1``'s first cohort,
+    * ``seg_dev_min`` -- ``max_cal - last_rank(s+1) + 1``,
+    * ``first_cohort_dev_max`` -- ``max_cal - first_rank(s+1) + 1``,
+    * ``mid_dev`` -- ``(seg_dev_min + first_cohort_dev_max) // 2``.
+
+    The bridge diagonal for segment ``s`` is at
+    ``ext_cal_idx(s) = first_rank(s+1) + mid_dev(s+1) - 2`` (the cell
+    one cohort earlier than ``s+1``'s first cohort, at the same dev as
+    that first cohort's mini-triangle midpoint). Each cell in segment
+    ``s`` then takes
+    ``effective_dev_min =
+        min(seg_dev_min(s), ext_cal_idx(s) - coh_rank + 1)``.
+    For the newest segment ``ext_cal_idx`` is undefined and only the
+    natural wall applies.
+
+    Bridges do not cascade: segment ``s`` is bridged only from segment
+    ``s+1``, not from ``s+2``. The bridge only ever *widens* a
+    segment's mini-triangle.
+
+    Mirrors R's ``.compute_segment_mini_tri_bounds`` in ``R/utils.R``.
+
+    Parameters
+    ----------
+    coh_ranks
+        Per-cell cohort rank within the group (1-based, dense).
+    seg_ids
+        Per-cell segment id (1 = oldest).
+    max_cal
+        Maximum calendar index in the group.
+    bridge
+        When ``True``, widen each older segment's mini-triangle with
+        the calendar-diagonal bridge anchored at the next segment's
+        first-cohort midpoint dev. When ``False`` (default), return
+        the natural mini-triangle wall only -- the pure
+        ``"segment_wise"`` treatment. ``True`` corresponds to
+        ``"segment_wise_bridged"``.
+
+    Returns
+    -------
+    np.ndarray
+        Integer per-cell effective ``dev_min`` for the mini-triangle
+        filter (bridged or pure). Same length as ``coh_ranks``.
+    """
+    coh_ranks = np.asarray(coh_ranks, dtype=np.int64)
+    seg_ids = np.asarray(seg_ids, dtype=np.int64)
+    if coh_ranks.size == 0:
+        return np.empty(0, dtype=np.int64)
+
+    max_cal = int(max_cal)
+    unique_segs = np.unique(seg_ids)
+    seg_first: dict[int, int] = {}
+    seg_last: dict[int, int] = {}
+    for s in unique_segs:
+        mask = seg_ids == s
+        seg_first[int(s)] = int(coh_ranks[mask].min())
+        seg_last[int(s)] = int(coh_ranks[mask].max())
+
+    seg_dev_min = {s: max_cal - seg_last[s] + 1 for s in seg_first}
+    natural = np.fromiter(
+        (seg_dev_min[int(s)] for s in seg_ids),
+        dtype=np.int64,
+        count=seg_ids.size,
+    )
+
+    if not bridge:
+        return natural
+
+    first_cohort_dev_max = {s: max_cal - seg_first[s] + 1 for s in seg_first}
+    mid_dev = {
+        s: (seg_dev_min[s] + first_cohort_dev_max[s]) // 2
+        for s in seg_first
+    }
+
+    seg_sorted = sorted(seg_first)
+    ext_cal_idx: dict[int, int | None] = {s: None for s in seg_sorted}
+    for i in range(len(seg_sorted) - 1):
+        s_curr = seg_sorted[i]
+        s_next = seg_sorted[i + 1]
+        ext_cal_idx[s_curr] = seg_first[s_next] + mid_dev[s_next] - 2
+
+    out = np.empty_like(natural)
+    for i in range(seg_ids.size):
+        s = int(seg_ids[i])
+        ext = ext_cal_idx[s]
+        if ext is None:
+            out[i] = natural[i]
+        else:
+            out[i] = min(int(natural[i]), int(ext) - int(coh_ranks[i]) + 1)
+    return out
+
+
 def _apply_mini_triangle_filter(
     df: pl.DataFrame,
     regime: "Regime",
 ) -> pl.DataFrame:
-    """Apply the per-segment mini-triangle filter (segment_wise treatment).
+    """Apply the per-segment mini-triangle filter.
 
     For each (group, segment) cell, keeps rows where
-    ``dev >= max_cal - seg_last + 1`` -- the equal-trapezoid window that
-    limits factor estimation to cells within the segment's own
-    development reach.
+    ``dev >= effective_dev_min``. Under ``treatment="segment_wise"``
+    the effective ``dev_min`` is the natural mini-triangle wall
+    ``max_cal - seg_last + 1``. Under
+    ``treatment="segment_wise_bridged"`` each older segment's wall is
+    widened by a calendar-diagonal bridge anchored at the next
+    segment's first-cohort midpoint dev (see
+    :func:`_compute_segment_mini_tri_bounds`).
     """
+    bridge = regime.treatment == "segment_wise_bridged"
     grp = regime.groups if regime.groups in df.columns else None
     rank_keys = [grp] if grp else []
 
     df = df.with_columns(
-        pl.col("cohort").rank(method="dense").over(rank_keys or pl.lit(1)).cast(pl.Int64).alias("_coh_rank"),
+        pl.col("cohort")
+        .rank(method="dense")
+        .over(rank_keys or pl.lit(1))
+        .cast(pl.Int64)
+        .alias("_coh_rank"),
     )
     df = df.with_columns(
         (pl.col("_coh_rank") + pl.col("dev") - 1).alias("_cal_idx"),
     )
     df = df.with_columns(
         pl.col("_cal_idx").max().over(rank_keys or pl.lit(1)).alias("_max_cal"),
-        pl.col("_coh_rank")
-            .max()
-            .over((rank_keys or []) + ["segment_id"])
-            .alias("_seg_last"),
     )
-    df = df.with_columns(
-        (pl.col("_max_cal") - pl.col("_seg_last") + 1).alias("_dev_min")
-    )
+
+    # Bridge requires cross-segment access (next-segment anchor) that
+    # is awkward in pure polars `over`; compute per-group via numpy. The
+    # natural wall flows through the same helper for parity with R.
+    if grp is not None:
+        parts: list[pl.DataFrame] = []
+        for _, sub in df.group_by(grp, maintain_order=True):
+            bounds = _compute_segment_mini_tri_bounds(
+                coh_ranks=sub["_coh_rank"].to_numpy(),
+                seg_ids=sub["segment_id"].to_numpy(),
+                max_cal=int(sub["_max_cal"][0]),
+                bridge=bridge,
+            )
+            parts.append(sub.with_columns(pl.Series("_dev_min", bounds)))
+        df = pl.concat(parts, how="vertical_relaxed")
+    else:
+        bounds = _compute_segment_mini_tri_bounds(
+            coh_ranks=df["_coh_rank"].to_numpy(),
+            seg_ids=df["segment_id"].to_numpy(),
+            max_cal=int(df["_max_cal"][0]),
+            bridge=bridge,
+        )
+        df = df.with_columns(pl.Series("_dev_min", bounds))
+
     df = df.filter(pl.col("dev") >= pl.col("_dev_min")).drop(
-        "_coh_rank", "_cal_idx", "_max_cal", "_seg_last", "_dev_min"
+        "_coh_rank", "_cal_idx", "_max_cal", "_dev_min"
     )
     return df
 
@@ -1162,18 +1310,27 @@ def _apply_regime_filter(
 ) -> "Triangle":
     """Apply the regime cohort-axis filter to ``triangle``.
 
-    Two treatment modes:
+    Treatment modes:
 
     - ``"latest_only"`` (default): drops cohorts strictly before the
       latest change date per group. The output triangle has fewer
       cohorts; otherwise the schema is unchanged.
 
-    - ``"segment_wise"``: keeps **all** cohorts but tags each cell with
-      a ``segment_id`` column (1-based) and applies the mini-triangle
-      filter (``dev >= max_cal - seg_last + 1`` per segment). The
-      output triangle's ``_df`` carries the ``segment_id`` column;
-      downstream fit workers loop over ``(group, segment_id)`` tuples
-      to estimate per-segment factors.
+    - ``"segment_wise"``: keeps **all** cohorts but tags each cell
+      with a ``segment_id`` column (1-based) and applies the natural
+      mini-triangle filter (``dev >= max_cal - seg_last + 1`` per
+      segment).
+
+    - ``"segment_wise_bridged"``: same as ``"segment_wise"`` but each
+      older segment's mini-triangle is widened with a calendar-diagonal
+      bridge anchored at the next segment's first-cohort midpoint dev,
+      so older segments connect through to their successor. The newest
+      segment keeps its natural mini-triangle.
+
+    Under both segment-wise modes the output triangle's ``_df``
+    carries the ``segment_id`` column; downstream fit workers loop
+    over ``(group, segment_id)`` tuples to estimate per-segment
+    factors.
 
     When ``regime`` is ``None`` or has no change points, the input
     triangle is returned unchanged.
@@ -1183,7 +1340,7 @@ def _apply_regime_filter(
 
     from .triangle import Triangle
 
-    if regime.treatment == "segment_wise":
+    if regime.treatment in ("segment_wise", "segment_wise_bridged"):
         df = triangle.to_polars()
         seg_expr = _segment_id_expr(regime)
         if seg_expr is None:
