@@ -1625,17 +1625,23 @@ def _premium_proj_matrix(
     """Reshape PremiumFit slice into a (n_cohorts, n_devs) array of
     ``premium_proj`` values (NaN where missing).
     """
-    out = np.full((len(cohorts), n_devs), np.nan, dtype=np.float64)
     if pf_sub.height == 0:
-        return out
-    cohort_index = {c: i for i, c in enumerate(cohorts)}
-    for row in pf_sub.iter_rows(named=True):
-        i = cohort_index.get(row["cohort"])
-        if i is None:
-            continue
-        k = row["dev"] - 1
-        if 0 <= k < n_devs:
-            val = row.get("premium_proj")
-            if val is not None:
-                out[i, k] = float(val)
-    return out
+        return np.full((len(cohorts), n_devs), np.nan, dtype=np.float64)
+    # Reindex pf_sub onto the fixed (given cohorts) x (dev 1..n_devs)
+    # grid: cohorts/devs absent from pf_sub stay NaN; pf_sub rows outside
+    # the grid (unknown cohort or dev > n_devs) drop out. Cross join is
+    # cohort-major so a row-major reshape matches out[cohort_i, dev-1].
+    grid = pl.DataFrame({"cohort": cohorts}).join(
+        pl.DataFrame({"dev": list(range(1, n_devs + 1))}), how="cross"
+    )
+    filled = grid.join(
+        pf_sub.select(["cohort", "dev", "premium_proj"]),
+        on=["cohort", "dev"],
+        how="left",
+    )
+    return (
+        filled["premium_proj"]
+        .cast(pl.Float64)
+        .to_numpy()
+        .reshape(len(cohorts), n_devs)
+    )

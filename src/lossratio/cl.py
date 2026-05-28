@@ -70,19 +70,24 @@ def _build_value_matrix(
     ``"premium"``).
     """
     df = df.sort(["cohort", "dev"])
-    cohorts = df["cohort"].unique(maintain_order=True).to_list()
+    cohorts_df = df.select("cohort").unique(maintain_order=True)
+    cohorts = cohorts_df["cohort"].to_list()
     n_cohorts = len(cohorts)
     max_dev = int(df["dev"].max())
 
-    mat = np.full((n_cohorts, max_dev), np.nan, dtype=np.float64)
-    cohort_index = {c: i for i, c in enumerate(cohorts)}
-
-    for row in df.iter_rows(named=True):
-        i = cohort_index[row["cohort"]]
-        k = row["dev"] - 1
-        if 0 <= k < max_dev:
-            mat[i, k] = row[value_col]
-
+    # Left-join the observed cells onto the full (sorted cohort) x (dev
+    # 1..max_dev) grid; the cross join is cohort-major so a row-major
+    # reshape lands each value at mat[cohort_i, dev-1]. Missing cells
+    # stay null -> NaN.
+    grid = cohorts_df.join(
+        pl.DataFrame({"dev": list(range(1, max_dev + 1))}), how="cross"
+    )
+    filled = grid.join(
+        df.select(["cohort", "dev", value_col]), on=["cohort", "dev"], how="left"
+    )
+    mat = (
+        filled[value_col].cast(pl.Float64).to_numpy().reshape(n_cohorts, max_dev)
+    )
     return mat, cohorts, max_dev
 
 
