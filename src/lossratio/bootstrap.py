@@ -1053,18 +1053,25 @@ def _link_residuals_cl(
     loss_from = link_df["loss_from"].to_numpy().astype(np.float64)
     loss_to   = link_df["loss_to"].to_numpy().astype(np.float64)
 
-    # Anchor lookup keyed by (ata_from, ata_to).
-    anc_key = {
-        (int(anchor.ata_from[k]), int(anchor.ata_to[k])): k
-        for k in range(len(anchor.ata_from))
-    }
+    # Anchor lookup keyed by (ata_from, ata_to): encode the pair as a
+    # single integer key and map each link row onto the sorted anchor
+    # keys via searchsorted (anchor links are unique per (from, to)).
+    anc_from = anchor.ata_from.astype(np.int64)
+    anc_to   = anchor.ata_to.astype(np.int64)
     f_row  = np.full(cohort.shape, np.nan, dtype=np.float64)
     s2_row = np.full(cohort.shape, np.nan, dtype=np.float64)
-    for r in range(cohort.shape[0]):
-        k = anc_key.get((int(ata_from[r]), int(ata_to[r])))
-        if k is not None:
-            f_row[r]  = anchor.f_hat[k]
-            s2_row[r] = anchor.sigma2[k]
+    if anc_from.size and ata_to.size:
+        scale   = int(max(anc_to.max(), ata_to.max())) + 1
+        anc_key = anc_from * scale + anc_to
+        row_key = ata_from * scale + ata_to
+        order      = np.argsort(anc_key, kind="stable")
+        sorted_key = anc_key[order]
+        pos      = np.clip(np.searchsorted(sorted_key, row_key),
+                           0, sorted_key.size - 1)
+        hit      = sorted_key[pos] == row_key
+        k        = order[pos]
+        f_row    = np.where(hit, anchor.f_hat[k],  np.nan)
+        s2_row   = np.where(hit, anchor.sigma2[k], np.nan)
 
     ok = (
         np.isfinite(loss_from) & (loss_from > 0.0)
@@ -1122,11 +1129,9 @@ def _assign_pool_id(
     if pooling == "separated":
         return np.array([f"|{int(k)}" for k in key], dtype=object)
     if pooling == "tail_pooled":
-        out = np.empty(n, dtype=object)
         is_post = np.isfinite(cut) & (key >= cut)
-        for i in range(n):
-            out[i] = "|POST" if is_post[i] else f"|{int(key[i])}"
-        return out
+        labels  = np.array([f"|{int(k)}" for k in key], dtype=object)
+        return np.where(is_post, "|POST", labels)
     raise ValueError(
         f"pooling must be 'pooled', 'separated' or 'tail_pooled', "
         f"got {pooling!r}"
