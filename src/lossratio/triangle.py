@@ -482,7 +482,7 @@ class Triangle:
         R: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "latest_only",
+        treatment: str = "segment_bridged",
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
@@ -704,9 +704,9 @@ class Triangle:
             as "used".
         regime
             (usage view) ``None``, a :class:`Regime` instance, or a
-            callable ``triangle -> Regime``. Under ``latest_only``
-            treatment the latest change date per group cuts pre-change
-            cohorts to "unused".
+            callable ``triangle -> Regime``. A segment treatment masks
+            the triangle to the bridged development band; cells outside
+            the band show as "unused".
         holdout
             (usage view) Number of trailing calendar diagonals to flag
             as "holdout" (the hold-out pattern used by

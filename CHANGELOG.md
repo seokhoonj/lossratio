@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Regime treatment redesign (R parity).** The `treatment` enum is now
+  `("segment_bridged", "segment_bridged_borrowed")` with default
+  `"segment_bridged"`. The previous `"latest_only"`, `"segment_wise"`,
+  and `"segment_wise_bridged"` are removed: each either failed to
+  project the newest cohorts to the full development length
+  (`"latest_only"` shortens the horizon to the surviving subset;
+  `"segment_wise"` left the newest segment's late-dev cells unreachable)
+  or was a half-step toward the redesign. Both new treatments mask the
+  triangle to a *bridged* development band -- the per-segment
+  mini-triangle wall widened by a calendar-diagonal bridge to the next
+  segment's first-cohort midpoint dev -- which closes the factor gaps at
+  the segment boundaries so every cohort projects to full development.
+  `"segment_bridged"` (default) pools the whole band into a single
+  factor set and drops the `segment_id` tag; `"segment_bridged_borrowed"`
+  estimates factors per segment (early-dev factors stay regime-specific)
+  and keeps `segment_id`. Note: the `"segment_bridged_borrowed"`
+  late-dev *borrow* step is not yet ported (a follow-up), so under that
+  treatment the newest segment's late-dev cells are still unprojected;
+  use `"segment_bridged"` for full-development projection today.
 - `Triangle.detect_regime()` default `window=` changed from `12` to
   `"auto"`. The new resolver tries the per-group maturity point first
   (via `detect_maturity`), falls back to the Kneedle elbow on a window
@@ -93,32 +112,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New `Regime` treatment ``"segment_wise_bridged"``. Same per-segment
-  factor estimation as ``"segment_wise"`` but each older segment's
-  mini-triangle is widened with a calendar-diagonal *bridge* anchored
-  at the next (newer) segment's first-cohort midpoint dev, so older
-  segments connect through to their successor instead of fitting in
-  isolation. The bridge only ever widens; the newest segment has no
-  successor and keeps its natural mini-triangle. Wired into
-  ``regime_at(treatment=...)`` / ``regime_spec(treatment=...)`` and
-  the same dispatch path as ``"segment_wise"`` in ``Loss`` / ``Ratio``
-  / ``Premium`` fits and ``Triangle.plot_triangle(view="usage")``.
-  New helper :func:`lossratio.regime._compute_segment_mini_tri_bounds`
-  carries the per-cell effective ``dev_min`` math shared by the
-  fit-time filter and the usage heatmap. Mirrors R commit
-  ``3f60df1``.
-- `Triangle.plot_triangle(view="usage")` now respects the
-  ``segment_wise`` regime treatment: cells in groups listed in
-  ``regime.changes`` are classified relative to their segment's
-  mini-triangle anchored on the latest calendar diagonal
-  (``dev_min = max_cal - seg_last_rank + 1``), so cells outside the
-  segment's mini-triangle drop from ``used`` to ``unused``. Mirrors
-  R's ``.compute_triangle_usage`` segment_wise branch
-  (``R/triangle-vis.R:1182``). Untouched groups (no change rows in
-  the Regime) are unaffected. Maturity (``m_k``) does not shrink
-  the mini-triangle (R parity: it's a separate dashed-vline
-  reference only). Previously segment_wise regimes were classified
-  identically to ``latest_only``.
+- `Triangle.plot_triangle(view="usage")` respects a segment regime
+  treatment: cells in groups listed in ``regime.changes`` are
+  classified relative to their segment's bridged mini-triangle band, so
+  cells outside the band drop from ``used`` to ``unused``. Mirrors
+  R's ``.compute_triangle_usage`` segment branch. Untouched groups (no
+  change rows in the Regime) are unaffected. Maturity (``m_k``) does not
+  shrink the band (R parity: it's a separate dashed-vline reference
+  only).
 - `TriangleValidation.plot_triangle(view="calendar")` -- cohort x
   calendar layout of the gap heatmap, mirroring the R sibling's
   `view = "calendar"` branch (`R/triangle.R`). Per-cell calendar

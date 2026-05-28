@@ -1,9 +1,9 @@
-"""R parity for the segment_wise regime treatment.
+"""R parity for the segment_bridged_borrowed regime treatment.
 
-Fixtures are produced by ``dev/parity_segment_wise.R`` in the R repo
-on the canonical real-data fixture (``dev/data.rds``, surgery-only). The
-Python side rebuilds the same Triangle from the same input rows, runs
-the equivalent Ratio fit, and compares projections cell-by-cell.
+Fixtures are produced by the R repo's parity script on the canonical
+real-data fixture (surgery-only). The Python side rebuilds the same
+Triangle from the same input rows, runs the equivalent Ratio fit, and
+compares projections cell-by-cell.
 
 Tight numerical agreement is the contract: any drift signals an
 implementation divergence between the two language ports.
@@ -61,7 +61,7 @@ def _compare(
 def _build_triangle() -> lr.Triangle:
     """Reload the surgery-only input that R used and build a Triangle on
     the same column names (uy_m / cy_m / incr_loss / incr_prem)."""
-    raw = _load("segment_wise_input")
+    raw = _load("segment_bridged_borrowed_input")
     return lr.Triangle(
         raw,
         cohort="uy_m",
@@ -75,12 +75,12 @@ def _build_triangle() -> lr.Triangle:
 # ---------------------------------------------------------------------------
 
 
-def test_segment_wise_ratio_cl_full_matches_r():
+def test_segment_bridged_borrowed_ratio_cl_full_matches_r():
     """Cell-by-cell comparison of fit_ratio's $full projection under
-    segment_wise treatment (both loss + premium sides)."""
-    r = _load("segment_wise_ratio_cl_full").sort(["cohort", "dev"])
+    segment_bridged_borrowed treatment (both loss + premium sides)."""
+    r = _load("segment_bridged_borrowed_ratio_cl_full").sort(["cohort", "dev"])
     tri = _build_triangle()
-    reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
         method="cl",
         premium_method="cl",
@@ -108,11 +108,11 @@ def test_segment_wise_ratio_cl_full_matches_r():
     )
 
 
-def test_segment_wise_ratio_cl_summary_matches_r():
+def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
     """Per-cohort summary (ratio_ult / loss_ult / premium_ult) comparison."""
-    r = _load("segment_wise_ratio_cl_summary").sort(["cohort"])
+    r = _load("segment_bridged_borrowed_ratio_cl_summary").sort(["cohort"])
     tri = _build_triangle()
-    reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
         method="cl",
         premium_method="cl",
@@ -132,11 +132,11 @@ def test_segment_wise_ratio_cl_summary_matches_r():
     _compare(py, r, cols=common)
 
 
-def test_segment_wise_ratio_ed_full_matches_r():
-    """ED loss method + CL premium method under segment_wise."""
-    r = _load("segment_wise_ratio_ed_full").sort(["cohort", "dev"])
+def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
+    """ED loss method + CL premium method under segment_bridged_borrowed."""
+    r = _load("segment_bridged_borrowed_ratio_ed_full").sort(["cohort", "dev"])
     tri = _build_triangle()
-    reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
         method="ed",
         premium_method="cl",
@@ -156,11 +156,11 @@ def test_segment_wise_ratio_ed_full_matches_r():
     )
 
 
-def test_segment_wise_ratio_ed_summary_matches_r():
+def test_segment_bridged_borrowed_ratio_ed_summary_matches_r():
     """ED method summary comparison."""
-    r = _load("segment_wise_ratio_ed_summary").sort(["cohort"])
+    r = _load("segment_bridged_borrowed_ratio_ed_summary").sort(["cohort"])
     tri = _build_triangle()
-    reg = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
         method="ed",
         premium_method="cl",

@@ -782,16 +782,16 @@ class LossFit:
         original_tri = triangle
         regime = _resolve_regime(estimator.regime, triangle)
 
-        # segment_wise treatment: per-segment factor estimation. Split
-        # the triangle into per-segment mini-Triangles (mini-triangle
+        # segment_bridged_borrowed: per-segment factor estimation. Split
+        # the triangle into per-segment mini-Triangles (bridged band
         # filter applied) and recurse with regime=None on each, then
-        # concat the long-format outputs with a `segment_id` annotation.
-        # `"segment_wise_bridged"` follows the same dispatch path; the
-        # bridge only widens each older segment's mini-triangle and the
-        # split / fit logic is identical.
+        # concat the long-format outputs with a `segment_id` annotation
+        # plus the late-dev borrow. segment_bridged (default) instead
+        # pools the whole bridged band into one factor set, so it falls
+        # through to `_apply_regime_filter` (which drops `segment_id`).
         if (
             regime is not None
-            and regime.treatment in ("segment_wise", "segment_wise_bridged")
+            and regime.treatment == "segment_bridged_borrowed"
             and regime.breakpoints
         ):
             return cls._segment_wise_fit(triangle, estimator, regime)

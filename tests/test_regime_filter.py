@@ -1,4 +1,4 @@
-"""Tests for the 4-type regime dispatch + ``latest_only`` cohort filter
+"""Tests for the 4-type regime dispatch + bridged-band cell filter
 wired into Ratio / Loss / Premium / Backtest."""
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ def test_resolve_regime_callable_must_return_regime():
 
 
 # ---------------------------------------------------------------------------
-# _apply_regime_filter: latest_only mode
+# _apply_regime_filter: bridged-band cell mask
 # ---------------------------------------------------------------------------
 
 
@@ -83,33 +83,45 @@ def test_apply_regime_filter_no_breakpoints_passthrough():
     assert out.to_polars().height == tri.to_polars().height
 
 
-def test_apply_regime_filter_drops_pre_change_cohorts():
+def test_apply_regime_filter_band_masks_cells_keeps_cohorts():
+    """`segment_bridged` (default) masks the triangle to the bridged
+    development band: it keeps *all* cohorts but drops pre-regime
+    early-dev cells, so the result has fewer rows than the input and no
+    ``segment_id`` column (the pooled band carries no per-segment tag)."""
     tri = _sur_triangle()
+    orig = tri.to_polars()
     r = lr.regime_at(change="2024-07-01")
-    filtered = _apply_regime_filter(tri, r)
-    cohorts = filtered.to_polars()["cohort"].to_list()
-    assert all(c >= __import__("datetime").date(2024, 7, 1) for c in cohorts)
-    # And original cohort count drops
-    assert filtered.to_polars()["cohort"].n_unique() < tri.to_polars()["cohort"].n_unique()
+    assert r.treatment == "segment_bridged"
+    filtered = _apply_regime_filter(tri, r).to_polars()
+    # All cohorts preserved -- the band masks cells, not whole cohorts.
+    assert filtered["cohort"].n_unique() == orig["cohort"].n_unique()
+    # But strictly fewer rows (pre-regime early-dev cells removed).
+    assert filtered.height < orig.height
+    # Pooled band drops the per-segment tag.
+    assert "segment_id" not in filtered.columns
 
 
-def test_apply_regime_filter_per_group_cutoff():
+def test_apply_regime_filter_per_group_keeps_all_groups_cohorts():
+    """Multi-group regime: the band masks cells per group but keeps every
+    group's full cohort set, including groups that carry no change."""
     tri = _multi_group_triangle()
+    orig = tri.to_polars()
     r = lr.regime_at(
         change=["2024-01-01", "2024-07-01"],
         groups={"coverage": ["SUR", "CI"]},
     )
-    filtered = _apply_regime_filter(tri, r)
-    df = filtered.to_polars()
-    # SUR cohorts >= 2024-01-01
-    sur_min = df.filter(pl.col("coverage") == "SUR")["cohort"].min()
-    assert sur_min >= __import__("datetime").date(2024, 1, 1)
-    # CI cohorts >= 2024-07-01
-    ci_min = df.filter(pl.col("coverage") == "CI")["cohort"].min()
-    assert ci_min >= __import__("datetime").date(2024, 7, 1)
-    # Other groups (no cutoff in regime) pass through unfiltered
-    other = df.filter(~pl.col("coverage").is_in(["SUR", "CI"]))
-    assert other.height > 0
+    filtered = _apply_regime_filter(tri, r).to_polars()
+    # Every original group still present.
+    assert set(filtered["coverage"].unique().to_list()) == set(
+        orig["coverage"].unique().to_list()
+    )
+    # Each group keeps its full cohort set (band masks cells, not cohorts).
+    for cov in orig["coverage"].unique().to_list():
+        n_filt = filtered.filter(pl.col("coverage") == cov)["cohort"].n_unique()
+        n_orig = orig.filter(pl.col("coverage") == cov)["cohort"].n_unique()
+        assert n_filt == n_orig
+    # Overall fewer rows than the unfiltered triangle (cells removed).
+    assert filtered.height < orig.height
 
 
 # ---------------------------------------------------------------------------
@@ -117,22 +129,51 @@ def test_apply_regime_filter_per_group_cutoff():
 # ---------------------------------------------------------------------------
 
 
-def test_ratio_loss_regime_filters_loss_cohorts():
+def test_ratio_loss_regime_changes_loss_fit():
+    """A loss-side regime masks the band before the loss fit, so the
+    loss projection differs from a no-regime fit. Cohorts are *not*
+    dropped -- the band masks cells, so the cohort set is unchanged."""
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01")
     fit = lr.Ratio(method="sa", loss_regime=r).fit(tri)
-    # loss_fit only carries surviving cohorts (cohorts >= 2024-07-01)
-    n = fit.loss_fit.to_polars()["cohort"].n_unique()
-    assert n < tri.to_polars()["cohort"].n_unique()
+    fit_no = lr.Ratio(method="sa").fit(tri)
+
+    df = fit.loss_fit.to_polars().sort(["cohort", "dev"])
+    df_no = fit_no.loss_fit.to_polars().sort(["cohort", "dev"])
+
+    # Cohort set unchanged (no cohort drop under the band mask).
+    assert df["cohort"].n_unique() == tri.to_polars()["cohort"].n_unique()
     assert fit.loss_fit.regime is r
 
+    # The regime changes the loss projection vs. a no-regime fit.
+    joined = df.join(df_no, on=["cohort", "dev"], how="inner", suffix="_no")
+    diff = (
+        joined["loss_proj"].fill_null(0.0)
+        - joined["loss_proj_no"].fill_null(0.0)
+    ).abs().sum()
+    assert diff > 0.0
 
-def test_ratio_premium_regime_filters_premium_cohorts():
+
+def test_ratio_premium_regime_changes_premium_fit():
+    """A premium-side regime changes the premium projection without
+    dropping cohorts."""
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01")
     fit = lr.Ratio(method="sa", premium_regime=r).fit(tri)
-    n_premium = fit.premium_fit.to_polars()["cohort"].n_unique()
-    assert n_premium < tri.to_polars()["cohort"].n_unique()
+    fit_no = lr.Ratio(method="sa").fit(tri)
+
+    df = fit.premium_fit.to_polars().sort(["cohort", "dev"])
+    df_no = fit_no.premium_fit.to_polars().sort(["cohort", "dev"])
+
+    assert df["cohort"].n_unique() == tri.to_polars()["cohort"].n_unique()
+    assert fit.premium_fit.regime is r
+
+    joined = df.join(df_no, on=["cohort", "dev"], how="inner", suffix="_no")
+    diff = (
+        joined["premium_proj"].fill_null(0.0)
+        - joined["premium_proj_no"].fill_null(0.0)
+    ).abs().sum()
+    assert diff > 0.0
 
 
 def test_ratio_loss_regime_auto_sentinel():
@@ -151,15 +192,44 @@ def test_ratio_loss_regime_lazy_spec():
 
 
 def test_ratio_loss_and_premium_regime_independent():
-    """The two regimes apply independently to loss and premium sides."""
+    """The two regimes apply independently to loss and premium sides.
+
+    Different change dates on each side must touch only that side: the
+    premium projection changes with a different premium_regime while the
+    loss projection (same loss_regime) is byte-identical."""
     tri = _sur_triangle()
     ratio_reg = lr.regime_at(change="2024-07-01")
     pr_reg = lr.regime_at(change="2024-10-01")
-    fit = lr.Ratio(method="sa", loss_regime=ratio_reg, premium_regime=pr_reg).fit(tri)
-    loss_min = fit.loss_fit.to_polars()["cohort"].min()
-    premium_min = fit.premium_fit.to_polars()["cohort"].min()
-    # Premium is cut more strictly
-    assert premium_min > loss_min
+
+    fit = lr.Ratio(
+        method="sa", loss_regime=ratio_reg, premium_regime=pr_reg
+    ).fit(tri)
+    # Reference fit: same loss_regime, but premium uses the loss change.
+    fit_same = lr.Ratio(
+        method="sa", loss_regime=ratio_reg, premium_regime=ratio_reg
+    ).fit(tri)
+
+    assert fit.loss_fit.regime is ratio_reg
+    assert fit.premium_fit.regime is pr_reg
+
+    ldf = fit.loss_fit.to_polars().sort(["cohort", "dev"])
+    ldf_same = fit_same.loss_fit.to_polars().sort(["cohort", "dev"])
+    pdf = fit.premium_fit.to_polars().sort(["cohort", "dev"])
+    pdf_same = fit_same.premium_fit.to_polars().sort(["cohort", "dev"])
+
+    # Loss side identical (same loss_regime both fits).
+    lj = ldf.join(ldf_same, on=["cohort", "dev"], how="inner", suffix="_s")
+    l_diff = (
+        lj["loss_proj"].fill_null(0.0) - lj["loss_proj_s"].fill_null(0.0)
+    ).abs().sum()
+    assert l_diff == 0.0
+
+    # Premium side differs because premium_regime differs -> independence.
+    pj = pdf.join(pdf_same, on=["cohort", "dev"], how="inner", suffix="_s")
+    p_diff = (
+        pj["premium_proj"].fill_null(0.0) - pj["premium_proj_s"].fill_null(0.0)
+    ).abs().sum()
+    assert p_diff > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -191,105 +261,104 @@ def test_backtest_with_lazy_regime_spec_redetects_on_masked():
 
 
 # ---------------------------------------------------------------------------
-# Phase C: segment_wise treatment
+# segment_bridged_borrowed treatment (per-segment estimation, keeps segment_id)
 # ---------------------------------------------------------------------------
 
 
-def test_segment_wise_filter_annotates_segment_id():
-    """segment_wise mode tags each cell with segment_id and applies the
-    mini-triangle filter (keeps fewer cells than the original)."""
+def test_segment_bridged_borrowed_filter_annotates_segment_id():
+    """segment_bridged_borrowed mode tags each cell with segment_id and
+    applies the bridged-band filter (keeps fewer cells than the
+    original) while preserving all cohorts."""
     tri = _sur_triangle()
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     filtered = _apply_regime_filter(tri, r)
     df = filtered.to_polars()
     assert "segment_id" in df.columns
     assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
-    # All cohorts preserved (no cohort drop, unlike latest_only)
+    # All cohorts preserved (the band masks cells, not whole cohorts).
     assert df["cohort"].n_unique() == tri.to_polars()["cohort"].n_unique()
-    # But fewer cells (mini-triangle filter)
+    # But fewer cells (bridged-band filter).
     assert df.height < tri.to_polars().height
 
 
-def test_segment_wise_split_into_mini_triangles():
+def test_segment_bridged_borrowed_split_into_mini_triangles():
     from lossratio.regime import _split_into_segment_triangles
 
     tri = _sur_triangle()
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    # Two change points -> three segments under per-segment estimation.
+    r = lr.regime_at(
+        change=["2024-01-01", "2024-07-01"],
+        treatment="segment_bridged_borrowed",
+    )
     segs = _split_into_segment_triangles(tri, r)
-    assert set(segs.keys()) == {1, 2}
-    # Each segment is a stand-alone Triangle (no segment_id column)
+    # Multiple segments for a 2-change SUR regime.
+    assert len(segs) > 1
+    assert set(segs.keys()) == {1, 2, 3}
+    # Each segment is a stand-alone Triangle (no segment_id column).
     for seg_id, seg_tri in segs.items():
         assert isinstance(seg_tri, lr.Triangle)
         assert "segment_id" not in seg_tri.to_polars().columns
 
 
-def test_segment_wise_fit_emits_segment_id_column():
+def test_segment_bridged_borrowed_fit_emits_segment_id_column():
     tri = _sur_triangle()
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(method="cl", loss_regime=r, premium_regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
-    assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
+    assert sorted(df["segment_id"].drop_nulls().unique().to_list()) == [1, 2]
 
 
-def test_segment_wise_ratio_ult_differs_between_segments():
-    """The per-segment factor estimation should yield distinct
-    ultimate LRs for early vs late cohorts."""
+def test_segment_bridged_pooled_fit_drops_segment_id():
+    """The pooled `segment_bridged` treatment estimates one factor set
+    over the masked band, so the fit output carries no segment_id."""
     tri = _sur_triangle()
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    r = lr.regime_at(change="2024-07-01")  # default: segment_bridged
     fit = lr.Ratio(method="cl", loss_regime=r, premium_regime=r).fit(tri)
-    s = fit.summary()
-    if hasattr(s, "to_polars"):
-        s = s.to_polars()
-    # Cohorts before vs after the change
-    import datetime
-    early = s.filter(pl.col("cohort") < datetime.date(2024, 7, 1))
-    late = s.filter(pl.col("cohort") >= datetime.date(2024, 7, 1))
-    # Both segments produce projections
-    assert early.height > 0
-    assert late.height > 0
-    # SUR data has a regime drop at mid-2024 → early lr > late lr on
-    # average. Use means to avoid late-cohort noise from single-dev
-    # cohorts.
-    early_mean = early["ratio_ult"].drop_nulls().mean()
-    late_mean = late["ratio_ult"].drop_nulls().mean()
-    assert early_mean > late_mean
+    df = fit.to_polars()
+    assert "segment_id" not in df.columns
+    # Pooled bridged band still projects every cohort to full development.
+    newest = df["cohort"].max()
+    newest_sub = df.filter(pl.col("cohort") == newest)
+    assert newest_sub["loss_proj"].null_count() == 0
 
 
-def test_segment_wise_loss_only():
-    """Loss-side segment_wise works standalone without Ratio composition."""
+def test_segment_bridged_borrowed_loss_only():
+    """Loss-side segment_bridged_borrowed works standalone without Ratio
+    composition (keeps segment_id)."""
     tri = _sur_triangle()
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Loss(method="cl", regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
     assert fit.regime is r
 
 
-def test_segment_wise_premium_only():
+def test_segment_bridged_borrowed_premium_only():
     tri = _sur_triangle()
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
+    r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Premium(method="ed", regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
     assert fit.regime is r
 
 
-def test_segment_wise_with_auto_detection():
-    """`loss_regime='auto'` triggers detect_regime; user can opt into
-    segment_wise via regime_spec or by setting treatment after detection."""
+def test_segment_bridged_borrowed_with_auto_detection():
+    """`loss_regime=spec` with treatment='segment_bridged_borrowed'
+    triggers detect_regime and routes through the per-segment path."""
     tri = _sur_triangle()
-    spec = lr.regime_spec(window=12, treatment="segment_wise")
+    spec = lr.regime_spec(window=12, treatment="segment_bridged_borrowed")
     fit = lr.Ratio(method="cl", loss_regime=spec).fit(tri)
     df = fit.to_polars()
     # Auto detect on SUR with window=12 should find at least one break
-    # (regime drop is in the data), making segment_wise meaningful.
+    # (regime drop is in the data), making per-segment estimation
+    # meaningful (segment_id column emitted).
     if fit.loss_fit.regime and fit.loss_fit.regime.breakpoints:
         assert "segment_id" in df.columns
 
 
 # ---------------------------------------------------------------------------
-# Phase D: segment_wise_bridged treatment
+# Bridged-band bounds helper (numeric behavior unchanged across treatments)
 # ---------------------------------------------------------------------------
 
 
@@ -369,16 +438,16 @@ def _ten_cohort_triangular_grid() -> lr.Triangle:
     return lr.Triangle(df, calendar=None, dev="dev_m")
 
 
-def test_segment_wise_bridged_widens_older_segments_on_triangular_grid():
+def test_segment_bridged_borrowed_widens_older_segments_on_triangular_grid():
     """End-to-end Triangle filter with three segments on a 10-cohort
-    triangular grid. Verifies that segment_wise_bridged widens seg 1
-    and seg 2's dev coverage relative to the natural mini-triangle, and
+    triangular grid. Verifies that the bridged band widens seg 1 and
+    seg 2's dev coverage relative to the natural mini-triangle, and
     that the per-cohort minimum dev matches the R unit test's
     hand-derived values."""
     tri = _ten_cohort_triangular_grid()
     reg = lr.regime_at(
         change=["2023-04-01", "2023-08-01"],
-        treatment="segment_wise_bridged",
+        treatment="segment_bridged_borrowed",
     )
 
     out = _apply_regime_filter(tri, reg).to_polars()
@@ -406,38 +475,17 @@ def test_segment_wise_bridged_widens_older_segments_on_triangular_grid():
     assert min_dev.filter(pl.col("segment_id") == 2)["min_dev"].to_list() == [4, 4, 3, 2]
 
 
-def test_segment_wise_bridged_is_a_superset_of_pure_segment_wise():
-    """The bridge only ever *widens* a segment's mini-triangle, so the
-    bridged filter must keep every row that pure segment_wise keeps."""
-    tri = _ten_cohort_triangular_grid()
-    changes = ["2023-04-01", "2023-08-01"]
-
-    pure = _apply_regime_filter(
-        tri, lr.regime_at(change=changes, treatment="segment_wise")
-    ).to_polars()
-    bridged = _apply_regime_filter(
-        tri, lr.regime_at(change=changes, treatment="segment_wise_bridged")
-    ).to_polars()
-
-    pure_keys = set(zip(pure["cohort"].to_list(), pure["dev"].to_list()))
-    bridged_keys = set(zip(bridged["cohort"].to_list(), bridged["dev"].to_list()))
-    assert pure_keys.issubset(bridged_keys)
-    # Bridge must strictly widen on this multi-segment grid.
-    assert bridged.height > pure.height
-
-
-def test_segment_wise_bridged_dispatch_into_segment_wise_fit():
-    """Ratio fits with treatment='segment_wise_bridged' must route
-    through the same per-segment fit path as 'segment_wise' (segment_id
-    column on the output)."""
+def test_segment_bridged_borrowed_dispatch_into_per_segment_fit():
+    """Ratio fits with treatment='segment_bridged_borrowed' route through
+    the per-segment fit path, tagging the output with segment_id."""
     tri = _sur_triangle()
     reg = lr.regime_at(
-        change="2024-07-01", treatment="segment_wise_bridged"
+        change="2024-07-01", treatment="segment_bridged_borrowed"
     )
     fit = lr.Ratio(method="cl", loss_regime=reg, premium_regime=reg).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
-    assert sorted(df["segment_id"].unique().to_list()) == [1, 2]
+    assert sorted(df["segment_id"].drop_nulls().unique().to_list()) == [1, 2]
 
 
 def test_regime_at_rejects_unknown_treatment():

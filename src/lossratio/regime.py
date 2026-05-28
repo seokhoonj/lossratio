@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
-_VALID_TREATMENTS = ("latest_only", "segment_wise", "segment_wise_bridged")
+_VALID_TREATMENTS = ("segment_bridged", "segment_bridged_borrowed")
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -529,7 +529,7 @@ class Regime:
         R: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "latest_only",
+        treatment: str = "segment_bridged",
     ) -> "Regime":
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -873,7 +873,7 @@ def regime_at(
     change: Any,
     *,
     groups: Mapping[str, Sequence[Any]] | None = None,
-    treatment: str = "latest_only",
+    treatment: str = "segment_bridged",
 ) -> "Regime":
     """Build a :class:`Regime` from explicit, user-supplied change points.
 
@@ -894,18 +894,18 @@ def regime_at(
         aligned 1:1 with ``change``. Required when the Triangle is
         grouped and different groups carry different change points.
     treatment
-        Regime application mode. ``"latest_only"`` (default) drops
-        cohorts before the most recent change. ``"segment_wise"``
-        keeps all cohorts and estimates factors separately per
-        segment, restricting each segment to its natural mini-triangle
-        wall (``dev >= max_cal - seg_last + 1``).
-        ``"segment_wise_bridged"`` is the same but each older
-        segment's mini-triangle is widened with a calendar-diagonal
-        bridge anchored at the next segment's first-cohort midpoint
-        dev -- so older segments can connect through to their
-        successor instead of fitting in isolation. The newest segment
-        is not bridged (no successor) and keeps its natural
-        mini-triangle.
+        Regime application mode. Both modes mask the triangle to a
+        *bridged* development band -- each segment's mini-triangle wall
+        (``dev >= max_cal - seg_last + 1``) widened by a
+        calendar-diagonal bridge to the next segment's first-cohort
+        midpoint dev, which closes the factor gaps at the segment
+        boundaries so every cohort projects to full development.
+        ``"segment_bridged"`` (default) pools the whole band into a
+        single factor set (the development pattern is shared across
+        regimes). ``"segment_bridged_borrowed"`` estimates factors per
+        segment (early-dev factors stay regime-specific) and borrows
+        the late-dev factors a segment cannot reach from a donor
+        segment that can.
 
     Returns
     -------
@@ -977,7 +977,7 @@ def regime_spec(
     R: int = 999,
     min_size: int = 3,
     seed: int | None = None,
-    treatment: str = "latest_only",
+    treatment: str = "segment_bridged",
 ) -> Callable[["Triangle"], "Regime"]:
     """Build a lazy regime-detection spec.
 
@@ -1134,7 +1134,7 @@ def _compute_segment_mini_tri_bounds(
     max_cal: int,
     bridge: bool = False,
 ) -> np.ndarray:
-    """Per-cell effective ``dev_min`` for the segment_wise mini-triangle.
+    """Per-cell effective ``dev_min`` for the segment mini-triangle band.
 
     For each cell, returns the minimum dev that keeps it inside its
     segment's fit mask. The mask is the union of two regions:
@@ -1185,8 +1185,9 @@ def _compute_segment_mini_tri_bounds(
         the calendar-diagonal bridge anchored at the next segment's
         first-cohort midpoint dev. When ``False`` (default), return
         the natural mini-triangle wall only -- the pure
-        ``"segment_wise"`` treatment. ``True`` corresponds to
-        ``"segment_wise_bridged"``.
+        natural mini-triangle wall (no boundary-gap closure); retained
+        for diagnostics and the helper unit tests. Both segment
+        treatments pass ``True``.
 
     Returns
     -------
@@ -1246,18 +1247,23 @@ def _apply_mini_triangle_filter(
     df: pl.DataFrame,
     regime: "Regime",
 ) -> pl.DataFrame:
-    """Apply the per-segment mini-triangle filter.
+    """Mask the triangle to the bridged development band.
 
     For each (group, segment) cell, keeps rows where
-    ``dev >= effective_dev_min``. Under ``treatment="segment_wise"``
-    the effective ``dev_min`` is the natural mini-triangle wall
-    ``max_cal - seg_last + 1``. Under
-    ``treatment="segment_wise_bridged"`` each older segment's wall is
-    widened by a calendar-diagonal bridge anchored at the next
-    segment's first-cohort midpoint dev (see
-    :func:`_compute_segment_mini_tri_bounds`).
+    ``dev >= effective_dev_min``, where the bound is the per-segment
+    mini-triangle wall (``max_cal - seg_last + 1``) widened by the
+    calendar-diagonal bridge to the next segment's first-cohort midpoint
+    dev (see :func:`_compute_segment_mini_tri_bounds`). Both segment
+    treatments use the bridged band.
+
+    Under ``treatment="segment_bridged"`` the ``segment_id`` tag is
+    dropped after masking so downstream estimation pools the whole band
+    into one factor set. Under ``treatment="segment_bridged_borrowed"``
+    the tag is kept for per-segment estimation.
     """
-    bridge = regime.treatment == "segment_wise_bridged"
+    if df.height == 0:
+        return df
+    bridge = True
     grp = regime.groups if regime.groups in df.columns else None
     rank_keys = [grp] if grp else []
 
@@ -1301,6 +1307,10 @@ def _apply_mini_triangle_filter(
     df = df.filter(pl.col("dev") >= pl.col("_dev_min")).drop(
         "_coh_rank", "_cal_idx", "_max_cal", "_dev_min"
     )
+    # segment_bridged pools the masked band -- drop the per-segment tag
+    # so downstream estimation does not group by segment_id.
+    if regime.treatment == "segment_bridged" and "segment_id" in df.columns:
+        df = df.drop("segment_id")
     return df
 
 
@@ -1308,29 +1318,26 @@ def _apply_regime_filter(
     triangle: "Triangle",
     regime: "Regime | None",
 ) -> "Triangle":
-    """Apply the regime cohort-axis filter to ``triangle``.
+    """Mask ``triangle`` to the bridged development band for a regime.
 
-    Treatment modes:
+    Both treatments mask the triangle to the bridged band -- each
+    segment's mini-triangle wall (``dev >= max_cal - seg_last + 1``)
+    widened by a calendar-diagonal bridge to the next segment's
+    first-cohort midpoint dev. The bridge closes the factor gaps at the
+    segment boundaries so a continuous factor run covers every dev and
+    every cohort projects to full development.
 
-    - ``"latest_only"`` (default): drops cohorts strictly before the
-      latest change date per group. The output triangle has fewer
-      cohorts; otherwise the schema is unchanged.
+    - ``"segment_bridged"`` (default): the masked band drops its
+      ``segment_id`` tag so downstream estimation pools the band into a
+      single factor set. This function returns the pooled masked
+      triangle directly.
 
-    - ``"segment_wise"``: keeps **all** cohorts but tags each cell
-      with a ``segment_id`` column (1-based) and applies the natural
-      mini-triangle filter (``dev >= max_cal - seg_last + 1`` per
-      segment).
-
-    - ``"segment_wise_bridged"``: same as ``"segment_wise"`` but each
-      older segment's mini-triangle is widened with a calendar-diagonal
-      bridge anchored at the next segment's first-cohort midpoint dev,
-      so older segments connect through to their successor. The newest
-      segment keeps its natural mini-triangle.
-
-    Under both segment-wise modes the output triangle's ``_df``
-    carries the ``segment_id`` column; downstream fit workers loop
-    over ``(group, segment_id)`` tuples to estimate per-segment
-    factors.
+    - ``"segment_bridged_borrowed"``: keeps ``segment_id`` so the fit
+      dispatcher routes to per-segment estimation + late-dev borrow (it
+      does not reach this function; the dispatcher calls
+      :func:`_split_into_segment_triangles` instead). When it does reach
+      here (e.g. premium-side fits without a borrow path), the masked
+      triangle carries ``segment_id``.
 
     When ``regime`` is ``None`` or has no change points, the input
     triangle is returned unchanged.
@@ -1340,35 +1347,12 @@ def _apply_regime_filter(
 
     from .triangle import Triangle
 
-    if regime.treatment in ("segment_wise", "segment_wise_bridged"):
-        df = triangle.to_polars()
-        seg_expr = _segment_id_expr(regime)
-        if seg_expr is None:
-            return triangle
-        df = df.with_columns(seg_expr.alias("segment_id"))
-        df = _apply_mini_triangle_filter(df, regime)
-        return Triangle._from_masked(triangle, df)
-
-    # latest_only (default): drop cohorts strictly before the cutoff.
     df = triangle.to_polars()
-    cutoff_map = _regime_cutoff_map(regime)
-    if cutoff_map is None:
+    seg_expr = _segment_id_expr(regime)
+    if seg_expr is None:
         return triangle
-
-    if "_cutoff" in df.columns:  # defensive: should never collide
-        df = df.drop("_cutoff")
-
-    if regime.groups is not None and regime.groups in df.columns:
-        df = df.join(cutoff_map, on=regime.groups, how="left")
-    else:
-        df = df.with_columns(
-            pl.lit(cutoff_map["_cutoff"][0]).alias("_cutoff")
-        )
-
-    df = df.filter(
-        pl.col("_cutoff").is_null() | (pl.col("cohort") >= pl.col("_cutoff"))
-    ).drop("_cutoff")
-
+    df = df.with_columns(seg_expr.alias("segment_id"))
+    df = _apply_mini_triangle_filter(df, regime)
     return Triangle._from_masked(triangle, df)
 
 
@@ -1378,8 +1362,8 @@ def _split_into_segment_triangles(
 ) -> dict[int, "Triangle"]:
     """Split a Triangle into per-segment mini-Triangles.
 
-    Used by fit consumers for ``treatment="segment_wise"``: each
-    segment is fit independently. Returns a mapping
+    Used by fit consumers for ``treatment="segment_bridged_borrowed"``:
+    each segment is fit independently. Returns a mapping
     ``{segment_id: mini_triangle}`` ordered by segment_id ascending.
     The mini-triangle filter is applied first so each segment's cells
     obey the equal-trapezoid window.
@@ -1409,25 +1393,3 @@ def _split_into_segment_triangles(
             continue
         out[int(seg_id)] = Triangle._from_masked(triangle, sub)
     return out
-
-    # latest_only (default)
-    df = triangle.to_polars()
-    cutoff_map = _regime_cutoff_map(regime)
-    if cutoff_map is None:
-        return triangle
-
-    if "_cutoff" in df.columns:  # defensive: should never collide
-        df = df.drop("_cutoff")
-
-    if regime.groups is not None and regime.groups in df.columns:
-        df = df.join(cutoff_map, on=regime.groups, how="left")
-    else:
-        df = df.with_columns(
-            pl.lit(cutoff_map["_cutoff"][0]).alias("_cutoff")
-        )
-
-    df = df.filter(
-        pl.col("_cutoff").is_null() | (pl.col("cohort") >= pl.col("_cutoff"))
-    ).drop("_cutoff")
-
-    return Triangle._from_masked(triangle, df)

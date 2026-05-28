@@ -26,7 +26,7 @@ def test_regime_at_single_string_change():
     assert isinstance(r, lr.Regime)
     assert r.method == "manual"
     assert r.breakpoints == [date(2024, 7, 1)]
-    assert r.treatment == "latest_only"
+    assert r.treatment == "segment_bridged"
 
 
 def test_regime_at_accepts_date_and_datetime():
@@ -54,9 +54,9 @@ def test_regime_at_with_groups():
     assert changes["regime_id"].to_list() == [2, 2]
 
 
-def test_regime_at_segment_wise_treatment():
-    r = lr.regime_at(change="2024-07-01", treatment="segment_wise")
-    assert r.treatment == "segment_wise"
+def test_regime_at_segment_bridged_borrowed_treatment():
+    r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
+    assert r.treatment == "segment_bridged_borrowed"
 
 
 def test_regime_at_validation_errors():
@@ -94,9 +94,9 @@ def test_regime_spec_invocation_yields_regime():
 
 def test_regime_spec_propagates_treatment():
     tri = _sur_triangle()
-    spec = lr.regime_spec(window=12, treatment="segment_wise")
+    spec = lr.regime_spec(window=12, treatment="segment_bridged_borrowed")
     r = spec(tri)
-    assert r.treatment == "segment_wise"
+    assert r.treatment == "segment_bridged_borrowed"
 
 
 def test_regime_spec_forwards_method():
