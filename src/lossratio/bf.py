@@ -121,7 +121,7 @@ def _resolve_credibility(credibility: Any) -> dict[str, Any] | None:
     return {"method": "bs", "K": None if K is None else float(K)}
 
 
-def _last_finite_per_row(mat: np.ndarray) -> np.ndarray:
+def _last_non_nan_per_row(mat: np.ndarray) -> np.ndarray:
     """Last non-NaN value along axis 1 per row (NaN if a row is all NaN).
 
     ``inf`` counts as present, matching the ``~np.isnan`` mask of the
@@ -154,9 +154,9 @@ def _compute_q_table(
     premium_proj = premium_result.premium_proj
     n_cohorts = loss_obs.shape[0]
 
-    loss_latest = _last_finite_per_row(loss_obs)
-    loss_ult_cl = _last_finite_per_row(loss_proj)
-    premium_ult = _last_finite_per_row(premium_proj)
+    loss_latest = _last_non_nan_per_row(loss_obs)
+    loss_ult_cl = _last_non_nan_per_row(loss_proj)
+    premium_ult = _last_non_nan_per_row(premium_proj)
 
     q = np.full(n_cohorts, np.nan, dtype=np.float64)
     ok = np.isfinite(loss_ult_cl) & (loss_ult_cl > 0)

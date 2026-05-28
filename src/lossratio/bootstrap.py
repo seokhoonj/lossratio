@@ -1512,28 +1512,29 @@ def _fwd_proj_sa(
 
 
 def _fwd_sim_cell_bulk(
-    rng:       np.random.Generator,
-    cum_mean:  np.ndarray,
-    last_obs:  np.ndarray,
-    inc_mean3: np.ndarray,
-    phi3:      "float | np.ndarray",
-    alpha:     float,
-    pc:        int,
-    masked:    bool,
+    rng:          np.random.Generator,
+    cum_mean:     np.ndarray,
+    last_obs:     np.ndarray,
+    inc_mean3:    np.ndarray,
+    phi:          "float | np.ndarray",
+    alpha:        float,
+    process_code: int,
+    masked:       bool,
 ) -> np.ndarray:
     """Vectorised cell-independent Stage-2 accumulation (shared cl/ed/sa).
 
-    ``inc_mean3`` (n_coh, n_dev, B) is the per-cell mean increment, NaN
+    Arrays suffixed ``3`` are 3-D ``(n_coh, n_dev, B)``; ``2`` are 2-D
+    ``(n_coh, n_dev)``. ``inc_mean3`` is the per-cell mean increment, NaN
     where a draw must propagate NaN and 0 where the cell carries the
-    previous level with no contribution. ``phi3`` is a scalar or a
-    per-cell (n_coh, n_dev) dispersion. ``masked=True`` applies the
+    previous level with no contribution. ``phi`` is a scalar or a
+    per-cell ``(n_coh, n_dev)`` dispersion. ``masked=True`` applies the
     CL/SA ``both`` semantics (``cum_sampled`` is NaN where the
     ``cum_mean`` dev-pair is not both finite); ``masked=False`` is the
     ED rule (the running sum is written across the whole projected
     region). The active-draw subset is drawn in (cohort, dev, B) C-order
-    via one ``rng`` call -- the same order a per-cell loop consumes the
-    stream -- and accumulation is a base-seeded cumsum so the float
-    addition order matches the recursion exactly.
+    via one ``rng`` call -- the same order the per-cell loop it replaced
+    consumed the stream -- and accumulation is a base-seeded cumsum so
+    the float addition order matches the recursion exactly.
     """
     n_coh, n_dev, B = cum_mean.shape
     cum_sampled = cum_mean.copy()
@@ -1547,27 +1548,27 @@ def _fwd_sim_cell_bulk(
     processed2 = cohort_ok[:, None] & (np.arange(n_dev)[None, :] > lj[:, None])
     processed3 = np.broadcast_to(processed2[:, :, None], (n_coh, n_dev, B))
 
-    if np.ndim(phi3) == 0:
-        phi3b = np.full((n_coh, n_dev, B), float(phi3), dtype=np.float64)
+    if np.ndim(phi) == 0:
+        phi3 = np.full((n_coh, n_dev, B), float(phi), dtype=np.float64)
     else:
-        phi3b = np.broadcast_to(
-            np.asarray(phi3, dtype=np.float64)[:, :, None], (n_coh, n_dev, B)
+        phi3 = np.broadcast_to(
+            np.asarray(phi, dtype=np.float64)[:, :, None], (n_coh, n_dev, B)
         )
 
     # Active cell-paradigm draws: finite positive mean, positive phi.
     active3 = (
         processed3 & np.isfinite(inc_mean3) & (inc_mean3 > 0.0)
-        & np.isfinite(phi3b) & (phi3b > 0.0)
+        & np.isfinite(phi3) & (phi3 > 0.0)
     )
     inc_sampled3 = inc_mean3.copy()
     if active3.any():
         idx = np.where(active3)        # C-order == (cohort, dev, B) loop order
-        if pc in (1, 2):               # gamma / od_pois
+        if process_code in (1, 2):     # gamma / od_pois
             inc_sampled3[idx] = rng.gamma(
-                shape=inc_mean3[idx] / phi3b[idx], scale=phi3b[idx]
+                shape=inc_mean3[idx] / phi3[idx], scale=phi3[idx]
             )
-        elif pc == 3:                  # normal
-            sd = np.sqrt(phi3b[idx] * np.power(np.abs(inc_mean3[idx]), alpha))
+        elif process_code == 3:        # normal
+            sd = np.sqrt(phi3[idx] * np.power(np.abs(inc_mean3[idx]), alpha))
             inc_sampled3[idx] = (
                 inc_mean3[idx] + rng.normal(0.0, 1.0, size=idx[0].size) * sd
             )
@@ -1582,10 +1583,10 @@ def _fwd_sim_cell_bulk(
         both3[:, 1:, :] = (
             np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
         )
-        place = processed3 & both3
-        contrib = np.where(place, inc_sampled3, contrib)
+        place_mask = processed3 & both3
+        contrib = np.where(place_mask, inc_sampled3, contrib)
         csum = np.cumsum(contrib, axis=1)
-        cum_sampled = np.where(place, csum, cum_sampled)
+        cum_sampled = np.where(place_mask, csum, cum_sampled)
         cum_sampled = np.where(processed3 & ~both3, np.nan, cum_sampled)
     else:
         contrib = np.where(processed3, inc_sampled3, contrib)
@@ -1693,9 +1694,9 @@ def _fwd_sim_sa_cell(
     # per-cell dispersion: phi_cl in the CL stage (j >= mat_k), else phi_ed.
     mk = mat_k.astype(np.int64)
     stage_cl = (mk[:, None] != big) & (np.arange(n_dev)[None, :] >= mk[:, None])
-    phi3 = np.where(stage_cl, phi_cl, phi_ed)
+    phi = np.where(stage_cl, phi_cl, phi_ed)
     return _fwd_sim_cell_bulk(
-        rng, cum_mean, last_obs, inc_mean3, phi3, alpha, process_code,
+        rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
         masked=True,
     )
 
@@ -1776,12 +1777,12 @@ def _fwd_sim_cl_link(
 
 
 def _draw_parametric_cells(
-    rng:   np.random.Generator,
-    mu:    np.ndarray,
-    phi:   "float | np.ndarray",
-    alpha: float,
-    pc:    int,
-    B:     int,
+    rng:          np.random.Generator,
+    mu:           np.ndarray,
+    phi:          "float | np.ndarray",
+    alpha:        float,
+    process_code: int,
+    B:            int,
 ) -> np.ndarray:
     """Vectorised parametric Stage-1 draw for many cells at once.
 
@@ -1801,15 +1802,15 @@ def _draw_parametric_cells(
     )
     mu_fin = np.isfinite(mu)
     phi_ok = np.isfinite(phi_arr) & (phi_arr > 0.0)
-    if pc in (1, 2):                 # gamma / od_pois
+    if process_code in (1, 2):       # gamma / od_pois
         draw = mu_fin & (mu > 0.0) & phi_ok
-    elif pc == 3:                    # normal
+    elif process_code == 3:          # normal
         draw = mu_fin & phi_ok
     else:
         draw = np.zeros(n, dtype=bool)
     m = int(draw.sum())
     if m:
-        if pc in (1, 2):
+        if process_code in (1, 2):
             shape = np.broadcast_to(
                 (mu[draw] / phi_arr[draw])[:, None], (m, B)
             )
