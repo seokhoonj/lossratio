@@ -28,7 +28,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import mirror_output
+from ._io import _iter_group_frames, mirror_output
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .bootstrap import (
@@ -976,9 +976,9 @@ class BFFit:
         summary_parts: list[pl.DataFrame] = []
         prior_parts: list[pl.DataFrame] = []
 
-        if groups is None:
-            loss_obs, cohorts, _ = _build_value_matrix(tri_df, loss)
-            premium_obs, _, _ = _build_value_matrix(tri_df, exposure)
+        for g, sub in _iter_group_frames(tri_df, groups):
+            loss_obs, cohorts, _ = _build_value_matrix(sub, loss)
+            premium_obs, _, _ = _build_value_matrix(sub, exposure)
             result = _fit_bf_cc_single(
                 loss_obs,
                 premium_obs,
@@ -988,40 +988,16 @@ class BFFit:
                 credibility=estimator.credibility,
                 cape_cod=False,
                 prior=estimator.prior,
-                group_value=None,
+                group_value=g,
                 recent=estimator.recent,
             )
-            full_parts.append(_bf_full_df(result, None, None))
+            full_parts.append(_bf_full_df(result, groups, g))
             summary_parts.append(
-                _bf_summary_df(result, None, None, cape_cod=False)
+                _bf_summary_df(result, groups, g, cape_cod=False)
             )
             prior_parts.append(
-                _bf_prior_df(estimator.prior, cohorts, None, None)
+                _bf_prior_df(estimator.prior, cohorts, groups, g)
             )
-        else:
-            for g in tri_df[groups].unique(maintain_order=True).to_list():
-                sub = tri_df.filter(pl.col(groups) == g)
-                loss_obs, cohorts, _ = _build_value_matrix(sub, loss)
-                premium_obs, _, _ = _build_value_matrix(sub, exposure)
-                result = _fit_bf_cc_single(
-                    loss_obs,
-                    premium_obs,
-                    cohorts,
-                    sigma_method=estimator.sigma_method,
-                    conf_level=estimator.conf_level,
-                    credibility=estimator.credibility,
-                    cape_cod=False,
-                    prior=estimator.prior,
-                    group_value=g,
-                    recent=estimator.recent,
-                )
-                full_parts.append(_bf_full_df(result, groups, g))
-                summary_parts.append(
-                    _bf_summary_df(result, groups, g, cape_cod=False)
-                )
-                prior_parts.append(
-                    _bf_prior_df(estimator.prior, cohorts, groups, g)
-                )
 
         self._df = (
             pl.concat(full_parts) if full_parts else pl.DataFrame()

@@ -18,7 +18,12 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import _nan_skip_diff, _nan_to_null, mirror_output
+from ._io import (
+    _iter_group_frames,
+    _nan_skip_diff,
+    _nan_to_null,
+    mirror_output,
+)
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
@@ -500,34 +505,19 @@ class PremiumFit:
         groups = triangle._groups
         recent = estimator.recent
 
-        if groups is None:
-            premium_obs, cohorts, _ = _build_premium_matrix(tri_df)
+        parts: list[pl.DataFrame] = []
+        for g, sub in _iter_group_frames(tri_df, groups):
+            premium_obs, cohorts, _ = _build_premium_matrix(sub)
             result = _fit_premium_single(
                 premium_obs, estimator.method, estimator.sigma_method,
                 link_mask=recent_link_mask(premium_obs, recent),
             )
-            long_df = _premium_long_df(
-                result, cohorts, None, None, estimator.conf_level
+            parts.append(
+                _premium_long_df(
+                    result, cohorts, groups, g, estimator.conf_level
+                )
             )
-        else:
-            parts: list[pl.DataFrame] = []
-            for g in (
-                tri_df[groups].unique(maintain_order=True).to_list()
-            ):
-                sub = tri_df.filter(pl.col(groups) == g)
-                premium_obs, cohorts, _ = _build_premium_matrix(sub)
-                result = _fit_premium_single(
-                    premium_obs, estimator.method, estimator.sigma_method,
-                    link_mask=recent_link_mask(premium_obs, recent),
-                )
-                parts.append(
-                    _premium_long_df(
-                        result, cohorts, groups, g, estimator.conf_level
-                    )
-                )
-            long_df = pl.concat(parts) if parts else pl.DataFrame()
-
-        self._df = long_df
+        self._df = pl.concat(parts) if parts else pl.DataFrame()
         return self
 
     @classmethod
@@ -566,13 +556,7 @@ class PremiumFit:
         groups = masked._groups
 
         parts: list[pl.DataFrame] = []
-        group_values: list[Any] = (
-            [None]
-            if groups is None
-            else tri_df[groups].unique(maintain_order=True).to_list()
-        )
-        for g in group_values:
-            sub = tri_df if g is None else tri_df.filter(pl.col(groups) == g)
+        for g, sub in _iter_group_frames(tri_df, groups):
             premium_obs, cohorts, _ = _build_premium_matrix(sub)
             seg_map = {
                 c: int(s)

@@ -22,7 +22,12 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import _nan_skip_diff, _nan_to_null, mirror_output
+from ._io import (
+    _iter_group_frames,
+    _nan_skip_diff,
+    _nan_to_null,
+    mirror_output,
+)
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
@@ -1061,11 +1066,16 @@ class LossFit:
         # internal-params dict; not exposed to user but kept for Ratio bootstrap
         self._internals: dict[Any, _LossResult] = {}
 
-        if groups is None:
-            loss_obs, cohorts, _ = _build_loss_matrix(tri_df)
-            premium_obs, _, _ = _build_premium_matrix(tri_df)
+        long_parts: list[pl.DataFrame] = []
+        kstar_rows: list[dict[str, Any]] = []
+        for g, sub in _iter_group_frames(tri_df, groups):
+            pf_sub = pf_df if groups is None else pf_df.filter(pl.col(groups) == g)
+            loss_obs, cohorts, _ = _build_loss_matrix(sub)
+            premium_obs, _, _ = _build_premium_matrix(sub)
             # premium_proj from PremiumFit (cohort, dev) -> value
-            premium_proj_mat = _premium_proj_matrix(pf_df, cohorts, loss_obs.shape[1])
+            premium_proj_mat = _premium_proj_matrix(
+                pf_sub, cohorts, loss_obs.shape[1]
+            )
             result = _fit_loss_single(
                 loss_obs,
                 premium_obs,
@@ -1076,67 +1086,22 @@ class LossFit:
                 estimator.max_rse,
                 estimator.min_run,
                 recent=estimator.recent,
-                mat_k_override=_mat_k_for_group(mat_override, None),
+                mat_k_override=_mat_k_for_group(mat_override, g),
             )
-            long_df = _loss_long_df(
-                result,
-                cohorts,
-                pf_df,
-                None,
-                None,
-                estimator.conf_level,
+            long_parts.append(
+                _loss_long_df(
+                    result, cohorts, pf_sub, groups, g, estimator.conf_level
+                )
             )
-            kstar_df = pl.DataFrame(
-                [{"mat_k": result.mat_k, "method": estimator.method}]
-            )
-            self._internals[None] = result
-        else:
-            long_parts: list[pl.DataFrame] = []
-            kstar_rows: list[dict[str, Any]] = []
-            for g in (
-                tri_df[groups].unique(maintain_order=True).to_list()
-            ):
-                sub = tri_df.filter(pl.col(groups) == g)
-                pf_sub = pf_df.filter(pl.col(groups) == g)
-                loss_obs, cohorts, _ = _build_loss_matrix(sub)
-                premium_obs, _, _ = _build_premium_matrix(sub)
-                premium_proj_mat = _premium_proj_matrix(
-                    pf_sub, cohorts, loss_obs.shape[1]
-                )
-                result = _fit_loss_single(
-                    loss_obs,
-                    premium_obs,
-                    premium_proj_mat,
-                    estimator.method,
-                    estimator.sigma_method,
-                    estimator.max_cv,
-                    estimator.max_rse,
-                    estimator.min_run,
-                    recent=estimator.recent,
-                    mat_k_override=_mat_k_for_group(mat_override, g),
-                )
-                long_parts.append(
-                    _loss_long_df(
-                        result,
-                        cohorts,
-                        pf_sub,
-                        groups,
-                        g,
-                        estimator.conf_level,
-                    )
-                )
-                kstar_rows.append(
-                    {
-                        groups: g,
-                        "mat_k": result.mat_k,
-                        "method": estimator.method,
-                    }
-                )
-                self._internals[g] = result
-            long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
-            kstar_df = (
-                pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
-            )
+            row: dict[str, Any] = {}
+            if groups is not None:
+                row[groups] = g
+            row["mat_k"] = result.mat_k
+            row["method"] = estimator.method
+            kstar_rows.append(row)
+            self._internals[g] = result
+        long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
+        kstar_df = pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
 
         # ----- Tail factor (method='cl' only; R parity) --------------------
         # Apply per-group `_tail`-suffixed companion columns to the last-dev
@@ -1305,14 +1270,8 @@ class LossFit:
         kstar_rows: list[dict[str, Any]] = []
         internals_combined: dict[Any, _LossResult] = {}
 
-        group_values: list[Any] = (
-            [None]
-            if groups is None
-            else tri_df[groups].unique(maintain_order=True).to_list()
-        )
-        for g in group_values:
-            sub = tri_df if g is None else tri_df.filter(pl.col(groups) == g)
-            pf_sub = pf_df if g is None else pf_df.filter(pl.col(groups) == g)
+        for g, sub in _iter_group_frames(tri_df, groups):
+            pf_sub = pf_df if groups is None else pf_df.filter(pl.col(groups) == g)
             loss_obs, cohorts, _ = _build_loss_matrix(sub)
             premium_obs, _, _ = _build_premium_matrix(sub)
             premium_proj = _premium_proj_matrix(

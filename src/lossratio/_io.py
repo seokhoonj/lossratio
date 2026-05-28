@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
@@ -72,6 +73,25 @@ def _nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
     if not float_cols:
         return df
     return df.with_columns([pl.col(c).fill_nan(None) for c in float_cols])
+
+
+def _iter_group_frames(
+    df: pl.DataFrame, groups: str | None
+) -> Iterator[tuple[Any, pl.DataFrame]]:
+    """Yield ``(group_value, sub_frame)`` pairs for a grouped fit.
+
+    When ``groups`` is ``None`` yields a single ``(None, df)``; otherwise
+    partitions ``df`` by ``groups`` (first-seen group order, original row
+    order within each group) and yields one ``(group_value, sub_frame)``
+    per group in a single pass. Replaces the repeated
+    ``if groups is None / else: for g in unique: filter`` scaffolding in
+    the Loss / Premium / BF / CC fit loops.
+    """
+    if groups is None:
+        yield None, df
+        return
+    for sub in df.partition_by(groups, maintain_order=True):
+        yield sub[groups][0], sub
 
 
 def _arrays_to_long_df(
