@@ -194,12 +194,6 @@ def _expand_to_full_grid(
     return out
 
 
-def _safe_div(a, b):
-    if b is None or b == 0 or a is None:
-        return None
-    return a / b
-
-
 def _resolve_maturity_override(
     maturity: Any,
     triangle: "Triangle",
@@ -434,7 +428,6 @@ def _fit_loss_single(
     from ._recent import recent_link_mask
 
     n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
 
     # Recent-diagonal link-level fit masks (None when recent=None).
     loss_link_mask = recent_link_mask(loss_obs, recent)
@@ -998,7 +991,6 @@ class LossFit:
         from .regime import (
             _apply_regime_filter,
             _resolve_regime,
-            _split_into_segment_triangles,
         )
 
         original_tri = triangle

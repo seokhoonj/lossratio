@@ -70,7 +70,6 @@ def extrapolate_tail_sigma2(
         )
 
     s = sigma2_k.copy().astype(np.float64, copy=False)
-    n = len(s)
 
     # An entry needs filling iff it is non-finite or non-positive.
     needs_fill = ~np.isfinite(s) | (s <= 0.0)

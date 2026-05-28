@@ -21,8 +21,6 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from .ata import ATA
-    from .intensity import Intensity
     from .link import Link
 
 
@@ -602,8 +600,6 @@ def _apply_maturity_overlay(
     ax.axvline(ata_from, color="grey", linestyle=(0, (5, 4)), linewidth=0.8)
     # shaded band from maturity onwards
     xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    ymax = ylim[1] if y_max is None else min(ylim[1], y_max)
     ax.axvspan(
         ata_from, xlim[1],
         facecolor="#AED6F1", alpha=0.25, zorder=0,

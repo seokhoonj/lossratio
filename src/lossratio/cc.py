@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
-from scipy.stats import norm
 
 from ._io import _iter_group_frames, mirror_output
 from ._recent import validate_recent as _validate_recent
@@ -38,7 +37,6 @@ from .bf import (
 )
 from .bootstrap import (
     CCBootstrap,
-    _agg_sd_quantile,
     _bf_compose_bootstrap,
     _resolve_bootstrap_bf,
 )

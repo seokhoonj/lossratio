@@ -22,7 +22,6 @@ from scipy.stats import norm
 from ._plot import (
     _auto_divisor,
     _format_period_series,
-    _get_amount_unit,
     _get_period_type,
     _pretty_var_label,
 )

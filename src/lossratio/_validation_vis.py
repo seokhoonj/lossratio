@@ -136,7 +136,6 @@ def plot_triangle_validation(
             f"`view` must be 'dev' or 'calendar'; got {view!r}."
         )
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
 
     gaps = tv._gaps if hasattr(tv, "_gaps") else tv.to_polars()
     if gaps.height == 0:

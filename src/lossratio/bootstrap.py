@@ -26,7 +26,7 @@ Davison & Hinkley (1997) -- type-1 ordinal percentile CI.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -1408,7 +1408,6 @@ def _fwd_proj_cl(
     previous dev forward unchanged). Finite negatives are clipped to 0.
     """
     n_coh, n_dev, B = cum.shape
-    n_links = f_star.shape[0]
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1

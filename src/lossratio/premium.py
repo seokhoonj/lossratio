@@ -27,7 +27,7 @@ from ._io import (
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
-from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
+from .cl import _fit_mack, _mack_f_var
 from .ed import _build_premium_matrix
 
 if TYPE_CHECKING:
@@ -209,7 +209,6 @@ def _fit_premium_single(
     premium_proj = mack.loss_proj
     f_k = mack.f_k
     sigma2_k = mack.sigma2_k
-    sum_col_k = mack.sum_col_k
     f_var = _mack_f_var(mack)
     n_cohorts, n_devs = premium_obs.shape
     n_links = n_devs - 1
@@ -475,7 +474,6 @@ class PremiumFit:
         from .regime import (
             _apply_regime_filter,
             _resolve_regime,
-            _split_into_segment_triangles,
         )
 
         regime = _resolve_regime(estimator.regime, triangle)
