@@ -1717,48 +1717,61 @@ def _fwd_sim_cl_link(
     ``var = sigma2[k] * |prev|^alpha``. Gamma uses ``shape =
     mu^2/var``, ``scale = var/mu``; Normal adds ``N(0, sqrt(var))``.
     Pathological steps degenerate to the deterministic mean.
+
+    The dev recursion is irreducibly sequential (each step's draw
+    parameters depend on the previous noisy level), but the cohort axis
+    is vectorised: at each dev all active cohorts are drawn in one ``rng``
+    call. This consumes the RNG stream in dev-major order, so it is a
+    different (equally valid) Monte-Carlo sample than a cohort-major loop
+    would produce -- not bit-identical, but the projection means come
+    from ``cum_mean`` (untouched here) and the SE shift is Monte-Carlo
+    noise within the statistical R-parity tolerance.
     """
     n_coh, n_dev, B = cum_mean.shape
     n_links = f_star.shape[0]
     cum_sampled = cum_mean.copy()
-    for i in range(n_coh):
-        lj = int(last_obs[i])           # 0-indexed last observed dev
-        if lj < 0 or lj >= n_dev - 1:
-            continue
-        prev = cum_sampled[i, lj, :].astype(np.float64, copy=True)
-        if not np.isfinite(prev).any():
-            continue
-        for j in range(lj + 1, n_dev):
-            k_1 = int(k_idx_by_j[j])
-            if k_1 == -1:
-                cum_sampled[i, j, :] = prev
-                continue
-            k = k_1 - 1
-            f_b = f_star[k, :]
-            f_b = np.where(np.isfinite(f_b), f_b, 1.0)
-            mu_step = f_b * prev
-            s2_k = sigma2[k] if 0 <= k < n_links else np.nan
+    lj = last_obs.astype(np.int64)
+    valid = (lj >= 0) & (lj <= n_dev - 2)
+    seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_dev - 1), :]
+    cohort_ok = valid & np.isfinite(seed).any(axis=1)
+    if not cohort_ok.any():
+        return cum_sampled
 
-            new = mu_step.copy()
-            if np.isfinite(s2_k) and s2_k > 0.0:
-                var = s2_k * np.power(np.abs(prev), alpha)
-                noisy = (
-                    np.isfinite(var) & (var > 0.0)
-                    & np.isfinite(mu_step) & (mu_step > 0.0)
-                    & np.isfinite(prev) & (prev > 0.0)
-                )
-                if noisy.any():
-                    if process_code in (1, 2):    # gamma / od_pois
-                        shape = mu_step[noisy] ** 2 / var[noisy]
-                        scale = var[noisy] / mu_step[noisy]
-                        new[noisy] = rng.gamma(shape=shape, scale=scale)
-                    elif process_code == 3:       # normal
-                        eps = rng.normal(0.0, 1.0, size=int(noisy.sum()))
-                        new[noisy] = mu_step[noisy] + eps * np.sqrt(var[noisy])
-            neg = np.isfinite(new) & (new < 0.0)
-            new[neg] = 0.0
-            cum_sampled[i, j, :] = new
-            prev = new
+    prev = seed.copy()                       # (n_coh, B); only cohort_ok rows used
+    for j in range(1, n_dev):
+        active = cohort_ok & (lj < j)        # cohorts past their last obs at dev j
+        if not active.any():
+            continue
+        k_1 = int(k_idx_by_j[j])
+        if k_1 == -1:
+            cum_sampled[active, j, :] = prev[active]   # carry, no draw
+            continue
+        k = k_1 - 1
+        f_b = np.where(np.isfinite(f_star[k, :]), f_star[k, :], 1.0)   # (B,)
+        s2_k = sigma2[k] if 0 <= k < n_links else np.nan
+        prev_a = prev[active]                # (n_active, B)
+        mu_step = f_b[None, :] * prev_a
+
+        new = mu_step.copy()
+        if np.isfinite(s2_k) and s2_k > 0.0:
+            var = s2_k * np.power(np.abs(prev_a), alpha)
+            noisy = (
+                np.isfinite(var) & (var > 0.0)
+                & np.isfinite(mu_step) & (mu_step > 0.0)
+                & np.isfinite(prev_a) & (prev_a > 0.0)
+            )
+            if noisy.any():
+                if process_code in (1, 2):    # gamma / od_pois
+                    shape = mu_step[noisy] ** 2 / var[noisy]
+                    scale = var[noisy] / mu_step[noisy]
+                    new[noisy] = rng.gamma(shape=shape, scale=scale)
+                elif process_code == 3:       # normal
+                    eps = rng.normal(0.0, 1.0, size=int(noisy.sum()))
+                    new[noisy] = mu_step[noisy] + eps * np.sqrt(var[noisy])
+        neg = np.isfinite(new) & (new < 0.0)
+        new[neg] = 0.0
+        cum_sampled[active, j, :] = new
+        prev[active] = new
     return cum_sampled
 
 
