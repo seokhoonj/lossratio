@@ -112,8 +112,13 @@ def _fit_ed(
         n_k = int(mask.sum())
 
         if n_k == 0:
-            g_k[k] = 0.0
-            sigma2_g_k[k] = 0.0
+            # Link never fitted by this (sub)triangle: leave g / sigma2
+            # unestimated (NaN, mirroring `_fit_mack`). NaN -- not 0.0 --
+            # is what the segment_bridged_borrowed donor detection keys
+            # off: a 0.0 here would be read as an owned (zero-increment)
+            # factor and never borrowed, flat-lining late-dev projection.
+            g_k[k] = np.nan
+            sigma2_g_k[k] = np.nan
             continue
 
         ck_eff = ck[mask]
