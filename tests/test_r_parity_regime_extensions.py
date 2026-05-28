@@ -110,7 +110,7 @@ def test_regime_window_auto_resolved_value_matches_r():
     """
     r = _load("regime_window_auto_window")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    reg = tri.detect_regime(window="auto", method="e_divisive")
+    reg = tri.detect_regime(window="auto", method="e_divisive", seed=0)
 
     r_window = int(r["window"][0])
     # Python ``window`` is scalar for single-combo; list for multi.
@@ -131,7 +131,7 @@ def test_regime_window_auto_changes_match_r():
     """
     r = _load("regime_window_auto_changes")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    reg = tri.detect_regime(window="auto", method="e_divisive")
+    reg = tri.detect_regime(window="auto", method="e_divisive", seed=0)
 
     py_changes = reg.changes
     # Polars: convert to a DataFrame (already polars output by default)
@@ -165,7 +165,7 @@ def test_regime_by_group_changes_match_r():
     """
     r = _load("regime_by_group_changes")
     tri = lr.Triangle(_exp_all(), groups="coverage")
-    reg = tri.detect_regime(by="coverage", window=12, method="e_divisive")
+    reg = tri.detect_regime(by="coverage", window=12, method="e_divisive", seed=0)
 
     py_changes = reg.changes
     if not isinstance(py_changes, pl.DataFrame):
@@ -193,7 +193,7 @@ def test_regime_by_group_labels_match_r():
     """
     r = _load("regime_by_group_labels")
     tri = lr.Triangle(_exp_all(), groups="coverage")
-    reg = tri.detect_regime(by="coverage", window=12, method="e_divisive")
+    reg = tri.detect_regime(by="coverage", window=12, method="e_divisive", seed=0)
 
     py = reg.df
     if not isinstance(py, pl.DataFrame):
@@ -297,7 +297,7 @@ def test_detect_regime_on_derived_target_changes_match_r(target: str):
     """
     r = _load(f"regime_target_{target}_changes")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    reg = tri.detect_regime(target=target, window=12, method="e_divisive")
+    reg = tri.detect_regime(target=target, window=12, method="e_divisive", seed=0)
 
     py = reg.changes
     if not isinstance(py, pl.DataFrame):

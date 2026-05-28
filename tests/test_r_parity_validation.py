@@ -73,14 +73,14 @@ def test_validation_gaps_match_r():
     if py.height == 0:
         return  # nothing else to compare
 
-    # Align on (coverage, cohort). Drop any list-typed column for the
-    # join, then re-attach.
-    keys = ["coverage", "cohort"]
+    # Align on (coverage, cohort). The gap table carries the raw cohort
+    # column name (`uy_m`) on both sides, mirroring R's validate_triangle.
+    keys = ["coverage", "uy_m"]
     py_sorted = py.sort(keys)
     r_sorted = r.sort(keys)
 
     assert py_sorted["coverage"].to_list() == r_sorted["coverage"].to_list()
-    assert py_sorted["cohort"].to_list() == r_sorted["cohort"].to_list()
+    assert py_sorted["uy_m"].to_list() == r_sorted["uy_m"].to_list()
 
     for col in ("n_dev", "n_expected"):
         if col not in r_sorted.columns:
