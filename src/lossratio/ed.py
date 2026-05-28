@@ -11,7 +11,7 @@ import polars as pl
 from ._io import _arrays_to_long_df, _nan_skip_diff, _nan_to_null, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
-from .cl import _build_loss_matrix, _build_value_matrix, _fit_mack
+from .cl import _build_value_matrix, _fit_mack
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -31,7 +31,6 @@ class _EDResult:
     premium_obs: np.ndarray
     loss_proj: np.ndarray
     premium_proj: np.ndarray
-    se_proj: np.ndarray
     g_k: np.ndarray              # (n_devs - 1,)
     sigma2_g_k: np.ndarray       # (n_devs - 1,)
     f_p_k: np.ndarray            # (n_devs - 1,) — premium chain ladder factors
@@ -151,47 +150,15 @@ def _fit_ed(
                         loss_proj[i, k - 1] + g_k[k - 1] * premium_proj[i, k - 1]
                     )
 
-    # 4. SE on projected loss (additive accumulation of process + parameter
-    #    variance for the ED phase, alpha = 1). Sequential along dev,
-    #    vectorized across cohorts.
-    se_proj = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    obs_mask = ~np.isnan(loss_obs)
-    has_obs = obs_mask.any(axis=1)
-    last_obs = np.where(
-        has_obs,
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
-        -1,
-    )
-    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
-    var_proc = np.zeros(n_cohorts, dtype=np.float64)
-    var_param = np.zeros(n_cohorts, dtype=np.float64)
-
-    for k in range(n_devs - 1):
-        active = eligible & (last_obs <= k)
-        if not active.any():
-            continue
-        if sum_premium_k[k] <= 0 or not np.isfinite(sigma2_g_k[k]):
-            continue
-        pk = premium_proj[:, k]
-        pos = active & ~np.isnan(pk) & (pk > 0)
-        if not pos.any():
-            continue
-        # Process: sigma^2_g_k * C^P_{i,k}^alpha (alpha = 1)
-        var_proc[pos] = var_proc[pos] + sigma2_g_k[k] * pk[pos]
-        # Parameter: (C^P_{i,k})^2 * Var(g_hat_k), Var(g_hat_k) = sigma^2_g_k / sum
-        g_var_k = sigma2_g_k[k] / sum_premium_k[k]
-        var_param[pos] = var_param[pos] + (pk[pos] ** 2) * g_var_k
-        total = var_proc + var_param
-        sp = pos & (total >= 0)
-        se_proj[sp, k + 1] = np.sqrt(total[sp])
-
+    # SE on projected loss is computed (decomposed into process /
+    # parameter) downstream in `_result_to_long_df`, which is the single
+    # source of the EDFit SE columns. No SE is accumulated here.
     return _EDResult(
         n_devs=n_devs,
         loss_obs=loss_obs,
         premium_obs=premium_obs,
         loss_proj=loss_proj,
         premium_proj=premium_proj,
-        se_proj=se_proj,
         g_k=g_k,
         sigma2_g_k=sigma2_g_k,
         f_p_k=f_p_k,
@@ -221,7 +188,6 @@ def _result_to_long_df(
     n_devs = result.n_devs
 
     # Per-cohort proc / param variance decomposition (ED additive form).
-    g_k = result.g_k
     sigma2_g_k = result.sigma2_g_k
     sum_premium_k = result.sum_premium_k
 
@@ -457,8 +423,10 @@ class EDFit:
     ----------
     df : DataFrame
         Long-format triangle with columns
-        ``[groups (optional), cohort, dev, loss, loss_proj, premium,
-        premium_proj, se_proj]``.
+        ``[groups (optional), cohort, dev, loss_obs, loss_proj,
+        incr_loss_proj, premium_obs, premium_proj, incr_premium_proj,
+        loss_proc_se, loss_param_se, loss_total_se, loss_total_cv,
+        ratio_proj]`` (plus the ``*_se2`` / ``*_cv`` companions).
     g_k : DataFrame
         Per-link ED parameters (``dev``, ``g``, ``sigma2_g``, ``f_p``,
         ``sigma2_f_p``).
