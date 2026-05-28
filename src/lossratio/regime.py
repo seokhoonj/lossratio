@@ -629,19 +629,25 @@ class Regime:
                         grp in mat_df.columns
                         and "change" in mat_df.columns
                     ):
-                        for row in mat_df.iter_rows(named=True):
-                            v = row.get("change")
-                            key = row.get(grp)
-                            if v is None:
-                                maturity_by_combo[key] = None
-                                continue
-                            try:
-                                if np.isnan(v):
-                                    maturity_by_combo[key] = None
-                                    continue
-                            except (TypeError, ValueError):
-                                pass
-                            maturity_by_combo[key] = int(v)
+                        # Vectorised: per group key, change -> int, mapping
+                        # null / NaN to None (mirrors the per-row int(v)
+                        # with the None / NaN guards).
+                        change_f = pl.col("change").cast(
+                            pl.Float64, strict=False
+                        )
+                        mat_clean = mat_df.select(
+                            pl.col(grp).alias("_key"),
+                            pl.when(change_f.is_null() | change_f.is_nan())
+                            .then(None)
+                            .otherwise(change_f.cast(pl.Int64))
+                            .alias("_mat"),
+                        )
+                        maturity_by_combo = dict(
+                            zip(
+                                mat_clean["_key"].to_list(),
+                                mat_clean["_mat"].to_list(),
+                            )
+                        )
                 except (ValueError, KeyError, RuntimeError):
                     # detect_maturity may raise on degenerate input
                     # (no valid links, single-cohort triangle, etc.).
