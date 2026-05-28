@@ -62,7 +62,7 @@ def test_detect_convergence_returns_object():
     assert isinstance(conv, lr.Convergence)
     assert conv.method == "tail"
     assert conv.dev_max == 36
-    assert conv.mat_k >= 1
+    assert conv.maturity_point >= 1
 
 
 def test_detect_convergence_methods_dispatch():
@@ -73,7 +73,7 @@ def test_detect_convergence_methods_dispatch():
         results[method] = lr.detect_convergence(
             tri, method=method,
             max_drift=0.1, max_slope=0.01, max_dispersion=1.0,
-        ).conv_k
+        ).convergence_point
     # window is the most permissive locally; tail tends to be later.
     if results["window"] is not None and results["tail"] is not None:
         assert results["window"] <= results["tail"]
@@ -109,21 +109,21 @@ def test_detect_convergence_pass_arrays_consistency():
     assert np.array_equal(conv.pass_, conv.pass_tail)
 
 
-def test_detect_convergence_manual_mat_k():
+def test_detect_convergence_manual_maturity_point():
     tri = _sur_triangle()
     conv = lr.detect_convergence(
-        tri, mat_k=10, max_drift=0.1, max_dispersion=1.0,
+        tri, maturity_point=10, max_drift=0.1, max_dispersion=1.0,
     )
-    assert conv.mat_k == 10
+    assert conv.maturity_point == 10
     assert conv.dev_cand[0] == 10
 
 
 def test_detect_convergence_no_candidate_warns():
-    """When mat_k + 2 > dev_max, dev_cand is empty and a warning fires."""
+    """When maturity_point + 2 > dev_max, dev_cand is empty and a warning fires."""
     tri = _sur_triangle()
     with pytest.warns(UserWarning, match="No candidate dev points"):
-        conv = lr.detect_convergence(tri, mat_k=40)
-    assert conv.conv_k is None
+        conv = lr.detect_convergence(tri, maturity_point=40)
+    assert conv.convergence_point is None
     assert conv.dev_cand == []
 
 
@@ -141,7 +141,7 @@ def test_detect_convergence_multi_group():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
     # Multi-group: detection succeeds (dispersion collapsed via median
-    # across groups). conv_k may be None depending on data, but the
+    # across groups). convergence_point may be None depending on data, but the
     # diagnostic series must still be populated.
     assert len(conv.dev_cand) > 0
     finite_ratio = np.isfinite(conv.lr).sum()
@@ -164,5 +164,5 @@ def test_convergence_repr_contains_key_fields():
     tri = _sur_triangle()
     conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
     r = repr(conv)
-    for token in ("method=", "conv_k=", "mat_k=", "dev_max=", "candidates="):
+    for token in ("method=", "convergence_point=", "maturity_point=", "dev_max=", "candidates="):
         assert token in r

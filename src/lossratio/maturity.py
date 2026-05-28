@@ -108,7 +108,7 @@ def _compute_cv_rse(
     return cv_k, rse_k
 
 
-def _detect_k_star(stable_k: np.ndarray, min_run: int) -> int | None:
+def _detect_mat_k(stable_k: np.ndarray, min_run: int) -> int | None:
     """First link index k where stable_k[k : k + min_run] are all True.
 
     Returns the *target* dev value of that link (1-indexed; equivalent
@@ -132,7 +132,7 @@ def _detect_first_stable_index(
 ) -> int | None:
     """First link *array index* k where stable_k[k : k + min_run] holds.
 
-    Sibling to :func:`_detect_k_star` -- same scan but returns the
+    Sibling to :func:`_detect_mat_k` -- same scan but returns the
     0-indexed position into the per-link diagnostic frame (so callers
     can slice the matched row), not the ``ata_to`` dev value.
     """
@@ -171,7 +171,7 @@ def _compute_maturity(
     for k in range(len(cv_k)):
         if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):
             stable_k[k] = (cv_k[k] < max_cv) and (rse_k[k] < max_rse)
-    mat_k = _detect_k_star(stable_k, min_run)
+    mat_k = _detect_mat_k(stable_k, min_run)
     return _MaturityResult(
         f_k=mack.f_k,
         sigma2_k=mack.sigma2_k,
@@ -400,7 +400,7 @@ def _slice_first_stable_row(
     return row
 
 
-def _build_kstar_df(
+def _build_mat_k_df(
     diag_df: pl.DataFrame,
     groups: str | None,
     min_run: int,
@@ -434,15 +434,16 @@ class Maturity:
     df : DataFrame
         Per-link diagnostic table:
         ``[groups?, dev, f, sigma2, cv, rse, stable]``.
-    mat_k :
+    maturity_point :
         Detected maturity dev. Returns ``None`` (no groups) or a dict
-        ``{group_value: k_star_or_None}`` (groups set). ``None`` value
-        means stability was not reached within the observation window.
+        ``{group_value: maturity_point_or_None}`` (groups set). ``None``
+        value means stability was not reached within the observation
+        window.
     """
 
     def __init__(self) -> None:
         self._df: pl.DataFrame
-        self._kstar_df: pl.DataFrame
+        self._mat_k_df: pl.DataFrame
         self._output_type: str
         self._groups: str | None
         self._cohort: str
@@ -494,12 +495,12 @@ class Maturity:
             ).alias("stable")
         )
 
-        kstar_df = _build_kstar_df(
+        mat_k_df = _build_mat_k_df(
             diag_df, self._groups, min_run
         )
 
         self._df = diag_df
-        self._kstar_df = kstar_df
+        self._mat_k_df = mat_k_df
         return self
 
     @classmethod
@@ -511,7 +512,7 @@ class Maturity:
     ) -> "Maturity":
         """Construct a Maturity by hand (no auto-detection).
 
-        Used by :func:`maturity_at` to wrap a user-supplied ``mat_k``
+        Used by :func:`maturity_at` to wrap a user-supplied maturity point
         (and optional per-group values). The per-link diagnostic frame
         is intentionally empty -- there is no factor data behind a
         manual specification, so all stat columns are ``NaN`` (R
@@ -546,11 +547,11 @@ class Maturity:
         ):
             cols[stat] = [float("nan")] * n
 
-        kstar_df = pl.DataFrame(cols)
+        mat_k_df = pl.DataFrame(cols)
 
         self._groups = group_col
         self._df = pl.DataFrame()
-        self._kstar_df = kstar_df
+        self._mat_k_df = mat_k_df
         return self
 
     @property
@@ -559,7 +560,7 @@ class Maturity:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def mat_k(self):
+    def maturity_point(self):
         """Detected maturity point.
 
         If the source Triangle has no ``groups``, returns an ``int``
@@ -579,12 +580,12 @@ class Maturity:
             return int(v)
 
         if self._groups is None:
-            row = self._kstar_df.row(0, named=True)
+            row = self._mat_k_df.row(0, named=True)
             return _coerce(row.get("change"))
         return dict(
             zip(
-                self._kstar_df[self._groups].to_list(),
-                [_coerce(v) for v in self._kstar_df["change"].to_list()],
+                self._mat_k_df[self._groups].to_list(),
+                [_coerce(v) for v in self._mat_k_df["change"].to_list()],
             )
         )
 
@@ -602,7 +603,7 @@ class Maturity:
         stable link). Groups with no stable run have ``NaN`` in every
         stat column.
         """
-        return mirror_output(self._kstar_df, self._output_type)
+        return mirror_output(self._mat_k_df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
@@ -615,8 +616,8 @@ class Maturity:
             f"max_cv={self.max_cv}, max_rse={self.max_rse}, m={self.min_run}"
         )
         if self._groups is None:
-            return f"<Maturity: mat_k={self.mat_k} ({thresh})>"
-        n_groups = self._kstar_df.height
+            return f"<Maturity: maturity_point={self.maturity_point} ({thresh})>"
+        n_groups = self._mat_k_df.height
         return f"<Maturity: {n_groups} groups ({thresh})>"
 
 
@@ -630,7 +631,7 @@ def maturity_at(
     *,
     groups: Mapping[str, Sequence[Any]] | None = None,
 ) -> "Maturity":
-    """Build a :class:`Maturity` from an explicit, user-supplied ``mat_k``.
+    """Build a :class:`Maturity` from an explicit, user-supplied maturity point.
 
     Use when you want to override auto-detection with a fixed maturity
     dev across backtest folds. Contrast with :func:`maturity_spec`,
@@ -696,7 +697,7 @@ def maturity_spec(
     arguments without running detection. The returned closure is
     invoked by the consumer (fit / backtest) on its own *internal*
     triangle -- inside backtest this is the **masked** training
-    triangle, so the detected ``mat_k`` never peeks at held-out cells.
+    triangle, so the detected maturity point never peeks at held-out cells.
 
     Contrast with :func:`maturity_at`, which produces an eager
     Maturity fixed at construction time.

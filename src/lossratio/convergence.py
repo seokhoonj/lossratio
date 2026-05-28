@@ -145,7 +145,7 @@ def detect_convergence(
     max_slope: float = 1e-3,
     max_dispersion: float = 0.15,
     window: int = 5,
-    mat_k: int | None = None,
+    maturity_point: int | None = None,
     holdout_max: int | None = None,
     min_n_cohorts: int = 5,
     **backtest_kwargs: Any,
@@ -157,7 +157,7 @@ def detect_convergence(
     triangle
         A :class:`Triangle`.
     method
-        Which stability criterion drives the detected ``conv_k``. One of:
+        Which stability criterion drives the detected ``convergence_point``. One of:
 
         - ``"tail"`` (default, reserving-safe): tail drift over
           ``[k, dev_max]`` falls below ``max_drift``.
@@ -176,12 +176,12 @@ def detect_convergence(
         Upper bound on the cross-cohort dispersion. Default ``0.15``.
     window
         Drift window length (in dev steps). Default ``5``.
-    mat_k
+    maturity_point
         Pre-computed maturity point. When ``None``, auto-detected from
         the Ratio-link ATA.
     holdout_max
         Cap on holdout depth. When ``None``, set to
-        ``max(window, (dev_max - mat_k) // 2)``.
+        ``max(window, (dev_max - maturity_point) // 2)``.
     min_n_cohorts
         Minimum cohorts required to compute dispersion. Default ``5``.
     **backtest_kwargs
@@ -191,7 +191,7 @@ def detect_convergence(
     Returns
     -------
     Convergence
-        Result object exposing ``conv_k``, ``mat_k``, ``dev_max``, the
+        Result object exposing ``convergence_point``, ``maturity_point``, ``dev_max``, the
         candidate dev sequence and per-criterion diagnostics.
     """
     from .ratio import Ratio
@@ -211,46 +211,46 @@ def detect_convergence(
         raise ValueError("window must be >= 2")
     window = int(window)
 
-    # 1. Resolve mat_k from Ratio-link ATA if not given.
-    if mat_k is None:
+    # 1. Resolve maturity_point from Ratio-link ATA if not given.
+    if maturity_point is None:
         mat = (
             triangle.link(target="ratio", exposure=None, weight="premium")
             .ata()
             .maturity()
         )
-        mat_k_raw = mat.mat_k
+        mat_k_raw = mat.maturity_point
         if isinstance(mat_k_raw, dict):
             vals = [v for v in mat_k_raw.values() if v is not None]
             if not vals:
                 raise ValueError(
-                    "Auto mat_k failed: no mature Ratio link in any group. "
-                    "Pass mat_k=... explicitly (e.g. detect_convergence("
-                    "triangle, mat_k=4)) to bypass."
+                    "Auto maturity_point failed: no mature Ratio link in any group. "
+                    "Pass maturity_point=... explicitly (e.g. detect_convergence("
+                    "triangle, maturity_point=4)) to bypass."
                 )
-            mat_k = int(min(vals))
+            maturity_point = int(min(vals))
         else:
             if mat_k_raw is None:
                 raise ValueError(
-                    "Auto mat_k failed: no mature Ratio link detected. "
-                    "Pass mat_k=... explicitly."
+                    "Auto maturity_point failed: no mature Ratio link detected. "
+                    "Pass maturity_point=... explicitly."
                 )
-            mat_k = int(mat_k_raw)
-    mat_k = int(mat_k)
+            maturity_point = int(mat_k_raw)
+    maturity_point = int(maturity_point)
 
     # 2. dev_max + candidate sequence.
     dev_max = int(triangle.to_polars()["dev"].max())
     if holdout_max is None:
-        holdout_max = max(window, (dev_max - mat_k) // 2)
+        holdout_max = max(window, (dev_max - maturity_point) // 2)
     holdout_max = int(holdout_max)
 
-    if dev_max - 2 >= mat_k:
-        dev_cand = list(range(mat_k, dev_max - 1))
+    if dev_max - 2 >= maturity_point:
+        dev_cand = list(range(maturity_point, dev_max - 1))
     else:
         dev_cand = []
         import warnings
         warnings.warn(
-            f"No candidate dev points: mat_k ({mat_k}) + 2 > dev_max "
-            f"({dev_max}). Returning conv_k = None.",
+            f"No candidate dev points: maturity_point ({maturity_point}) + 2 > dev_max "
+            f"({dev_max}). Returning convergence_point = None.",
             stacklevel=2,
         )
 
@@ -355,7 +355,7 @@ def detect_convergence(
         triangle=triangle,
         method=method,
         conv_k=conv_k,
-        mat_k=mat_k,
+        mat_k=maturity_point,
         dev_max=dev_max,
         dev_cand=dev_cand,
         lr=ratio_arr,
@@ -382,16 +382,16 @@ class Convergence:
 
     Attributes
     ----------
-    conv_k : int | None
+    convergence_point : int | None
         First dev at which the chosen ``method``'s pass test fires.
     method : str
-        Which criterion selected ``conv_k``.
-    mat_k : int
+        Which criterion selected ``convergence_point``.
+    maturity_point : int
         Maturity point used as the lower bound of the candidate window.
     dev_max : int
         Maximum observable dev.
     dev_cand : list[int]
-        Candidate dev sequence ``[mat_k, dev_max - 2]``.
+        Candidate dev sequence ``[maturity_point, dev_max - 2]``.
     lr, revision, drift_window, drift_tail, slope, dispersion : ndarray
         Diagnostic series, one entry per ``dev_cand``.
     pass_window, pass_tail, pass_slope, pass : ndarray[bool]
@@ -400,9 +400,9 @@ class Convergence:
 
     def __init__(self) -> None:
         self._output_type: str
-        self.conv_k: int | None
+        self.convergence_point: int | None
         self.method: str
-        self.mat_k: int
+        self.maturity_point: int
         self.dev_max: int
         self.dev_cand: list[int]
         self.lr: np.ndarray
@@ -450,9 +450,9 @@ class Convergence:
     ) -> "Convergence":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self.conv_k = conv_k
+        self.convergence_point = conv_k
         self.method = method
-        self.mat_k = mat_k
+        self.maturity_point = mat_k
         self.dev_max = dev_max
         self.dev_cand = list(dev_cand)
         self.lr = lr
@@ -504,8 +504,8 @@ class Convergence:
 
         Stacked column of ``ratio``, ``drift_window``, ``drift_tail``,
         ``|slope|``, ``dispersion`` series across candidate dev
-        cutoffs. Threshold hlines, maturity (``mat_k``) dotted vline,
-        and detected convergence (``conv_k``) solid green vline are
+        cutoffs. Threshold hlines, maturity (``maturity_point``) dotted vline,
+        and detected convergence (``convergence_point``) solid green vline are
         overlaid on every panel.
 
         Parameters
@@ -528,8 +528,8 @@ class Convergence:
         n_slope = int(np.nansum(self.pass_slope))
         bits = [
             f"method={self.method}",
-            f"conv_k={self.conv_k}",
-            f"mat_k={self.mat_k}",
+            f"convergence_point={self.convergence_point}",
+            f"maturity_point={self.maturity_point}",
             f"dev_max={self.dev_max}",
             f"candidates={n}",
             f"passes(window/tail/slope)={n_win}/{n_tail}/{n_slope}",

@@ -119,14 +119,14 @@ def test_maturity_stable_data_finds_k_star_at_two():
     """
     tri = lr.Triangle(_stable_input())
     mat = tri.link().ata().maturity()
-    assert mat.mat_k == 2
+    assert mat.maturity_point == 2
 
 
 def test_maturity_strict_thresholds_no_detection():
     """Set thresholds tighter than any observed CV/RSE → mat_k=None."""
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=1e-9, max_rse=1e-9, min_run=2)
-    assert mat.mat_k is None
+    assert mat.maturity_point is None
 
 
 def test_maturity_loose_thresholds_finds_k_star():
@@ -137,7 +137,7 @@ def test_maturity_loose_thresholds_finds_k_star():
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # With min_run=2 we need 2 consecutive stable links starting at link 0
     # (dev 1 -> dev 2). Target dev of that link = 2.
-    assert mat.mat_k == 2
+    assert mat.maturity_point == 2
 
 
 def test_maturity_m_consecutive_required():
@@ -145,7 +145,7 @@ def test_maturity_m_consecutive_required():
     tri = lr.Triangle(_polars_input())
     # n_links = 4. min_run=5 cannot be satisfied.
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=5)
-    assert mat.mat_k is None
+    assert mat.maturity_point is None
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +207,8 @@ def test_maturity_with_group_var():
 
     assert "coverage" in mat.to_polars().columns
     # mat_k is a dict per group when groups present
-    assert isinstance(mat.mat_k, dict)
-    assert "SUR" in mat.mat_k
+    assert isinstance(mat.maturity_point, dict)
+    assert "SUR" in mat.maturity_point
 
 
 def test_maturity_per_group_independent():
@@ -222,7 +222,7 @@ def test_maturity_per_group_independent():
     tri = lr.Triangle(df_grouped, groups="coverage")
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     # Same data in each group → same mat_k
-    assert mat.mat_k == {"A": 2, "B": 2}
+    assert mat.maturity_point == {"A": 2, "B": 2}
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +303,7 @@ def test_summary_change_matches_mat_k():
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     change = mat.summary()["change"].to_list()[0]
-    assert int(change) == mat.mat_k
+    assert int(change) == mat.maturity_point
 
 
 def test_summary_ata_link_string_format():
@@ -383,7 +383,7 @@ def test_summary_no_detection_returns_nan_row():
     mat = tri.link().ata().maturity(
         max_cv=1e-15, max_rse=1e-15, min_run=2
     )
-    assert mat.mat_k is None
+    assert mat.maturity_point is None
     row = mat.summary().row(0, named=True)
     assert row["ata_link"] is None or (
         isinstance(row["ata_link"], float) and math.isnan(row["ata_link"])

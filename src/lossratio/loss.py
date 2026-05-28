@@ -237,7 +237,7 @@ def _mat_k_for_group(
         return mat_override
 
     # mat_override is a Maturity object.
-    mat_k = mat_override.mat_k
+    mat_k = mat_override.maturity_point
     if isinstance(mat_k, dict):
         val = mat_k.get(group_value)
     else:
@@ -952,7 +952,7 @@ class LossFit:
         loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
         ``"ed"``, ``"cl"``, ``"sa"``, ``"bf"``, or ``"cc"``.
-    mat_k :
+    maturity_point :
         Detected maturity for ``"sa"`` (None elsewhere).
     premium_fit :
         The embedded :class:`PremiumFit` used for premium projection.
@@ -960,7 +960,7 @@ class LossFit:
 
     def __init__(self) -> None:
         self._df: pl.DataFrame
-        self._kstar_df: pl.DataFrame
+        self._mat_k_df: pl.DataFrame
         self._output_type: str
         self._groups: str | None
         self._cohort: str
@@ -1059,7 +1059,7 @@ class LossFit:
         self._internals: dict[Any, _LossResult] = {}
 
         long_parts: list[pl.DataFrame] = []
-        kstar_rows: list[dict[str, Any]] = []
+        mat_k_rows: list[dict[str, Any]] = []
         for g, sub in _iter_group_frames(tri_df, groups):
             pf_sub = pf_df if groups is None else pf_df.filter(pl.col(groups) == g)
             loss_obs, cohorts, _ = _build_loss_matrix(sub)
@@ -1090,10 +1090,10 @@ class LossFit:
                 row[groups] = g
             row["mat_k"] = result.mat_k
             row["method"] = estimator.method
-            kstar_rows.append(row)
+            mat_k_rows.append(row)
             self._internals[g] = result
         long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
-        kstar_df = pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
+        mat_k_df = pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
 
         # ----- Tail factor (method='cl' only; R parity) --------------------
         # Apply per-group `_tail`-suffixed companion columns to the last-dev
@@ -1143,7 +1143,7 @@ class LossFit:
         )
 
         self._df = long_df
-        self._kstar_df = kstar_df
+        self._mat_k_df = mat_k_df
         return self
 
     def _maybe_overlay_bootstrap(
@@ -1259,7 +1259,7 @@ class LossFit:
         mat_override = _resolve_maturity_override(estimator.maturity, masked)
 
         long_parts: list[pl.DataFrame] = []
-        kstar_rows: list[dict[str, Any]] = []
+        mat_k_rows: list[dict[str, Any]] = []
         internals_combined: dict[Any, _LossResult] = {}
 
         for g, sub in _iter_group_frames(tri_df, groups):
@@ -1298,7 +1298,7 @@ class LossFit:
                 }
                 if groups is not None:
                     row[groups] = g
-                kstar_rows.append(row)
+                mat_k_rows.append(row)
                 internals_combined[(g, s) if groups is not None else s] = res
 
         self = cls.__new__(cls)
@@ -1321,8 +1321,8 @@ class LossFit:
         full_df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort
         )
-        self._kstar_df = (
-            pl.DataFrame(kstar_rows) if kstar_rows else pl.DataFrame()
+        self._mat_k_df = (
+            pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
         )
         full_df = self._maybe_overlay_bootstrap(full_df, triangle, estimator)
 
@@ -1434,18 +1434,18 @@ class LossFit:
 
         # BF / CC carry no maturity concept -> mat_k is None per group.
         if self._groups is None:
-            self._kstar_df = pl.DataFrame(
+            self._mat_k_df = pl.DataFrame(
                 [{"mat_k": None, "method": estimator.method}]
             )
         else:
-            kstar_rows = [
+            mat_k_rows = [
                 {groups_g: g, "mat_k": None, "method": estimator.method}
                 for groups_g in (self._groups,)
                 for g in worker_fit._df[self._groups]
                 .unique(maintain_order=True)
                 .to_list()
             ]
-            self._kstar_df = pl.DataFrame(kstar_rows)
+            self._mat_k_df = pl.DataFrame(mat_k_rows)
         return self
 
     @property
@@ -1453,17 +1453,17 @@ class LossFit:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def mat_k(self):
+    def maturity_point(self):
         """Detected maturity for SA (None for ED/CL)."""
         if self.method != "sa":
             return None
         if self._groups is None:
-            row = self._kstar_df.row(0, named=True)
+            row = self._mat_k_df.row(0, named=True)
             return row["mat_k"]
         return dict(
             zip(
-                self._kstar_df[self._groups].to_list(),
-                self._kstar_df["mat_k"].to_list(),
+                self._mat_k_df[self._groups].to_list(),
+                self._mat_k_df["mat_k"].to_list(),
             )
         )
 
@@ -1560,7 +1560,7 @@ class LossFit:
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:
-            n_groups = self._kstar_df.height
+            n_groups = self._mat_k_df.height
             return (
                 f"<LossFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"

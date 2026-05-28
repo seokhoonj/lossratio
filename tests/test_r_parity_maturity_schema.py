@@ -91,7 +91,7 @@ def test_maturity_full_schema_matches_r():
 
 
 def test_maturity_change_equals_mat_k():
-    """The ``change`` column on the summary table equals ``Maturity.mat_k``.
+    """The ``change`` column on the summary table equals ``Maturity.maturity_point``.
 
     Cross-check of the two access paths into the same value. Catches
     drift if one of the two ever stops mirroring R.
@@ -100,7 +100,7 @@ def test_maturity_change_equals_mat_k():
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     mat = tri.detect_maturity(loss="loss")
     summary_change = mat.summary()["change"][0]
-    mat_k_value = mat.mat_k["surgery"]
+    mat_k_value = mat.maturity_point["surgery"]
     r_change = r["change"][0]
 
     assert int(summary_change) == int(mat_k_value), (

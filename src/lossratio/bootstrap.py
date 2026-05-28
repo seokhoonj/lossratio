@@ -2957,7 +2957,7 @@ class Bootstrap:
                 mat = None
 
         if isinstance(mat, Maturity):
-            mk = mat.mat_k
+            mk = mat.maturity_point
             if isinstance(mk, dict):
                 return mk
             return {None: mk} if groups is None else {}

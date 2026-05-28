@@ -371,7 +371,7 @@ def _resolve_maturity_k(
             f"instance, or a callable; got {maturity!r}."
         )
     if isinstance(maturity, Maturity):
-        k = maturity.mat_k
+        k = maturity.maturity_point
         if k is None:
             return None
         if isinstance(k, dict):

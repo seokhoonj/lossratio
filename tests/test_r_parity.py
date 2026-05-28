@@ -142,13 +142,13 @@ def test_ratio_cl_full_matches_r():
 def test_ratio_sa_maturity_matches_r():
     """Maturity dev: R's $maturity table carries the link target dev in
     the `change` column (mirrors the `change` column convention used by
-    Regime). Python exposes the same value via `fit.mat_k[<group>]`."""
+    Regime). Python exposes the same value via `fit.maturity_point[<group>]`."""
     r = _load("ratio_sa_maturity")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     fit = lr.Ratio(method="sa").fit(tri)
     r_k = int(r["change"].max())
-    py_k = fit.mat_k["surgery"]
-    assert py_k == r_k, f"mat_k mismatch: py={py_k} r={r_k}"
+    py_k = fit.maturity_point["surgery"]
+    assert py_k == r_k, f"maturity_point mismatch: py={py_k} r={r_k}"
 
 
 # ---------------------------------------------------------------------------

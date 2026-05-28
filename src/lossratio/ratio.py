@@ -345,7 +345,7 @@ class RatioFit:
         ``premium_total_cv`` when ``se_method="delta"``).
     method : str
         ``"ed"``, ``"cl"``, ``"sa"``, ``"bf"``, or ``"cc"``.
-    mat_k :
+    maturity_point :
         Detected maturity for ``"sa"`` (single value or dict per group).
     loss_fit, premium_fit :
         The embedded :class:`LossFit` and :class:`PremiumFit`.
@@ -562,9 +562,9 @@ class RatioFit:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def mat_k(self):
+    def maturity_point(self):
         """Detected maturity (delegated to LossFit)."""
-        return self.loss_fit.mat_k
+        return self.loss_fit.maturity_point
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
