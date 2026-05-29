@@ -56,9 +56,9 @@ dev = [
 
 [project.urls]
 Homepage = "https://seokhoonj.github.io/lossratio/"
-Source = "https://github.com/seokhoonj/lossratio-py"
-"R package" = "https://github.com/seokhoonj/lossratio"
-Issues = "https://github.com/seokhoonj/lossratio-py/issues"
+Source = "https://github.com/seokhoonj/lossratio"
+"R package" = "https://github.com/seokhoonj/lossratio-r"
+Issues = "https://github.com/seokhoonj/lossratio/issues"
 
 [tool.hatch.build]
 exclude = [
