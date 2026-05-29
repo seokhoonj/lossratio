@@ -1,6 +1,6 @@
 # lossratio (Python)
 
-Python sibling of the R `lossratio` package: loss ratio analytics
+Loss ratio analytics
 for long-term health insurance — cohort development analysis,
 stage-adaptive projection, regime detection, and backtest validation
 on long-format experience data. Stage-adaptive (SA) projection uses
@@ -171,14 +171,14 @@ Pandas inputs are accepted too; outputs mirror the input type
 ``[pandas]`` install extra (see above) to pull in `pandas` and
 `pyarrow`.
 
-## R package
+## Sibling R package
 
-- Source: <https://github.com/seokhoonj/lossratio>
-- Documentation: <https://seokhoonj.github.io/lossratio/>
-- 한국어 문서: <https://seokhoonj.github.io/lossratio/ko/>
+- Source: <https://github.com/seokhoonj/lossratio-r>
+- Documentation: <https://seokhoonj.github.io/lossratio-r/>
+- 한국어 문서: <https://seokhoonj.github.io/lossratio-r/ko/>
 
 ```r
-remotes::install_github("seokhoonj/lossratio")
+remotes::install_github("seokhoonj/lossratio-r")
 library(lossratio)
 ```
 
@@ -186,7 +186,7 @@ library(lossratio)
 
 Seokhoon Joo
 ([@seokhoonj](https://github.com/seokhoonj),
-<seokhoonj@gmail.com>) — also maintains the R `lossratio` package.
+<seokhoonj@gmail.com>) — also maintains the sibling R package.
 
 ## License
 

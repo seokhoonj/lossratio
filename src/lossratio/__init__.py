@@ -1,9 +1,9 @@
-"""lossratio -- Python sibling of the R lossratio package.
+"""lossratio -- loss ratio analytics for long-term health insurance.
 
-References:
+Sibling R package:
 
-* R package source:        https://github.com/seokhoonj/lossratio
-* R package documentation: https://seokhoonj.github.io/lossratio/
+* Source:        https://github.com/seokhoonj/lossratio-r
+* Documentation: https://seokhoonj.github.io/lossratio-r/
 """
 
 from ._period import derive_grain_columns
