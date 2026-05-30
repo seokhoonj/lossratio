@@ -7,17 +7,22 @@ import lossratio as lr
 
 def test_load_experience_shape():
     df = lr.load_experience()
-    # 4 coverages x triangular cells (36+35+...+1 per coverage) = 2664
-    assert df.height == 2664
-    # 15-column M/Q/H/Y grain schema, matching R `data(experience)`.
+    # 4 coverages x 6 age_bands x 4 channels = 96 segments, each a
+    # triangular grid of 36+35+...+1 = 666 cells -> 96 * 666 = 63936.
+    assert df.height == 63936
+    # 18-column schema: 3 segment keys + M/Q/H/Y grain + measures.
     assert df.columns == [
-        "coverage",
+        "coverage", "age_band", "channel",
         "uy", "uy_h", "uy_q", "uy_m",
         "cy", "cy_h", "cy_q", "cy_m",
         "dev_y", "dev_h", "dev_q", "dev_m",
-        "incr_loss", "incr_premium",
+        "incr_loss", "incr_premium", "exposure",
     ]
     assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]
+    assert sorted(df["age_band"].unique().to_list()) == [
+        "20s", "30s", "40s", "50s", "60s", "70+"
+    ]
+    assert sorted(df["channel"].unique().to_list()) == ["FC", "GA", "ON", "TM"]
 
 
 def test_load_experience_deterministic():
