@@ -96,15 +96,16 @@ def _pretty_var_label(var: str | None) -> str:
 
 
 def _cohort_label(var: str | None, grain: str | None = None) -> str:
-    """R `.cohort_label` -- e.g. `"cohort (month)"`."""
+    """R `.cohort_label` -- e.g. `"cohort (monthly)"`."""
     if var is None:
         return "cohort"
     t = _get_period_type(var, grain=grain)
     if t is None:
         return "cohort"
+    # -ly adverb family (M/Q/H/Y = Monthly/Quarterly/Half-yearly/Yearly).
     qualifier = {
-        "month": "month",
-        "quarter": "quarter",
+        "month": "monthly",
+        "quarter": "quarterly",
         "half": "half-yearly",
         "year": "yearly",
     }.get(t)
