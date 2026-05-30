@@ -37,6 +37,16 @@ _LOW_COLOR = "white"
 _NA_COLOR = "white"
 _BORDER_COLOR = "black"
 _BORDER_WIDTH = 0.3
+# ggplot2 theme_grey parity for the cell-grid chrome (R `.switch_theme`):
+# thin interior cell gridlines + a heavier black panel border, grey85
+# facet strips, left-aligned plain title, grey30 right caption.
+_GRID_WIDTH = 0.5            # interior cell separators (thin)
+_PANEL_BORDER_WIDTH = 1.0    # outer panel frame (heavier)
+_STRIP_FILL = "#d9d9d9"      # grey85 facet-strip background
+_STRIP_EDGE = "black"        # strip outline
+_STRIP_TEXT = "#1a1a1a"      # grey10 strip label
+_CAPTION_COLOR = "#4d4d4d"   # grey30 caption
+_STRIP_HEIGHT_IN = 0.20      # facet-strip height (inches, constant per panel)
 
 # Usage-view categorical palette (R `.plot_triangle_usage:1395`).
 _USAGE_COLORS: dict[str, str] = {
@@ -193,12 +203,14 @@ def plot_triangle(
     elif nrow is None:
         nrow = math.ceil(n_facets / max(ncol, 1))
 
+    cell_w = 0.45 + (0.18 if label_style == "detail" else 0.0)
+    cell_h = 0.30 + (0.18 if label_style == "detail" else 0.0)
     if figsize is None:
-        cell_w = 0.45 + (0.18 if label_style == "detail" else 0.0)
-        cell_h = 0.30 + (0.18 if label_style == "detail" else 0.0)
         fig_w = max(4.0, cell_w * len(x_levels) * ncol + 1.2)
         fig_h = max(3.0, cell_h * len(y_levels) * nrow + 1.5)
         figsize = (fig_w, fig_h)
+
+    from matplotlib.patches import Rectangle
 
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
@@ -219,18 +231,40 @@ def plot_triangle(
         )
         title = str(group_value) if group_value is not None else ""
         if title:
-            ax.set_title(title, fontsize=10)
+            # ggplot2 facet strip: grey85 rectangle with a black outline and
+            # a centered label, sitting in the reserved gap above the panel.
+            # Panels share fixed scales (equal size), so a constant-height
+            # strip in axes fraction renders uniformly across facets.
+            panel_h_in = max(cell_h * len(y_levels), 0.5)
+            strip_h = _STRIP_HEIGHT_IN / panel_h_in
+            ax.set_title(" ", pad=_STRIP_HEIGHT_IN * 72.0)
+            ax.add_patch(
+                Rectangle(
+                    (0.0, 1.0), 1.0, strip_h, transform=ax.transAxes,
+                    facecolor=_STRIP_FILL, edgecolor=_STRIP_EDGE,
+                    linewidth=0.5, clip_on=False, zorder=3,
+                )
+            )
+            ax.text(
+                0.5, 1.0 + strip_h / 2.0, title, transform=ax.transAxes,
+                ha="center", va="center", fontsize=8.5, color=_STRIP_TEXT,
+                clip_on=False, zorder=4,
+            )
 
     # Hide unused axes.
     for idx in range(n_facets, nrow * ncol):
         r, c = divmod(idx, ncol)
         axes[r][c].set_visible(False)
 
-    fig.suptitle(meta.title, fontsize=12, fontweight="bold")
-    fig.supxlabel(x_axis_label, fontsize=10)
-    fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
+    # ggplot2 `plot.title`: left-aligned, plain weight, ~1.2x base size.
+    fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
+                 ha="left")
+    fig.supxlabel(x_axis_label, fontsize=11)
+    fig.supylabel(_cohort_label(coh, grain=grain), fontsize=11)
     if meta.caption:
-        fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom", fontsize=8)
+        # ggplot2 `plot.caption`: right-aligned, grey30.
+        fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
+                 fontsize=8.5, color=_CAPTION_COLOR)
 
     return fig
 
@@ -314,22 +348,32 @@ def _draw_cell_grid(
     nx = len(x_levels)
     ny = len(y_levels)
     ax.set_xlim(-0.5, nx - 0.5)
-    # Cohort axis: oldest at top, so invert (newer rows at the bottom
-    # but plotting tradition for triangles puts the newest cohort at
-    # the bottom of the y-axis when y grows upward). Mirror R's
-    # `geom_tile` default with oldest at the bottom.
-    ax.set_ylim(-0.5, ny - 0.5)
+    # Cohort axis: oldest at top. `y_levels` runs oldest -> newest
+    # (index 0 = oldest), so invert the y-limits to place index 0 at
+    # the top -- the run-off triangle's fully-developed (oldest) row
+    # sits on top. Mirrors R's `.cell_grid` `scale_y_reverse()`.
+    ax.set_ylim(ny - 0.5, -0.5)
 
     ax.set_xticks(range(nx))
     ax.set_xticklabels(x_levels, rotation=0, fontsize=8)
     ax.set_yticks(range(ny))
     ax.set_yticklabels(y_levels, fontsize=8)
 
-    # Panel border: vertical + horizontal grid lines on cell edges.
-    for k in range(nx + 1):
-        ax.axvline(k - 0.5, color=_BORDER_COLOR, linewidth=_BORDER_WIDTH)
-    for k in range(ny + 1):
-        ax.axhline(k - 0.5, color=_BORDER_COLOR, linewidth=_BORDER_WIDTH)
+    # Interior cell separators (thin) + a heavier outer panel border, so
+    # the frame reads distinctly from the inner gridlines (ggplot2's
+    # `panel.border` on top of the half-integer cell grid).
+    for k in range(1, nx):
+        ax.axvline(k - 0.5, color=_BORDER_COLOR, linewidth=_GRID_WIDTH,
+                   zorder=2)
+    for k in range(1, ny):
+        ax.axhline(k - 0.5, color=_BORDER_COLOR, linewidth=_GRID_WIDTH,
+                   zorder=2)
+    ax.add_patch(
+        Rectangle(
+            (-0.5, -0.5), nx, ny, fill=False, edgecolor=_BORDER_COLOR,
+            linewidth=_PANEL_BORDER_WIDTH, zorder=4,
+        )
+    )
 
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -1115,5 +1159,220 @@ def x_idx_get(x_idx: dict, key: int) -> int:
 
 
 # Silence unused-import warnings for re-exports.
-__all__ = ["plot_triangle"]
+def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
+                       hline):
+    """Per-cohort trajectories (+ optional summary overlay) on one facet."""
+    for g in sub.partition_by("cohort", maintain_order=True):
+        gg = g.sort("dev")
+        x = gg["dev"].to_list()
+        y = gg[metric].to_list()
+        if summary:
+            ax.plot(x, y, color="0.7", alpha=0.5, linewidth=0.6, zorder=1)
+        else:
+            ax.plot(x, y, color=coh_color(gg["cohort"][0]), linewidth=1.1,
+                    zorder=2)
+
+    if hline is not None:
+        ax.axhline(hline, linestyle="--", color="red", linewidth=0.8, zorder=1)
+
+    if not summary:
+        return
+
+    # Mean / Median / Weighted summary lines, masked where too few cohorts.
+    lcol, pcol = (("loss", "premium") if metric == "ratio"
+                  else ("incr_loss", "incr_premium"))
+    agg = (sub.group_by("dev")
+              .agg(mean=pl.col(metric).mean(),
+                   median=pl.col(metric).median(),
+                   wl=pl.col(lcol).sum(),
+                   wp=pl.col(pcol).sum(),
+                   n=pl.len())
+              .sort("dev")
+              .with_columns(weighted=pl.col("wl") / pl.col("wp")))
+    xd = np.asarray(agg["dev"].to_list(), dtype=float)
+    n = np.asarray(agg["n"].to_list())
+    masked = summary_min_n is not None and np.isfinite(summary_min_n)
+    mask = n < summary_min_n if masked else np.zeros(len(n), dtype=bool)
+    for col, color, lbl in (("mean", "black", "Mean"),
+                            ("median", "#1f77b4", "Median"),
+                            ("weighted", "#d62728", "Weighted")):
+        yv = np.asarray(agg[col].to_list(), dtype=float).copy()
+        yv[mask] = np.nan
+        ax.plot(xd, yv, color=color, linewidth=1.7, label=lbl, zorder=3)
+    if masked:
+        le = n <= summary_min_n
+        if le.any():
+            ax.axvline(xd[int(np.argmax(le))], linestyle=":", color="0.4",
+                       linewidth=1.0, zorder=1)
+
+
+def plot(
+    triangle: Triangle,
+    metric: str = "ratio",
+    summary: bool = False,
+    summary_min_n: int = 5,
+    amount_divisor: float | str = "auto",
+    nrow: int | None = None,
+    ncol: int | None = None,
+    figsize: tuple[float, float] | None = None,
+) -> Any:
+    """Cohort-trajectory line plot -- mirrors R's ``plot.Triangle``.
+
+    One line per cohort (x = development index, y = ``metric``), faceted by
+    ``groups``. ``summary=True`` (ratio metrics only) fades cohort lines to
+    grey and overlays Mean / Median / Weighted lines, masked where fewer
+    than ``summary_min_n`` cohorts contribute.
+    """
+    import warnings
+
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import ListedColormap, Normalize
+    from matplotlib.patches import Rectangle
+    from matplotlib.ticker import FuncFormatter
+
+    if metric not in _VALID_METRICS:
+        raise ValueError(
+            f"`metric` must be one of {_VALID_METRICS!r}; got {metric!r}."
+        )
+
+    df = triangle.to_polars()
+    grp = triangle.groups
+    coh = triangle.cohort
+    dev = triangle.dev
+    grain = triangle.grain
+
+    if metric in _AMOUNT_METRICS:
+        div_vals = df[metric].to_numpy()
+    else:
+        div_vals = np.array([], dtype=float)
+    if isinstance(amount_divisor, str):
+        if amount_divisor != "auto":
+            raise ValueError(
+                f"`amount_divisor` must be numeric or 'auto', got "
+                f"{amount_divisor!r}."
+            )
+        amount_divisor = _auto_divisor(div_vals)
+    amount_divisor = float(amount_divisor)
+    meta = _resolve_plot_meta(metric, amount_divisor)
+
+    is_ratio = metric in _RATIO_METRICS
+    is_prop = metric in _PROP_METRICS
+    if summary and not is_ratio:
+        warnings.warn(
+            "Summary overlay is only supported for `ratio` and `incr_ratio`."
+        )
+        summary = False
+
+    if grp is None:
+        facets: list[tuple[Any, pl.DataFrame]] = [(None, df)]
+    else:
+        order: list[Any] = []
+        seen: set = set()
+        for g in df[grp].to_list():
+            if g not in seen:
+                seen.add(g)
+                order.append(g)
+        facets = [(g, df.filter(pl.col(grp) == g)) for g in order]
+    n_facets = len(facets)
+
+    if nrow is None and ncol is None:
+        ncol = min(n_facets, 3)
+        nrow = math.ceil(n_facets / ncol)
+    elif ncol is None:
+        ncol = math.ceil(n_facets / max(nrow, 1))
+    elif nrow is None:
+        nrow = math.ceil(n_facets / max(ncol, 1))
+
+    if figsize is None:
+        figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
+    panel_h_in = max((figsize[1] - 1.0) / max(nrow, 1), 0.5)
+
+    fig, axes = plt.subplots(
+        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    )
+
+    # Cohort -> colour: YlGnBu gradient over the global cohort ordering, so
+    # the same cohort keeps its colour across facets (R uses a date gradient).
+    cohorts = sorted({c for c in df["cohort"].to_list()})
+    n_coh = len(cohorts)
+    cmap = mpl.colormaps["YlGnBu"]
+    lo, hi = 0.15, 0.92
+    cpos = {c: lo + (hi - lo) * (i / max(n_coh - 1, 1))
+            for i, c in enumerate(cohorts)}
+
+    def _coh_color(c):
+        return cmap(cpos[c])
+
+    if is_ratio:
+        hline: float | None = 1.0
+    elif metric in _AMOUNT_METRICS:
+        hline = 0.0
+    else:
+        hline = None
+
+    scale = 100.0 if (is_ratio or is_prop) else (1.0 / amount_divisor)
+    fmt = FuncFormatter(lambda v, _p, s=scale: f"{v * s:,.0f}")
+
+    for idx, (group_value, sub) in enumerate(facets):
+        r, c = divmod(idx, ncol)
+        ax = axes[r][c]
+        _draw_cohort_lines(ax, sub, metric, _coh_color, summary,
+                           summary_min_n, hline)
+        ax.yaxis.set_major_formatter(fmt)
+        if group_value is not None:
+            strip_h = _STRIP_HEIGHT_IN / panel_h_in
+            ax.set_title(" ", pad=_STRIP_HEIGHT_IN * 72.0)
+            ax.add_patch(Rectangle(
+                (0.0, 1.0), 1.0, strip_h, transform=ax.transAxes,
+                facecolor=_STRIP_FILL, edgecolor=_STRIP_EDGE, linewidth=0.5,
+                clip_on=False, zorder=3))
+            ax.text(0.5, 1.0 + strip_h / 2.0, str(group_value),
+                    transform=ax.transAxes, ha="center", va="center",
+                    fontsize=8.5, color=_STRIP_TEXT, clip_on=False, zorder=4)
+
+    for idx in range(n_facets, nrow * ncol):
+        r, c = divmod(idx, ncol)
+        axes[r][c].set_visible(False)
+
+    fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
+                 ha="left")
+    fig.supxlabel(_pretty_var_label(dev), fontsize=11)
+    fig.supylabel(metric, fontsize=11)
+    if meta.caption:
+        fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
+                 fontsize=8.5, color=_CAPTION_COLOR)
+
+    vis_axes = [axes[divmod(i, ncol)[0]][divmod(i, ncol)[1]]
+                for i in range(n_facets)]
+    if summary:
+        handles = [
+            plt.Line2D([], [], color="black", label="Mean"),
+            plt.Line2D([], [], color="#1f77b4", label="Median"),
+            plt.Line2D([], [], color="#d62728", label="Weighted"),
+        ]
+        fig.legend(handles=handles, loc="upper right", fontsize=8,
+                   frameon=False)
+    elif n_coh > 1:
+        # Raw-mode cohort colour bar.
+        lc = ListedColormap([_coh_color(c) for c in cohorts])
+        sm = ScalarMappable(norm=Normalize(vmin=0, vmax=n_coh), cmap=lc)
+        cbar = fig.colorbar(sm, ax=vis_axes, fraction=0.025, pad=0.01)
+        coh_type = _get_period_type(coh, grain=grain)
+        ticks = list(range(0, n_coh, max(1, n_coh // 6)))
+        cbar.set_ticks([t + 0.5 for t in ticks])
+        if coh_type:
+            lbls = _format_period_series(
+                pl.Series([cohorts[t] for t in ticks]), coh_type)
+        else:
+            lbls = [str(cohorts[t]) for t in ticks]
+        cbar.set_ticklabels(lbls)
+        cbar.ax.tick_params(labelsize=7)
+        cbar.ax.set_title("cohort", fontsize=8)
+
+    return fig
+
+
+__all__ = ["plot_triangle", "plot"]
 _unused = (_PROP_METRICS,)

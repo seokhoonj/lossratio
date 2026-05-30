@@ -758,6 +758,45 @@ class Triangle:
             maturity=maturity,
         )
 
+    def plot(
+        self,
+        metric: str = "ratio",
+        summary: bool = False,
+        summary_min_n: int = 5,
+        amount_divisor: float | str = "auto",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Cohort-trajectory line plot (mirrors R's ``plot.Triangle``).
+
+        One line per cohort -- x is the development index, y the selected
+        ``metric`` (default cumulative loss ``"ratio"``) -- faceted by
+        ``groups``. With ``summary=True`` (ratio metrics only) the
+        per-cohort lines fade to grey and Mean / Median / Weighted summary
+        lines are overlaid, masked at development periods where fewer than
+        ``summary_min_n`` cohorts contribute (a dotted vline marks the
+        first such period).
+
+        For the cell-value heatmap (the aligned run-off triangle), use
+        :meth:`plot_triangle` instead.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._triangle_vis import plot as _impl
+        return _impl(
+            self,
+            metric=metric,
+            summary=summary,
+            summary_min_n=summary_min_n,
+            amount_divisor=amount_divisor,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
         if self._groups is not None:
