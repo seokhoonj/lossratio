@@ -667,6 +667,7 @@ class Triangle:
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
         *,
+        x_axis: str = "dev",
         recent: int | None = None,
         regime: Any = None,
         holdout: int | None = None,
@@ -681,6 +682,16 @@ class Triangle:
             ``"usage"`` (status heatmap showing which cells the fit
             would use vs. drop under the given ``recent`` / ``regime`` /
             ``holdout`` / ``maturity`` masks).
+        x_axis
+            ``"dev"`` (default; columns are the development index, the
+            aligned right-triangle layout) or ``"calendar"`` (columns
+            are the calendar period of each cell, so cohorts sit on
+            their own diagonal -- the staircase layout the raw data sits
+            in before alignment). Each cell's calendar period is
+            ``cohort + (dev - 1)`` at the triangle grain. Applies to
+            both views; in the usage view the ``recent`` / ``holdout``
+            calendar-diagonal masks become clean vertical bands, and the
+            ``maturity`` boundary becomes a stepped diagonal.
         metric
             (value view) One of: ``"ratio"``, ``"incr_ratio"``,
             ``"loss"``, ``"incr_loss"``, ``"premium"``,
@@ -740,6 +751,7 @@ class Triangle:
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
+            x_axis=x_axis,
             recent=recent,
             regime=regime,
             holdout=holdout,
@@ -1030,7 +1042,7 @@ class TriangleValidation:
 
     def plot_triangle(
         self,
-        view: str = "dev",
+        x_axis: str = "dev",
         show_label: bool = False,
         nrow: int | None = None,
         ncol: int | None = None,
@@ -1048,8 +1060,9 @@ class TriangleValidation:
 
         Parameters
         ----------
-        view
-            ``"dev"`` (default) or ``"calendar"``. The calendar
+        x_axis
+            ``"dev"`` (default) or ``"calendar"`` -- the same layout
+            selector as :meth:`Triangle.plot_triangle`. The calendar
             layout synthesises per-cell calendar values via
             ``cohort + (dev - 1) * grain_step`` and requires the
             cohort series to have an inferable grain. Raises if no
@@ -1063,7 +1076,7 @@ class TriangleValidation:
         from ._validation_vis import plot_triangle_validation
         return plot_triangle_validation(
             self,
-            view=view,
+            x_axis=x_axis,
             show_label=show_label,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )

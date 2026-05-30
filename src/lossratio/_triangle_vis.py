@@ -6,6 +6,7 @@ the R sibling's ``plot_triangle.Triangle`` (``R/triangle-vis.R``).
 
 from __future__ import annotations
 
+import bisect
 import math
 from typing import TYPE_CHECKING, Any
 
@@ -58,6 +59,7 @@ def plot_triangle(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
     *,
+    x_axis: str = "dev",
     recent: int | None = None,
     regime: Any = None,
     holdout: int | None = None,
@@ -70,6 +72,10 @@ def plot_triangle(
 
     if view not in ("value", "usage"):
         raise ValueError(f"`view` must be 'value' or 'usage', got {view!r}.")
+    if x_axis not in ("dev", "calendar"):
+        raise ValueError(
+            f"`x_axis` must be 'dev' or 'calendar', got {x_axis!r}."
+        )
 
     if view == "usage":
         return _plot_triangle_usage(
@@ -81,6 +87,7 @@ def plot_triangle(
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
+            x_axis=x_axis,
         )
 
     if label_style not in ("value", "detail"):
@@ -121,29 +128,47 @@ def plot_triangle(
 
     meta = _resolve_plot_meta(metric, amount_divisor)
 
-    # Determine cell labels (cohort -> string, dev -> string) once,
+    # Determine cell labels (cohort -> string, x -> string) once,
     # using consistent ordering across facets so the axes are stable.
+    # The x-axis is either the development index (default, aligned
+    # right-triangle layout) or the calendar period of each cell
+    # (staircase layout: each cohort shifted to its own diagonal).
     coh_type = _get_period_type(coh, grain=grain)
-    dev_type = _get_period_type(dev)  # dev_m / dev_q / ... aren't dates
-
     cohort_labels = _format_axis(df["cohort"], coh_type)
-    dev_labels = _format_axis(df["dev"], dev_type)
-
-    # Ordered unique levels.
     coh_pairs = sorted(
         set(zip(df["cohort"].to_list(), cohort_labels)),
         key=lambda p: p[0],
     )
-    dev_pairs = sorted(
-        set(zip(df["dev"].to_list(), dev_labels)),
-        key=lambda p: p[0],
-    )
     y_levels = [lbl for _, lbl in coh_pairs]   # cohort, oldest -> newest
-    x_levels = [lbl for _, lbl in dev_pairs]   # dev, smallest -> largest
+
+    if x_axis == "calendar":
+        # calendar period of each cell = cohort + (dev - 1) at the grain.
+        step = {"M": 1, "Q": 3, "H": 6, "Y": 12}[grain]
+        cal_series = df.select(
+            pl.col("cohort")
+            .dt.offset_by(((pl.col("dev") - 1) * step).cast(pl.Utf8) + "mo")
+            .alias("_cal")
+        )["_cal"]
+        x_values = cal_series.to_list()
+        x_labels = _format_axis(cal_series, coh_type)
+        x_axis_label = (
+            _pretty_var_label(triangle.calendar)
+            if triangle.calendar is not None
+            else "calendar"
+        )
+    else:
+        dev_type = _get_period_type(dev)  # dev_m / dev_q / ... aren't dates
+        x_values = df["dev"].to_list()
+        x_labels = _format_axis(df["dev"], dev_type)
+        x_axis_label = _pretty_var_label(dev)
+
+    # Ordered unique levels.
+    x_pairs = sorted(set(zip(x_values, x_labels)), key=lambda p: p[0])
+    x_levels = [lbl for _, lbl in x_pairs]   # smallest -> largest
 
     df = df.with_columns(
         pl.Series(name="_y_lbl", values=cohort_labels),
-        pl.Series(name="_x_lbl", values=dev_labels),
+        pl.Series(name="_x_lbl", values=x_labels),
         pl.Series(name="_label", values=_cell_labels(df, metric, label_style, amount_divisor)),
     )
 
@@ -202,7 +227,7 @@ def plot_triangle(
         axes[r][c].set_visible(False)
 
     fig.suptitle(meta.title, fontsize=12, fontweight="bold")
-    fig.supxlabel(_pretty_var_label(dev), fontsize=10)
+    fig.supxlabel(x_axis_label, fontsize=10)
     fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
     if meta.caption:
         fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom", fontsize=8)
@@ -783,6 +808,7 @@ def _plot_triangle_usage(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
+    x_axis: str = "dev",
 ) -> Any:
     """Categorical status heatmap; see ``plot_triangle.Triangle(view="usage")``."""
     import matplotlib.pyplot as plt
@@ -818,8 +844,33 @@ def _plot_triangle_usage(
     )
     cohort_values_desc = [c for c, _ in coh_pairs]
     y_levels = [lbl for _, lbl in coh_pairs]
-    x_levels = sorted(set(usage_df["dev"].to_list()))
-    x_labels = [str(d) for d in x_levels]
+
+    # x-axis: development index (default, aligned right-triangle) or the
+    # calendar period of each cell (staircase: each cohort on its own
+    # diagonal). recent / holdout masks are calendar-diagonal, so on the
+    # calendar axis they read as clean vertical bands.
+    step = {"M": 1, "Q": 3, "H": 6, "Y": 12}[grain]
+    if x_axis == "calendar":
+        usage_df = usage_df.with_columns(
+            pl.col("cohort")
+            .dt.offset_by(((pl.col("dev") - 1) * step).cast(pl.Utf8) + "mo")
+            .alias("_xcal")
+        )
+        xkey = "_xcal"
+        x_levels = sorted(set(usage_df["_xcal"].to_list()))
+        x_labels = _format_axis(
+            pl.Series(name="_x", values=x_levels), coh_type
+        )
+        x_axis_label = (
+            _pretty_var_label(triangle.calendar)
+            if triangle.calendar is not None
+            else "calendar"
+        )
+    else:
+        xkey = "dev"
+        x_levels = sorted(set(usage_df["dev"].to_list()))
+        x_labels = [str(d) for d in x_levels]
+        x_axis_label = _pretty_var_label(dev)
 
     if grp is None:
         facets = [(None, usage_df)]
@@ -888,7 +939,7 @@ def _plot_triangle_usage(
         ax = axes[r][c]
 
         for row in sub.iter_rows(named=True):
-            xi = x_idx[row["dev"]]
+            xi = x_idx[row[xkey]]
             yi = y_idx[row["_y_lbl"]]
             color = _USAGE_COLORS[row["status"]]
             ax.add_patch(
@@ -909,14 +960,21 @@ def _plot_triangle_usage(
         ax.set_yticks(range(ny))
         ax.set_yticklabels(y_levels, fontsize=8)
 
-        # Maturity vline (dev = m_k - 0.5).
+        # Maturity boundary at dev = m_k. On the dev axis this is a single
+        # vertical line; on the calendar axis it is a stepped diagonal,
+        # since each cohort reaches dev = m_k at its own calendar period.
         if m_k is not None:
-            ax.axvline(
-                x_idx_get(x_idx, m_k) - 0.5
-                if m_k in x_idx
-                else m_k - 1.5,
-                linestyle="--", color="black", linewidth=0.6,
-            )
+            if x_axis == "calendar":
+                _draw_maturity_staircase(
+                    ax, m_k, step, cohort_values_desc, x_levels
+                )
+            else:
+                ax.axvline(
+                    x_idx_get(x_idx, m_k) - 0.5
+                    if m_k in x_idx
+                    else m_k - 1.5,
+                    linestyle="--", color="black", linewidth=0.6,
+                )
 
         # Regime hline.
         if per_group_cd is not None and group_value is not None:
@@ -984,7 +1042,7 @@ def _plot_triangle_usage(
             ha="center", va="top", fontsize=9, style="italic",
         )
 
-    fig.supxlabel(_pretty_var_label(dev), fontsize=10)
+    fig.supxlabel(x_axis_label, fontsize=10)
     fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
 
     # Legend on the figure (categorical key).
@@ -1002,6 +1060,42 @@ def _plot_triangle_usage(
     )
 
     return fig
+
+
+def _draw_maturity_staircase(
+    ax: Any,
+    m_k: int,
+    step: int,
+    cohort_values_desc: list,
+    x_levels: list,
+) -> None:
+    """Draw the dev = ``m_k`` boundary on a calendar x-axis.
+
+    On the calendar axis each cohort reaches ``dev = m_k`` at its own
+    calendar period (``cohort + (m_k - 1)`` at the grain), so the
+    boundary is a stepped diagonal rather than a single vertical line.
+    Rows run newest-cohort-first (``yi = 0`` at the top), so the step
+    descends to the left as cohorts get older.
+    """
+    months = (m_k - 1) * step
+    boundaries = (
+        pl.DataFrame({"c": cohort_values_desc})
+        .with_columns(pl.col("c").dt.offset_by(f"{months}mo").alias("b"))["b"]
+        .to_list()
+    )
+    prev_bx: float | None = None
+    for yi, b in enumerate(boundaries):
+        bx = bisect.bisect_left(x_levels, b) - 0.5
+        ax.plot(
+            [bx, bx], [yi - 0.5, yi + 0.5],
+            linestyle="--", color="black", linewidth=0.6,
+        )
+        if prev_bx is not None:
+            ax.plot(
+                [prev_bx, bx], [yi - 0.5, yi - 0.5],
+                linestyle="--", color="black", linewidth=0.6,
+            )
+        prev_bx = bx
 
 
 def x_idx_get(x_idx: dict, key: int) -> int:

@@ -165,6 +165,101 @@ def test_axis_labels_use_pretty_form(tri_with_groups):
         _close(fig)
 
 
+def test_x_axis_calendar_value(tri_single):
+    # The calendar layout labels the x-axis with calendar periods (date
+    # strings) instead of the bare integer development indices, and the
+    # x-axis label switches to the calendar period.
+    fig_dev = tri_single.plot_triangle(x_axis="dev")
+    fig_cal = tri_single.plot_triangle(x_axis="calendar")
+    try:
+        assert "development" in fig_dev._supxlabel.get_text()
+        assert "calendar" in fig_cal._supxlabel.get_text()
+        ax_dev = [a for a in fig_dev.get_axes() if a.get_visible()][0]
+        ax_cal = [a for a in fig_cal.get_axes() if a.get_visible()][0]
+        dev_lbls = [t.get_text() for t in ax_dev.get_xticklabels()]
+        cal_lbls = [t.get_text() for t in ax_cal.get_xticklabels()]
+        # dev labels are bare integers; calendar labels are period strings.
+        assert all(s.isdigit() for s in dev_lbls if s)
+        assert any(not s.isdigit() for s in cal_lbls if s)
+    finally:
+        _close(fig_dev)
+        _close(fig_cal)
+
+
+def test_x_axis_calendar_usage(tri_single):
+    # Usage view honours the calendar axis too, with the calendar-diagonal
+    # recent / holdout masks and the maturity boundary overlaid.
+    fig = tri_single.plot_triangle(
+        view="usage", x_axis="calendar", recent=12, holdout=6, maturity="auto"
+    )
+    try:
+        assert fig.get_axes()
+        assert "calendar" in fig._supxlabel.get_text()
+    finally:
+        _close(fig)
+
+
+def test_invalid_x_axis_raises(tri_with_groups):
+    with pytest.raises(ValueError, match="x_axis"):
+        tri_with_groups.plot_triangle(x_axis="cy")
+    with pytest.raises(ValueError, match="x_axis"):
+        tri_with_groups.plot_triangle(view="usage", x_axis="cy")
+
+
+def test_x_axis_calendar_periods_match(tri_single):
+    # The calendar x-levels must be exactly the distinct calendar periods
+    # of the cells: cohort + (dev - 1) at the grain (monthly here).
+    import polars as pl
+
+    df = tri_single.df
+    expected = (
+        df.with_columns(
+            pl.col("cohort")
+            .dt.offset_by(((pl.col("dev") - 1)).cast(pl.Utf8) + "mo")
+            .alias("_c")
+        )["_c"].n_unique()
+    )
+    fig = tri_single.plot_triangle(x_axis="calendar")
+    try:
+        ax = [a for a in fig.get_axes() if a.get_visible()][0]
+        labels = [t.get_text() for t in ax.get_xticklabels() if t.get_text()]
+        assert len(labels) == expected
+    finally:
+        _close(fig)
+
+
+def test_x_axis_calendar_multigroup_facets(tri_with_groups):
+    # The calendar layout faces out per group like the dev layout.
+    for view in ("value", "usage"):
+        fig = tri_with_groups.plot_triangle(view=view, x_axis="calendar")
+        try:
+            visible = [a for a in fig.get_axes() if a.get_visible()]
+            assert len(visible) == 4
+        finally:
+            _close(fig)
+
+
+def test_usage_calendar_maturity_is_a_staircase(tri_single):
+    # The maturity boundary is a single vline on the dev axis but a
+    # stepped diagonal (many dashed segments) on the calendar axis.
+    def _n_dashed(fig):
+        ax = [a for a in fig.get_axes() if a.get_visible()][0]
+        return sum(
+            1 for ln in ax.lines if ln.get_linestyle() in ("--", "dashed")
+        )
+
+    fig_dev = tri_single.plot_triangle(view="usage", maturity=3, x_axis="dev")
+    fig_cal = tri_single.plot_triangle(
+        view="usage", maturity=3, x_axis="calendar"
+    )
+    try:
+        assert _n_dashed(fig_dev) == 1
+        assert _n_dashed(fig_cal) > _n_dashed(fig_dev)
+    finally:
+        _close(fig_dev)
+        _close(fig_cal)
+
+
 def test_returns_matplotlib_figure(tri_with_groups):
     from matplotlib.figure import Figure
     fig = tri_with_groups.plot_triangle()

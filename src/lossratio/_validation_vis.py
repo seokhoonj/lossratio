@@ -1,7 +1,7 @@
 """TriangleValidation visualisation -- matplotlib backend.
 
 Implements ``TriangleValidation.plot()`` (cohort-level bar chart of
-observed vs expected dev counts) and ``TriangleValidation.plot_triangle(view="dev")``
+observed vs expected dev counts) and ``TriangleValidation.plot_triangle(x_axis="dev")``
 (cohort x dev heatmap of observed / missing cells). Mirrors the R
 sibling's ``plot.TriangleValidation`` and
 ``plot_triangle.TriangleValidation`` (``R/triangle.R``).
@@ -110,7 +110,7 @@ def plot_validation(
 
 def plot_triangle_validation(
     tv: TriangleValidation,
-    view: str = "dev",
+    x_axis: str = "dev",
     show_label: bool = False,
     nrow: int | None = None,
     ncol: int | None = None,
@@ -121,19 +121,20 @@ def plot_triangle_validation(
 
     For each cohort with gaps, paints the cell grid as observed (blue)
     or missing (red). Only the cohorts in the gaps table appear -- if
-    a cohort has no gap it isn't drawn. ``view="dev"`` uses the dev
-    axis; ``view="calendar"`` synthesises the calendar value per cell
+    a cohort has no gap it isn't drawn. ``x_axis="dev"`` uses the dev
+    axis; ``x_axis="calendar"`` synthesises the calendar value per cell
     as ``cohort + (dev - 1) * grain_step`` and uses the resulting
-    calendar series as the x-axis.
+    calendar series as the x-axis (same layout selector as
+    :meth:`Triangle.plot_triangle`).
 
     R divergence: R's ``plot_triangle.TriangleValidation`` paints
     *all* cohorts using a stored ``observed_pairs`` slot. Python's
     TriangleValidation only carries the gaps frame, so non-gappy
     cohorts are omitted from the heatmap.
     """
-    if view not in ("dev", "calendar"):
+    if x_axis not in ("dev", "calendar"):
         raise ValueError(
-            f"`view` must be 'dev' or 'calendar'; got {view!r}."
+            f"`x_axis` must be 'dev' or 'calendar'; got {x_axis!r}."
         )
     import matplotlib.pyplot as plt
 
@@ -151,12 +152,12 @@ def plot_triangle_validation(
     coh = tv.cohort
     coh_type = _get_period_type(coh)
 
-    if view == "calendar":
+    if x_axis == "calendar":
         if tv.calendar is None:
             raise ValueError(
-                "`view='calendar'` requires a calendar column on the "
+                "`x_axis='calendar'` requires a calendar column on the "
                 "TriangleValidation input. Pass calendar=... to "
-                "TriangleValidation(...) or use view='dev'."
+                "TriangleValidation(...) or use x_axis='dev'."
             )
         try:
             grain = resolve_grain(
@@ -164,7 +165,7 @@ def plot_triangle_validation(
             )
         except Exception as e:
             raise ValueError(
-                f"`view='calendar'` could not infer the cohort grain "
+                f"`x_axis='calendar'` could not infer the cohort grain "
                 f"from {coh!r}: {e}"
             ) from e
 
@@ -208,7 +209,7 @@ def plot_triangle_validation(
         else:
             lab = [str(v) for v in cohorts]
 
-        if view == "dev":
+        if x_axis == "dev":
             _draw_dev_panel(
                 ax, sub_sorted, lab, max_dev,
                 obs_color=obs_color, miss_color=miss_color,
@@ -239,12 +240,12 @@ def plot_triangle_validation(
 
     title = (
         "Gap positions (blue = observed, red = missing)"
-        if view == "dev"
+        if x_axis == "dev"
         else "Gap positions on calendar axis"
         + " (blue = observed, red = missing)"
     )
     fig.suptitle(title, fontsize=11, fontweight="bold")
-    fig.supxlabel("dev" if view == "dev" else "calendar", fontsize=10)
+    fig.supxlabel("dev" if x_axis == "dev" else "calendar", fontsize=10)
     fig.supylabel("cohort", fontsize=10)
     return fig
 

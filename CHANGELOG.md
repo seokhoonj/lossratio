@@ -115,6 +115,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Triangle.plot_triangle(x_axis=...)` -- new layout selector,
+  ``"dev"`` (default; the aligned right-triangle, columns are the
+  development index) or ``"calendar"`` (columns are each cell's
+  calendar period, ``cohort + (dev - 1)`` at the grain, so cohorts sit
+  on their own diagonal -- the staircase the raw data sits in before
+  alignment). Orthogonal to ``view``: it applies to both the value and
+  usage views. In the usage view the ``recent`` / ``holdout``
+  calendar-diagonal masks render as clean vertical bands and the
+  ``maturity`` boundary becomes a stepped diagonal. ``TriangleValidation.plot_triangle``
+  takes the same ``x_axis`` selector (renamed from ``view`` for
+  consistency across the two plotters -- ``view`` now uniformly means
+  "what is shown", ``x_axis`` means "how cells are laid out").
 - `Triangle.plot_triangle(view="usage")` respects a segment regime
   treatment: cells in groups listed in ``regime.changes`` are
   classified relative to their segment's bridged mini-triangle band, so
@@ -123,15 +135,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change rows in the Regime) are unaffected. Maturity (``m_k``) does not
   shrink the band (R parity: it's a separate dashed-vline reference
   only).
-- `TriangleValidation.plot_triangle(view="calendar")` -- cohort x
+- `TriangleValidation.plot_triangle(x_axis="calendar")` -- cohort x
   calendar layout of the gap heatmap, mirroring the R sibling's
-  `view = "calendar"` branch (`R/triangle.R`). Per-cell calendar
-  values are synthesised inline as ``cohort + (dev - 1) * grain_step``
-  via the shared :func:`add_periods` helper, so the calendar layout
-  works even though Python's TriangleValidation doesn't carry an
-  `observed_pairs` slot. Requires a ``calendar`` column on the
-  validation input (raises ``ValueError`` if absent). The previous
-  dev-axis layout remains the default (``view="dev"``).
+  calendar branch (`R/triangle.R`). Per-cell calendar values are
+  synthesised inline as ``cohort + (dev - 1) * grain_step`` via the
+  shared :func:`add_periods` helper, so the calendar layout works even
+  though Python's TriangleValidation doesn't carry an `observed_pairs`
+  slot. Requires a ``calendar`` column on the validation input (raises
+  ``ValueError`` if absent). The dev-axis layout remains the default
+  (``x_axis="dev"``).
 - `Triangle.plot_triangle(view="usage")` now accepts
   ``maturity="auto"`` and ``regime="auto"``: the renderer resolves
   them inline via :meth:`Triangle.detect_maturity` /

@@ -75,11 +75,11 @@ def test_validation_plot_triangle_show_label(tv_with_gaps):
         _close(fig)
 
 
-# --- view='calendar' -----------------------------------------------------
+# --- x_axis='calendar' ---------------------------------------------------
 
 
 def test_validation_plot_triangle_calendar_view(tv_with_gaps):
-    fig = tv_with_gaps.plot_triangle(view="calendar")
+    fig = tv_with_gaps.plot_triangle(x_axis="calendar")
     try:
         assert isinstance(fig, plt.Figure)
         assert "calendar" in fig._suptitle.get_text()
@@ -88,7 +88,7 @@ def test_validation_plot_triangle_calendar_view(tv_with_gaps):
 
 
 def test_validation_plot_triangle_calendar_show_label(tv_with_gaps):
-    fig = tv_with_gaps.plot_triangle(view="calendar", show_label=True)
+    fig = tv_with_gaps.plot_triangle(x_axis="calendar", show_label=True)
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -96,8 +96,8 @@ def test_validation_plot_triangle_calendar_show_label(tv_with_gaps):
 
 
 def test_validation_plot_triangle_invalid_view(tv_with_gaps):
-    with pytest.raises(ValueError, match="view"):
-        tv_with_gaps.plot_triangle(view="bogus")
+    with pytest.raises(ValueError, match="x_axis"):
+        tv_with_gaps.plot_triangle(x_axis="bogus")
 
 
 def test_validation_plot_triangle_calendar_requires_calendar_col():
@@ -110,4 +110,4 @@ def test_validation_plot_triangle_calendar_requires_calendar_col():
         cohort="uy_m", calendar=None, dev="dev_m",
     )
     with pytest.raises(ValueError, match="calendar"):
-        tv.plot_triangle(view="calendar")
+        tv.plot_triangle(x_axis="calendar")
