@@ -1,0 +1,33 @@
+/* lossratio documentation -- brand colours and landing polish. */
+
+html[data-theme="light"] {
+    --pst-color-primary: #2a6f97;
+    --pst-color-secondary: #c1432e;
+    --pst-color-link: #2a6f97;
+    --pst-color-link-hover: #c1432e;
+}
+
+html[data-theme="dark"] {
+    --pst-color-primary: #6ba3c9;
+    --pst-color-secondary: #e07a5f;
+    --pst-color-link: #6ba3c9;
+    --pst-color-link-hover: #e07a5f;
+}
+
+/* the home-page hero image */
+img.hero {
+    display: block;
+    margin: 1.5rem auto 2.25rem auto;
+    border-radius: 8px;
+}
+
+/* the navbar wordmark -- two-colour text in place of a logo image */
+.navbar-brand .logo__title {
+    margin-bottom: 0;
+    font-weight: 700;
+    font-size: 1.3rem;
+}
+html[data-theme="light"] .logo__loss { color: #2a6f97; }
+html[data-theme="dark"] .logo__loss { color: #6ba3c9; }
+html[data-theme="light"] .logo__ratio { color: #1d2b35; }
+html[data-theme="dark"] .logo__ratio { color: #e8ecef; }

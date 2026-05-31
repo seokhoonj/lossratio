@@ -53,6 +53,13 @@ dev = [
   "ruff>=0.4",
   "twine>=5.0",
 ]
+docs = [
+  "sphinx>=7.0",
+  "pydata-sphinx-theme",
+  "myst-parser>=2.0",
+  "sphinx-design",
+  "sphinx-copybutton",
+]
 
 [project.urls]
 Homepage = "https://seokhoonj.github.io/lossratio/"
