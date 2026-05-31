@@ -27,7 +27,11 @@ img.hero {
     font-weight: 700;
     font-size: 1.3rem;
 }
-html[data-theme="light"] .logo__loss { color: #2a6f97; }
+.logo__loss { color: #2a6f97; }
+.logo__ratio { color: #1d2b35; }
 html[data-theme="dark"] .logo__loss { color: #6ba3c9; }
-html[data-theme="light"] .logo__ratio { color: #1d2b35; }
 html[data-theme="dark"] .logo__ratio { color: #e8ecef; }
+@media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] .logo__loss { color: #6ba3c9; }
+    html[data-theme="auto"] .logo__ratio { color: #e8ecef; }
+}

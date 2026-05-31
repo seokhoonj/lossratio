@@ -59,7 +59,6 @@ html_theme = "pydata_sphinx_theme"
 html_title = "lossratio"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
-html_js_files = ["external-links.js"]
 html_show_sourcelink = False
 html_copy_source = False
 
