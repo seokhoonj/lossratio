@@ -1,8 +1,133 @@
 # 6장. 구조 변화 탐지
 
-```{admonition} 준비 중
+지금까지의 예측은 조용한 가정 하나에 기대고 있었습니다 — **모든 코호트가
+같은 손해 진전 패턴을 공유한다**는 것. ATA 인자도 강도도 여러 코호트를
+합쳐 구했으니, 코호트들이 한목소리를 낸다고 믿은 셈입니다.
+
+그러나 현실에서는 어느 시점에 **구조가 바뀝니다**. 약관이 개정되고, 요율이
+조정되고, 손해사정 방식이 달라집니다. 그 전후로 인수된 코호트는 손해
+추이가 다른데, 이를 한데 섞어 인자를 구하면 예측이 양쪽의 어중간한
+평균으로 뭉개집니다. 이 장은 그런 변화를 **찾아내고 예측에 반영하는** 법을
+다룹니다.
+
+## 6.1 regime이란
+
+**regime**(유사한 손해 추이를 공유하는 인수 코호트들의 묶음)은 "같은 규칙
+아래 인수된 코호트들"을 가리킵니다. 규칙이 바뀌면 새 regime이 시작됩니다.
+
+예를 들어 어느 수술 담보가 2024년 7월에 약관을 개정해 보장 범위를 좁혔다고
+합시다. 그 이후 코호트는 구조적으로 손해율이 낮아집니다 — 위험이 좋아져서가
+아니라 **상품 자체가 달라졌기** 때문입니다. 2024년 6월 코호트와 8월 코호트는
+이름만 이웃일 뿐, 서로 다른 모집단입니다.
+
+```{admonition} 왜 섞으면 안 되는가
+:class: important
+
+chain ladder의 숨은 전제는 "하나의 일관된 진전 패턴"입니다. regime 변화는
+이 전제를 깹니다. 변화 전(높은 손해율)과 후(낮은 손해율) 코호트를 합쳐
+인자를 구하면, 그 인자는 어느 쪽도 아닌 평균이 됩니다. 그 평균으로 최근
+코호트를 예측하면 **실제보다 높게** 잡힙니다 — 이미 끝난 옛 규칙의 손해를
+새 코호트에 덮어씌우는 셈입니다.
+```
+
+## 6.2 변화 지점 찾기 — E-Divisive
+
+변화가 *언제* 일어났는지 눈대중하지 않고 데이터가 말하게 합니다.
+`detect_regime()`은 코호트별 손해율 흐름에서 **분포가 달라지는 지점**을
+찾습니다. 기본 알고리즘은 **E-Divisive**(분포 변화점을 비모수적으로 찾는
+방법 — 정규성 같은 가정 없이 통계적으로 유의한 단절만 짚어 냅니다)입니다.
+
+```python
+import polars as pl
+import lossratio as lr
+
+df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+tri = lr.Triangle(df, groups="coverage")
+
+reg = tri.detect_regime()
+reg.changes
+#> ┌──────────┬────────────┬───────────┐
+#> │ coverage ┆ change     ┆ regime_id │
+#> ╞══════════╪════════════╪═══════════╡
+#> │ SUR      ┆ 2024-07-01 ┆ 2         │
+#> └──────────┴────────────┴───────────┘
+```
+
+내장 SUR 데이터에는 2024년 7월에 손해율이 한 단계 낮아지는 구조 변화가
+심어져 있는데, `detect_regime()`이 정확히 그 지점을 짚어 냅니다. 코호트를
+regime별로 색칠해 보면 변화가 한눈에 들어옵니다.
+
+```{eval-rst}
+.. plot::
+   :context:
+   :nofigs:
+   :include-source: false
+
+   import polars as pl
+   import lossratio as lr
+
+   df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+   tri = lr.Triangle(df, groups="coverage")
+   reg = tri.detect_regime()
+
+.. plot::
+   :context: close-figs
+   :caption: SUR 코호트의 regime 분할. 2024년 7월(24.07)을 경계로 이전(regime 1)과 이후(regime 2)가 나뉜다.
+
+   reg.plot()
+```
+
+## 6.3 예측에 반영하기
+
+찾은 regime을 적합에 넘기면, 패키지가 **regime별로 인자를 따로 추정**해
+변화 전후를 섞지 않습니다. 손해율 합성에는 `loss_regime`, 단일 역할
+적합에는 `regime` 인자로 전달합니다.
+
+```python
+reg = tri.detect_regime()
+
+base    = lr.Ratio(method="ed").fit(tri)                  # regime 무시
+trimmed = lr.Ratio(method="ed", loss_regime=reg).fit(tri) # regime 반영
+```
+
+효과는 변화 이후의 어린 코호트에서 가장 큽니다. regime을 무시하면 가장
+어린 코호트(2025-12)의 최종 손해율이 **1.42**로 잡히지만, 이는 이미 끝난
+옛 regime의 높은 손해율이 섞여 부풀려진 값입니다. regime을 반영하면 새
+regime의 코호트만으로 추정해 **1.28**로 내려갑니다 — 달라진 상품의 실제
+수준에 더 가깝습니다.
+
+```{admonition} regime과 recent는 다른 축
 :class: note
 
-이 장은 작성 중입니다. 인수 코호트의 regime 변화란 무엇인지, E-Divisive
-탐지, 예측에 반영하는 법을 다룹니다.
+5장까지 본 `recent`는 최근 N개의 *달력 대각선*만 보는 필터(시간 축)이고,
+regime은 *코호트*를 기준으로 변화 이전을 잘라 내는 필터입니다. 둘은 직교해
+함께 쓸 수 있습니다 — recent로 최근 흐름에 집중하면서, regime으로 옛 규칙을
+배제하는 식입니다.
 ```
+
+## 6.4 손해와 보험료는 따로 본다
+
+구조 변화는 손해 쪽과 보험료 쪽에서 **따로** 일어날 수 있습니다. 손해
+쪽 변화는 약관 개정·손해사정 변경에서, 보험료 쪽 변화는 요율 개정·판매
+채널 이동에서 옵니다. 두 사건이 같은 시점일 이유는 없으므로, 손해율
+합성(`Ratio`)에서는 `loss_regime`과 `premium_regime`을 따로 받습니다(기본은
+손해 쪽 설정을 보험료 쪽에도 적용).
+
+```python
+lr.Ratio(method="ed",
+         loss_regime=lr.regime_at(change="2024-07-01"),     # 손해 쪽 변화
+         premium_regime=lr.regime_at(change="2024-01-01")   # 보험료 쪽 변화
+         ).fit(tri)
+```
+
+수동으로 변화 시점을 알고 있으면 `regime_at()`으로 직접 지정할 수도
+있습니다.
+
+## 6.5 함께 보기
+
+- {doc}`4장 — 손해율 예측 <04-projection>`: regime이 가장 크게 작용하는
+  어린 코호트의 예측이 방법마다 갈리는 양상.
+- {doc}`7장 — 예측 검증 <07-backtest>`: regime 반영이 실제로 예측을
+  개선하는지 과거 시점에서 되짚어 확인합니다.
+- {doc}`API 레퍼런스 <../api>`의 `Triangle.detect_regime`, `Regime`,
+  `regime_at`
