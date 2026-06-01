@@ -27,7 +27,7 @@ from ._io import (
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
-from .cl import _fit_mack, _mack_f_var
+from .cl import _fit_mack, _mack_f_var, _mack_step_cl, _mack_step_ed
 from .ed import _build_premium_matrix
 
 if TYPE_CHECKING:
@@ -100,19 +100,12 @@ def _project_premium(
         if np.isfinite(f_k[k]):
             premium_proj[pos, k + 1] = f_k[k] * ck[pos]
 
+        # Premium projects multiplicatively under both methods; only the
+        # variance recursion differs (CL carries f^2, ED is additive).
         if method == "cl":
-            if np.isfinite(f_k[k]):
-                proc_var[pos] = (f_k[k] ** 2) * proc_var[pos]
-                param_var[pos] = (f_k[k] ** 2) * param_var[pos]
-            if np.isfinite(sigma2_k[k]):
-                proc_var[pos] = proc_var[pos] + sigma2_k[k] * ck[pos]
-            if np.isfinite(f_var[k]):
-                param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
+            _mack_step_cl(proc_var, param_var, pos, f_k[k], sigma2_k[k], f_var[k], ck)
         else:  # ed
-            if np.isfinite(sigma2_k[k]):
-                proc_var[pos] = proc_var[pos] + sigma2_k[k] * ck[pos]
-            if np.isfinite(f_var[k]):
-                param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
+            _mack_step_ed(proc_var, param_var, pos, sigma2_k[k], f_var[k], ck)
 
         ck1 = premium_proj[:, k + 1]
         sp = pos & ~np.isnan(ck1)
@@ -239,25 +232,12 @@ def _fit_premium_single(
         if not pos.any():
             continue
 
+        # Point projection already filled by `_fit_mack`; only the
+        # variance recursion runs here (CL multiplicative, ED additive).
         if method == "cl":
-            # CL multiplicative recursion (Mack):
-            #   proc_{k+1} = f^2 * proc_k + sigma^2 * C_k
-            #   param_{k+1} = f^2 * param_k + C_k^2 * Var(f_hat)
-            if np.isfinite(f_k[k]):
-                proc_var[pos] = (f_k[k] ** 2) * proc_var[pos]
-                param_var[pos] = (f_k[k] ** 2) * param_var[pos]
-            if np.isfinite(sigma2_k[k]):
-                proc_var[pos] = proc_var[pos] + sigma2_k[k] * ck[pos]
-            if np.isfinite(f_var[k]):
-                param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
+            _mack_step_cl(proc_var, param_var, pos, f_k[k], sigma2_k[k], f_var[k], ck)
         else:
-            # ED additive recursion:
-            #   proc_{k+1} = proc_k + sigma^2 * C_k
-            #   param_{k+1} = param_k + C_k^2 * Var(f_hat)
-            if np.isfinite(sigma2_k[k]):
-                proc_var[pos] = proc_var[pos] + sigma2_k[k] * ck[pos]
-            if np.isfinite(f_var[k]):
-                param_var[pos] = param_var[pos] + (ck[pos] ** 2) * f_var[k]
+            _mack_step_ed(proc_var, param_var, pos, sigma2_k[k], f_var[k], ck)
 
         ck1 = premium_proj[:, k + 1]
         sp = pos & ~np.isnan(ck1)

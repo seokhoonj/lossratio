@@ -60,6 +60,66 @@ def _mack_f_var(result: _MackResult) -> np.ndarray:
     return out
 
 
+def _mack_step_cl(
+    proc_acc: np.ndarray,
+    param_acc: np.ndarray,
+    pos: np.ndarray,
+    f: float,
+    sigma2: float,
+    f_var: float,
+    c: np.ndarray,
+) -> None:
+    """Advance the Mack CL (multiplicative) variance recursion one link.
+
+    Mutates the per-cohort process / parameter variance accumulators
+    in place, on the cohort subset selected by the boolean mask ``pos``::
+
+        proc'  = f^2 * proc  + sigma2   * C
+        param' = f^2 * param + C^2 * Var(f_hat)
+
+    ``c`` is the full-length cumulative-loss-at-dev-k vector (only
+    ``c[pos]`` is read). Each term is applied only when its scalar is
+    finite, matching the per-link guards in Mack (1993). This is the
+    1D-accumulator form of the matrix recursion in :func:`_fit_mack`;
+    the loss / premium projection loops call it so they cannot drift
+    from the canonical formula.
+    """
+    if np.isfinite(f):
+        f2 = f ** 2
+        proc_acc[pos] = f2 * proc_acc[pos]
+        param_acc[pos] = f2 * param_acc[pos]
+    if np.isfinite(sigma2):
+        proc_acc[pos] = proc_acc[pos] + sigma2 * c[pos]
+    if np.isfinite(f_var):
+        param_acc[pos] = param_acc[pos] + (c[pos] ** 2) * f_var
+
+
+def _mack_step_ed(
+    proc_acc: np.ndarray,
+    param_acc: np.ndarray,
+    pos: np.ndarray,
+    sigma2_g: float,
+    g_var: float,
+    p: np.ndarray,
+) -> None:
+    """Advance the exposure-driven (additive) variance recursion one link.
+
+    In-place counterpart to :func:`_mack_step_cl` for the ED link::
+
+        proc'  = proc  + sigma2_g * P
+        param' = param + P^2 * Var(g_hat)
+
+    The additive link contributes an exposure-anchored increment with
+    no multiplicative carry of the prior accumulators (no ``f^2`` term).
+    ``p`` is the full-length exposure-at-dev-k vector (only ``p[pos]``
+    is read). Terms apply only when finite.
+    """
+    if np.isfinite(sigma2_g):
+        proc_acc[pos] = proc_acc[pos] + sigma2_g * p[pos]
+    if np.isfinite(g_var):
+        param_acc[pos] = param_acc[pos] + (p[pos] ** 2) * g_var
+
+
 def _build_value_matrix(
     df: pl.DataFrame, value_col: str = "loss"
 ) -> tuple[np.ndarray, list, int]:
@@ -332,6 +392,9 @@ def _fit_mack(
     #   proc_{i, k+1}  = f_k^2 * proc_{i, k}  + sigma^2_k * C_{i,k}^alpha
     #   param_{i, k+1} = f_k^2 * param_{i, k} + C_{i,k}^2  * Var(f_k)
     #
+    # This is the whole-triangle matrix form; :func:`_mack_step_cl` is the
+    # per-link 1D form used by the loss / premium projection loops -- keep
+    # the two in sync if the formula ever changes.
     # with Var(f_k) = sigma^2_k / sum_col_k[k]. R parity: observed cells
     # report 0 (recursion starts at the last observed dev), projected
     # cells accumulate.

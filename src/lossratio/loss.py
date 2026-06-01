@@ -30,7 +30,13 @@ from ._io import (
 )
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
-from .cl import _build_loss_matrix, _fit_mack, _mack_f_var
+from .cl import (
+    _build_loss_matrix,
+    _fit_mack,
+    _mack_f_var,
+    _mack_step_cl,
+    _mack_step_ed,
+)
 from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
 from .maturity import Maturity, _compute_maturity, _resolve_maturity
 from .premium import Premium, PremiumFit
@@ -90,7 +96,7 @@ def _expand_to_full_grid(
 
     2. **Observed values**: pre-mini-triangle cells (which the
        per-segment fit dropped) are repopulated from the parent
-       triangle's ``loss`` / ``premium`` / ``lr`` columns. R's
+       triangle's ``loss`` / ``premium`` / ``ratio`` columns. R's
        ``$full`` shows ``loss_obs == loss_proj`` on observed cells
        regardless of which segment they live in; matching that
        requires re-attaching the originals after the split fit.
@@ -306,26 +312,19 @@ def _project_loss(
             if pos.any():
                 if np.isfinite(g_k[k]):
                     loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
-                if np.isfinite(sigma2_g_k[k]):
-                    proc_acc[pos] = proc_acc[pos] + sigma2_g_k[k] * pk[pos]
-                if np.isfinite(var_g_k[k]):
-                    param_acc[pos] = (
-                        param_acc[pos] + (pk[pos] ** 2) * var_g_k[k]
-                    )
+                _mack_step_ed(
+                    proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], pk
+                )
         else:
             # CL phase: multiplicative
             pos = active & ~np.isnan(ck) & (ck > 0)
             if pos.any():
                 if np.isfinite(f_k[k]):
                     loss_proj[pos, k + 1] = f_k[k] * ck[pos]
-                    proc_acc[pos] = (f_k[k] ** 2) * proc_acc[pos]
-                    param_acc[pos] = (f_k[k] ** 2) * param_acc[pos]
-                if np.isfinite(sigma2_f_k[k]):
-                    proc_acc[pos] = proc_acc[pos] + sigma2_f_k[k] * ck[pos]
-                if np.isfinite(var_f_k[k]):
-                    param_acc[pos] = (
-                        param_acc[pos] + (ck[pos] ** 2) * var_f_k[k]
-                    )
+                _mack_step_cl(
+                    proc_acc, param_acc, pos, f_k[k],
+                    sigma2_f_k[k], var_f_k[k], ck,
+                )
 
         ck1 = loss_proj[:, k + 1]
         sp = active & ~np.isnan(ck1)

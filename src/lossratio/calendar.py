@@ -29,13 +29,13 @@ def as_calendar(x: "Triangle") -> "Calendar":
     ----------
     x
         A :class:`Triangle`. The grain attribute determines the
-        calendar step (M = month, Q = 3 months, S = 6 months, A = year).
+        calendar step (M = month, Q = quarter, H = half-year, Y = year).
 
     Returns
     -------
     Calendar
         Per-group calendar series with ``loss`` / ``premium`` /
-        ``lr`` cumulative columns plus ``_incr`` per-period siblings
+        ``ratio`` cumulative columns plus ``incr_`` per-period siblings
         and within-calendar shares.
     """
     return Calendar._from_triangle(x)

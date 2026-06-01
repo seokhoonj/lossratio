@@ -107,7 +107,7 @@ class Total:
         return self._df.columns
 
     def summary(self) -> pl.DataFrame:
-        """Return rows sorted by descending ``lr``."""
+        """Return rows sorted by descending ``ratio``."""
         if "ratio" not in self._df.columns:
             return self._df
         return self._df.sort("ratio", descending=True)
