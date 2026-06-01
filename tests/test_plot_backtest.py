@@ -30,12 +30,12 @@ def tri_single():
 
 @pytest.fixture
 def bt_multi(tri_multi):
-    return lr.Backtest(estimator=lr.CL(), holdout=4, metric="loss").fit(tri_multi)
+    return lr.Backtest(estimator=lr.CL(), holdout=4, target="loss").fit(tri_multi)
 
 
 @pytest.fixture
 def bt_single(tri_single):
-    return lr.Backtest(estimator=lr.CL(), holdout=4, metric="loss").fit(tri_single)
+    return lr.Backtest(estimator=lr.CL(), holdout=4, target="loss").fit(tri_single)
 
 
 def _close(fig):
@@ -150,7 +150,7 @@ def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single)
     # Backtest built on a CL with recent=12 -- usage view should
     # respect that recent without the caller re-passing it.
     bt = lr.Backtest(
-        estimator=lr.CL(recent=12), holdout=4, metric="loss"
+        estimator=lr.CL(recent=12), holdout=4, target="loss"
     ).fit(tri_single)
     assert bt._infer_recent() == 12
     fig = bt.plot_triangle(view="usage")
@@ -164,7 +164,7 @@ def test_backtest_plot_triangle_usage_inherits_regime_from_estimator(tri_multi):
     reg = tri_multi.detect_regime(window=12)
     bt = lr.Backtest(
         estimator=lr.Loss(method="cl", regime=reg),
-        holdout=4, metric="loss",
+        holdout=4, target="loss",
     ).fit(tri_multi)
     inferred = bt._infer_regime()
     assert inferred is reg
@@ -179,7 +179,7 @@ def test_backtest_plot_triangle_usage_loss_regime_for_ratio(tri_multi):
     reg = tri_multi.detect_regime(window=12)
     bt = lr.Backtest(
         estimator=lr.Ratio(method="cl", loss_regime=reg),
-        holdout=4, metric="ratio",
+        holdout=4, target="ratio",
     ).fit(tri_multi)
     inferred = bt._infer_regime()
     assert inferred is reg
@@ -190,7 +190,7 @@ def test_backtest_plot_triangle_usage_auto_regime_resolved(tri_multi):
     # Triangle renderer resolves it via inline detect_regime().
     bt = lr.Backtest(
         estimator=lr.Loss(method="cl", regime="auto"),
-        holdout=4, metric="loss",
+        holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_regime() == "auto"
     fig = bt.plot_triangle(view="usage")
@@ -205,7 +205,7 @@ def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
     # resolves it via inline detect_maturity().
     bt = lr.Backtest(
         estimator=lr.Loss(method="sa"),
-        holdout=4, metric="loss",
+        holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_maturity() == "auto"
     fig = bt.plot_triangle(view="usage")

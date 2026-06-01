@@ -264,7 +264,7 @@ def detect_convergence(
             return cache[h]
         try:
             bt_fit = Backtest(
-                estimator=estimator, holdout=h, metric="ratio"
+                estimator=estimator, holdout=h, target="ratio"
             ).fit(triangle)
             val = _extract_portfolio_ratio(bt_fit)
         except Exception:

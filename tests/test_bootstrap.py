@@ -1663,7 +1663,7 @@ def test_phase5_backtest_bootstrap_runs_without_error():
     bt = lr.Backtest(
         estimator=lr.Ratio(method="sa", bootstrap="auto", B=80, seed=1),
         holdout=6,
-        metric="ratio",
+        target="ratio",
     ).fit(tri)
     assert bt.ae_err.height > 0
     # the per-fold refit ran with the bootstrap config -> bootstrap CI.
@@ -1681,12 +1681,12 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
     analytic = lr.Backtest(
         estimator=lr.Ratio(method="sa"),
         holdout=6,
-        metric="ratio",
+        target="ratio",
     ).fit(tri)
     booted = lr.Backtest(
         estimator=lr.Ratio(method="sa", bootstrap="auto", B=80, seed=1),
         holdout=6,
-        metric="ratio",
+        target="ratio",
     ).fit(tri)
 
     a = analytic.ae_err.sort(["coverage", "cohort", "dev"])
@@ -1720,7 +1720,7 @@ def test_phase5_backtest_bootstrap_config_form_safe():
                                 B=80, seed=2),
         ),
         holdout=6,
-        metric="ratio",
+        target="ratio",
     ).fit(tri)
     assert bt.ae_err.height > 0
     assert bt.fit.ci_type == "bootstrap"
@@ -1749,7 +1749,7 @@ def test_phase5_backtest_bootstrap_callable_form_safe():
     bt = lr.Backtest(
         estimator=lr.Ratio(method="sa", bootstrap=make_boot),
         holdout=6,
-        metric="ratio",
+        target="ratio",
     ).fit(tri)
     assert bt.ae_err.height > 0
     assert bt.fit.ci_type == "bootstrap"
@@ -1777,7 +1777,7 @@ def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected():
 
     est = lr.Ratio(method="sa", bootstrap=prebuilt)
     with pytest.raises(ValueError, match="pre-built BootstrapTriangle"):
-        lr.Backtest(estimator=est, holdout=6, metric="ratio")
+        lr.Backtest(estimator=est, holdout=6, target="ratio")
 
 
 def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected_loss():
@@ -1790,4 +1790,4 @@ def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected_loss():
 
     est = lr.Loss(method="cl", bootstrap=prebuilt)
     with pytest.raises(ValueError, match="leak"):
-        lr.Backtest(estimator=est, holdout=6, metric="loss")
+        lr.Backtest(estimator=est, holdout=6, target="loss")

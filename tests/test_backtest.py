@@ -47,7 +47,7 @@ def _date(s: str) -> pl.Expr:
 
 def test_backtest_invalid_holdout():
     with pytest.raises(ValueError, match="holdout"):
-        lr.Backtest(estimator=lr.CL(), holdout=0, metric="loss")
+        lr.Backtest(estimator=lr.CL(), holdout=0, target="loss")
 
 
 def test_backtest_estimator_must_have_fit():
@@ -59,7 +59,7 @@ def test_backtest_estimator_must_have_fit():
 
 
 def test_backtest_repr():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     text = repr(bt)
@@ -74,7 +74,7 @@ def test_backtest_repr():
 
 
 def test_backtest_ae_err_columns():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.ae_err.columns) >= {
@@ -95,7 +95,7 @@ def test_backtest_ae_err_size_holdout_one():
     Reachable: 3 cells.
     """
     tri = lr.Triangle(_toy_triangle_input())
-    bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
+    bt = lr.Backtest(estimator=lr.CL(), holdout=1, target="loss").fit(tri)
     assert bt.ae_err.shape[0] == 3
 
 
@@ -106,7 +106,7 @@ def test_backtest_ae_err_size_holdout_two():
     semantics), 3 cells remain.
     """
     tri = lr.Triangle(_toy_triangle_input())
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(tri)
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(tri)
     assert bt.ae_err.shape[0] == 3
 
 
@@ -121,7 +121,7 @@ def test_backtest_ae_err_actual_matches_original_loss():
     tri = lr.Triangle(_toy_triangle_input())
     orig = tri.to_polars()
 
-    bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
+    bt = lr.Backtest(estimator=lr.CL(), holdout=1, target="loss").fit(tri)
     ae_err = bt.ae_err
 
     # Inner join on (cohort, dev) — actual should equal loss
@@ -135,7 +135,7 @@ def test_backtest_ae_err_actual_matches_original_loss():
 
 
 def test_backtest_predicted_is_finite_for_all_held_cells():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     for v in bt.ae_err["expected"].to_list():
@@ -144,7 +144,7 @@ def test_backtest_predicted_is_finite_for_all_held_cells():
 
 def test_backtest_ae_err_equals_relative_error():
     """ae_err = actual / expected - 1 (signed relative error)."""
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     df = bt.ae_err
@@ -165,7 +165,7 @@ def test_backtest_ae_err_equals_relative_error():
 
 
 def test_backtest_col_summary_columns():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.col_summary.columns) >= {
@@ -174,7 +174,7 @@ def test_backtest_col_summary_columns():
 
 
 def test_backtest_diag_summary_columns():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.diag_summary.columns) >= {
@@ -183,7 +183,7 @@ def test_backtest_diag_summary_columns():
 
 
 def test_backtest_summary_n_matches_ae_err_total():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=2, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=2, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     ae_err_n = bt.ae_err.shape[0]
@@ -230,7 +230,7 @@ def test_backtest_with_ratio_cl_method():
 def test_backtest_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
     tri = lr.Triangle(df, groups="coverage")
-    bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
+    bt = lr.Backtest(estimator=lr.CL(), holdout=1, target="loss").fit(tri)
     assert "coverage" in bt.ae_err.columns
     assert "coverage" in bt.col_summary.columns
 
@@ -244,7 +244,7 @@ def test_backtest_per_group_independent():
         ]
     )
     tri = lr.Triangle(df_grouped, groups="coverage")
-    bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(tri)
+    bt = lr.Backtest(estimator=lr.CL(), holdout=1, target="loss").fit(tri)
     ae_err = bt.ae_err
     a_err = ae_err.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])
     b_err = ae_err.filter(pl.col("coverage") == "B").sort(["cohort", "dev"])
@@ -259,7 +259,7 @@ def test_backtest_per_group_independent():
 def test_backtest_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_triangle_input().to_pandas())
-    bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=1, target="loss").fit(
         lr.Triangle(df)
     )
     assert isinstance(bt.ae_err, pd.DataFrame)
@@ -273,7 +273,7 @@ def test_backtest_pandas_input_mirror():
 
 
 def test_backtest_refit_is_cl_fit():
-    bt = lr.Backtest(estimator=lr.CL(), holdout=1, metric="loss").fit(
+    bt = lr.Backtest(estimator=lr.CL(), holdout=1, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert isinstance(bt.fit, lr.CLFit)

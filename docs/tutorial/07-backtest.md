@@ -59,7 +59,7 @@ import lossratio as lr
 df = lr.load_experience().filter(pl.col("coverage") == "SUR")
 tri = lr.Triangle(df, groups="coverage")
 
-bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
+bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
 ```
 
 결과에는 가린 칸별 오차(`ae_err`)와, 그것을 경과별로 모은
@@ -81,7 +81,7 @@ bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
 
    df = lr.load_experience().filter(pl.col("coverage") == "SUR")
    tri = lr.Triangle(df, groups="coverage")
-   bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, metric="ratio").fit(tri)
+   bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
 
 .. plot::
    :context: close-figs

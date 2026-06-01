@@ -396,7 +396,7 @@ def test_ratio_sa_summary_matches_r():
 
 
 # ---------------------------------------------------------------------------
-# backtest with metric = "ratio"
+# backtest with target = "ratio"
 # ---------------------------------------------------------------------------
 
 
@@ -413,7 +413,7 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method), holdout=6, metric="ratio"
+        estimator=lr.Ratio(method=method), holdout=6, target="ratio"
     ).fit(tri)
     py_aligned = bt.ae_err.sort(["cohort", "dev"])
 
@@ -440,7 +440,7 @@ def test_backtest_col_summary_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_col_summary").sort(["dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method), holdout=6, metric="ratio"
+        estimator=lr.Ratio(method=method), holdout=6, target="ratio"
     ).fit(tri)
     py = bt.col_summary.sort(["dev"])
 
@@ -465,7 +465,7 @@ def test_backtest_diag_summary_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_diag_summary").sort(["cal_idx"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method), holdout=6, metric="ratio"
+        estimator=lr.Ratio(method=method), holdout=6, target="ratio"
     ).fit(tri)
     py = bt.diag_summary.sort(["cal_idx"])
 

@@ -91,7 +91,7 @@ def _build_masked_df(
     return masked_df, annotated_df
 
 
-_VALID_METRICS = ("ratio", "loss", "premium")
+_VALID_TARGETS = ("ratio", "loss", "premium")
 
 
 def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
@@ -146,66 +146,66 @@ def _is_ratio_fit_estimator(estimator: Any) -> bool:
 
 
 def _resolve_expected_column(
-    metric: str, fit_df_columns: list[str], refit: Any
+    target: str, fit_df_columns: list[str], refit: Any
 ) -> str:
-    """Map ``metric`` to the projection column on the refit output frame.
+    """Map ``target`` to the projection column on the refit output frame.
 
     Post-Phase-4b workers emit generic ``loss_proj`` columns (CL: loss
-    side; ED: target = loss, plus ``ratio_proj`` as a downstream quantity).
-    Ratio keeps legacy ``loss_proj`` / ``premium_proj`` / ``ratio_proj``.
+    side; ED: numerator role = loss, plus ``ratio_proj`` as a downstream
+    quantity). Ratio keeps ``loss_proj`` / ``premium_proj`` / ``ratio_proj``.
     """
-    if metric not in _VALID_METRICS:
+    if target not in _VALID_TARGETS:
         raise ValueError(
-            f"metric must be one of {_VALID_METRICS}, got {metric!r}"
+            f"target must be one of {_VALID_TARGETS}, got {target!r}"
         )
 
-    # Ratio estimator: legacy column names still emitted.
-    legacy = {"ratio": "ratio_proj", "loss": "loss_proj", "premium": "premium_proj"}
-    if legacy[metric] in fit_df_columns:
-        return legacy[metric]
+    # Ratio estimator: role-named columns emitted directly.
+    direct = {"ratio": "ratio_proj", "loss": "loss_proj", "premium": "premium_proj"}
+    if direct[target] in fit_df_columns:
+        return direct[target]
 
     # New worker schema (CL / ED): loss_proj corresponds to the
-    # estimator's `target` role. Use ratio_proj for ratio metric on ED.
-    if metric == "ratio" and "ratio_proj" in fit_df_columns:
+    # estimator's numerator role. Use ratio_proj for the ratio target on ED.
+    if target == "ratio" and "ratio_proj" in fit_df_columns:
         return "ratio_proj"
-    target = getattr(refit, "target", None)
-    if metric == target and "loss_proj" in fit_df_columns:
+    refit_target = getattr(refit, "target", None)
+    if target == refit_target and "loss_proj" in fit_df_columns:
         return "loss_proj"
     exposure = getattr(refit, "exposure", None)
-    if metric == exposure and "premium_proj" in fit_df_columns:
+    if target == exposure and "premium_proj" in fit_df_columns:
         return "premium_proj"
 
     raise ValueError(
-        f"Refitted estimator output has no column for metric={metric!r}. "
+        f"Refitted estimator output has no column for target={target!r}. "
         f"Available: {fit_df_columns}"
     )
 
 
 def _resolve_incr_expected_column(
-    metric: str, fit_df_columns: list[str], refit: Any
+    target: str, fit_df_columns: list[str], refit: Any
 ) -> str | None:
-    """Map ``metric`` to the incremental projection column on the refit
+    """Map ``target`` to the incremental projection column on the refit
     output frame, mirroring :func:`_resolve_expected_column` for the
     cumulative form.
 
     Returns ``None`` when the refit emits no incremental projection for
-    the chosen metric (some estimator paths only expose cumulative).
+    the chosen target (some estimator paths only expose cumulative).
     """
-    legacy = {
+    direct = {
         "ratio":   "incr_ratio_proj",
         "loss":    "incr_loss_proj",
         "premium": "incr_premium_proj",
     }
-    if legacy[metric] in fit_df_columns:
-        return legacy[metric]
+    if direct[target] in fit_df_columns:
+        return direct[target]
 
-    if metric == "ratio" and "incr_ratio_proj" in fit_df_columns:
+    if target == "ratio" and "incr_ratio_proj" in fit_df_columns:
         return "incr_ratio_proj"
-    target = getattr(refit, "target", None)
-    if metric == target and "incr_loss_proj" in fit_df_columns:
+    refit_target = getattr(refit, "target", None)
+    if target == refit_target and "incr_loss_proj" in fit_df_columns:
         return "incr_loss_proj"
     exposure = getattr(refit, "exposure", None)
-    if metric == exposure and "incr_premium_proj" in fit_df_columns:
+    if target == exposure and "incr_premium_proj" in fit_df_columns:
         return "incr_premium_proj"
     return None
 
@@ -248,6 +248,11 @@ class Backtest:
         an analytical one -- the only effect is extra compute per fold.
     holdout
         Number of most recent calendar diagonals to mask.
+    target
+        Which projection to score: ``"ratio"`` (default), ``"loss"``,
+        or ``"premium"``. A ratio-fit estimator (``lr.Ratio`` / ``lr.ED``)
+        only supports ``target="ratio"``; use ``lr.CL`` to score the loss
+        or premium projection directly.
 
     Examples
     --------
@@ -263,7 +268,7 @@ class Backtest:
         self,
         estimator: Any,
         holdout: int = 6,
-        metric: str = "ratio",
+        target: str = "ratio",
     ) -> None:
         if holdout < 1:
             raise ValueError(f"holdout must be >= 1, got {holdout}")
@@ -274,21 +279,21 @@ class Backtest:
         # Reject a pre-built BootstrapTriangle on the estimator -- it would
         # leak held-out cells into every fold (see helper docstring).
         _assert_leakage_safe_bootstrap(estimator)
-        if metric not in _VALID_METRICS:
+        if target not in _VALID_TARGETS:
             raise ValueError(
-                f"metric must be one of {_VALID_METRICS}, got {metric!r}"
+                f"target must be one of {_VALID_TARGETS}, got {target!r}"
             )
-        # Ratio / ED are ratio-fits — only `lr` is a meaningful scoring lane;
+        # Ratio / ED are ratio-fits -- only the ratio lane is meaningful;
         # use CL directly to backtest the loss or premium projection.
-        if _is_ratio_fit_estimator(estimator) and metric != "ratio":
+        if _is_ratio_fit_estimator(estimator) and target != "ratio":
             raise ValueError(
                 f"estimator is a ratio-fit ({type(estimator).__name__}); "
-                f"only metric='ratio' is supported. Use lr.CL() instead to "
+                f"only target='ratio' is supported. Use lr.CL() instead to "
                 f"backtest the loss or premium projection directly."
             )
         self.estimator = estimator
         self.holdout = holdout
-        self.metric = metric
+        self.target = target
 
     def fit(self, triangle: "Triangle") -> "BacktestFit":
         return BacktestFit._from_triangle(triangle, self)
@@ -355,11 +360,11 @@ class BacktestFit:
         self._refit = refit
 
         refit_df = refit.to_polars()
-        exp_col = _resolve_expected_column(bt.metric, refit_df.columns, refit)
+        exp_col = _resolve_expected_column(bt.target, refit_df.columns, refit)
         incr_exp_col = _resolve_incr_expected_column(
-            bt.metric, refit_df.columns, refit
+            bt.target, refit_df.columns, refit
         )
-        self.metric = bt.metric
+        self.target = bt.target
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
         keys: list[str] = []
@@ -370,8 +375,8 @@ class BacktestFit:
         # `actual` is the cumulative column on the original Triangle that
         # corresponds to the chosen scoring lane; `incr_actual` is its
         # incremental sibling (always present on a Triangle).
-        actual_col = bt.metric                  # "ratio" / "loss" / "premium"
-        incr_actual_col = f"incr_{bt.metric}"   # always present per Triangle schema
+        actual_col = bt.target                  # "ratio" / "loss" / "premium"
+        incr_actual_col = f"incr_{bt.target}"   # always present per Triangle schema
 
         sel_actual = keys + ["cal_idx", actual_col]
         if incr_actual_col in annotated_df.columns:
