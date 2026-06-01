@@ -17,9 +17,11 @@ from ._period import (
 )
 
 if TYPE_CHECKING:
+    from .calendar import Calendar
     from .link import Link
     from .maturity import Maturity
     from .regime import Regime
+    from .total import Total
 
 
 # Triangle-specific: standard dev column name per grain code.
@@ -260,7 +262,7 @@ class Triangle:
                 raise ValueError(
                     f"Found {gaps.height} cohort(s) with non-consecutive "
                     f"dev sequences. Pass fill_gaps=True to zero-fill, or "
-                    f"inspect with validate_experience()."
+                    f"inspect with TriangleValidation(...) (same kwargs)."
                 )
 
         # Join n_cohorts, then rename cohort / dev to standard names so
@@ -363,10 +365,12 @@ class Triangle:
 
     @property
     def calendar(self) -> str | None:
-        """Original calendar variable name (e.g. 'cy_m').
+        """Original calendar column name (e.g. 'cy_m').
 
         ``None`` for a mode-2 (dev-only) triangle: no calendar column
-        was supplied, so there is no raw name to retain.
+        was supplied, so there is no raw name to retain. (The calendar
+        aggregation view is :meth:`calendar_agg`, so this bare name
+        stays the raw-column accessor.)
         """
         return self._calendar
 
@@ -412,6 +416,28 @@ class Triangle:
         tri._grain = original._grain
         tri._dev = original._dev
         return tri
+
+    def calendar_agg(self) -> "Calendar":
+        """Calendar-period (CY) aggregation of this triangle.
+
+        Derived view: the same data re-aggregated by calendar period
+        instead of cohort x dev. (Method form of the legacy
+        ``as_calendar`` free function.)
+        """
+        from .calendar import Calendar
+
+        return Calendar._from_triangle(self)
+
+    def total_agg(self) -> "Total":
+        """Whole-triangle (time-collapsed) aggregation of this triangle.
+
+        Derived view: cumulative loss / premium / ratio per group with the
+        time dimension collapsed. (Method form of the legacy ``as_total``
+        free function.)
+        """
+        from .total import Total
+
+        return Total._from_triangle(self)
 
     def link(
         self,

@@ -57,6 +57,8 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
 
     # --- data + point projections + analytical SE ---
     out["triangle"] = _frame(tri)
+    out["calendar"] = _frame(tri.calendar_agg())
+    out["total"] = _frame(tri.total_agg())
     out["cl"] = _frame(lr.CL().fit(tri))
     out["ed"] = _frame(lr.ED().fit(tri))
     out["loss_sa"] = _frame(lr.Loss(method="sa").fit(tri))
@@ -110,7 +112,8 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
 
 
 CASE_NAMES = [
-    "triangle", "cl", "ed", "loss_sa", "premium", "ratio_sa", "ratio_ed_delta",
+    "triangle", "calendar", "total",
+    "cl", "ed", "loss_sa", "premium", "ratio_sa", "ratio_ed_delta",
     "maturity", "maturity_point", "convergence", "convergence_point",
     "regime_changes", "loss_sa_regime_sb", "loss_sa_regime_bb",
     "bt_ae_err", "bt_col_summary", "bt_diag_summary",
