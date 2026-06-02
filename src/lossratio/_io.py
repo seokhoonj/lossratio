@@ -82,13 +82,26 @@ def normalize_groups(
 
     ``None -> []``, ``str -> [str]``, ``Sequence[str] -> list(...)``. The
     single source of truth for the ``str | Sequence[str]`` multi-column
-    ``groups`` surface -- callers store / iterate the list form.
+    ``groups`` surface -- callers store / iterate the list form. A sequence
+    must contain only ``str`` column names with no duplicates; both raise a
+    clear error here (the single funnel) rather than surfacing later as an
+    opaque polars ``DuplicateError`` / ``ColumnNotFoundError``.
     """
     if groups is None:
         return []
     if isinstance(groups, str):
         return [groups]
-    return list(groups)
+    cols = list(groups)
+    bad = [c for c in cols if not isinstance(c, str)]
+    if bad:
+        raise TypeError(
+            f"groups must be a str or a sequence of str column names; "
+            f"got non-str element(s): {bad!r}"
+        )
+    dups = [c for c in dict.fromkeys(cols) if cols.count(c) > 1]
+    if dups:
+        raise ValueError(f"groups has duplicate column(s): {dups!r}")
+    return cols
 
 
 def collapse_groups(

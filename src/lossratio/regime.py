@@ -163,7 +163,7 @@ def _resolve_by(
             return None
         return by
     if isinstance(by, Sequence):
-        seq = [str(s) for s in by]
+        seq = normalize_groups(by)  # validates str-only + no duplicates
         if not seq:
             return None
         if len(seq) == 1:

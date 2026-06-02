@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import pytest
 
 from lossratio._io import (
     _arrays_to_long_df,
     _iter_group_frames,
+    collapse_groups,
     fill_group_columns,
     format_group_value,
     group_eq,
@@ -33,6 +35,29 @@ def test_normalize_groups():
     assert normalize_groups("coverage") == ["coverage"]
     assert normalize_groups(["coverage", "channel"]) == ["coverage", "channel"]
     assert normalize_groups(("a", "b")) == ["a", "b"]
+
+
+def test_normalize_groups_rejects_non_str():
+    with pytest.raises(TypeError, match="non-str"):
+        normalize_groups(["coverage", 123])
+
+
+def test_normalize_groups_rejects_duplicates():
+    with pytest.raises(ValueError, match="duplicate"):
+        normalize_groups(["coverage", "coverage"])
+
+
+def test_collapse_groups():
+    # storage form: count of columns decides scalar-vs-list (NOT notation)
+    assert collapse_groups(None) is None
+    assert collapse_groups([]) is None
+    assert collapse_groups("coverage") == "coverage"
+    assert collapse_groups(["coverage"]) == "coverage"   # length-1 -> scalar
+    assert collapse_groups(("coverage",)) == "coverage"
+    assert collapse_groups(["coverage", "channel"]) == ["coverage", "channel"]
+    # validation funnels through normalize_groups
+    with pytest.raises(ValueError, match="duplicate"):
+        collapse_groups(["a", "a"])
 
 
 def _df() -> pl.DataFrame:
