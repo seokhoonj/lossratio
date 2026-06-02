@@ -33,7 +33,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import mirror_output
+from ._io import (
+    _iter_group_frames,
+    fill_group_columns,
+    mirror_output,
+    normalize_groups,
+)
 from ._mack import mack_factor_var, mack_sigma2
 from .link import _build_link_df
 from .maturity import Maturity
@@ -2622,7 +2627,11 @@ class BootstrapTriangle:
         m = self._meta
         bits = [f"type={m['type']}", f"method={m['method']}", f"B={m['B']}"]
         if self._groups is not None:
-            n_groups = self._summary[self._groups].n_unique()
+            n_groups = (
+                self._summary.select(normalize_groups(self._groups))
+                .unique()
+                .height
+            )
             bits.insert(0, f"{n_groups} groups")
         bits.append(f"{n_rows} rows")
         return f"<BootstrapTriangle: {', '.join(bits)}>"
@@ -2831,22 +2840,10 @@ class Bootstrap:
         sigma2_anchor_parts: list[pl.DataFrame] = []
         pseudo_parts: list[pl.DataFrame] = []
 
-        if groups is None:
-            group_values: list[Any] = [None]
-        else:
-            group_values = (
-                tri_df[groups].unique(maintain_order=True).to_list()
-            )
-
         # Resolve a per-group maturity map for the SA paradigm.
         mat_k_map = self._resolve_maturity_map(triangle)
 
-        for g in group_values:
-            sub = (
-                tri_df
-                if g is None
-                else tri_df.filter(pl.col(groups) == g)
-            )
+        for g, sub in _iter_group_frames(tri_df, groups):
             loss_obs, cohorts, devs = self._build_obs_matrix(sub, target)
 
             anchor = _boot_anchor_cl(loss_obs)
@@ -3226,8 +3223,7 @@ class Bootstrap:
         dev_col    = np.repeat(devs, n_cohorts).tolist()
 
         data: dict[str, Any] = {}
-        if groups is not None:
-            data[groups] = [group_value] * (n_cohorts * n_devs)
+        fill_group_columns(data, groups, group_value, n_cohorts * n_devs)
         data["cohort"] = cohort_col
         data["dev"]    = dev_col
         for key in ("mean_proj", "param_se", "proc_se",
@@ -3238,7 +3234,7 @@ class Bootstrap:
             data["ci_hi"] = decomp["ci_hi"]
 
         return pl.DataFrame(data).sort(
-            ([groups] if groups is not None else []) + ["cohort", "dev"]
+            [*normalize_groups(groups), "cohort", "dev"]
         )
 
     @staticmethod
@@ -3251,8 +3247,7 @@ class Bootstrap:
         """Assemble a per-link anchor DataFrame for the requested columns."""
         data: dict[str, Any] = {}
         n_links = len(anchor.ata_from)
-        if groups is not None:
-            data[groups] = [group_value] * n_links
+        fill_group_columns(data, groups, group_value, n_links)
         data["ata_from"] = anchor.ata_from
         data["ata_to"]   = anchor.ata_to
         for c in cols:
@@ -3294,8 +3289,7 @@ class Bootstrap:
         ).tolist()
 
         data: dict[str, Any] = {}
-        if groups is not None:
-            data[groups] = [group_value] * (n_cohorts * n_devs * B)
+        fill_group_columns(data, groups, group_value, n_cohorts * n_devs * B)
         data["cohort"]            = cohort_col
         data["dev"]               = dev_col
         data["rep"]               = rep_col

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output
+from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -27,16 +27,10 @@ def _add_cal_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
     cal_idx = 1, and the maximum cal_idx equals the number
     of cohorts (or, for square-ish triangles, the number of devs).
     """
-    sort_keys: list[str] = []
-    if groups is not None:
-        sort_keys.append(groups)
-    sort_keys.append("cohort")
-
-    over_keys: list[str] | None
-    if groups is not None:
-        over_keys = [groups]
+    gcols = normalize_groups(groups)
+    if gcols:
         cohort_idx_expr = (
-            pl.col("cohort").rank(method="dense").over(over_keys).cast(pl.Int64)
+            pl.col("cohort").rank(method="dense").over(gcols).cast(pl.Int64)
         )
     else:
         cohort_idx_expr = pl.col("cohort").rank(method="dense").cast(pl.Int64)
@@ -66,11 +60,12 @@ def _build_masked_df(
     df = _add_cal_idx(tri_df, groups)
 
     # Determine the calendar-diagonal cutoff per group
-    if groups is not None:
-        max_per_group = df.group_by(groups).agg(
+    gcols = normalize_groups(groups)
+    if gcols:
+        max_per_group = df.group_by(gcols).agg(
             pl.col("cal_idx").max().alias("_max_cal")
         )
-        df = df.join(max_per_group, on=groups, how="left")
+        df = df.join(max_per_group, on=gcols, how="left")
     else:
         max_cal = int(df["cal_idx"].max())
         df = df.with_columns(pl.lit(max_cal).alias("_max_cal"))
@@ -344,10 +339,7 @@ class BacktestFit:
         self.target = bt.target
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
-        keys: list[str] = []
-        if triangle._groups is not None:
-            keys.append(triangle._groups)
-        keys.extend(["cohort", "dev"])
+        keys: list[str] = [*normalize_groups(triangle._groups), "cohort", "dev"]
 
         # `actual` is the cumulative column on the original Triangle that
         # corresponds to the chosen scoring lane; `incr_actual` is its
@@ -425,19 +417,13 @@ class BacktestFit:
         # 5. Summaries -- mean / median / weighted A/E - 1 per dev or per
         #    calendar diagonal, with `incr_*` companions when the
         #    incremental projection is available.
-        col_keys: list[str] = []
-        if triangle._groups is not None:
-            col_keys.append(triangle._groups)
-        col_keys.append("dev")
+        col_keys: list[str] = [*normalize_groups(triangle._groups), "dev"]
 
         self._col_summary = self._aggregate_ae_err(
             ae_err, col_keys, has_incr
         ).sort(col_keys)
 
-        diag_keys: list[str] = []
-        if triangle._groups is not None:
-            diag_keys.append(triangle._groups)
-        diag_keys.append("cal_idx")
+        diag_keys: list[str] = [*normalize_groups(triangle._groups), "cal_idx"]
 
         self._diag_summary = self._aggregate_ae_err(
             ae_err, diag_keys, has_incr
