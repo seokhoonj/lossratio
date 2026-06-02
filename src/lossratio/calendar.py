@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output
+from ._io import mirror_output, normalize_groups
 from ._period import add_periods
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ class Calendar:
 
         agg_keys: list[str] = []
         if grp is not None:
-            agg_keys.append(grp)
+            agg_keys.extend(normalize_groups(grp))
         agg_keys.append("calendar")
 
         # Aggregate Triangle's incrementals to (groups, calendar) and
@@ -64,7 +64,7 @@ class Calendar:
         # development period.
         if grp is not None:
             ds = ds.with_columns(
-                pl.int_range(1, pl.len() + 1).over(grp).alias("cal_idx")
+                pl.int_range(1, pl.len() + 1).over(normalize_groups(grp)).alias("cal_idx")
             )
         else:
             ds = ds.with_columns(
@@ -111,7 +111,7 @@ class Calendar:
         # Final column order: cum-first paired.
         ordered = []
         if grp is not None:
-            ordered.append(grp)
+            ordered.extend(normalize_groups(grp))
         ordered.extend([
             "calendar", "cal_idx", "n_cohorts",
             "loss", "incr_loss",
@@ -172,7 +172,9 @@ class Calendar:
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
         if self._groups is not None:
-            bits.append(f"{self._df[self._groups].n_unique()} groups")
+            bits.append(
+                f"{self._df.select(normalize_groups(self._groups)).unique().height} groups"
+            )
         bits.append(f"{self._df['calendar'].n_unique()} calendars ({self._grain})")
         return f"<Calendar: {', '.join(bits)}>"
 

@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output
+from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from .ata import ATA
@@ -46,19 +46,17 @@ def _build_link_df(
     ``loss_from`` / ``premium_from`` / ``weight``.
     """
     sort_keys: list[str] = []
-    if groups is not None:
-        sort_keys.append(groups)
+    sort_keys.extend(normalize_groups(groups))
     sort_keys.extend(["cohort", "dev"])
     df = tri_df.sort(sort_keys)
 
     over_keys: list[str] = []
-    if groups is not None:
-        over_keys.append(groups)
+    over_keys.extend(normalize_groups(groups))
     over_keys.append("cohort")
 
-    base_cols: list[pl.Expr] = []
-    if groups is not None:
-        base_cols.append(pl.col(groups))
+    base_cols: list[pl.Expr] = [
+        pl.col(c) for c in normalize_groups(groups)
+    ]
     base_cols.extend(
         [
             pl.col("cohort"),
@@ -116,8 +114,7 @@ def _build_link_df(
             out = out.filter(pl.col("ata").is_finite())
 
     col_order: list[str] = []
-    if groups is not None:
-        col_order.append(groups)
+    col_order.extend(normalize_groups(groups))
     col_order.extend(
         [
             "cohort",
@@ -378,7 +375,7 @@ class Link:
         n_links = self._df.height
         if self._groups is None:
             return f"<Link: {n_links} links, {mode}>"
-        n_groups = self._df[self._groups].n_unique()
+        n_groups = self._df.select(normalize_groups(self._groups)).unique().height
         return (
             f"<Link: {n_groups} groups, {n_links} total links, {mode}>"
         )

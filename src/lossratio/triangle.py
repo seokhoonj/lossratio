@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import detect_input_type, mirror_output, to_polars
+from ._io import detect_input_type, mirror_output, normalize_groups, to_polars
 from ._period import (
     coerce_cols_to_date,
     count_periods,
@@ -112,8 +112,7 @@ class Triangle:
         # Required columns: cohort, loss, premium, groups (if set), and
         # whichever of calendar / dev were supplied.
         required = {cohort, loss, premium}
-        if groups is not None:
-            required.add(groups)
+        required.update(normalize_groups(groups))
         if calendar is not None:
             required.add(calendar)
         if dev is not None:
@@ -138,13 +137,9 @@ class Triangle:
         # when present, else dev -- both monotone within a cohort.
         if cell_type == "cumulative":
             sort_axis = calendar if calendar is not None else dev
-            sort_keys: list[str] = []
-            if groups is not None:
-                sort_keys.append(groups)
+            sort_keys: list[str] = normalize_groups(groups)
             sort_keys.extend([cohort, sort_axis])  # type: ignore[list-item]
-            diff_over: list[str] = []
-            if groups is not None:
-                diff_over.append(groups)
+            diff_over: list[str] = normalize_groups(groups)
             diff_over.append(cohort)
             df_pl = df_pl.sort(sort_keys).with_columns(
                 (pl.col(loss) - pl.col(loss).shift(1, fill_value=0.0)
@@ -193,9 +188,7 @@ class Triangle:
             )
 
         # Aggregate per-period values by (groups, cohort, dev).
-        agg_keys: list[str] = []
-        if groups is not None:
-            agg_keys.append(groups)
+        agg_keys: list[str] = normalize_groups(groups)
         agg_keys.extend([cohort, "_dev_temp"])
 
         agg = (
@@ -210,9 +203,7 @@ class Triangle:
         # n_cohorts: distinct cohorts observed per (group, dev). Computed
         # on the pre-fill aggregate so zero-filled gap cells do not
         # inflate the count (R parity: `dn` is built before gap-filling).
-        ndev_keys: list[str] = []
-        if groups is not None:
-            ndev_keys.append(groups)
+        ndev_keys: list[str] = normalize_groups(groups)
         ndev_keys.append("_dev_temp")
         ncoh = (
             agg.group_by(ndev_keys)
@@ -271,9 +262,7 @@ class Triangle:
         agg = agg.join(ncoh, on=ndev_keys, how="left")
         agg = agg.rename({cohort: "cohort", "_dev_temp": "dev"})
 
-        cum_keys: list[str] = []
-        if groups is not None:
-            cum_keys.append(groups)
+        cum_keys: list[str] = normalize_groups(groups)
         cum_keys.append("cohort")
 
         coh_dev = ["cohort", "dev"]
@@ -308,9 +297,7 @@ class Triangle:
         )
 
         # Reorder columns: cum-first paired (matches R as_triangle).
-        ordered = []
-        if groups is not None:
-            ordered.append(groups)
+        ordered = normalize_groups(groups)
         ordered.extend([
             "n_cohorts", "cohort", "dev",
             "loss", "incr_loss",
@@ -659,7 +646,7 @@ class Triangle:
         # Compute per-group calendar index = cohort_rank + dev - 1, where
         # cohort_rank is the dense rank of distinct cohort values (oldest
         # = 1). Mirrors R: data.table::frank(cohort, ties.method = "dense").
-        partition = [self._groups] if self._groups is not None else []
+        partition = normalize_groups(self._groups)
         coh_rank_expr = (
             pl.col("cohort").rank(method="dense").over(partition)
             if partition
@@ -830,7 +817,7 @@ class Triangle:
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
         if self._groups is not None:
-            n_groups = self._df[self._groups].n_unique()
+            n_groups = self._df.select(normalize_groups(self._groups)).unique().height
             bits.append(f"{n_groups} groups")
         n_cohorts = self._df["cohort"].n_unique()
         n_devs = self._df["dev"].n_unique()
@@ -917,8 +904,7 @@ class TriangleValidation:
         del loss, premium
 
         required = {cohort}
-        if groups is not None:
-            required.add(groups)
+        required.update(normalize_groups(groups))
         if calendar is not None:
             required.add(calendar)
         if dev is not None:
@@ -949,7 +935,7 @@ class TriangleValidation:
             invalid = check_df.filter(bad_mask)
             if invalid.height:
                 keep_cols = [c for c in (
-                    [groups] if groups is not None else []
+                    normalize_groups(groups)
                 ) + [cohort, calendar] + (
                     [dev] if dev is not None else []
                 ) if c in invalid.columns]
@@ -980,9 +966,7 @@ class TriangleValidation:
             )
             dev_col_name = "_dev_explicit"
 
-        gap_keys: list[str] = []
-        if groups is not None:
-            gap_keys.append(groups)
+        gap_keys: list[str] = normalize_groups(groups)
         gap_keys.append(cohort)
 
         # Per (groups?, cohort): dev_min / dev_max / n_dev (distinct) /

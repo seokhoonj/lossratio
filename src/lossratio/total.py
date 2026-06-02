@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output
+from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -37,7 +37,7 @@ class Total:
         ]
 
         if grp is not None:
-            ds = tri_df.group_by(grp).agg(agg_exprs).sort(grp)
+            ds = tri_df.group_by(normalize_groups(grp)).agg(agg_exprs).sort(normalize_groups(grp))
         else:
             ds = tri_df.select(agg_exprs)
 
@@ -49,7 +49,7 @@ class Total:
 
         ordered = []
         if grp is not None:
-            ordered.append(grp)
+            ordered.extend(normalize_groups(grp))
         ordered.extend([
             "n_cohorts", "sales_start", "sales_end",
             "loss", "premium", "ratio",
@@ -94,7 +94,9 @@ class Total:
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
         if self._groups is not None:
-            bits.append(f"{self._df[self._groups].n_unique()} groups")
+            bits.append(
+                f"{self._df.select(normalize_groups(self._groups)).unique().height} groups"
+            )
         return f"<Total: {', '.join(bits)}>"
 
     def __len__(self) -> int:
