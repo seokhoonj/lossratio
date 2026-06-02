@@ -349,7 +349,17 @@ class Triangle:
     @property
     def groups(self) -> str | list[str] | None:
         """Group column name(s): a ``str`` for a single group column, a
-        ``list[str]`` for multiple, or ``None`` if ungrouped."""
+        ``list[str]`` for multiple, or ``None`` if ungrouped.
+
+        Set via the ``groups`` constructor argument, which accepts either a
+        single name or a sequence::
+
+            lr.Triangle(df, groups="coverage")               # single
+            lr.Triangle(df, groups=["coverage", "channel"])  # per combination
+
+        With multiple columns every grouped surface (fits, diagnostics,
+        backtest, plots) keys per group COMBINATION, and per-group values are
+        TUPLES (e.g. ``("CI", "TM")``) rather than scalars."""
         return self._groups
 
     @property
@@ -530,8 +540,10 @@ class Triangle:
         by
             Optional override for the per-group dispatch. ``None``
             (default) uses the Triangle's stored ``groups``; an empty
-            string forces pooled detection; a string names a single
-            group column.
+            string (or empty sequence) forces pooled detection; a string
+            names a single group column; a sequence of column names
+            (e.g. ``["coverage", "channel"]``) runs detection per
+            group COMBINATION.
         method, n_regimes, sig_level, R, min_size, seed, treatment
             See :class:`Regime` for full description.
         """
@@ -1058,6 +1070,8 @@ class TriangleValidation:
 
     @property
     def groups(self) -> str | list[str] | None:
+        """Group column name(s): a ``str`` for a single group column, a
+        ``list[str]`` for multiple, or ``None`` if ungrouped."""
         return self._groups
 
     @property

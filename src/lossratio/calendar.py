@@ -146,6 +146,8 @@ class Calendar:
 
     @property
     def groups(self) -> str | list[str] | None:
+        """Group column name(s): a ``str`` for a single group column, a
+        ``list[str]`` for multiple, or ``None`` if ungrouped."""
         return self._groups
 
     @property
