@@ -13,38 +13,10 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-def as_calendar(x: "Triangle") -> "Calendar":
-    """Aggregate a :class:`Triangle` to its calendar-period diagonals.
-
-    Each row of the result is one ``(group, calendar)`` cell: the sum
-    of all triangle cells lying on the same calendar diagonal. The
-    ``cal_idx`` column carries a sequential 1-based index per group
-    (rank of the calendar date within its group). Same column name
-    as :class:`Backtest`'s ``cal_idx`` so the two outputs can join
-    naturally. Intentionally **not** ``dev`` -- in a Calendar the
-    integer is just the date rank, not a true development period
-    (``cym - uym``). The Triangle's ``dev`` axis is the place for that.
-
-    Parameters
-    ----------
-    x
-        A :class:`Triangle`. The grain attribute determines the
-        calendar step (M = month, Q = quarter, H = half-year, Y = year).
-
-    Returns
-    -------
-    Calendar
-        Per-group calendar series with ``loss`` / ``premium`` /
-        ``ratio`` cumulative columns plus ``incr_`` per-period siblings
-        and within-calendar shares.
-    """
-    return Calendar._from_triangle(x)
-
-
 class Calendar:
     """Calendar-period aggregation of a Triangle.
 
-    Use :func:`as_calendar` to construct.
+    Use :meth:`Triangle.calendar_agg` to construct.
     """
 
     def __init__(self) -> None:

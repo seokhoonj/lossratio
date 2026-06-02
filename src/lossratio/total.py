@@ -12,31 +12,10 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-def as_total(x: "Triangle") -> "Total":
-    """Aggregate a :class:`Triangle` to per-group portfolio totals.
-
-    Each row is one group with total loss / premium / loss ratio plus
-    the cohort range (``sales_start`` / ``sales_end``) and cohort count.
-    Use for portfolio-level comparisons across groups.
-
-    Parameters
-    ----------
-    x
-        A :class:`Triangle`.
-
-    Returns
-    -------
-    Total
-        One row per group with cohort count, sales window, loss /
-        premium totals, lr, and within-portfolio shares.
-    """
-    return Total._from_triangle(x)
-
-
 class Total:
     """Portfolio-level totals per group.
 
-    Use :func:`as_total` to construct.
+    Use :meth:`Triangle.total_agg` to construct.
     """
 
     def __init__(self) -> None:

@@ -11,7 +11,7 @@ from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .bf import BF, BFFit
 from .bootstrap import Bootstrap, BootstrapTriangle
-from .calendar import Calendar, as_calendar
+from .calendar import Calendar
 from .cc import CC, CCFit
 from .cl import CL, CLFit
 from .convergence import Convergence, detect_convergence
@@ -25,7 +25,7 @@ from .ratio import Ratio, RatioFit
 from .maturity import Maturity, maturity_at, maturity_spec
 from .premium import Premium, PremiumFit
 from .regime import Regime, regime_at, regime_spec
-from .total import Total, as_total
+from .total import Total
 from .triangle import Triangle, TriangleValidation
 
 __version__ = "0.0.1.dev10"
@@ -60,8 +60,6 @@ __all__ = [
     "Triangle",
     "TriangleValidation",
     "__version__",
-    "as_calendar",
-    "as_total",
     "derive_grain_columns",
     "detect_convergence",
     "maturity_at",

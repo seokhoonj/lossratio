@@ -327,7 +327,7 @@ def test_triangle_n_cohorts_positive_int():
 
 def test_calendar_raw_name_mode1():
     """Calendar built from a mode-1 triangle keeps the raw calendar name."""
-    cal = lr.as_calendar(lr.Triangle(_exp_input()))
+    cal = lr.Triangle(_exp_input()).calendar_agg()
     assert cal.calendar == "cy_m"
 
 
@@ -335,7 +335,7 @@ def test_calendar_raw_name_mode2_is_none():
     """Calendar built from a mode-2 (dev-only) triangle has calendar=None."""
     e2 = _exp_input_with_dev().drop("cy_m")
     tri = lr.Triangle(e2, calendar=None, dev="dev_m")
-    cal = lr.as_calendar(tri)
+    cal = tri.calendar_agg()
     assert cal.calendar is None
 
 

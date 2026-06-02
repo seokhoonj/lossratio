@@ -418,22 +418,26 @@ class Triangle:
         return tri
 
     def calendar_agg(self) -> "Calendar":
-        """Calendar-period (CY) aggregation of this triangle.
+        """Aggregate this triangle to its calendar-period diagonals.
 
-        Derived view: the same data re-aggregated by calendar period
-        instead of cohort x dev. (Method form of the legacy
-        ``as_calendar`` free function.)
+        Each row of the result is one ``(group, calendar)`` cell: the sum
+        of all triangle cells on the same calendar diagonal, with
+        ``loss`` / ``premium`` / ``ratio`` cumulative columns plus
+        ``incr_`` per-period siblings and within-calendar shares. The
+        ``cal_idx`` column is a sequential 1-based index per group (rank
+        of the calendar date within its group), not a ``dev`` period.
         """
         from .calendar import Calendar
 
         return Calendar._from_triangle(self)
 
     def total_agg(self) -> "Total":
-        """Whole-triangle (time-collapsed) aggregation of this triangle.
+        """Aggregate this triangle to per-group portfolio totals.
 
-        Derived view: cumulative loss / premium / ratio per group with the
-        time dimension collapsed. (Method form of the legacy ``as_total``
-        free function.)
+        One row per group with cohort count, sales window, total loss /
+        premium, loss ratio, and within-portfolio shares -- the time
+        dimension collapsed. Use for portfolio-level comparisons across
+        groups.
         """
         from .total import Total
 

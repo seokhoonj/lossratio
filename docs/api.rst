@@ -18,12 +18,8 @@ API 레퍼런스
 .. autoclass:: lossratio.Triangle
    :members:
 
-.. autofunction:: lossratio.as_calendar
-
 .. autoclass:: lossratio.Calendar
    :members:
-
-.. autofunction:: lossratio.as_total
 
 .. autoclass:: lossratio.Total
    :members:
