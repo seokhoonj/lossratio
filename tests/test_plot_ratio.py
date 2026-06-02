@@ -172,7 +172,7 @@ def test_ratio_fit_plot_methods(tri_single, method):
 
 
 def test_loss_fit_plot_renders(tri_single):
-    lf = lr.Loss(method="cl").fit(tri_single)
+    lf = lr.ChainLadder().fit(tri_single)
     fig = lf.plot()
     try:
         assert isinstance(fig, plt.Figure)
@@ -183,7 +183,7 @@ def test_loss_fit_plot_renders(tri_single):
 
 
 def test_loss_fit_plot_multi_group_combined(tri_multi):
-    lf = lr.Loss(method="cl").fit(tri_multi)
+    lf = lr.ChainLadder().fit(tri_multi)
     fig = lf.plot()
     try:
         # LossFit.plot does not have per_group dispatch -- always one fig
@@ -193,7 +193,7 @@ def test_loss_fit_plot_multi_group_combined(tri_multi):
 
 
 def test_loss_fit_plot_show_interval_caption(tri_single):
-    lf = lr.Loss(method="cl").fit(tri_single)
+    lf = lr.ChainLadder().fit(tri_single)
     fig = lf.plot(show_interval=True)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
@@ -203,7 +203,7 @@ def test_loss_fit_plot_show_interval_caption(tri_single):
 
 
 def test_loss_fit_plot_show_interval_false(tri_single):
-    lf = lr.Loss(method="cl").fit(tri_single)
+    lf = lr.ChainLadder().fit(tri_single)
     fig = lf.plot(show_interval=False)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]

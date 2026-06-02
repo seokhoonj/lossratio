@@ -110,9 +110,9 @@ def test_extrapolate_tail_sigma2_matches_r(case: str, method: str) -> None:
 
 @pytest.mark.parametrize("sigma_method", ["mack", "none"])
 def test_cl_accepts_new_sigma_methods(sigma_method: str) -> None:
-    """``lr.CL`` runs with the newly wired ``mack`` / ``none`` methods."""
+    """``lr.ChainLadder`` runs with the newly wired ``mack`` / ``none`` methods."""
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    fit = lr.CL(sigma_method=sigma_method).fit(tri)
+    fit = lr.ChainLadder(sigma_method=sigma_method).fit(tri)
     assert fit is not None
     assert fit.sigma_method == sigma_method
     assert fit.to_polars().height > 0
@@ -120,9 +120,9 @@ def test_cl_accepts_new_sigma_methods(sigma_method: str) -> None:
 
 @pytest.mark.parametrize("sigma_method", ["mack", "none"])
 def test_loss_cl_accepts_new_sigma_methods(sigma_method: str) -> None:
-    """``lr.Loss(method='cl')`` threads ``mack`` / ``none`` through."""
+    """``lr.ChainLadder`` threads ``mack`` / ``none`` through (was Loss(method='cl'))."""
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    fit = lr.Loss(method="cl", sigma_method=sigma_method).fit(tri)
+    fit = lr.ChainLadder(sigma_method=sigma_method).fit(tri)
     assert fit is not None
     assert fit.sigma_method == sigma_method
     assert fit.to_polars().height > 0

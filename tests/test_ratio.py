@@ -90,7 +90,7 @@ def test_ratio_output_shape():
 
 def test_ratio_cl_method_matches_cl_fit():
     tri = lr.Triangle(_toy_triangle_input())
-    cl_fit = lr.CL().fit(tri)
+    cl_fit = lr.ChainLadder().fit(tri)
     ratio_fit = lr.Ratio(method="cl").fit(tri)
 
     cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
@@ -123,7 +123,7 @@ def test_ratio_cl_ratio_proj_equals_loss_div_exposure():
 
 def test_ratio_ed_method_matches_ed_fit():
     tri = lr.Triangle(_toy_triangle_input())
-    ed_fit = lr.ED().fit(tri)
+    ed_fit = lr.ExposureDriven().fit(tri)
     ratio_fit = lr.Ratio(method="ed").fit(tri)
 
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
@@ -151,7 +151,7 @@ def test_ratio_sa_strict_thresholds_falls_back_to_ed():
     loss_proj should match the pure-ED projection."""
     tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.Ratio(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
-    ed_fit = lr.ED().fit(tri)
+    ed_fit = lr.ExposureDriven().fit(tri)
 
     assert sa_fit.maturity_point is None
     sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
@@ -164,7 +164,7 @@ def test_ratio_sa_mat_k_two_matches_cl_projection():
     region (target dev >= mat_k), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
-    cl_fit = lr.CL().fit(tri)
+    cl_fit = lr.ChainLadder().fit(tri)
 
     if sa_fit.maturity_point == 2:
         sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
@@ -288,15 +288,9 @@ def test_ratio_default_premium_method_is_ed():
 
 
 def test_loss_default_method_is_ed():
-    """R parity: fit_loss() defaults to method='ed'."""
-    assert lr.Loss().method == "ed"
-    fit = lr.Loss().fit(lr.Triangle(_toy_triangle_input()))
+    """ExposureDriven is the loss-side default model -> method='ed'."""
+    fit = lr.ExposureDriven().fit(lr.Triangle(_toy_triangle_input()))
     assert fit.method == "ed"
-
-
-def test_loss_default_premium_method_is_ed():
-    """R parity: fit_loss() defaults premium_method='ed'."""
-    assert lr.Loss().premium_method == "ed"
 
 
 def test_ratio_explicit_method_still_works():
@@ -314,16 +308,16 @@ def test_ratio_explicit_method_still_works():
 def test_maturity_none_disables_sa_switch():
     """maturity=None -> SA falls back to ED throughout (mat_k is None)."""
     tri = lr.Triangle(_toy_triangle_input())
-    fit = lr.Loss(method="sa", maturity=None).fit(tri)
+    fit = lr.StageAdaptive(maturity=None).fit(tri)
     assert fit.maturity_point is None
 
 
 def test_maturity_auto_is_sa_default():
     """maturity defaults to 'auto'; loose thresholds detect a switch."""
     tri = lr.Triangle(_toy_triangle_input())
-    assert lr.Loss(method="sa").maturity == "auto"
-    fit = lr.Loss(
-        method="sa", max_cv=10.0, max_rse=10.0, min_run=2
+    assert lr.StageAdaptive().maturity == "auto"
+    fit = lr.StageAdaptive(
+        max_cv=10.0, max_rse=10.0, min_run=2
     ).fit(tri)
     assert fit.maturity_point is not None
 
@@ -333,15 +327,15 @@ def test_maturity_object_overrides_auto_detect():
     tri = lr.Triangle(_toy_triangle_input())
 
     # auto-detect with strict thresholds finds nothing.
-    auto_fit = lr.Loss(
-        method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2
+    auto_fit = lr.StageAdaptive(
+        max_cv=1e-9, max_rse=1e-9, min_run=2
     ).fit(tri)
     assert auto_fit.maturity_point is None
 
     # an explicit Maturity object wins regardless of thresholds.
     mat = lr.maturity_at(change=3)
-    over_fit = lr.Loss(
-        method="sa", maturity=mat, max_cv=1e-9, max_rse=1e-9
+    over_fit = lr.StageAdaptive(
+        maturity=mat, max_cv=1e-9, max_rse=1e-9
     ).fit(tri)
     assert over_fit.maturity_point == 3
 
@@ -350,7 +344,7 @@ def test_maturity_callable_spec_dispatch():
     """A maturity_spec callable is invoked on the fit triangle."""
     tri = lr.Triangle(_toy_triangle_input())
     spec = lr.maturity_spec(max_cv=10.0, max_rse=10.0, min_run=2)
-    fit = lr.Loss(method="sa", maturity=spec).fit(tri)
+    fit = lr.StageAdaptive(maturity=spec).fit(tri)
     assert fit.maturity_point is not None
 
 
@@ -359,14 +353,14 @@ def test_maturity_callable_must_return_maturity():
     tri = lr.Triangle(_toy_triangle_input())
     bad = lambda triangle: 3  # noqa: E731 -- returns an int, not Maturity
     with pytest.raises(TypeError, match="Maturity"):
-        lr.Loss(method="sa", maturity=bad).fit(tri)
+        lr.StageAdaptive(maturity=bad).fit(tri)
 
 
 def test_maturity_invalid_string_raises():
     """A maturity string other than 'auto' raises."""
     tri = lr.Triangle(_toy_triangle_input())
     with pytest.raises(ValueError, match="auto"):
-        lr.Loss(method="sa", maturity="bogus").fit(tri)
+        lr.StageAdaptive(maturity="bogus").fit(tri)
 
 
 def test_ratio_maturity_object_overrides_auto_detect():

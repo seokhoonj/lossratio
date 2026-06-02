@@ -330,7 +330,7 @@ def test_segment_bridged_borrowed_reaches_full_development():
     tri = _sur_triangle()
     max_dev = tri.to_polars()["dev"].max()
     r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    fit = lr.Loss(method="cl", regime=r).fit(tri)
+    fit = lr.ChainLadder(regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
     newest = df.filter(pl.col("cohort") == df["cohort"].max())
@@ -339,8 +339,7 @@ def test_segment_bridged_borrowed_reaches_full_development():
 
     # Borrowed keeps per-segment early factors, so its projection differs
     # from the pooled segment_bridged fit.
-    pooled = lr.Loss(
-        method="cl",
+    pooled = lr.ChainLadder(
         regime=lr.regime_at(change="2024-07-01", treatment="segment_bridged"),
     ).fit(tri).to_polars().sort(["cohort", "dev"])
     bor = df.sort(["cohort", "dev"])
@@ -355,7 +354,7 @@ def test_segment_bridged_borrowed_loss_only():
     composition (keeps segment_id)."""
     tri = _sur_triangle()
     r = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    fit = lr.Loss(method="cl", regime=r).fit(tri)
+    fit = lr.ChainLadder(regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
     assert fit.regime is r

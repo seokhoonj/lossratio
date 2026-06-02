@@ -42,6 +42,7 @@ from lossratio.bootstrap import (
     _resolve_bootstrap,
 )
 from lossratio.link import _build_link_df
+from lossratio.loss import Loss
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -380,11 +381,13 @@ def test_bootstrap_B_convergence():
 
 
 def test_cl_bootstrap_overlay():
-    """``CL(bootstrap='auto')`` overlays bootstrap SE on projected cells
-    while leaving observed cells and ``loss_proj`` untouched."""
+    """``Loss(method='cl', bootstrap='auto')`` overlays bootstrap SE on
+    projected cells while leaving observed cells and ``loss_proj``
+    untouched. The bootstrap overlay lives on the internal Loss engine
+    (the public CL model carries no ``bootstrap`` slot)."""
     tri = _tri()
-    plain = lr.CL().fit(tri)
-    boot = lr.CL(bootstrap="auto").fit(tri)
+    plain = Loss(method="cl").fit(tri)
+    boot = Loss(method="cl", bootstrap="auto").fit(tri)
 
     assert plain.ci_type == "analytical"
     assert plain.boots is None
@@ -430,8 +433,9 @@ def test_cl_bootstrap_overlay():
 
 
 def test_cl_no_bootstrap_unchanged():
-    """A plain ``CL().fit`` is the pure-analytical state -- no bootstrap."""
-    fit = lr.CL().fit(_tri())
+    """A plain ``ChainLadder().fit`` is the pure-analytical state -- no
+    bootstrap."""
+    fit = lr.ChainLadder().fit(_tri())
     assert fit.ci_type == "analytical"
     assert fit.boots is None
 
@@ -1005,10 +1009,12 @@ def test_phase2_loss_bootstrap_overlay(method):
     """``Loss(method=..., bootstrap='auto')`` overlays bootstrap SE on the
     projected cells while leaving ``loss_proj`` analytical. The bootstrap
     SE overlay always uses the analytical-CL paradigm regardless of the
-    dispatcher's loss ``method`` (R parity)."""
+    dispatcher's loss ``method`` (R parity). The bootstrap overlay lives
+    on the internal Loss engine (the public role models carry no
+    ``bootstrap`` slot)."""
     tri = _tri()
-    plain = lr.Loss(method=method).fit(tri)
-    boot = lr.Loss(method=method, bootstrap="auto").fit(tri)
+    plain = Loss(method=method).fit(tri)
+    boot = Loss(method=method, bootstrap="auto").fit(tri)
 
     assert plain.ci_type == "analytical"
     assert plain.boots is None
@@ -1052,7 +1058,7 @@ def test_phase2_loss_bootstrap_overlay(method):
 
 def test_phase2_loss_no_bootstrap_unchanged():
     """A plain ``Loss(method='cl').fit`` keeps the pure-analytical state."""
-    fit = lr.Loss(method="cl").fit(_tri())
+    fit = Loss(method="cl").fit(_tri())
     assert fit.ci_type == "analytical"
     assert fit.boots is None
 
@@ -1426,12 +1432,12 @@ def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected():
 
 def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected_loss():
     """The pre-built-``BootstrapTriangle`` guard fires for any estimator
-    that carries a ``bootstrap`` slot -- here ``lr.Loss``."""
+    that carries a ``bootstrap`` slot -- here the internal Loss engine."""
     tri = _tri()
     prebuilt = Bootstrap(
         type="analytical", method="cl", B=80, seed=5
     ).fit(tri, target="loss")
 
-    est = lr.Loss(method="cl", bootstrap=prebuilt)
+    est = Loss(method="cl", bootstrap=prebuilt)
     with pytest.raises(ValueError, match="leak"):
         lr.Backtest(estimator=est, holdout=6, target="loss")

@@ -30,12 +30,12 @@ def tri_single():
 
 @pytest.fixture
 def bt_multi(tri_multi):
-    return lr.Backtest(estimator=lr.CL(), holdout=4, target="loss").fit(tri_multi)
+    return lr.Backtest(estimator=lr.ChainLadder(), holdout=4, target="loss").fit(tri_multi)
 
 
 @pytest.fixture
 def bt_single(tri_single):
-    return lr.Backtest(estimator=lr.CL(), holdout=4, target="loss").fit(tri_single)
+    return lr.Backtest(estimator=lr.ChainLadder(), holdout=4, target="loss").fit(tri_single)
 
 
 def _close(fig):
@@ -150,7 +150,7 @@ def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single)
     # Backtest built on a CL with recent=12 -- usage view should
     # respect that recent without the caller re-passing it.
     bt = lr.Backtest(
-        estimator=lr.CL(recent=12), holdout=4, target="loss"
+        estimator=lr.ChainLadder(recent=12), holdout=4, target="loss"
     ).fit(tri_single)
     assert bt._infer_recent() == 12
     fig = bt.plot_triangle(view="usage")
@@ -163,7 +163,7 @@ def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single)
 def test_backtest_plot_triangle_usage_inherits_regime_from_estimator(tri_multi):
     reg = tri_multi.detect_regime(window=12)
     bt = lr.Backtest(
-        estimator=lr.Loss(method="cl", regime=reg),
+        estimator=lr.ChainLadder(regime=reg),
         holdout=4, target="loss",
     ).fit(tri_multi)
     inferred = bt._infer_regime()
@@ -189,7 +189,7 @@ def test_backtest_plot_triangle_usage_auto_regime_resolved(tri_multi):
     # `regime='auto'` on the estimator is forwarded as-is; the
     # Triangle renderer resolves it via inline detect_regime().
     bt = lr.Backtest(
-        estimator=lr.Loss(method="cl", regime="auto"),
+        estimator=lr.ChainLadder(regime="auto"),
         holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_regime() == "auto"
@@ -204,7 +204,7 @@ def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
     # method='sa' carries `maturity='auto'` by default; the usage view
     # resolves it via inline detect_maturity().
     bt = lr.Backtest(
-        estimator=lr.Loss(method="sa"),
+        estimator=lr.StageAdaptive(),
         holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_maturity() == "auto"

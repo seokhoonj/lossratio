@@ -13,6 +13,7 @@ import pytest
 from polars.testing import assert_frame_equal
 
 import lossratio as lr
+from lossratio.loss import Loss
 
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -36,14 +37,14 @@ def test_model_name() -> None:
 def test_matches_loss_engine() -> None:
     tri = _triangle()
     new = lr.StageAdaptive().fit(tri).to_polars()
-    old = lr.Loss(method="sa").fit(tri).to_polars()
+    old = Loss(method="sa").fit(tri).to_polars()
     assert_frame_equal(new, old)
 
 
 def test_maturity_passthrough_matches_loss() -> None:
     tri = _triangle()
     new = lr.StageAdaptive(maturity=None).fit(tri).to_polars()
-    old = lr.Loss(method="sa", maturity=None).fit(tri).to_polars()
+    old = Loss(method="sa", maturity=None).fit(tri).to_polars()
     assert_frame_equal(new, old)
 
 

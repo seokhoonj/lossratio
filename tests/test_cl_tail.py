@@ -89,14 +89,14 @@ def tri():
 
 
 def test_cl_default_no_tail_columns(tri):
-    cf = lr.CL().fit(tri)
+    cf = lr.ChainLadder().fit(tri)
     assert all("tail" not in c for c in cf._df.columns)
     # tail_factor still populated for introspection -- all 1.0
     assert all(tf == 1.0 for tf in cf.tail_factor.values())
 
 
 def test_cl_tail_true_adds_companion_columns(tri):
-    cf = lr.CL(tail=True).fit(tri)
+    cf = lr.ChainLadder(tail=True).fit(tri)
     tail_cols = {c for c in cf._df.columns if c.endswith("_tail")}
     assert "loss_tail" in tail_cols
     assert "loss_proc_se_tail" in tail_cols
@@ -108,7 +108,7 @@ def test_cl_tail_true_adds_companion_columns(tri):
 
 
 def test_cl_tail_true_scales_only_last_row(tri):
-    cf = lr.CL(tail=True).fit(tri)
+    cf = lr.ChainLadder(tail=True).fit(tri)
     df = cf._df
     # tail columns must be null everywhere except the last dev row per
     # (group, cohort) pair.
@@ -125,7 +125,7 @@ def test_cl_tail_true_scales_only_last_row(tri):
 
 
 def test_cl_tail_factor_per_group(tri):
-    cf = lr.CL(tail=True).fit(tri)
+    cf = lr.ChainLadder(tail=True).fit(tri)
     assert isinstance(cf.tail_factor, dict)
     # all groups represented, all > 1
     assert set(cf.tail_factor.keys()) == {"CAN", "CI", "HOS", "SUR"}
@@ -133,7 +133,7 @@ def test_cl_tail_factor_per_group(tri):
 
 
 def test_cl_tail_numeric_constant_per_group(tri):
-    cf = lr.CL(tail=1.05).fit(tri)
+    cf = lr.ChainLadder(tail=1.05).fit(tri)
     assert all(tf == pytest.approx(1.05) for tf in cf.tail_factor.values())
     # loss_tail / loss_proj == 1.05 on last rows
     last = (
@@ -149,7 +149,7 @@ def test_cl_tail_numeric_constant_per_group(tri):
 
 
 def test_cl_tail_se_scaling(tri):
-    cf = lr.CL(tail=2.0).fit(tri)
+    cf = lr.ChainLadder(tail=2.0).fit(tri)
     last = (
         cf._df.with_columns(
             pl.col("dev").rank(method="dense", descending=True)
@@ -165,8 +165,8 @@ def test_cl_tail_se_scaling(tri):
 
 
 def test_cl_tail_false_byte_unchanged(tri):
-    base = lr.CL().fit(tri)
-    fwd = lr.CL(tail=False).fit(tri)
+    base = lr.ChainLadder().fit(tri)
+    fwd = lr.ChainLadder(tail=False).fit(tri)
     assert base._df.columns == fwd._df.columns
     # core loss columns identical
     for col in ("loss_proj", "loss_total_se", "loss_total_cv"):
@@ -176,29 +176,26 @@ def test_cl_tail_false_byte_unchanged(tri):
         assert np.allclose(a[mask], b[mask])
 
 
-# --- Loss(method='cl', tail=...) ---------------------------------------
+# --- ChainLadder(tail=...) (was Loss(method='cl', tail=...)) -----------
 
 
 def test_loss_cl_tail_propagates(tri):
-    lf = lr.Loss(method="cl", tail=True).fit(tri)
+    lf = lr.ChainLadder(tail=True).fit(tri)
     assert isinstance(lf.tail_factor, dict)
     assert all(tf > 1.0 for tf in lf.tail_factor.values())
     assert "loss_tail" in lf._df.columns
 
 
-def test_loss_non_cl_tail_warns_and_ignores(tri):
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        lf = lr.Loss(method="ed", tail=True).fit(tri)
-    assert any("tail" in str(w.message).lower() for w in caught)
-    # no tail columns
-    assert "loss_tail" not in lf._df.columns
-    # tail_factor populated as 1.0 / per-group dict
-    assert all(tf == 1.0 for tf in lf.tail_factor.values())
+# NOTE: dropped `test_loss_non_cl_tail_warns_and_ignores` -- it asserted the
+# Loss dispatcher's warn-and-ignore guard for `tail=` on a non-cl method.
+# P4.2d retires the Loss dispatcher; the model classes carry no dispatch, and
+# `ExposureDriven` simply has no `tail` parameter at all (passing one raises
+# TypeError at construction), so there is no warn-and-ignore behavior left to
+# assert.
 
 
 def test_loss_tail_default_false(tri):
-    lf = lr.Loss(method="cl").fit(tri)
+    lf = lr.ChainLadder().fit(tri)
     assert "loss_tail" not in lf._df.columns
 
 

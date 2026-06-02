@@ -41,7 +41,7 @@ def test_loss_summary_uses_role_prefixed_columns():
     generic ``ultimate`` name was Python-only and is gone.
     """
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    summary = lr.Loss(method="ed").fit(tri).summary()
+    summary = lr.ExposureDriven().fit(tri).summary()
     cols = set(summary.columns)
     assert {"loss_ult", "loss_total_se", "loss_total_cv"} <= cols, (
         f"summary missing role-prefixed columns; got {sorted(cols)}"

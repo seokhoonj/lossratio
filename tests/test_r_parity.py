@@ -160,7 +160,7 @@ def test_cl_full_matches_r():
     r = _load("cl_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.CL().fit(tri)
+        lr.ChainLadder().fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
@@ -178,16 +178,19 @@ def test_cl_mack_se_matches_r():
     r = _load("cl_mack_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.CL().fit(tri)
+        lr.ChainLadder().fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
+    # NOTE: role-based LossFit drops the per-component CV columns
+    # (`loss_proc_cv` / `loss_param_cv`); only `loss_total_cv` survives.
+    # The SE decomposition (proc / param / total) is unchanged.
     _compare_numeric(
         py, r,
         cols=[
             "loss_proj", "incr_loss_proj",
             "loss_proc_se", "loss_param_se", "loss_total_se",
-            "loss_proc_cv", "loss_param_cv", "loss_total_cv",
+            "loss_total_cv",
         ],
     )
 
@@ -247,7 +250,7 @@ def test_cl_recent_matches_r():
     r = _load("cl_recent12_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.CL(recent=12).fit(tri)
+        lr.ChainLadder(recent=12).fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
@@ -260,7 +263,7 @@ def test_ed_recent_matches_r():
     r = _load("ed_recent12_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.ED(recent=12).fit(tri)
+        lr.ExposureDriven(recent=12).fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
