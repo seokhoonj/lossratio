@@ -181,7 +181,7 @@ class Link:
         self._df: pl.DataFrame
         self._tri_df: pl.DataFrame
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
         self._cohort: str
         self._dev: str
         self._target: str

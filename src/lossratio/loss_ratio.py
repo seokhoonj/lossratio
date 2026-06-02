@@ -317,7 +317,7 @@ class RatioFit:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
         self._cohort: str
         self._dev: str
         self.method: str

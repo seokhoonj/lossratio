@@ -91,6 +91,31 @@ def normalize_groups(
     return list(groups)
 
 
+def collapse_groups(
+    groups: "str | Sequence[str] | None",
+) -> "str | list[str] | None":
+    """Storage form of a ``groups`` argument: ``None`` / scalar ``str`` /
+    ``list[str]``.
+
+    ``None`` (or an empty sequence) -> ``None`` (ungrouped). A single column
+    -- whether passed as ``"coverage"`` or ``["coverage"]`` -- collapses to
+    the scalar ``str`` form; two or more columns stay a ``list[str]``. This is
+    the single source of truth for how a Triangle stores ``groups``: the
+    column COUNT (not the input notation) decides scalar-vs-list, so the
+    str/list branch in every downstream helper (``_iter_group_frames``,
+    ``group_eq``, ``fill_group_columns``, ...) lines up -- a single group
+    yields SCALAR values, multiple groups yield TUPLE values. Mirrors the
+    pandas ``groupby`` key convention, except a length-1 list collapses to the
+    scalar form (so ``["coverage"]`` behaves identically to ``"coverage"``).
+    """
+    norm = normalize_groups(groups)
+    if not norm:
+        return None
+    if len(norm) == 1:
+        return norm[0]
+    return norm
+
+
 def group_eq(groups: "str | Sequence[str]", value: Any) -> pl.Expr:
     """polars predicate selecting the rows of a single group.
 

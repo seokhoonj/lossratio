@@ -233,18 +233,37 @@ def test_by_explicit_str_matches_default_on_grouped_triangle():
     assert a._labels_df.equals(b._labels_df)
 
 
-def test_by_multi_column_raises_not_implemented():
-    """Triangle stores a single group column; multi-column ``by`` defers."""
-    tri = _multi_group_triangle()
-    with pytest.raises(NotImplementedError, match="Multi-column"):
-        Regime._from_triangle(
-            tri,
-            target="ratio",
-            window=12,
-            by=["coverage", "channel"],
-            R=99,
-            seed=20260524,
-        )
+def _two_col_triangle() -> "lr.Triangle":
+    """A genuine multi-column triangle: ``coverage`` x a synthetic block."""
+    df = lr.load_experience().with_columns(
+        pl.when(pl.col("uy_m").dt.year() % 2 == 0)
+          .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
+    )
+    return lr.Triangle(df, groups=["coverage", "block"])
+
+
+def test_by_multi_column_detects_per_combination():
+    """Explicit multi-column ``by`` runs per (coverage, block) combination
+    and carries both group columns into the change / label tables."""
+    tri = _two_col_triangle()
+    reg = Regime._from_triangle(
+        tri, target="ratio", window=12,
+        by=["coverage", "block"], R=99, seed=20260524,
+    )
+    assert reg.groups == ["coverage", "block"]
+    for col in ("coverage", "block"):
+        assert col in reg._changes_df.columns
+        assert col in reg._labels_df.columns
+    # 4 coverages x 2 blocks == 8 combos in the label table.
+    assert reg._labels_df.select(["coverage", "block"]).unique().height == 8
+
+
+def test_by_none_uses_stored_multi_column_groups():
+    """``by=None`` defers to the Triangle's stored multi-column ``groups``."""
+    tri = _two_col_triangle()
+    reg = tri.detect_regime(target="ratio", seed=20260524)
+    assert reg.groups == ["coverage", "block"]
+    assert reg._changes_df.select(["coverage", "block"]).unique().height >= 1
 
 
 def test_resolve_by_helper():
@@ -255,6 +274,8 @@ def test_resolve_by_helper():
     assert _resolve_by([], tri) is None
     assert _resolve_by("explicit", tri) == "explicit"
     assert _resolve_by(["solo"], tri) == "solo"
+    # multi-element sequence -> the list form (per-combination detection)
+    assert _resolve_by(["coverage", "channel"], tri) == ["coverage", "channel"]
     sur = _sur_triangle()
     assert _resolve_by(None, sur) is None
 

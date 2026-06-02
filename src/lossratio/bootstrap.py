@@ -2581,7 +2581,7 @@ class BootstrapTriangle:
         self._pseudo_triangles: pl.DataFrame | None
         self._meta:             dict[str, Any]
         self._output_type:      str
-        self._groups:           str | None
+        self._groups:           str | list[str] | None
 
     # -- properties ---------------------------------------------------------
 

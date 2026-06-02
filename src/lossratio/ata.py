@@ -155,7 +155,7 @@ class ATA:
         self._df: pl.DataFrame
         self._link: "Link"
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
         self._cohort: str
         self._dev: str
 

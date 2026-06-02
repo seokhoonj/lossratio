@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import detect_input_type, mirror_output, normalize_groups, to_polars
+from ._io import (
+    collapse_groups,
+    detect_input_type,
+    mirror_output,
+    normalize_groups,
+    to_polars,
+)
 from ._period import (
     coerce_cols_to_date,
     count_periods,
@@ -86,7 +92,7 @@ class Triangle:
     def __init__(
         self,
         df: pl.DataFrame | Any,
-        groups: str | None = None,
+        groups: str | Sequence[str] | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
         dev: str | None = None,
@@ -311,7 +317,7 @@ class Triangle:
         agg = agg.select(ordered)
 
         self._df = agg
-        self._groups = groups
+        self._groups = collapse_groups(groups)
         self._cohort = cohort
         self._calendar = calendar
         self._loss = loss
@@ -341,8 +347,9 @@ class Triangle:
         return self._df.columns
 
     @property
-    def groups(self) -> str | None:
-        """Original group variable name (or None if no grouping)."""
+    def groups(self) -> str | list[str] | None:
+        """Group column name(s): a ``str`` for a single group column, a
+        ``list[str]`` for multiple, or ``None`` if ungrouped."""
         return self._groups
 
     @property
@@ -882,7 +889,7 @@ class TriangleValidation:
     def __init__(
         self,
         df: pl.DataFrame | Any,
-        groups: str | None = None,
+        groups: str | Sequence[str] | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
         dev: str | None = None,
@@ -916,7 +923,7 @@ class TriangleValidation:
                 f"Required: {sorted(required)}"
             )
 
-        self._groups = groups
+        self._groups = collapse_groups(groups)
         self._cohort = cohort
         self._calendar = calendar
         self._dev_col = dev
@@ -1050,7 +1057,7 @@ class TriangleValidation:
         return self._gaps.height == 0 and self._invalid_rows.height == 0
 
     @property
-    def groups(self) -> str | None:
+    def groups(self) -> str | list[str] | None:
         return self._groups
 
     @property

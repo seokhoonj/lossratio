@@ -448,7 +448,7 @@ class Maturity:
         self._df: pl.DataFrame
         self._mat_k_df: pl.DataFrame
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
         self._cohort: str
         self._dev: str
         self.max_cv: float

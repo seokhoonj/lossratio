@@ -301,7 +301,7 @@ class BacktestFit:
         self._diag_summary: pl.DataFrame
         self._refit: Any
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
         self._cohort: str
         self._dev: str
         self._triangle: "Triangle"

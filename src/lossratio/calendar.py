@@ -22,7 +22,7 @@ class Calendar:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
         self._calendar: str | None
         self._grain: str
 
@@ -145,7 +145,7 @@ class Calendar:
         return self._df.to_pandas()
 
     @property
-    def groups(self) -> str | None:
+    def groups(self) -> str | list[str] | None:
         return self._groups
 
     @property

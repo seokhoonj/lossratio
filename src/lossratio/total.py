@@ -21,7 +21,7 @@ class Total:
     def __init__(self) -> None:
         self._df: pl.DataFrame
         self._output_type: str
-        self._groups: str | None
+        self._groups: str | list[str] | None
 
     @classmethod
     def _from_triangle(cls, triangle: "Triangle") -> "Total":
@@ -74,7 +74,7 @@ class Total:
         return self._df.to_pandas()
 
     @property
-    def groups(self) -> str | None:
+    def groups(self) -> str | list[str] | None:
         return self._groups
 
     @property

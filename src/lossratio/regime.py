@@ -150,11 +150,10 @@ def _resolve_by(
       triangle.
     - ``str``: explicit single group column.
     - length-1 sequence: the single column name (``str``).
-    - non-empty multi-element sequence: an EXPLICIT multi-column ``by`` is
-      not accepted yet (the user-facing multi-column ``by`` surface lands
-      with the Triangle representation flip; until then pass a single
-      column, or rely on a multi-column Triangle via ``by=None``). The
-      per-combination detection machinery is already in place.
+    - non-empty multi-element sequence: an EXPLICIT multi-column ``by`` --
+      returned as a ``list[str]`` (the per-combination detection machinery
+      handles it). Same scalar-vs-list collapse the Triangle uses for stored
+      ``groups``.
     """
     if by is None:
         return triangle.groups
@@ -168,10 +167,7 @@ def _resolve_by(
             return None
         if len(seq) == 1:
             return seq[0]
-        raise NotImplementedError(
-            "Multi-column `by` is not yet supported; pass a single column "
-            "name, or use a multi-column Triangle with by=None."
-        )
+        return seq
     raise TypeError(
         f"`by` must be None, str, or sequence of str; got "
         f"{type(by).__name__}"
@@ -571,8 +567,7 @@ class Regime:
         #   None (default) -> use triangle.groups if set, else pooled
         #   "" / []        -> force pooled
         #   str            -> single group column
-        #   list[str]      -> multi-column grouping (NotImplementedError --
-        #                     Triangle currently stores a single group col)
+        #   list[str]      -> multi-column grouping (per-combination detect)
         grp = _resolve_by(by, triangle)
 
         tri_df = triangle.to_polars()
