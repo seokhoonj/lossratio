@@ -648,8 +648,8 @@ class Maturity:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def maturity_point(self):
-        """Detected maturity point.
+    def point(self):
+        """Detected maturity point (``k*``), the headline accessor.
 
         If the source Triangle has no ``groups``, returns an ``int``
         or ``None``. Otherwise returns ``dict[group_value, int | None]``.
@@ -704,7 +704,7 @@ class Maturity:
             f"max_cv={self.max_cv}, max_rse={self.max_rse}, m={self.min_run}"
         )
         if self._groups is None:
-            return f"<Maturity: maturity_point={self.maturity_point} ({thresh})>"
+            return f"<Maturity: point={self.point} ({thresh})>"
         n_groups = self._mat_k_df.height
         return f"<Maturity: {n_groups} groups ({thresh})>"
 

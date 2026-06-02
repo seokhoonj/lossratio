@@ -71,8 +71,8 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["maturity"] = _frame(mat)
     out["maturity_point"] = pl.DataFrame(
         {
-            "group": list(mat.maturity_point.keys()),
-            "point": [int(v) for v in mat.maturity_point.values()],
+            "group": list(mat.point.keys()),
+            "point": [int(v) for v in mat.point.values()],
         }
     )
 
@@ -81,7 +81,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["convergence"] = _frame(conv)
     out["convergence_point"] = pl.DataFrame(
         {
-            "convergence_point": [conv.convergence_point],
+            "convergence_point": [conv.point],
             "maturity_point": [conv.maturity_point],
         },
         schema={"convergence_point": pl.Int64, "maturity_point": pl.Int64},

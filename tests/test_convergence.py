@@ -78,7 +78,7 @@ def test_detect_convergence_methods_dispatch():
         results[method] = _converge(
             tri, method=method,
             max_drift=0.1, max_slope=0.01, max_dispersion=1.0,
-        ).convergence_point
+        ).point
     # window is the most permissive locally; tail tends to be later.
     if results["window"] is not None and results["tail"] is not None:
         assert results["window"] <= results["tail"]
@@ -128,7 +128,7 @@ def test_detect_convergence_no_candidate_warns():
     tri = _sur_triangle()
     with pytest.warns(UserWarning, match="No candidate dev points"):
         conv = _converge(tri, maturity_point=40)
-    assert conv.convergence_point is None
+    assert conv.point is None
     assert conv.dev_cand == []
 
 
@@ -169,5 +169,5 @@ def test_convergence_repr_contains_key_fields():
     tri = _sur_triangle()
     conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     r = repr(conv)
-    for token in ("method=", "convergence_point=", "maturity_point=", "dev_max=", "candidates="):
+    for token in ("method=", "point=", "maturity_point=", "dev_max=", "candidates="):
         assert token in r

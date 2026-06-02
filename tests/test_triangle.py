@@ -432,7 +432,7 @@ def test_detect_maturity_matches_chain():
         .ata()
         .maturity(max_cv=0.2, max_rse=0.1, min_run=2)
     )
-    assert direct.maturity_point == chained.maturity_point
+    assert direct.point == chained.point
 
 
 def test_detect_maturity_with_groups():
@@ -444,8 +444,8 @@ def test_detect_maturity_with_groups():
     m = tri.detect_maturity()
     assert isinstance(m, lr.Maturity)
     # maturity_point is a dict {group_value: int|None} for grouped triangles.
-    assert isinstance(m.maturity_point, dict)
-    assert set(m.maturity_point.keys()) == {"SUR", "CI"}
+    assert isinstance(m.point, dict)
+    assert set(m.point.keys()) == {"SUR", "CI"}
 
 
 # ---------------------------------------------------------------------------

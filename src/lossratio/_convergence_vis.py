@@ -55,19 +55,19 @@ def plot_convergence(
         if conv.maturity_point is not None:
             ax.axvline(conv.maturity_point, color="grey", linestyle=":", linewidth=0.7)
         # convergence_point solid green vline (if found)
-        if conv.convergence_point is not None and not (
-            isinstance(conv.convergence_point, float) and np.isnan(conv.convergence_point)
+        if conv.point is not None and not (
+            isinstance(conv.point, float) and np.isnan(conv.point)
         ):
-            ax.axvline(conv.convergence_point, color="#2ca02c", linestyle="-", linewidth=0.8)
+            ax.axvline(conv.point, color="#2ca02c", linestyle="-", linewidth=0.8)
         ax.set_ylabel(y_label, fontsize=8)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
     axes[-1].set_xlabel("dev candidate", fontsize=9)
 
     conv_k_str = (
-        str(conv.convergence_point)
-        if (conv.convergence_point is not None and not (
-            isinstance(conv.convergence_point, float) and np.isnan(conv.convergence_point)
+        str(conv.point)
+        if (conv.point is not None and not (
+            isinstance(conv.point, float) and np.isnan(conv.point)
         ))
         else "NA"
     )

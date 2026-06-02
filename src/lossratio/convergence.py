@@ -218,7 +218,7 @@ def detect_convergence(
             .ata()
             .maturity()
         )
-        mat_k_raw = mat.maturity_point
+        mat_k_raw = mat.point
         if isinstance(mat_k_raw, dict):
             vals = [v for v in mat_k_raw.values() if v is not None]
             if not vals:
@@ -400,7 +400,7 @@ class Convergence:
 
     def __init__(self) -> None:
         self._output_type: str
-        self.convergence_point: int | None
+        self.point: int | None
         self.method: str
         self.maturity_point: int
         self.dev_max: int
@@ -450,7 +450,7 @@ class Convergence:
     ) -> "Convergence":
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
-        self.convergence_point = conv_k
+        self.point = conv_k
         self.method = method
         self.maturity_point = mat_k
         self.dev_max = dev_max
@@ -528,7 +528,7 @@ class Convergence:
         n_slope = int(np.nansum(self.pass_slope))
         bits = [
             f"method={self.method}",
-            f"convergence_point={self.convergence_point}",
+            f"point={self.point}",
             f"maturity_point={self.maturity_point}",
             f"dev_max={self.dev_max}",
             f"candidates={n}",

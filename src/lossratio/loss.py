@@ -132,7 +132,7 @@ def _mat_k_for_group(
         return mat_override
 
     # mat_override is a Maturity object.
-    mat_k = mat_override.maturity_point
+    mat_k = mat_override.point
     if isinstance(mat_k, dict):
         val = mat_k.get(group_value)
     else:

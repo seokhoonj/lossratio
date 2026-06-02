@@ -114,12 +114,12 @@ def test_regime_spec_forwards_method():
 def test_maturity_at_single_int():
     m = lr.Maturity.at(change=6)
     assert isinstance(m, lr.Maturity)
-    assert m.maturity_point == 6
+    assert m.point == 6
 
 
 def test_maturity_at_with_groups():
     m = lr.Maturity.at(change=[6, 8], groups={"coverage": ["SUR", "CI"]})
-    assert m.maturity_point == {"SUR": 6, "CI": 8}
+    assert m.point == {"SUR": 6, "CI": 8}
 
 
 def test_maturity_at_validation_errors():
@@ -158,7 +158,7 @@ def test_maturity_spec_ratio_path():
     spec = lr.Maturity.detect(target="ratio", exposure=None, weight="premium")
     m = spec(tri)
     assert isinstance(m, lr.Maturity)
-    assert m.maturity_point is not None  # SUR data should yield a mature Ratio link
+    assert m.point is not None  # SUR data should yield a mature Ratio link
 
 
 def test_maturity_spec_threshold_overrides_propagate():
