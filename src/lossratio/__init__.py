@@ -12,15 +12,13 @@ from .backtest import Backtest, BacktestFit
 from .bootstrap import Bootstrap, BootstrapTriangle
 from .calendar import Calendar
 from .chain_ladder import ChainLadder
-from .cl import CL, CLFit
 from .convergence import Convergence, detect_convergence
 from .datasets import load_experience, make_experience
-from .ed import ED, EDFit
 from .exposure_driven import ExposureDriven
 from .experience import validate_experience
 from .intensity import Intensity
 from .link import Link
-from .loss import Loss, LossFit
+from .loss import LossFit
 from .ratio import Ratio, RatioFit
 from .maturity import Maturity, maturity_at, maturity_spec
 from .premium import Premium, PremiumFit
@@ -39,21 +37,16 @@ __all__ = [
     "BacktestFit",
     "Bootstrap",
     "BootstrapTriangle",
-    "CL",
-    "CLFit",
     "ChainLadder",
     "MonteCarlo",
     "ResidualBootstrap",
     "Calendar",
     "Convergence",
-    "ED",
-    "EDFit",
     "ExposureDriven",
     "Intensity",
     "Ratio",
     "RatioFit",
     "Link",
-    "Loss",
     "LossFit",
     "Maturity",
     "Premium",

@@ -218,7 +218,7 @@ def plot_projection_fit(
     figsize: tuple[float, float] | None = None,
     method_label: str | None = None,
 ) -> Any:
-    """Shared projection-curve plot for LossFit / PremiumFit / CLFit / EDFit.
+    """Shared projection-curve plot for LossFit / PremiumFit.
 
     Cumulative ``<role>_obs`` (solid) + bridge + ``<role>_proj`` (dashed)
     by cohort. CI ribbon derived from ``<role>_total_se`` when present.

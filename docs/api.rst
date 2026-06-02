@@ -67,7 +67,13 @@ API 레퍼런스
 .. autoclass:: lossratio.RatioFit
    :members:
 
-.. autoclass:: lossratio.Loss
+.. autoclass:: lossratio.ChainLadder
+   :members:
+
+.. autoclass:: lossratio.ExposureDriven
+   :members:
+
+.. autoclass:: lossratio.StageAdaptive
    :members:
 
 .. autoclass:: lossratio.LossFit
@@ -77,18 +83,6 @@ API 레퍼런스
    :members:
 
 .. autoclass:: lossratio.PremiumFit
-   :members:
-
-.. autoclass:: lossratio.CL
-   :members:
-
-.. autoclass:: lossratio.CLFit
-   :members:
-
-.. autoclass:: lossratio.ED
-   :members:
-
-.. autoclass:: lossratio.EDFit
    :members:
 
 불확실성
