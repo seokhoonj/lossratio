@@ -9,6 +9,7 @@ import numpy as np
 import polars as pl
 
 from ._io import _arrays_to_long_df, _nan_skip_diff, _nan_to_null, mirror_output
+from ._mack import mack_factor_var, mack_sigma2
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from .cl import _build_value_matrix, _fit_mack
@@ -46,14 +47,11 @@ def _mack_g_var(result: _EDResult) -> np.ndarray:
     applied to the ED additive model with alpha = 1. Mirrors R's
     `.mack_g_var()` (`R/ed.R`). Same WLS form as `_mack_f_var` -- the
     "Mack" name reflects shared mathematical machinery, not chain ladder
-    specifically. NaN where the denom is zero (unfittable link).
+    specifically. Thin wrapper over
+    :func:`lossratio._mack.mack_factor_var`. NaN where the denom is zero
+    (unfittable link).
     """
-    sigma2 = result.sigma2_g_k
-    denom = result.sum_premium_k
-    out = np.full_like(sigma2, np.nan)
-    mask = (denom > 0) & np.isfinite(sigma2)
-    out[mask] = sigma2[mask] / denom[mask]
-    return out
+    return mack_factor_var(result.sigma2_g_k, result.sum_premium_k)
 
 
 def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
@@ -128,8 +126,7 @@ def _fit_ed(
         g_k[k] = sum_loss / sum_crp if sum_crp > 0 else 0.0
 
         if n_k >= 2 and sum_crp > 0:
-            residuals = dl_eff - g_k[k] * ck_eff
-            sigma2_g_k[k] = (residuals ** 2 / ck_eff).sum() / (n_k - 1)
+            sigma2_g_k[k] = mack_sigma2(dl_eff, ck_eff, g_k[k], n_k)
         else:
             sigma2_g_k[k] = 0.0
 
@@ -192,9 +189,7 @@ def _result_to_long_df(
     sum_premium_k = result.sum_premium_k
 
     # Var(g_hat_k) = sigma2_g_k / sum_premium_k.
-    var_g_k = np.full_like(sigma2_g_k, np.nan)
-    pos_denom = (sum_premium_k > 0) & np.isfinite(sigma2_g_k)
-    var_g_k[pos_denom] = sigma2_g_k[pos_denom] / sum_premium_k[pos_denom]
+    var_g_k = mack_factor_var(sigma2_g_k, sum_premium_k)
 
     proc_se2 = np.zeros((n_cohorts, n_devs), dtype=np.float64)
     param_se2 = np.zeros((n_cohorts, n_devs), dtype=np.float64)

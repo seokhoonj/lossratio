@@ -20,6 +20,7 @@ import numpy as np
 import polars as pl
 
 from ._io import _arrays_to_long_df, mirror_output
+from ._mack import mack_sigma2
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from .cl import _build_value_matrix
@@ -109,8 +110,7 @@ def _compute_intensity(
         g_k[k] = g
 
         if n_k >= 2:
-            residuals = dl_eff - g * ck_eff
-            sigma2 = float((residuals ** 2 / ck_eff).sum() / (n_k - 1))
+            sigma2 = mack_sigma2(dl_eff, ck_eff, g, n_k)
             sigma2_k[k] = sigma2
             g_se_k[k] = float(np.sqrt(sigma2 / sum_crp)) if sigma2 > 0 else 0.0
         else:
