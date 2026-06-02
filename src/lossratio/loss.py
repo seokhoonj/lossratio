@@ -1166,11 +1166,13 @@ class LossFit:
         return self._df.to_pandas()
 
     def summary(self) -> pl.DataFrame:
-        """Per-cohort ultimate loss, SE, and CV.
+        """Per-cohort latest, ultimate loss, reserve, SE, and CV.
 
-        R parity (``summary.LossFit``): columns are ``[groups?, cohort,
-        loss_ult, loss_total_se, loss_total_cv]`` -- the last
-        projected-dev row per cohort.
+        Columns: ``[groups?, cohort, latest, loss_ult, reserve,
+        loss_proc_se, loss_param_se, loss_total_se, loss_total_cv]`` --
+        all from the last projected-dev row per cohort. ``latest`` is the
+        last observed cumulative loss, ``loss_ult`` the ultimate
+        projected loss, ``reserve = loss_ult - latest``.
         """
         df = self._df
         keys: list[str] = []
@@ -1178,17 +1180,47 @@ class LossFit:
             keys.append(self._groups)
         keys.append("cohort")
 
+        # Latest observed cumulative loss per cohort.
+        observed = (
+            df.filter(pl.col("loss_obs").is_not_null())
+            .sort(keys + ["dev"])
+            .group_by(keys)
+            .agg(pl.col("loss_obs").last().alias("latest"))
+        )
+
+        # Ultimate (max dev) per cohort + the matching SE columns.
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").last().alias("loss_ult"),
+                pl.col("loss_proc_se").last().alias("loss_proc_se"),
+                pl.col("loss_param_se").last().alias("loss_param_se"),
                 pl.col("loss_total_se").last().alias("loss_total_se"),
                 pl.col("loss_total_cv").last().alias("loss_total_cv"),
             )
+        )
+
+        out = (
+            observed.join(ultimate, on=keys, how="inner")
+            .with_columns(
+                (pl.col("loss_ult") - pl.col("latest")).alias("reserve")
+            )
+            .select(
+                keys
+                + [
+                    "latest",
+                    "loss_ult",
+                    "reserve",
+                    "loss_proc_se",
+                    "loss_param_se",
+                    "loss_total_se",
+                    "loss_total_cv",
+                ]
+            )
             .sort(keys)
         )
-        return mirror_output(ultimate, self._output_type)
+        return mirror_output(out, self._output_type)
 
     @property
     def n_rows(self) -> int:
@@ -1196,6 +1228,7 @@ class LossFit:
 
     def plot(
         self,
+        type: str = "projection",
         conf_level: float | None = None,
         show_interval: bool = True,
         amount_divisor: float | str = "auto",
@@ -1203,21 +1236,24 @@ class LossFit:
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> Any:
-        """Loss projection-curve plot, backed by matplotlib.
-
-        Per-cohort cumulative observed loss (solid) -> bridge segment ->
-        projected loss (dashed). When ``show_interval=True`` and
-        ``loss_total_se`` is available, an analytical / bootstrap
-        confidence ribbon is drawn around the projected segment.
+        """Loss fit plot, backed by matplotlib.
 
         Parameters
         ----------
+        type
+            ``"projection"`` (default) or ``"reserve"``.
+
+            * ``"projection"`` -- per-cohort cumulative observed loss
+              (solid) -> bridge -> projected loss (dashed), with an
+              optional analytical / bootstrap confidence ribbon when
+              ``show_interval=True`` and ``loss_total_se`` is available.
+            * ``"reserve"`` -- per-cohort reserve bar chart with optional
+              normal-approximation error bars from ``loss_total_se``.
         conf_level
-            Override the fit's stored ``conf_level`` when constructing
-            the ribbon.
+            Override the fit's stored ``conf_level`` for the interval.
         show_interval
-            Draw a confidence ribbon. No-op if the fit has no per-cell
-            standard errors.
+            Draw the confidence ribbon (``projection``) or error bars
+            (``reserve``). No-op if the fit has no per-cell SE.
         amount_divisor
             ``"auto"`` (default) auto-selects the y-axis scale.
         nrow, ncol
@@ -1229,6 +1265,21 @@ class LossFit:
         -------
         matplotlib.figure.Figure
         """
+        if type not in ("projection", "reserve"):
+            raise ValueError(
+                f"`type` must be 'projection' or 'reserve'; got {type!r}."
+            )
+        if type == "reserve":
+            from ._cl_vis import plot_cl_reserve
+            return plot_cl_reserve(
+                self,
+                conf_level=conf_level if conf_level is not None else 0.95,
+                show_interval=show_interval,
+                amount_divisor=amount_divisor,
+                nrow=nrow,
+                ncol=ncol,
+                figsize=figsize,
+            )
         from ._ratio_vis import plot_projection_fit
         return plot_projection_fit(
             self,

@@ -135,14 +135,15 @@ def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
 
 
 def _is_ratio_fit_estimator(estimator: Any) -> bool:
-    """Ratio / ED jointly project loss / premium / lr; CL projects a single
-    column. Distinguished by whether the estimator class is a ratio-fit.
+    """Only ``Ratio`` is a ratio-fit -- it composes loss + premium into a
+    ``ratio_proj`` column. The loss models (ChainLadder / ExposureDriven /
+    StageAdaptive) project loss (and premium) but carry no ``ratio_proj``,
+    so they are scored on ``target="loss"`` / ``"premium"`` directly.
     """
     # Late import to avoid circular dependency at module load time.
-    from .ed import ED
     from .ratio import Ratio
 
-    return isinstance(estimator, (Ratio, ED))
+    return isinstance(estimator, Ratio)
 
 
 def _resolve_expected_column(
@@ -250,8 +251,9 @@ class Backtest:
         Number of most recent calendar diagonals to mask.
     target
         Which projection to score: ``"ratio"`` (default), ``"loss"``,
-        or ``"premium"``. A ratio-fit estimator (``lr.Ratio`` / ``lr.ED``)
-        only supports ``target="ratio"``; use ``lr.CL`` to score the loss
+        or ``"premium"``. A ratio-fit estimator (``lr.Ratio``) only
+        supports ``target="ratio"``; use a loss model (``lr.ChainLadder``
+        / ``lr.ExposureDriven`` / ``lr.StageAdaptive``) to score the loss
         or premium projection directly.
 
     Examples
@@ -288,8 +290,10 @@ class Backtest:
         if _is_ratio_fit_estimator(estimator) and target != "ratio":
             raise ValueError(
                 f"estimator is a ratio-fit ({type(estimator).__name__}); "
-                f"only target='ratio' is supported. Use lr.CL() instead to "
-                f"backtest the loss or premium projection directly."
+                f"only target='ratio' is supported. Use a loss model "
+                f"(lr.ChainLadder() / lr.ExposureDriven() / "
+                f"lr.StageAdaptive()) instead to backtest the loss or "
+                f"premium projection directly."
             )
         self.estimator = estimator
         self.holdout = holdout

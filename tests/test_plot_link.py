@@ -189,7 +189,7 @@ def test_intensity_plot_invalid_type(tri_single):
 
 
 def test_ed_fit_plot_renders(tri_single):
-    ef = lr.ED().fit(tri_single)
+    ef = lr.ExposureDriven().fit(tri_single)
     fig = ef.plot()
     try:
         assert isinstance(fig, plt.Figure)
@@ -201,7 +201,7 @@ def test_ed_fit_plot_renders(tri_single):
 
 
 def test_ed_fit_plot_show_interval_false(tri_single):
-    ef = lr.ED().fit(tri_single)
+    ef = lr.ExposureDriven().fit(tri_single)
     fig = ef.plot(show_interval=False)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
@@ -211,7 +211,7 @@ def test_ed_fit_plot_show_interval_false(tri_single):
 
 
 def test_ed_fit_plot_multi_group(tri_multi):
-    ef = lr.ED().fit(tri_multi)
+    ef = lr.ExposureDriven().fit(tri_multi)
     fig = ef.plot()
     try:
         assert isinstance(fig, plt.Figure)

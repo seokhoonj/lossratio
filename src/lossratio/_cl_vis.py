@@ -1,13 +1,13 @@
-"""CLFit-specific visualisation -- matplotlib backend.
+"""Reserve bar-chart visualisation -- matplotlib backend.
 
-Implements the ``type="reserve"`` branch of :meth:`CLFit.plot`. The
+Implements the ``type="reserve"`` branch of :meth:`LossFit.plot`. The
 ``type="projection"`` branch forwards to the shared projection-curve
 helper in ``_ratio_vis``.
 
-Mirrors the R sibling's ``plot.CLFit(type = "reserve")``
-(``R/cl-vis.R:236``): a horizontal bar chart of per-cohort reserve
+A horizontal bar chart of per-cohort reserve (``loss_ult - latest``)
 with optional normal-approximation error bars derived from
-``loss_total_se``.
+``loss_total_se``. Driven entirely by the fit's ``summary()`` table, so
+it works for any loss fit carrying ``reserve`` / ``loss_total_se``.
 """
 
 from __future__ import annotations
@@ -28,11 +28,11 @@ from ._plot import (
 )
 
 if TYPE_CHECKING:
-    from .cl import CLFit
+    from .loss import LossFit
 
 
 def plot_cl_reserve(
-    fit: CLFit,
+    fit: "LossFit",
     conf_level: float = 0.95,
     show_interval: bool = True,
     amount_divisor: float | str = "auto",
@@ -57,7 +57,7 @@ def plot_cl_reserve(
     if "reserve" not in summary.columns:
         raise ValueError(
             "`type='reserve'` requires a `reserve` column on "
-            "`CLFit.summary()`. Got columns: "
+            "`summary()`. Got columns: "
             f"{summary.columns!r}."
         )
     has_se = "loss_total_se" in summary.columns

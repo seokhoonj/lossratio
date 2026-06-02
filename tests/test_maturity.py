@@ -156,10 +156,13 @@ def test_maturity_m_consecutive_required():
 def test_maturity_f_matches_cl_factors():
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity()
-    cl_fit = lr.CL().fit(tri)
+    cl_fit = lr.ChainLadder().fit(tri)
 
     mat_f = mat.to_polars().sort("ata_from")["f"].to_list()
-    cl_f = cl_fit._fk_df.sort("dev")["f"].to_list()
+    # The role-based LossFit dropped CLFit's `_fk_df`; the chain-ladder
+    # `f_k` factors survive on the per-group internals (`f_sel`, ordered
+    # by dev link). No-groups fit -> single internals entry keyed `None`.
+    cl_f = cl_fit._internals[None].f_sel.tolist()
     assert mat_f == cl_f
 
 
