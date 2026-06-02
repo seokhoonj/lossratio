@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import mirror_output
+from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -33,7 +33,7 @@ def _compute_dispersion(
     """
     tri_df = triangle.to_polars().filter(pl.col("ratio").is_not_null())
     grp = triangle.groups
-    by_cols = ([grp] if grp is not None else []) + ["dev"]
+    by_cols = [*normalize_groups(grp), "dev"]
 
     out = (
         tri_df.group_by(by_cols)
@@ -97,11 +97,7 @@ def _extract_portfolio_ratio(bt_fit: Any) -> float:
     if "loss_proj" not in df.columns or "premium_proj" not in df.columns:
         return float("nan")
 
-    keys: list[str] = []
-    gv = getattr(refit, "_groups", None)
-    if gv is not None:
-        keys.append(gv)
-    keys.append("cohort")
+    keys = [*normalize_groups(getattr(refit, "_groups", None)), "cohort"]
 
     # Last non-null projection per cohort (sorted by dev).
     ult = (

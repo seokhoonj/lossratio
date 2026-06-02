@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _iter_group_frames, mirror_output
+from ._io import (
+    _iter_group_frames,
+    mirror_output,
+    normalize_groups,
+    set_group_values,
+)
 from ._mack import _fit_mack
 
 if TYPE_CHECKING:
@@ -318,7 +323,7 @@ def _enriched_ata_diagnostic(
     if stats.is_empty():
         return a
 
-    join_keys = [groups, "ata_from"] if groups else ["ata_from"]
+    join_keys = [*normalize_groups(groups), "ata_from"]
     # Drop overlapping cols from stats (n_cohorts is on both -- keep
     # stats' which matches R's ``.N`` over the link table).
     a = a.drop("n_cohorts")
@@ -356,8 +361,7 @@ def _na_row(groups: str | None, group_value: Any | None) -> dict[str, Any]:
     polars concat/dtype-stable across groups.
     """
     row: dict[str, Any] = {}
-    if groups is not None:
-        row[groups] = group_value
+    set_group_values(row, groups, group_value)
     for col in _R_STAT_COLS:
         row[col] = None if col == "ata_link" else float("nan")
     return row
@@ -383,8 +387,7 @@ def _slice_first_stable_row(
 
     matched = diag_df.row(idx, named=True)
     row: dict[str, Any] = {}
-    if groups is not None:
-        row[groups] = group_value
+    set_group_values(row, groups, group_value)
     row["ata_from"] = float(matched["ata_from"])
     row["change"] = float(matched["ata_to"])
     row["ata_link"] = matched["ata_link"]
@@ -670,9 +673,18 @@ class Maturity:
         if self._groups is None:
             row = self._mat_k_df.row(0, named=True)
             return _coerce(row.get("change"))
+        if isinstance(self._groups, str):
+            keys = self._mat_k_df[self._groups].to_list()
+        else:
+            keys = [
+                tuple(r)
+                for r in self._mat_k_df.select(
+                    normalize_groups(self._groups)
+                ).iter_rows()
+            ]
         return dict(
             zip(
-                self._mat_k_df[self._groups].to_list(),
+                keys,
                 [_coerce(v) for v in self._mat_k_df["change"].to_list()],
             )
         )

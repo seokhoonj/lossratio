@@ -24,7 +24,13 @@ from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import pdist
 
 from ._e_divisive import e_divisive
-from ._io import mirror_output
+from ._io import (
+    _iter_group_frames,
+    fill_group_columns,
+    group_eq,
+    mirror_output,
+    normalize_groups,
+)
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -132,19 +138,23 @@ def _kneedle_elbow(
 def _resolve_by(
     by: str | Sequence[str] | None,
     triangle: "Triangle",
-) -> str | None:
-    """Normalise the ``by`` argument to a single group column name or ``None``.
+) -> "str | list[str] | None":
+    """Normalise the ``by`` argument to a group spec or ``None``.
 
     Mirrors R's resolution:
 
     - ``None``: defer to ``triangle.groups`` (per-group when set, pooled
-      otherwise).
+      otherwise) -- returns whatever the Triangle stores (a multi-column
+      list once the Triangle carries multi-column groups).
     - ``""`` or empty sequence: force pooled detection on a grouped
       triangle.
     - ``str``: explicit single group column.
-    - non-empty list/tuple of str: not supported yet -- Python
-      ``Triangle._groups`` only stores a single column. Raises
-      ``NotImplementedError`` until multi-column grouping lands.
+    - length-1 sequence: the single column name (``str``).
+    - non-empty multi-element sequence: an EXPLICIT multi-column ``by`` is
+      not accepted yet (the user-facing multi-column ``by`` surface lands
+      with the Triangle representation flip; until then pass a single
+      column, or rely on a multi-column Triangle via ``by=None``). The
+      per-combination detection machinery is already in place.
     """
     if by is None:
         return triangle.groups
@@ -153,15 +163,14 @@ def _resolve_by(
             return None
         return by
     if isinstance(by, Sequence):
-        seq = list(by)
+        seq = [str(s) for s in by]
         if not seq:
             return None
         if len(seq) == 1:
-            return str(seq[0])
+            return seq[0]
         raise NotImplementedError(
-            "Multi-column `by` is not yet supported; Triangle currently "
-            "stores a single group column. Pass a single column name "
-            "instead."
+            "Multi-column `by` is not yet supported; pass a single column "
+            "name, or use a multi-column Triangle with by=None."
         )
     raise TypeError(
         f"`by` must be None, str, or sequence of str; got "
@@ -260,25 +269,25 @@ def _combine_combo_results(
             regime_ids = res["regime_ids"]
             breakpoints = res["breakpoints"]
 
-            lab = pl.DataFrame(
-                {
-                    grp: [combo] * len(cohorts),
-                    "cohort": cohorts,
-                    "regime_id": regime_ids,
-                }
-            )
-            label_frames.append(lab)
+            # Group column(s) first (single col for a str grp, one per
+            # name for a multi-column list grp with a tuple combo).
+            lab_data: dict[str, Any] = {}
+            fill_group_columns(lab_data, grp, combo, len(cohorts))
+            lab_data["cohort"] = cohorts
+            lab_data["regime_id"] = regime_ids
+            label_frames.append(pl.DataFrame(lab_data))
 
             if breakpoints:
-                ch = pl.DataFrame(
-                    {
-                        grp: [combo] * len(breakpoints),
-                        "change": breakpoints,
-                        "regime_id": list(range(2, 2 + len(breakpoints))),
-                    },
-                    schema_overrides={"regime_id": pl.Int64},
+                ch_data: dict[str, Any] = {}
+                fill_group_columns(ch_data, grp, combo, len(breakpoints))
+                ch_data["change"] = breakpoints
+                ch_data["regime_id"] = list(range(2, 2 + len(breakpoints)))
+                change_frames.append(
+                    pl.DataFrame(
+                        ch_data,
+                        schema_overrides={"regime_id": pl.Int64},
+                    )
                 )
-                change_frames.append(ch)
                 all_breakpoints.extend(breakpoints)
             n_regimes_max = max(n_regimes_max, res["n_regimes"])
             dropped_dict[combo] = list(res["dropped"])
@@ -507,7 +516,7 @@ class Regime:
         self.window: int
         self.cohort: str
         self.dev: str
-        self.groups: str | None
+        self.groups: str | list[str] | None
         self.breakpoints: list[Any]
         self.n_regimes: int
         self.dropped: list[Any]
@@ -583,13 +592,19 @@ class Regime:
         # the whole frame).
         if grp is None:
             combos: list[Any] = [None]
-        else:
+        elif isinstance(grp, str):
             combos = (
                 tri_df[grp]
                 .unique()
                 .sort()
                 .to_list()
             )
+        else:
+            # multi-column: unique group-combination TUPLES (sorted).
+            combos = [
+                tuple(r)
+                for r in tri_df.select(grp).unique().sort(grp).iter_rows()
+            ]
 
         # Resolve trajectory window per combo. ``window="auto"`` first
         # tries the maturity point (``detect_maturity`` on the Triangle)
@@ -625,29 +640,34 @@ class Regime:
                     # may have returned pandas).
                     if not isinstance(mat_df, pl.DataFrame):
                         mat_df = pl.from_pandas(mat_df)
+                    gcols = normalize_groups(grp)
                     if (
-                        grp in mat_df.columns
+                        all(g in mat_df.columns for g in gcols)
                         and "change" in mat_df.columns
                     ):
                         # Vectorised: per group key, change -> int, mapping
                         # null / NaN to None (mirrors the per-row int(v)
-                        # with the None / NaN guards).
+                        # with the None / NaN guards). The key is a scalar
+                        # for a str group, a tuple for a multi-column group
+                        # (matching the `combos` entries).
                         change_f = pl.col("change").cast(
                             pl.Float64, strict=False
                         )
-                        mat_clean = mat_df.select(
-                            pl.col(grp).alias("_key"),
-                            pl.when(change_f.is_null() | change_f.is_nan())
-                            .then(None)
-                            .otherwise(change_f.cast(pl.Int64))
-                            .alias("_mat"),
+                        mats = (
+                            mat_df.select(
+                                pl.when(change_f.is_null() | change_f.is_nan())
+                                .then(None)
+                                .otherwise(change_f.cast(pl.Int64))
+                                .alias("_mat")
+                            )["_mat"].to_list()
                         )
-                        maturity_by_combo = dict(
-                            zip(
-                                mat_clean["_key"].to_list(),
-                                mat_clean["_mat"].to_list(),
-                            )
-                        )
+                        if isinstance(grp, str):
+                            keys: list[Any] = mat_df[grp].to_list()
+                        else:
+                            keys = [
+                                tuple(r) for r in mat_df.select(grp).iter_rows()
+                            ]
+                        maturity_by_combo = dict(zip(keys, mats))
                 except (ValueError, KeyError, RuntimeError):
                     # detect_maturity may raise on degenerate input
                     # (no valid links, single-cohort triangle, etc.).
@@ -665,7 +685,7 @@ class Regime:
                 sub = (
                     tri_df
                     if combo is None
-                    else tri_df.filter(pl.col(grp) == combo)
+                    else tri_df.filter(group_eq(grp, combo))
                 )
                 k = _detect_regime_optimal_window(
                     sub,
@@ -692,7 +712,7 @@ class Regime:
             sub = (
                 tri_df
                 if combo is None
-                else tri_df.filter(pl.col(grp) == combo)
+                else tri_df.filter(group_eq(grp, combo))
             )
             try:
                 res = _detect_regime_single(
@@ -1078,12 +1098,13 @@ def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
         return None
 
     changes = regime._changes_df
-    if regime.groups is None or regime.groups not in changes.columns:
+    gcols = normalize_groups(regime.groups)
+    if not gcols or not all(g in changes.columns for g in gcols):
         cutoff = max(regime.breakpoints)
         return pl.DataFrame({"_cutoff": [cutoff]}, schema={"_cutoff": pl.Date})
 
     return (
-        changes.group_by(regime.groups)
+        changes.group_by(gcols)
         .agg(pl.col("change").max().alias("_cutoff"))
     )
 
@@ -1108,7 +1129,8 @@ def _segment_id_expr(
         return None
 
     changes = regime._changes_df
-    is_multi = regime.groups is not None and regime.groups in changes.columns
+    gcols = normalize_groups(regime.groups)
+    is_multi = bool(gcols) and all(g in changes.columns for g in gcols)
 
     def _single_group_expr(sorted_changes: list[Any]) -> pl.Expr:
         # cohort >= ch_K  -> K+1
@@ -1125,14 +1147,15 @@ def _segment_id_expr(
         sorted_changes = sorted(regime.breakpoints)
         return _single_group_expr(sorted_changes)
 
-    # Per-group: build nested when-chain keyed by group value.
+    # Per-group: build nested when-chain keyed by group value (scalar for
+    # a str group, tuple for a multi-column group).
     grp = regime.groups
     expr = pl.lit(1, dtype=pl.Int64)  # default: groups not in regime → seg 1
-    for grp_val in changes[grp].unique().to_list():
-        sub = changes.filter(pl.col(grp) == grp_val).sort("change")
+    for grp_val, sub in _iter_group_frames(changes, grp):
+        sub = sub.sort("change")
         sorted_changes = sub["change"].to_list()
         grp_expr = _single_group_expr(sorted_changes)
-        expr = pl.when(pl.col(grp) == grp_val).then(grp_expr).otherwise(expr)
+        expr = pl.when(group_eq(grp, grp_val)).then(grp_expr).otherwise(expr)
     return expr
 
 
@@ -1272,8 +1295,9 @@ def _apply_mini_triangle_filter(
     if df.height == 0:
         return df
     bridge = True
-    grp = regime.groups if regime.groups in df.columns else None
-    rank_keys = [grp] if grp else []
+    gcols = normalize_groups(regime.groups)
+    grouped = bool(gcols) and all(g in df.columns for g in gcols)
+    rank_keys = gcols if grouped else []
 
     df = df.with_columns(
         pl.col("cohort")
@@ -1292,9 +1316,9 @@ def _apply_mini_triangle_filter(
     # Bridge requires cross-segment access (next-segment anchor) that
     # is awkward in pure polars `over`; compute per-group via numpy. The
     # natural wall flows through the same helper for parity with R.
-    if grp is not None:
+    if grouped:
         parts: list[pl.DataFrame] = []
-        for _, sub in df.group_by(grp, maintain_order=True):
+        for _, sub in df.group_by(gcols, maintain_order=True):
             bounds = _compute_segment_mini_tri_bounds(
                 coh_ranks=sub["_coh_rank"].to_numpy(),
                 seg_ids=sub["segment_id"].to_numpy(),
