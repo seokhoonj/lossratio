@@ -181,28 +181,16 @@ class LossRatio:
     conf_level
         Confidence level for ``ratio_ci_lo`` / ``ratio_ci_hi``. Default
         ``0.95``.
-    bootstrap
-        Optional bootstrap specification. Bootstrap is strictly opt-in:
-        when ``None`` / ``False`` (the default) the fit is the pure
-        analytical ratio SE, byte-unchanged. When supplied, a loss-side
-        bootstrap is run (premium is *not* bootstrapped) and the
-        bootstrap-derived ``loss_total_se`` is overlaid onto the
-        *projected* cells of ``$full``; ``ratio_se`` / ``ratio_cv`` /
-        ``ratio_ci_*`` are then recomputed from it. The bootstrap runs
-        with the Ratio's own loss ``method`` paradigm -- ``method="ed"``
-        bootstraps with ED, ``"sa"`` with SA, ``"cl"`` with CL. Accepted
-        forms:
-
-        * ``True`` / ``"auto"`` -- a default :class:`Bootstrap` config
-          inheriting this estimator's loss ``method``.
-        * a :class:`Bootstrap` config instance -- its own settings win.
-        * a pre-built loss-side :class:`BootstrapTriangle`.
-        * a callable ``f(triangle) -> BootstrapTriangle``.
-    B
-        Integer number of bootstrap replicates. Used only when
-        ``bootstrap`` resolves to ``"auto"``. Default ``999``.
-    seed
-        Optional integer seed for a reproducible bootstrap.
+    uncertainty
+        Uncertainty strategy governing the ratio SE. ``None`` (default) /
+        :class:`~lossratio.Analytical` keeps the closed-form analytical
+        ratio SE. :class:`~lossratio.ResidualBootstrap` /
+        :class:`~lossratio.MonteCarlo` overlay a loss-side bootstrap SE
+        onto the *projected* cells of ``$full`` (premium is *not*
+        bootstrapped) and recompute ``ratio_se`` / ``ratio_cv`` /
+        ``ratio_ci_*`` from the bootstrap-derived ``loss_total_se``. The
+        overlay always uses the analytical-CL (Mack) paradigm regardless
+        of the loss ``method``, matching the loss models.
     """
 
     def __init__(
@@ -223,9 +211,7 @@ class LossRatio:
         rho: float = 0.95,
         conf_level: float = 0.95,
         tail: bool | float = False,
-        bootstrap: Any = None,
-        B: int = 999,
-        seed: int | None = None,
+        uncertainty: Any = None,
         # backwards-compat alias for loss_alpha (pre-Phase-5 callers)
         alpha: float | None = None,
     ) -> None:
@@ -267,8 +253,6 @@ class LossRatio:
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
-        if not isinstance(B, int) or B < 1:
-            raise ValueError(f"B must be a positive integer, got {B!r}")
         _validate_recent(recent)
         from ._mack import _validate_tail
         _validate_tail(tail)
@@ -298,9 +282,7 @@ class LossRatio:
         self.rho = rho
         self.conf_level = conf_level
         self.tail = tail
-        self.bootstrap = bootstrap
-        self.B = B
-        self.seed = seed
+        self.uncertainty = uncertainty
 
     # alias for backwards compatibility with code reading `.alpha`
     @property
@@ -469,46 +451,26 @@ class RatioFit:
     ) -> pl.DataFrame:
         """Resolve + overlay a loss-side bootstrap onto the ratio ``$full``.
 
-        No-op (returns ``full`` unchanged) when ``estimator.bootstrap`` is
-        ``None`` / ``False``. Otherwise resolves a *loss-side* bootstrap
-        with the Ratio's own loss ``method`` paradigm (``cl`` -> analytical
-        Mack, ``ed`` / ``sa`` -> the positivity-preserving parametric
-        paradigm; ``sa`` also threads the detected per-group maturity),
-        overlays the bootstrap loss SE onto the projected cells, and then
-        recomputes ``ratio_se`` / ``ratio_cv`` / ``ratio_ci_lo`` /
-        ``ratio_ci_hi`` from the now-bootstrap ``loss_total_se``. The
-        premium side is not bootstrapped. Sets :attr:`boots` /
-        :attr:`ci_type`.
+        No-op (returns ``full`` unchanged) when ``estimator.uncertainty``
+        resolves to nothing (``None`` / :class:`~lossratio.Analytical` ->
+        the closed-form analytical ratio SE stands). Otherwise resolves the
+        uncertainty strategy to a loss-side bootstrap, overlays the
+        bootstrap loss SE onto the projected cells, and recomputes
+        ``ratio_se`` / ``ratio_cv`` / ``ratio_ci_lo`` / ``ratio_ci_hi``
+        from the now-bootstrap ``loss_total_se``. The premium side is not
+        bootstrapped. Sets :attr:`boots` / :attr:`ci_type`.
         """
-        bootstrap = estimator.bootstrap
-        if bootstrap is None or bootstrap is False:
-            return full
+        from .bootstrap import _apply_bootstrap_overlay
+        from .uncertainty import resolve_uncertainty
 
-        from .bootstrap import _apply_bootstrap_overlay, _resolve_bootstrap
-
-        # Default Bootstrap kwargs for the True / "auto" form. The Ratio
-        # composition layer always bootstraps loss with the analytical
-        # CL (Mack closed-form) paradigm -- `type="analytical"`,
-        # `process="normal"` -- regardless of the Ratio's loss `method`.
-        # This mirrors R `fit_ratio()` (`R/ratio.R`), whose wrap-only
-        # bootstrap path is hard-wired to `type = "analytical"` /
-        # `process = "normal"`. The loss `method` still drives the
-        # *point* projection on `$full`; only the SE overlay is the
-        # analytical bootstrap.
-        kw: dict[str, Any] = {
-            "method":  "cl",
-            "type":    "analytical",
-            "process": "normal",
-            "B":       estimator.B,
-            "seed":    estimator.seed,
-        }
-
-        boots = _resolve_bootstrap(
-            bootstrap, triangle,
-            target      = "loss",
-            quantile_ci = True,
-            keep_pseudo = False,
-            **kw,
+        # The composition layer overlays a loss-side bootstrap SE using the
+        # analytical-CL (Mack) paradigm regardless of the loss `method`
+        # (resolve against method="cl"), matching the loss models. The loss
+        # `method` still drives the *point* projection on `$full`; only the
+        # SE overlay is the bootstrap. None / Analytical -> no overlay (the
+        # closed-form analytical ratio SE stands).
+        boots = resolve_uncertainty(
+            estimator.uncertainty, triangle, target="loss", method="cl",
         )
         if boots is None:
             return full

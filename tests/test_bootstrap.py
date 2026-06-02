@@ -1118,7 +1118,7 @@ def test_phase3_ratio_bootstrap_overlay(method):
     """
     tri = _tri()
     plain = lr.LossRatio(method=method).fit(tri)
-    boot = lr.LossRatio(method=method, bootstrap="auto").fit(tri)
+    boot = lr.LossRatio(method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal")).fit(tri)
 
     assert plain.ci_type == "analytical"
     assert plain.boots is None
@@ -1206,7 +1206,7 @@ def test_phase3_ratio_summary_statistically_close_to_r(method):
     r = _load(f"ratio_{method}_boot_summary").sort(["coverage", "cohort"])
     tri = _tri()
     fit = lr.LossRatio(
-        method=method, bootstrap="auto", B=4000, seed=20260522,
+        method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=4000, seed=20260522),
         se_method="fixed",
     ).fit(tri)
     py = fit.summary().sort(["coverage", "cohort"])
@@ -1241,7 +1241,7 @@ def test_phase3_ratio_se_consistency():
     arithmetic."""
     tri = _tri()
     fit = lr.LossRatio(
-        method="sa", bootstrap="auto", B=200, seed=11, se_method="fixed"
+        method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=200, seed=11), se_method="fixed"
     ).fit(tri)
     assert fit.ci_type == "bootstrap"
 
@@ -1267,9 +1267,9 @@ def test_phase3_ratio_seed_reproducible():
     """Same seed -> identical Ratio bootstrap summary; a different seed
     changes the Monte-Carlo ``ratio_se``."""
     tri = _tri()
-    a = lr.LossRatio(method="sa", bootstrap="auto", B=300, seed=42).fit(tri)
-    b = lr.LossRatio(method="sa", bootstrap="auto", B=300, seed=42).fit(tri)
-    c = lr.LossRatio(method="sa", bootstrap="auto", B=300, seed=43).fit(tri)
+    a = lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
+    b = lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
+    c = lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=43)).fit(tri)
 
     sa, sb, sc = a.summary(), b.summary(), c.summary()
     # same seed -> bit-identical ratio_se.
@@ -1311,7 +1311,7 @@ def test_phase5_backtest_bootstrap_runs_without_error():
     table."""
     tri = _tri()
     bt = lr.Backtest(
-        estimator=lr.LossRatio(method="sa", bootstrap="auto", B=80, seed=1),
+        estimator=lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1334,7 +1334,7 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
         target="ratio",
     ).fit(tri)
     booted = lr.Backtest(
-        estimator=lr.LossRatio(method="sa", bootstrap="auto", B=80, seed=1),
+        estimator=lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1359,15 +1359,16 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
 
 
 def test_phase5_backtest_bootstrap_config_form_safe():
-    """A ``Bootstrap`` config instance on the estimator is also a
-    rebuild-per-fit form -- accepted, and each fold refits it on the
-    masked triangle."""
+    """An ``uncertainty`` strategy on the estimator is a rebuild-per-fit
+    form -- accepted, and each fold re-resolves it on the masked
+    triangle (leakage-safe by construction)."""
     tri = _tri()
     bt = lr.Backtest(
         estimator=lr.LossRatio(
             method="sa",
-            bootstrap=Bootstrap(type="analytical", method="cl",
-                                B=80, seed=2),
+            uncertainty=lr.MonteCarlo(
+                draw="parameter", process="normal", B=80, seed=2
+            ),
         ),
         holdout=6,
         target="ratio",
@@ -1377,14 +1378,14 @@ def test_phase5_backtest_bootstrap_config_form_safe():
 
 
 def test_phase5_backtest_bootstrap_callable_form_safe():
-    """A callable ``f(tri) -> BootstrapTriangle`` is the leakage-safe
-    form: Backtest accepts it, and the callable is invoked on the masked
-    triangle per fold."""
+    """A callable ``f(tri) -> strategy`` is the leakage-safe deferred
+    form: ``resolve_uncertainty`` invokes it on the *masked* triangle per
+    fold, so the strategy never sees a held-out cell."""
     tri = _tri()
     orig_obs = tri._df["loss"].len() - tri._df["loss"].null_count()
     seen: list[int] = []
 
-    def make_boot(masked_tri: lr.Triangle):
+    def make_unc(masked_tri: lr.Triangle):
         # the callable receives the *masked* triangle -- record its
         # observed-cell count to prove it is not the original (unmasked)
         # triangle. Masking nulls the held-out cells (row count is
@@ -1392,12 +1393,10 @@ def test_phase5_backtest_bootstrap_callable_form_safe():
         # `loss` cells than the original.
         n_obs = masked_tri._df["loss"].len() - masked_tri._df["loss"].null_count()
         seen.append(n_obs)
-        return Bootstrap(
-            type="analytical", method="cl", B=80, seed=3
-        ).fit(masked_tri, target="loss")
+        return lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=3)
 
     bt = lr.Backtest(
-        estimator=lr.LossRatio(method="sa", bootstrap=make_boot),
+        estimator=lr.LossRatio(method="sa", uncertainty=make_unc),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1406,28 +1405,11 @@ def test_phase5_backtest_bootstrap_callable_form_safe():
     # the callable ran on the masked triangle, which has fewer observed
     # cells than the original -- proof the bootstrap saw no held-out
     # diagonal.
-    assert seen, "the bootstrap callable was never invoked"
+    assert seen, "the uncertainty callable was never invoked"
     assert all(n < orig_obs for n in seen), (
         "the callable must be invoked on the masked triangle (fewer "
         "observed cells than the original), not the unmasked one"
     )
-
-
-def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected():
-    """A pre-built ``BootstrapTriangle`` on the estimator is rejected by
-    ``Backtest`` -- it was fitted on the unmasked triangle and would leak
-    the held-out cells into every fold's residual pool. The error directs
-    the user to the rebuild-per-fit forms."""
-    tri = _tri()
-    # build a BootstrapTriangle on the FULL (unmasked) triangle.
-    prebuilt = Bootstrap(
-        type="analytical", method="cl", B=80, seed=4
-    ).fit(tri, target="loss")
-    assert isinstance(prebuilt, BootstrapTriangle)
-
-    est = lr.LossRatio(method="sa", bootstrap=prebuilt)
-    with pytest.raises(ValueError, match="pre-built BootstrapTriangle"):
-        lr.Backtest(estimator=est, holdout=6, target="ratio")
 
 
 def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected_loss():
