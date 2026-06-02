@@ -13,8 +13,10 @@ import polars as pl
 from lossratio._io import (
     _arrays_to_long_df,
     _iter_group_frames,
+    fill_group_columns,
     group_eq,
     normalize_groups,
+    set_group_values,
 )
 
 
@@ -92,3 +94,25 @@ def test_arrays_to_long_df_multi_col():
     assert out.columns == ["coverage", "channel", "dev", "v"]
     assert out["coverage"].to_list() == ["SUR", "SUR"]
     assert out["channel"].to_list() == ["TM", "TM"]
+
+
+def test_fill_group_columns():
+    d: dict = {}
+    fill_group_columns(d, None, None, 3)
+    assert d == {}
+    fill_group_columns(d, "coverage", "SUR", 2)
+    assert d == {"coverage": ["SUR", "SUR"]}
+    d2: dict = {}
+    fill_group_columns(d2, ["coverage", "channel"], ("CI", "GA"), 2)
+    assert d2 == {"coverage": ["CI", "CI"], "channel": ["GA", "GA"]}
+
+
+def test_set_group_values():
+    r: dict = {}
+    set_group_values(r, None, None)
+    assert r == {}
+    set_group_values(r, "coverage", "SUR")
+    assert r == {"coverage": "SUR"}
+    r2: dict = {}
+    set_group_values(r2, ["coverage", "channel"], ("CI", "GA"))
+    assert r2 == {"coverage": "CI", "channel": "GA"}

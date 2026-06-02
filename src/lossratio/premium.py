@@ -22,7 +22,9 @@ from ._io import (
     _iter_group_frames,
     _nan_skip_diff,
     _nan_to_null,
+    fill_group_columns,
     mirror_output,
+    normalize_groups,
 )
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
@@ -270,7 +272,7 @@ def _fit_premium_single(
 def _premium_long_df(
     result: _PremiumResult,
     cohorts: list,
-    groups: str | None,
+    groups: "str | list[str] | None",
     group_value: Any | None,
     conf_level: float,
 ) -> pl.DataFrame:
@@ -306,8 +308,7 @@ def _premium_long_df(
     total = n_cohorts * n_devs
 
     df_data: dict[str, Any] = {}
-    if groups is not None:
-        df_data[groups] = [group_value] * total
+    fill_group_columns(df_data, groups, group_value, total)
     df_data["cohort"] = cohort_flat
     df_data["dev"] = dev_flat
     df_data["premium_obs"] = premium_obs.flatten()
@@ -583,10 +584,7 @@ class PremiumFit:
         the last projected-dev row per cohort.
         """
         df = self._df
-        keys: list[str] = []
-        if self._groups is not None:
-            keys.append(self._groups)
-        keys.append("cohort")
+        keys: list[str] = [*normalize_groups(self._groups), "cohort"]
 
         ultimate = (
             df.sort(keys + ["dev"])
@@ -654,7 +652,9 @@ class PremiumFit:
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:
-            n_groups = self._df[self._groups].n_unique()
+            n_groups = (
+                self._df.select(normalize_groups(self._groups)).unique().height
+            )
             return (
                 f"<PremiumFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"

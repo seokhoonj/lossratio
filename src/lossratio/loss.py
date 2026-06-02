@@ -26,7 +26,11 @@ from ._io import (
     _iter_group_frames,
     _nan_skip_diff,
     _nan_to_null,
+    fill_group_columns,
+    group_eq,
     mirror_output,
+    normalize_groups,
+    set_group_values,
 )
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
@@ -526,7 +530,7 @@ def _loss_long_df(
 
     df_data: dict[str, Any] = {}
     if groups is not None:
-        df_data[groups] = [group_value] * total
+        fill_group_columns(df_data, groups, group_value, total)
     df_data["cohort"] = cohort_flat
     df_data["dev"] = dev_flat
     df_data["loss_obs"] = loss_obs.flatten()
@@ -570,7 +574,7 @@ def _loss_long_df(
                "loss_proc_se", "loss_param_se", "loss_total_se",
                "loss_total_cv", "loss_ci_lo", "loss_ci_hi"]
     if groups is not None:
-        desired = [groups, *desired]
+        desired = [*normalize_groups(groups), *desired]
     return df.select(desired)
 
 
@@ -874,7 +878,7 @@ class LossFit:
         long_parts: list[pl.DataFrame] = []
         mat_k_rows: list[dict[str, Any]] = []
         for g, sub in _iter_group_frames(tri_df, groups):
-            pf_sub = pf_df if groups is None else pf_df.filter(pl.col(groups) == g)
+            pf_sub = pf_df if groups is None else pf_df.filter(group_eq(groups, g))
             loss_obs, cohorts, _ = _build_loss_matrix(sub)
             premium_obs, _, _ = _build_premium_matrix(sub)
             # premium_proj from PremiumFit (cohort, dev) -> value
@@ -900,7 +904,7 @@ class LossFit:
             )
             row: dict[str, Any] = {}
             if groups is not None:
-                row[groups] = g
+                set_group_values(row, groups, g)
             row["mat_k"] = result.mat_k
             row["method"] = estimator.method
             mat_k_rows.append(row)
@@ -932,7 +936,7 @@ class LossFit:
                 for g, sub_result in self._internals.items():
                     tf = _compute_tail_factor(sub_result.f_sel, estimator.tail)
                     tail_factor_map[g] = tf
-                    grp_long = long_df.filter(pl.col(groups) == g)
+                    grp_long = long_df.filter(group_eq(groups, g))
                     if tf > 1.0 and np.isfinite(tf):
                         grp_long = _apply_tail_to_long_df(
                             grp_long, tf, groups=groups, role="loss",
@@ -1014,7 +1018,7 @@ class LossFit:
             return long_df
 
         groups = self._groups
-        keys = ([groups] if groups is not None else []) + ["cohort", "dev"]
+        keys = [*normalize_groups(groups), "cohort", "dev"]
         long_df = _apply_bootstrap_overlay(
             long_df, boots,
             role    = "loss",
@@ -1076,7 +1080,7 @@ class LossFit:
         internals_combined: dict[Any, _LossResult] = {}
 
         for g, sub in _iter_group_frames(tri_df, groups):
-            pf_sub = pf_df if groups is None else pf_df.filter(pl.col(groups) == g)
+            pf_sub = pf_df if groups is None else pf_df.filter(group_eq(groups, g))
             loss_obs, cohorts, _ = _build_loss_matrix(sub)
             premium_obs, _, _ = _build_premium_matrix(sub)
             premium_proj = _premium_proj_matrix(
@@ -1110,7 +1114,7 @@ class LossFit:
                     "method": estimator.method,
                 }
                 if groups is not None:
-                    row[groups] = g
+                    set_group_values(row, groups, g)
                 mat_k_rows.append(row)
                 internals_combined[(g, s) if groups is not None else s] = res
 
@@ -1154,12 +1158,16 @@ class LossFit:
         if self._groups is None:
             row = self._mat_k_df.row(0, named=True)
             return row["mat_k"]
-        return dict(
-            zip(
-                self._mat_k_df[self._groups].to_list(),
-                self._mat_k_df["mat_k"].to_list(),
-            )
-        )
+        if isinstance(self._groups, str):
+            keys = self._mat_k_df[self._groups].to_list()
+        else:
+            keys = [
+                tuple(r)
+                for r in self._mat_k_df.select(
+                    normalize_groups(self._groups)
+                ).iter_rows()
+            ]
+        return dict(zip(keys, self._mat_k_df["mat_k"].to_list()))
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
@@ -1179,7 +1187,7 @@ class LossFit:
         df = self._df
         keys: list[str] = []
         if self._groups is not None:
-            keys.append(self._groups)
+            keys.extend(normalize_groups(self._groups))
         keys.append("cohort")
 
         # Latest observed cumulative loss per cohort.

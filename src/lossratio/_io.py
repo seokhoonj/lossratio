@@ -111,6 +111,47 @@ def group_eq(groups: "str | Sequence[str]", value: Any) -> pl.Expr:
     return expr
 
 
+def fill_group_columns(
+    data: dict[str, Any],
+    groups: "str | Sequence[str] | None",
+    value: Any,
+    n: int,
+) -> None:
+    """Write constant group column(s) of length ``n`` into a column-dict.
+
+    ``groups`` str + scalar ``value`` -> one column; multi-column
+    ``Sequence[str]`` + tuple ``value`` (aligned) -> one column per name.
+    The multi-column generalisation of ``data[groups] = [value] * n``.
+    """
+    if groups is None:
+        return
+    if isinstance(groups, str):
+        data[groups] = [value] * n
+        return
+    for col, val in zip(groups, value):
+        data[col] = [val] * n
+
+
+def set_group_values(
+    row: dict[str, Any],
+    groups: "str | Sequence[str] | None",
+    value: Any,
+) -> None:
+    """Write a single group's value into a row-dict.
+
+    ``groups`` str + scalar ``value`` -> ``row[groups] = value``;
+    multi-column ``Sequence[str]`` + tuple ``value`` (aligned) -> one
+    key per column.
+    """
+    if groups is None:
+        return
+    if isinstance(groups, str):
+        row[groups] = value
+        return
+    for col, val in zip(groups, value):
+        row[col] = val
+
+
 def _iter_group_frames(
     df: pl.DataFrame, groups: "str | Sequence[str] | None"
 ) -> Iterator[tuple[Any, pl.DataFrame]]:

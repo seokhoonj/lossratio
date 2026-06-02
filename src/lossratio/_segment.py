@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
+from ._io import normalize_groups
+
 if TYPE_CHECKING:
     from .triangle import Triangle
 
@@ -59,14 +61,15 @@ def _expand_to_full_grid(
         .with_columns(pl.col("dev").cast(pl.Int64))
     )
 
-    if groups is not None and groups in tri_df.columns:
-        groups_df = tri_df.select(groups).unique().sort(groups)
+    group_cols = normalize_groups(groups)
+    if group_cols and all(g in tri_df.columns for g in group_cols):
+        groups_df = tri_df.select(group_cols).unique().sort(group_cols)
         full_grid = (
             groups_df.join(cohorts_df, how="cross")
             .join(devs_df, how="cross")
-            .sort([groups, "cohort", "dev"])
+            .sort([*group_cols, "cohort", "dev"])
         )
-        keys = [groups, "cohort", "dev"]
+        keys = [*group_cols, "cohort", "dev"]
     else:
         full_grid = cohorts_df.join(devs_df, how="cross").sort(["cohort", "dev"])
         keys = ["cohort", "dev"]
@@ -116,7 +119,7 @@ def _expand_to_full_grid(
     # one segment; the existing segment_id values for that cohort
     # propagate to the rest of its row group.
     if "segment_id" in out.columns:
-        over_keys = ([groups] if groups else []) + ["cohort"]
+        over_keys = [*normalize_groups(groups), "cohort"]
         out = out.with_columns(
             pl.col("segment_id").forward_fill().over(over_keys)
         ).with_columns(
@@ -129,7 +132,7 @@ def _expand_to_full_grid(
         ("premium_proj", "incr_premium_proj"),
         ("ratio_proj", "incr_ratio_proj"),
     ]
-    over_keys = ([groups] if groups else []) + ["cohort"]
+    over_keys = [*normalize_groups(groups), "cohort"]
     incr_exprs = [
         (pl.col(cum) - pl.col(cum).shift(1).over(over_keys)).alias(incr)
         for cum, incr in incr_pairs

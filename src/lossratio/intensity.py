@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _arrays_to_long_df, mirror_output
+from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
 from ._mack import mack_sigma2
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
@@ -242,11 +242,7 @@ class Intensity:
             )
         else:
             diag_parts: list[pl.DataFrame] = []
-            group_values = (
-                tri_df[groups].unique(maintain_order=True).to_list()
-            )
-            for g in group_values:
-                sub = tri_df.filter(pl.col(groups) == g)
+            for g, sub in _iter_group_frames(tri_df, groups):
                 loss_obs, _, _ = _build_value_matrix(sub, loss_col)
                 premium_obs, _, _ = _build_value_matrix(sub, premium_col)
                 result = _compute_intensity(
@@ -297,6 +293,6 @@ class Intensity:
         if self._groups is None:
             n_links = self._df.height
             return f"<Intensity: {n_links} links>"
-        n_groups = self._df[self._groups].n_unique()
+        n_groups = self._df.select(normalize_groups(self._groups)).unique().height
         n_links = self._df.height // max(n_groups, 1)
         return f"<Intensity: {n_groups} groups, {n_links} links each>"

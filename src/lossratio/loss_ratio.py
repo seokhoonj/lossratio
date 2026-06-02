@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 from scipy.stats import norm
 
-from ._io import mirror_output
+from ._io import group_eq, mirror_output, normalize_groups
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from .loss import Loss, LossFit
@@ -398,10 +398,7 @@ class RatioFit:
         # 2) join premium SE columns for delta method ----------------------
         if estimator.se_method == "delta":
             pf_df = self.premium_fit._df
-            keys = []
-            if self._groups is not None:
-                keys.append(self._groups)
-            keys += ["cohort", "dev"]
+            keys = [*normalize_groups(self._groups), "cohort", "dev"]
             pf_keep = pf_df.select(
                 keys + ["premium_total_se", "premium_total_cv"]
             )
@@ -476,7 +473,7 @@ class RatioFit:
             return full
 
         groups = self._groups
-        keys = ([groups] if groups is not None else []) + ["cohort", "dev"]
+        keys = [*normalize_groups(groups), "cohort", "dev"]
         full = _apply_bootstrap_overlay(
             full, boots,
             role    = "loss",
@@ -532,10 +529,7 @@ class RatioFit:
     def summary(self) -> pl.DataFrame:
         """Per-cohort ultimate loss, premium, and Ratio."""
         df = self._df
-        keys: list[str] = []
-        if self._groups is not None:
-            keys.append(self._groups)
-        keys.append("cohort")
+        keys: list[str] = [*normalize_groups(self._groups), "cohort"]
 
         # `latest` / `ratio_latest` are the last *observed* cumulative
         # loss and observed loss ratio (sorted by dev, not the dev
@@ -682,7 +676,9 @@ class RatioFit:
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:
-            n_groups = self._df[self._groups].n_unique()
+            n_groups = (
+                self._df.select(normalize_groups(self._groups)).unique().height
+            )
             return (
                 f"<RatioFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"
