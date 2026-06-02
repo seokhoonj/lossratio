@@ -153,7 +153,7 @@ def test_extract_portfolio_ratio_helper():
     masked refit has any projectable cell."""
     tri = _sur_triangle()
     bt_fit = lr.Backtest(
-        estimator=lr.Ratio(method="sa"), holdout=5, target="ratio",
+        estimator=lr.LossRatio(method="sa"), holdout=5, target="ratio",
     ).fit(tri)
     val = _extract_portfolio_ratio(bt_fit)
     assert np.isfinite(val)

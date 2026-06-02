@@ -211,14 +211,14 @@ def test_backtest_with_ed_estimator():
 
 def test_backtest_with_ratio_sa_estimator():
     bt = lr.Backtest(
-        estimator=lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
+        estimator=lr.LossRatio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
         holdout=1,
     ).fit(lr.Triangle(_toy_triangle_input()))
     assert bt.ae_err.shape[0] == 3
 
 
 def test_backtest_with_ratio_cl_method():
-    bt = lr.Backtest(estimator=lr.Ratio(method="cl"), holdout=1).fit(
+    bt = lr.Backtest(estimator=lr.LossRatio(method="cl"), holdout=1).fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert bt.ae_err.shape[0] == 3
@@ -282,7 +282,7 @@ def test_backtest_refit_is_cl_fit():
 
 
 def test_backtest_refit_is_ratio_fit():
-    bt = lr.Backtest(estimator=lr.Ratio(method="cl"), holdout=1).fit(
+    bt = lr.Backtest(estimator=lr.LossRatio(method="cl"), holdout=1).fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert isinstance(bt.fit, lr.RatioFit)

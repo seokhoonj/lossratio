@@ -130,14 +130,14 @@ def test_loss_cl_accepts_new_sigma_methods(sigma_method: str) -> None:
 
 @pytest.mark.parametrize("sigma_method", ["mack", "none"])
 def test_ratio_sa_accepts_new_sigma_methods(sigma_method: str) -> None:
-    """``lr.Ratio(method='sa')`` threads ``mack`` / ``none`` through.
+    """``lr.LossRatio(method='sa')`` threads ``mack`` / ``none`` through.
 
     ``RatioFit`` does not surface ``sigma_method`` as a slot (only the
     ``Ratio`` estimator does), so this asserts the estimator stored it
     and the fit ran end-to-end.
     """
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    estimator = lr.Ratio(method="sa", sigma_method=sigma_method)
+    estimator = lr.LossRatio(method="sa", sigma_method=sigma_method)
     assert estimator.sigma_method == sigma_method
     fit = estimator.fit(tri)
     assert fit is not None

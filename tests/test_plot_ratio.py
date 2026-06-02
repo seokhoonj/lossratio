@@ -46,7 +46,7 @@ def _close(fig_or_list):
 
 
 def test_ratio_fit_plot_single_group_returns_figure(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     fig = rf.plot()
     try:
         assert isinstance(fig, plt.Figure)
@@ -58,7 +58,7 @@ def test_ratio_fit_plot_single_group_returns_figure(tri_single):
 
 
 def test_ratio_fit_plot_multi_group_auto_per_group(tri_multi):
-    rf = lr.Ratio(method="cl").fit(tri_multi)
+    rf = lr.LossRatio(method="cl").fit(tri_multi)
     figs = rf.plot()
     try:
         assert isinstance(figs, list)
@@ -74,7 +74,7 @@ def test_ratio_fit_plot_multi_group_auto_per_group(tri_multi):
 
 
 def test_ratio_fit_plot_per_group_false_combines(tri_multi):
-    rf = lr.Ratio(method="cl").fit(tri_multi)
+    rf = lr.LossRatio(method="cl").fit(tri_multi)
     fig = rf.plot(per_group=False)
     try:
         assert isinstance(fig, plt.Figure)
@@ -85,7 +85,7 @@ def test_ratio_fit_plot_per_group_false_combines(tri_multi):
 @pytest.mark.parametrize("metric", ["ratio", "loss", "premium"])
 @pytest.mark.parametrize("cell_type", ["cumulative", "incremental"])
 def test_ratio_fit_plot_metric_celltype_grid(tri_single, metric, cell_type):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     fig = rf.plot(metric=metric, cell_type=cell_type)
     try:
         assert isinstance(fig, plt.Figure)
@@ -96,7 +96,7 @@ def test_ratio_fit_plot_metric_celltype_grid(tri_single, metric, cell_type):
 
 
 def test_ratio_fit_plot_show_interval_false_no_caption(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     fig = rf.plot(show_interval=False)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
@@ -106,7 +106,7 @@ def test_ratio_fit_plot_show_interval_false_no_caption(tri_single):
 
 
 def test_ratio_fit_plot_show_interval_true_has_caption(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     fig = rf.plot(show_interval=True)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
@@ -118,7 +118,7 @@ def test_ratio_fit_plot_show_interval_true_has_caption(tri_single):
 
 
 def test_ratio_fit_plot_bootstrap_caption_marks_bootstrap(tri_single):
-    rf = lr.Ratio(method="cl", bootstrap=True, B=20, seed=1).fit(tri_single)
+    rf = lr.LossRatio(method="cl", bootstrap=True, B=20, seed=1).fit(tri_single)
     fig = rf.plot()
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
@@ -128,7 +128,7 @@ def test_ratio_fit_plot_bootstrap_caption_marks_bootstrap(tri_single):
 
 
 def test_ratio_fit_plot_incremental_has_no_ci(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     fig = rf.plot(metric="ratio", cell_type="incremental")
     try:
         # Incremental projections carry no SE columns -- caption suppressed.
@@ -139,19 +139,19 @@ def test_ratio_fit_plot_incremental_has_no_ci(tri_single):
 
 
 def test_ratio_fit_plot_invalid_metric_raises(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     with pytest.raises(ValueError, match="metric"):
         rf.plot(metric="lr")
 
 
 def test_ratio_fit_plot_invalid_cell_type_raises(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     with pytest.raises(ValueError, match="cell_type"):
         rf.plot(cell_type="incr")
 
 
 def test_ratio_fit_plot_invalid_divisor_raises(tri_single):
-    rf = lr.Ratio(method="cl").fit(tri_single)
+    rf = lr.LossRatio(method="cl").fit(tri_single)
     with pytest.raises(ValueError, match="amount_divisor"):
         rf.plot(metric="loss", amount_divisor="huge")
 
@@ -159,7 +159,7 @@ def test_ratio_fit_plot_invalid_divisor_raises(tri_single):
 @pytest.mark.parametrize("method", ["cl", "ed", "sa"])
 def test_ratio_fit_plot_methods(tri_single, method):
     kwargs: dict = {"method": method}
-    rf = lr.Ratio(**kwargs).fit(tri_single)
+    rf = lr.LossRatio(**kwargs).fit(tri_single)
     fig = rf.plot()
     try:
         assert isinstance(fig, plt.Figure)

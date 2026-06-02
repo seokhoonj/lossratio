@@ -3,7 +3,7 @@
 ``Loss`` is the role-specific loss-side dispatcher. It owns the loss
 projection only — premium projection is delegated to :class:`Premium`,
 and loss-ratio composition (with delta method) is handled by
-:class:`Ratio`.
+:class:`LossRatio`.
 
 Output columns use the role-specific ``loss_*`` naming. The full table
 also carries ``premium_*`` columns (taken from the embedded

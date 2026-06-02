@@ -141,9 +141,9 @@ def _is_ratio_fit_estimator(estimator: Any) -> bool:
     so they are scored on ``target="loss"`` / ``"premium"`` directly.
     """
     # Late import to avoid circular dependency at module load time.
-    from .ratio import Ratio
+    from .loss_ratio import LossRatio
 
-    return isinstance(estimator, Ratio)
+    return isinstance(estimator, LossRatio)
 
 
 def _resolve_expected_column(
@@ -231,7 +231,7 @@ class Backtest:
     Parameters
     ----------
     estimator
-        An ``lr.CL``, ``lr.ED``, or ``lr.Ratio`` instance (or any
+        An ``lr.CL``, ``lr.ED``, or ``lr.LossRatio`` instance (or any
         estimator whose ``fit(triangle)`` returns a result class with
         a ``loss_proj`` column in ``.df``).
 
@@ -251,7 +251,7 @@ class Backtest:
         Number of most recent calendar diagonals to mask.
     target
         Which projection to score: ``"ratio"`` (default), ``"loss"``,
-        or ``"premium"``. A ratio-fit estimator (``lr.Ratio``) only
+        or ``"premium"``. A ratio-fit estimator (``lr.LossRatio``) only
         supports ``target="ratio"``; use a loss model (``lr.ChainLadder``
         / ``lr.ExposureDriven`` / ``lr.StageAdaptive``) to score the loss
         or premium projection directly.
@@ -260,7 +260,7 @@ class Backtest:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6).fit(tri)
+    >>> bt = lr.Backtest(estimator=lr.LossRatio(method="sa"), holdout=6).fit(tri)
     >>> bt.ae_err
     >>> bt.col_summary
     >>> bt.diag_summary
@@ -645,7 +645,7 @@ class BacktestFit:
     def _infer_regime(self) -> Any:
         """Extract the loss-side regime from `self.estimator`, if any.
 
-        For ``lr.Ratio``, prefer ``loss_regime`` (the Ratio's
+        For ``lr.LossRatio``, prefer ``loss_regime`` (the Ratio's
         loss-side); for ``lr.Loss`` / ``lr.CL``, ``regime``. The
         Triangle renderer accepts ``"auto"`` directly and runs
         :meth:`Triangle.detect_regime` inline, so a literal
@@ -659,7 +659,7 @@ class BacktestFit:
     def _infer_maturity(self) -> Any:
         """Extract maturity from `self.estimator`, if any.
 
-        ``lr.Loss`` / ``lr.Ratio`` carry a ``maturity`` slot. The
+        ``lr.Loss`` / ``lr.LossRatio`` carry a ``maturity`` slot. The
         Triangle renderer accepts ``"auto"`` directly and runs
         :meth:`Triangle.detect_maturity` inline, so a literal
         ``"auto"`` is forwarded as-is. ``lr.CL`` has no maturity

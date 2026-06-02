@@ -81,7 +81,7 @@ def test_segment_bridged_borrowed_ratio_cl_full_matches_r():
     r = _load("segment_bridged_borrowed_ratio_cl_full").sort(["cohort", "dev"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    fit = lr.Ratio(
+    fit = lr.LossRatio(
         method="cl",
         premium_method="cl",
         loss_regime=reg,
@@ -113,7 +113,7 @@ def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
     r = _load("segment_bridged_borrowed_ratio_cl_summary").sort(["cohort"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    fit = lr.Ratio(
+    fit = lr.LossRatio(
         method="cl",
         premium_method="cl",
         loss_regime=reg,
@@ -137,7 +137,7 @@ def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
     r = _load("segment_bridged_borrowed_ratio_ed_full").sort(["cohort", "dev"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    fit = lr.Ratio(
+    fit = lr.LossRatio(
         method="ed",
         premium_method="cl",
         loss_regime=reg,
@@ -161,7 +161,7 @@ def test_segment_bridged_borrowed_ratio_ed_summary_matches_r():
     r = _load("segment_bridged_borrowed_ratio_ed_summary").sort(["cohort"])
     tri = _build_triangle()
     reg = lr.regime_at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    fit = lr.Ratio(
+    fit = lr.LossRatio(
         method="ed",
         premium_method="cl",
         loss_regime=reg,

@@ -203,7 +203,7 @@ def test_loss_tail_default_false(tri):
 
 
 def test_ratio_cl_tail_propagates_through_loss_fit(tri):
-    rf = lr.Ratio(method="cl", tail=True).fit(tri)
+    rf = lr.LossRatio(method="cl", tail=True).fit(tri)
     # tail surfaced on the embedded LossFit
     assert isinstance(rf.loss_fit.tail_factor, dict)
     assert all(tf > 1.0 for tf in rf.loss_fit.tail_factor.values())
@@ -214,11 +214,11 @@ def test_ratio_cl_tail_propagates_through_loss_fit(tri):
 def test_ratio_non_cl_tail_warns(tri):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        rf = lr.Ratio(method="ed", tail=True).fit(tri)
+        rf = lr.LossRatio(method="ed", tail=True).fit(tri)
     assert any("tail" in str(w.message).lower() for w in caught)
     assert "loss_tail" not in rf._df.columns
 
 
 def test_ratio_tail_attr_round_trip(tri):
-    rf = lr.Ratio(method="cl", tail=1.05).fit(tri)
+    rf = lr.LossRatio(method="cl", tail=1.05).fit(tri)
     assert rf.tail == 1.05

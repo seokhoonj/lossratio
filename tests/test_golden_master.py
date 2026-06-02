@@ -63,8 +63,8 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["ed"] = _frame(lr.ExposureDriven().fit(tri))
     out["loss_sa"] = _frame(lr.StageAdaptive().fit(tri))
     out["premium"] = _frame(lr.Premium().fit(tri))
-    out["ratio_sa"] = _frame(lr.Ratio(method="sa").fit(tri))
-    out["ratio_ed_delta"] = _frame(lr.Ratio(method="ed", se_method="delta").fit(tri))
+    out["ratio_sa"] = _frame(lr.LossRatio(method="sa").fit(tri))
+    out["ratio_ed_delta"] = _frame(lr.LossRatio(method="ed", se_method="delta").fit(tri))
 
     # --- maturity ---
     mat = tri.link().ata().maturity()
@@ -95,7 +95,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=reg_bb).fit(tri))
 
     # --- backtest ---
-    bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
+    bt = lr.Backtest(lr.LossRatio(method="sa"), holdout=6, target="ratio").fit(tri)
     out["bt_ae_err"] = bt.ae_err
     out["bt_col_summary"] = bt.col_summary
     out["bt_diag_summary"] = bt.diag_summary

@@ -29,7 +29,7 @@ from ._plot import (
 if TYPE_CHECKING:
     from .loss import LossFit
     from .premium import PremiumFit
-    from .ratio import RatioFit
+    from .loss_ratio import RatioFit
 
 
 _VALID_METRICS = ("ratio", "loss", "premium")

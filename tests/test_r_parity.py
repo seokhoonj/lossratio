@@ -110,7 +110,7 @@ def test_ratio_sa_full_matches_r():
     r = _load("ratio_sa_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.Ratio(method="sa").fit(tri)
+        lr.LossRatio(method="sa").fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
@@ -121,7 +121,7 @@ def test_ratio_ed_full_matches_r():
     r = _load("ratio_ed_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.Ratio(method="ed").fit(tri)
+        lr.LossRatio(method="ed").fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
@@ -132,7 +132,7 @@ def test_ratio_cl_full_matches_r():
     r = _load("ratio_cl_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
-        lr.Ratio(method="cl").fit(tri)
+        lr.LossRatio(method="cl").fit(tri)
         .to_polars()
         .sort(["cohort", "dev"])
     )
@@ -145,7 +145,7 @@ def test_ratio_sa_maturity_matches_r():
     Regime). Python exposes the same value via `fit.maturity_point[<group>]`."""
     r = _load("ratio_sa_maturity")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    fit = lr.Ratio(method="sa").fit(tri)
+    fit = lr.LossRatio(method="sa").fit(tri)
     r_k = int(r["change"].max())
     py_k = fit.maturity_point["surgery"]
     assert py_k == r_k, f"maturity_point mismatch: py={py_k} r={r_k}"
@@ -383,7 +383,7 @@ def test_ratio_sa_summary_matches_r():
     """
     r = _load("ratio_sa_summary").sort(["cohort"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    ratio_fit = lr.Ratio(method="sa").fit(tri)
+    ratio_fit = lr.LossRatio(method="sa").fit(tri)
     py = ratio_fit.summary().sort(["cohort"])
 
     _compare_numeric(
@@ -416,7 +416,7 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method), holdout=6, target="ratio"
+        estimator=lr.LossRatio(method=method), holdout=6, target="ratio"
     ).fit(tri)
     py_aligned = bt.ae_err.sort(["cohort", "dev"])
 
@@ -443,7 +443,7 @@ def test_backtest_col_summary_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_col_summary").sort(["dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method), holdout=6, target="ratio"
+        estimator=lr.LossRatio(method=method), holdout=6, target="ratio"
     ).fit(tri)
     py = bt.col_summary.sort(["dev"])
 
@@ -468,7 +468,7 @@ def test_backtest_diag_summary_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_diag_summary").sort(["cal_idx"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method), holdout=6, target="ratio"
+        estimator=lr.LossRatio(method=method), holdout=6, target="ratio"
     ).fit(tri)
     py = bt.diag_summary.sort(["cal_idx"])
 
