@@ -127,9 +127,9 @@ def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
             "estimator carries a pre-built BootstrapTriangle, which was "
             "fitted on the full (unmasked) triangle and would leak the "
             "held-out cells into every backtest fold's residual pool. "
-            "Use a leakage-safe form instead: bootstrap='auto', a "
-            "Bootstrap config (e.g. lr.Bootstrap(B=999)), or a callable "
-            "function(tri) -> BootstrapTriangle -- each rebuilds the "
+            "Use a leakage-safe form instead: an uncertainty strategy "
+            "(ResidualBootstrap / MonteCarlo) on a public model, or a "
+            "callable function(tri) -> strategy -- each rebuilds the "
             "bootstrap on the masked triangle per fold."
         )
 

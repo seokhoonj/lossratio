@@ -100,12 +100,15 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["bt_col_summary"] = bt.col_summary
     out["bt_diag_summary"] = bt.diag_summary
 
-    # --- bootstrap (seeded) — only the reachable combos (normal process) ---
+    # --- bootstrap (seeded) — only the reachable combos (normal process).
+    # The Bootstrap engine is internal (no public surface); pin it via the
+    # internal import. ---
+    from lossratio.bootstrap import Bootstrap
     out["boot_analytical_cl"] = _frame(
-        lr.Bootstrap(type="analytical", method="cl", seed=SEED, B=B).fit(tri, target="loss")
+        Bootstrap(type="analytical", method="cl", seed=SEED, B=B).fit(tri, target="loss")
     )
     out["boot_parametric_cl"] = _frame(
-        lr.Bootstrap(type="parametric", method="cl", seed=SEED, B=B).fit(tri, target="loss")
+        Bootstrap(type="parametric", method="cl", seed=SEED, B=B).fit(tri, target="loss")
     )
 
     return {k: _sorted(v) for k, v in out.items()}

@@ -80,10 +80,13 @@ API 레퍼런스
 불확실성
 --------
 
-.. autoclass:: lossratio.Bootstrap
+.. autoclass:: lossratio.Analytical
    :members:
 
-.. autoclass:: lossratio.BootstrapTriangle
+.. autoclass:: lossratio.ResidualBootstrap
+   :members:
+
+.. autoclass:: lossratio.MonteCarlo
    :members:
 
 검증

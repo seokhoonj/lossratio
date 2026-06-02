@@ -2677,12 +2677,16 @@ class Bootstrap:
         Whether to materialise the per-replicate ``pseudo_triangles``
         slot. Default ``False`` (only ``summary`` is built).
 
+    Internal engine -- not part of the public API. End users reach it via
+    the uncertainty strategies (:class:`~lossratio.ResidualBootstrap` /
+    :class:`~lossratio.MonteCarlo`) on a model.
+
     Examples
     --------
-    >>> import lossratio as lr
+    >>> from lossratio.bootstrap import Bootstrap
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr.Bootstrap(type="analytical", method="cl",
-    ...                    B=999, seed=1).fit(tri, target="loss")
+    >>> bt = Bootstrap(type="analytical", method="cl",
+    ...                B=999, seed=1).fit(tri, target="loss")
     >>> bt.summary
     """
 

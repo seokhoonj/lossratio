@@ -9,7 +9,6 @@ Sibling R package:
 from ._period import derive_grain_columns
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
-from .bootstrap import Bootstrap, BootstrapTriangle
 from .calendar import Calendar
 from .chain_ladder import ChainLadder
 from .convergence import Convergence
@@ -35,8 +34,6 @@ __all__ = [
     "Analytical",
     "Backtest",
     "BacktestFit",
-    "Bootstrap",
-    "BootstrapTriangle",
     "ChainLadder",
     "MonteCarlo",
     "ResidualBootstrap",
