@@ -34,6 +34,7 @@ import numpy as np
 import polars as pl
 
 from ._io import mirror_output
+from ._mack import mack_factor_var, mack_sigma2
 from .link import _build_link_df
 from .maturity import Maturity
 
@@ -149,19 +150,12 @@ def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
         f = c_to.sum() / s_from
         f_hat[k] = f
         if n >= 2:
-            resid_sq = (c_to - f * c_from) ** 2 / c_from
-            sigma2[k] = resid_sq.sum() / (n - 1)
+            sigma2[k] = mack_sigma2(c_to, c_from, f, n)
         # n == 1 -> sigma2 stays NaN, filled by the tail rule below.
 
     sigma2 = _boot_fill_sigma2(sigma2)
 
-    f_var = np.full(n_links, np.nan, dtype=np.float64)
-    valid = (
-        np.isfinite(sigma2)
-        & np.isfinite(sum_from)
-        & (sum_from > 0.0)
-    )
-    f_var[valid] = sigma2[valid] / sum_from[valid]
+    f_var = mack_factor_var(sigma2, sum_from)
 
     return _Anchor(
         ata_from  = ata_from,
