@@ -602,6 +602,18 @@ class Regime:
                 for r in tri_df.select(grp).unique().sort(grp).iter_rows()
             ]
 
+        # Partition the frame ONCE into a {combo: sub-frame} map and reuse it
+        # in both the window-auto sweep and the detection loop, instead of a
+        # full-frame `filter` per combo (which was O(combos x rows)). `combos`
+        # stays the authoritative ORDERED list -- only the sub-frame retrieval
+        # changes -- so the per-combo result order (and thus output) is
+        # unchanged. Keys from `_iter_group_frames` match the `combos` entries
+        # (scalar for a str group, tuple for multi-column).
+        if grp is None:
+            sub_by_combo: dict[Any, pl.DataFrame] = {None: tri_df}
+        else:
+            sub_by_combo = dict(_iter_group_frames(tri_df, grp))
+
         # Resolve trajectory window per combo. ``window="auto"`` first
         # tries the maturity point (``detect_maturity`` on the Triangle)
         # for each combo. When maturity is unavailable (pooled
@@ -678,11 +690,7 @@ class Regime:
                     window_per_combo.append(mat_k)
                     continue
                 # Elbow fallback.
-                sub = (
-                    tri_df
-                    if combo is None
-                    else tri_df.filter(group_eq(grp, combo))
-                )
+                sub = sub_by_combo[combo]
                 k = _detect_regime_optimal_window(
                     sub,
                     target=target,
@@ -705,11 +713,7 @@ class Regime:
         # `changes`/`labels`.
         per_combo_results: list[tuple[Any, dict[str, Any]]] = []
         for combo, k in zip(combos, window_per_combo):
-            sub = (
-                tri_df
-                if combo is None
-                else tri_df.filter(group_eq(grp, combo))
-            )
+            sub = sub_by_combo[combo]
             try:
                 res = _detect_regime_single(
                     sub,
