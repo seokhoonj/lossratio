@@ -146,36 +146,23 @@ def _is_ratio_fit_estimator(estimator: Any) -> bool:
     return isinstance(estimator, LossRatio)
 
 
-def _resolve_expected_column(
-    target: str, fit_df_columns: list[str], refit: Any
-) -> str:
+def _resolve_expected_column(target: str, fit_df_columns: list[str]) -> str:
     """Map ``target`` to the projection column on the refit output frame.
 
-    Post-Phase-4b workers emit generic ``loss_proj`` columns (CL: loss
-    side; ED: numerator role = loss, plus ``ratio_proj`` as a downstream
-    quantity). Ratio keeps ``loss_proj`` / ``premium_proj`` / ``ratio_proj``.
+    The loss models (ChainLadder / ExposureDriven / StageAdaptive) emit a
+    ``LossFit`` carrying ``loss_proj`` + ``premium_proj``; ``LossRatio``
+    emits a ``RatioFit`` that additionally carries ``ratio_proj``. So a
+    role-named direct lookup suffices; ``target="ratio"`` is only
+    reachable for a LossRatio backtest (a loss model has no ``ratio_proj``
+    and raises here, which the estimator guard anticipates).
     """
     if target not in _VALID_TARGETS:
         raise ValueError(
             f"target must be one of {_VALID_TARGETS}, got {target!r}"
         )
-
-    # Ratio estimator: role-named columns emitted directly.
     direct = {"ratio": "ratio_proj", "loss": "loss_proj", "premium": "premium_proj"}
     if direct[target] in fit_df_columns:
         return direct[target]
-
-    # New worker schema (CL / ED): loss_proj corresponds to the
-    # estimator's numerator role. Use ratio_proj for the ratio target on ED.
-    if target == "ratio" and "ratio_proj" in fit_df_columns:
-        return "ratio_proj"
-    refit_target = getattr(refit, "target", None)
-    if target == refit_target and "loss_proj" in fit_df_columns:
-        return "loss_proj"
-    exposure = getattr(refit, "exposure", None)
-    if target == exposure and "premium_proj" in fit_df_columns:
-        return "premium_proj"
-
     raise ValueError(
         f"Refitted estimator output has no column for target={target!r}. "
         f"Available: {fit_df_columns}"
@@ -183,32 +170,19 @@ def _resolve_expected_column(
 
 
 def _resolve_incr_expected_column(
-    target: str, fit_df_columns: list[str], refit: Any
+    target: str, fit_df_columns: list[str]
 ) -> str | None:
-    """Map ``target`` to the incremental projection column on the refit
-    output frame, mirroring :func:`_resolve_expected_column` for the
-    cumulative form.
-
-    Returns ``None`` when the refit emits no incremental projection for
-    the chosen target (some estimator paths only expose cumulative).
+    """Map ``target`` to the incremental projection column, mirroring
+    :func:`_resolve_expected_column`. Returns ``None`` when the refit
+    emits no incremental projection for the chosen target.
     """
     direct = {
         "ratio":   "incr_ratio_proj",
         "loss":    "incr_loss_proj",
         "premium": "incr_premium_proj",
     }
-    if direct[target] in fit_df_columns:
-        return direct[target]
-
-    if target == "ratio" and "incr_ratio_proj" in fit_df_columns:
-        return "incr_ratio_proj"
-    refit_target = getattr(refit, "target", None)
-    if target == refit_target and "incr_loss_proj" in fit_df_columns:
-        return "incr_loss_proj"
-    exposure = getattr(refit, "exposure", None)
-    if target == exposure and "incr_premium_proj" in fit_df_columns:
-        return "incr_premium_proj"
-    return None
+    col = direct[target]
+    return col if col in fit_df_columns else None
 
 
 # ---------------------------------------------------------------------------
@@ -231,9 +205,10 @@ class Backtest:
     Parameters
     ----------
     estimator
-        An ``lr.CL``, ``lr.ED``, or ``lr.LossRatio`` instance (or any
-        estimator whose ``fit(triangle)`` returns a result class with
-        a ``loss_proj`` column in ``.df``).
+        An ``lr.ChainLadder`` / ``lr.ExposureDriven`` / ``lr.StageAdaptive``
+        / ``lr.LossRatio`` instance (or any estimator whose
+        ``fit(triangle)`` returns a result class with a ``loss_proj``
+        column in ``.df``).
 
         If the estimator carries a ``bootstrap`` config, only the
         *rebuild-per-fit* forms are leakage-safe: ``bootstrap='auto'``,
@@ -285,8 +260,8 @@ class Backtest:
             raise ValueError(
                 f"target must be one of {_VALID_TARGETS}, got {target!r}"
             )
-        # Ratio / ED are ratio-fits -- only the ratio lane is meaningful;
-        # use CL directly to backtest the loss or premium projection.
+        # Only LossRatio is a ratio-fit -- the ratio lane is its meaningful
+        # target; use a loss model to backtest the loss / premium projection.
         if _is_ratio_fit_estimator(estimator) and target != "ratio":
             raise ValueError(
                 f"estimator is a ratio-fit ({type(estimator).__name__}); "
@@ -364,10 +339,8 @@ class BacktestFit:
         self._refit = refit
 
         refit_df = refit.to_polars()
-        exp_col = _resolve_expected_column(bt.target, refit_df.columns, refit)
-        incr_exp_col = _resolve_incr_expected_column(
-            bt.target, refit_df.columns, refit
-        )
+        exp_col = _resolve_expected_column(bt.target, refit_df.columns)
+        incr_exp_col = _resolve_incr_expected_column(bt.target, refit_df.columns)
         self.target = bt.target
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
@@ -595,9 +568,9 @@ class BacktestFit:
             (``view='usage'`` only) override values for the filter
             overlays. By default the usage view reads ``recent`` and
             ``regime`` from the estimator that drove the backtest
-            (``recent`` from ``CL`` / ``Loss`` / ``Ratio``; ``regime``
-            from the loss-side of ``Ratio``, or ``regime`` of
-            ``Loss``); ``maturity`` defaults to ``None`` -- callers
+            (``recent`` from the loss model / ``LossRatio``; ``regime``
+            from the loss-side of ``LossRatio``, or ``regime`` of the
+            loss model); ``maturity`` defaults to ``None`` -- callers
             who want a maturity hline overlay must pass an explicit
             :class:`Maturity` instance or scalar (R parity:
             R's ``backtest()`` runs a 2-pass ATA fit to detect
@@ -645,8 +618,9 @@ class BacktestFit:
     def _infer_regime(self) -> Any:
         """Extract the loss-side regime from `self.estimator`, if any.
 
-        For ``lr.LossRatio``, prefer ``loss_regime`` (the Ratio's
-        loss-side); for ``lr.Loss`` / ``lr.CL``, ``regime``. The
+        For ``lr.LossRatio``, prefer ``loss_regime`` (its loss-side);
+        for the loss models (ChainLadder / ExposureDriven /
+        StageAdaptive), ``regime``. The
         Triangle renderer accepts ``"auto"`` directly and runs
         :meth:`Triangle.detect_regime` inline, so a literal
         ``"auto"`` is forwarded as-is.
@@ -659,11 +633,11 @@ class BacktestFit:
     def _infer_maturity(self) -> Any:
         """Extract maturity from `self.estimator`, if any.
 
-        ``lr.Loss`` / ``lr.LossRatio`` carry a ``maturity`` slot. The
-        Triangle renderer accepts ``"auto"`` directly and runs
+        ``lr.StageAdaptive`` / ``lr.LossRatio`` carry a ``maturity`` slot.
+        The Triangle renderer accepts ``"auto"`` directly and runs
         :meth:`Triangle.detect_maturity` inline, so a literal
-        ``"auto"`` is forwarded as-is. ``lr.CL`` has no maturity
-        concept and returns ``None``.
+        ``"auto"`` is forwarded as-is. ChainLadder / ExposureDriven have
+        no maturity concept and return ``None``.
         """
         return getattr(self.estimator, "maturity", None)
 
