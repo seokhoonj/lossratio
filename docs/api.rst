@@ -91,18 +91,6 @@ API 레퍼런스
 .. autoclass:: lossratio.EDFit
    :members:
 
-.. autoclass:: lossratio.BF
-   :members:
-
-.. autoclass:: lossratio.BFFit
-   :members:
-
-.. autoclass:: lossratio.CC
-   :members:
-
-.. autoclass:: lossratio.CCFit
-   :members:
-
 불확실성
 --------
 

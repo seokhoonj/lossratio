@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "cl", "sa", "bf", "cc")
+_VALID_METHODS = ("ed", "cl", "sa")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 _VALID_SE_METHODS = ("fixed", "delta")
 
@@ -128,11 +128,9 @@ class Ratio:
     Parameters
     ----------
     method
-        Loss projection method: ``"ed"`` (default), ``"cl"``, ``"sa"``,
-        ``"bf"``, or ``"cc"``. See :class:`Loss`. The loss-ratio is the
-        composed loss projection over the premium projection, so
-        ``"bf"`` / ``"cc"`` forward to a BF / CC loss fit and the
-        ratio is ``loss_proj / premium_proj`` of that fit.
+        Loss projection method: ``"ed"`` (default), ``"cl"``, or
+        ``"sa"``. See :class:`Loss`. The loss-ratio is the composed
+        loss projection over the premium projection.
     loss_alpha
         Variance-structure exponent for the loss fit. Default ``1``.
     loss_regime
@@ -155,17 +153,6 @@ class Ratio:
         :func:`~lossratio.maturity_spec`), or ``None`` (no switch, SA
         falls back to ED). Forwarded to the inner :class:`Loss`.
         Consulted only when ``method="sa"``.
-    prior
-        The a priori expected loss ratio for ``method="bf"`` (required
-        when ``method="bf"``; ignored otherwise). A positive scalar or
-        a dict mapping each cohort (or group) to an ELR. Forwarded to
-        the inner BF loss fit.
-    credibility
-        Optional Buehlmann-Straub credibility blend for
-        ``method="bf"`` / ``"cc"``: ``None`` (default, classical
-        q-weighted blend) or ``{"method": "bs", "K": None}``.
-        Forwarded to the inner BF / CC loss fit; ignored for other
-        methods.
     premium_regime
         Premium-side regime filter. Same four-type dispatch as
         ``loss_regime``. Defaults to ``None`` (no filter); pass an
@@ -235,8 +222,6 @@ class Ratio:
         se_method: str = "fixed",
         rho: float = 0.95,
         conf_level: float = 0.95,
-        prior: Any = None,
-        credibility: Any = None,
         tail: bool | float = False,
         bootstrap: Any = None,
         B: int = 999,
@@ -248,8 +233,6 @@ class Ratio:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
             )
-        if method == "bf" and prior is None:
-            raise ValueError("`prior` is required when method='bf'")
         if premium_method not in _VALID_PREMIUM_METHODS:
             raise ValueError(
                 f"premium_method must be one of {_VALID_PREMIUM_METHODS}, "
@@ -314,8 +297,6 @@ class Ratio:
         self.se_method = se_method
         self.rho = rho
         self.conf_level = conf_level
-        self.prior = prior
-        self.credibility = credibility
         self.tail = tail
         self.bootstrap = bootstrap
         self.B = B
@@ -344,7 +325,7 @@ class RatioFit:
         ratio_ci_lo, ratio_ci_hi]`` (plus ``premium_total_se`` /
         ``premium_total_cv`` when ``se_method="delta"``).
     method : str
-        ``"ed"``, ``"cl"``, ``"sa"``, ``"bf"``, or ``"cc"``.
+        ``"ed"``, ``"cl"``, or ``"sa"``.
     maturity_point :
         Detected maturity for ``"sa"`` (single value or dict per group).
     loss_fit, premium_fit :
@@ -403,10 +384,7 @@ class RatioFit:
         self.premium_fit = premium_fit
 
         # 2) delegate loss-side projection to Loss --------------------------
-        # `bf` / `cc` build their own inner CL fits and have no maturity
-        # concept; `prior` / `credibility` thread through to the BF / CC
-        # loss fit. For `sa` / `ed` / `cl` the embedded premium_fit is
-        # reused (no prior / credibility).
+        # For `sa` / `ed` / `cl` the embedded premium_fit is reused.
         loss_kwargs: dict[str, Any] = dict(
             method=estimator.method,
             alpha=estimator.loss_alpha,
@@ -414,20 +392,14 @@ class RatioFit:
             conf_level=estimator.conf_level,
             regime=estimator.loss_regime,
             recent=estimator.recent,
+            premium_fit=premium_fit,
+            premium_method=estimator.premium_method,
+            premium_alpha=estimator.premium_alpha,
+            maturity=estimator.maturity,
+            max_cv=estimator.max_cv,
+            max_rse=estimator.max_rse,
+            min_run=estimator.min_run,
         )
-        if estimator.method in ("bf", "cc"):
-            loss_kwargs["prior"] = estimator.prior
-            loss_kwargs["credibility"] = estimator.credibility
-        else:
-            loss_kwargs.update(
-                premium_fit=premium_fit,
-                premium_method=estimator.premium_method,
-                premium_alpha=estimator.premium_alpha,
-                maturity=estimator.maturity,
-                max_cv=estimator.max_cv,
-                max_rse=estimator.max_rse,
-                min_run=estimator.min_run,
-            )
         # Forward tail factor to the loss-side Loss; the Loss constructor
         # itself warns + drops when method != 'cl'.
         if estimator.method == "cl":

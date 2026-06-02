@@ -156,11 +156,9 @@ def test_ratio_fit_plot_invalid_divisor_raises(tri_single):
         rf.plot(metric="loss", amount_divisor="huge")
 
 
-@pytest.mark.parametrize("method", ["cl", "ed", "sa", "bf"])
+@pytest.mark.parametrize("method", ["cl", "ed", "sa"])
 def test_ratio_fit_plot_methods(tri_single, method):
     kwargs: dict = {"method": method}
-    if method == "bf":
-        kwargs["prior"] = 0.65
     rf = lr.Ratio(**kwargs).fit(tri_single)
     fig = rf.plot()
     try:

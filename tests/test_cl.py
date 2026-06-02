@@ -427,14 +427,12 @@ def test_cl_recent_invalid_raises_on_link_ata():
     [
         lambda r: lr.Loss(recent=r),
         lambda r: lr.Ratio(recent=r),
-        lambda r: lr.BF(prior=1.5, recent=r),
-        lambda r: lr.CC(recent=r),
     ],
-    ids=["Loss", "Ratio", "BF", "CC"],
+    ids=["Loss", "Ratio"],
 )
 def test_cl_recent_threads_through_dispatchers(estimator_factory):
     """`recent` runs and shifts the fit on every loss-side estimator
-    that exposes it (Loss / Ratio / BF / CC)."""
+    that exposes it (Loss / Ratio)."""
     tri = _sur_triangle()
     unfiltered = (
         estimator_factory(None).fit(tri).to_polars().sort(["cohort", "dev"])

@@ -85,7 +85,7 @@ def _iter_group_frames(
     order within each group) and yields one ``(group_value, sub_frame)``
     per group in a single pass. Replaces the repeated
     ``if groups is None / else: for g in unique: filter`` scaffolding in
-    the Loss / Premium / BF / CC fit loops.
+    the Loss / Premium fit loops.
     """
     if groups is None:
         yield None, df
