@@ -111,6 +111,60 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
         Bootstrap(type="parametric", method="cl", seed=SEED, B=B).fit(tri, target="loss")
     )
 
+    # --- multi-column groups (the representation-flip oracle) -------------
+    # A genuine two-column partition: coverage x a deterministic synthetic
+    # block (underwriting-year parity). These fixtures are a NEW oracle --
+    # they pin the multi-column code paths (group values flow as TUPLES;
+    # group columns are carried through every surface), distinct from the
+    # single-column fixtures above. Nothing here needs the redesigned-schema
+    # shim: these route the same role-based LossFit the rewrite settled on.
+    mc_df = df.with_columns(
+        pl.when(pl.col("uy_m").dt.year() % 2 == 0)
+          .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
+    )
+    mc = lr.Triangle(mc_df, groups=["coverage", "block"])
+
+    out["mc_triangle"] = _frame(mc)
+    out["mc_calendar"] = _frame(mc.calendar_agg())
+    out["mc_total"] = _frame(mc.total_agg())
+    out["mc_cl"] = _frame(lr.ChainLadder().fit(mc))
+    out["mc_ed"] = _frame(lr.ExposureDriven().fit(mc))
+    out["mc_loss_sa"] = _frame(lr.StageAdaptive().fit(mc))
+    out["mc_premium"] = _frame(lr.Premium().fit(mc))
+    out["mc_ratio_sa"] = _frame(lr.LossRatio(method="sa").fit(mc))
+    out["mc_ratio_ed_delta"] = _frame(
+        lr.LossRatio(method="ed", se_method="delta").fit(mc)
+    )
+
+    mc_mat = mc.link().ata().maturity()
+    out["mc_maturity"] = _frame(mc_mat)
+    # maturity.point is keyed by the (coverage, block) TUPLE here -- split
+    # the tuple back into its group columns so the fixture pins the keys.
+    mc_keys = list(mc_mat.point.keys())
+    out["mc_maturity_point"] = pl.DataFrame(
+        {
+            "coverage": [k[0] for k in mc_keys],
+            "block": [k[1] for k in mc_keys],
+            "point": [int(v) for v in mc_mat.point.values()],
+        }
+    )
+
+    mc_reg = mc.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged")
+    out["mc_regime_changes"] = mc_reg.changes
+    out["mc_loss_sa_regime_sb"] = _frame(lr.StageAdaptive(regime=mc_reg).fit(mc))
+
+    mc_bt = lr.Backtest(lr.LossRatio(method="sa"), holdout=6, target="ratio").fit(mc)
+    out["mc_bt_ae_err"] = mc_bt.ae_err
+    out["mc_bt_col_summary"] = mc_bt.col_summary
+    out["mc_bt_diag_summary"] = mc_bt.diag_summary
+
+    out["mc_boot_analytical_cl"] = _frame(
+        Bootstrap(type="analytical", method="cl", seed=SEED, B=B).fit(mc, target="loss")
+    )
+    out["mc_boot_parametric_cl"] = _frame(
+        Bootstrap(type="parametric", method="cl", seed=SEED, B=B).fit(mc, target="loss")
+    )
+
     return {k: _sorted(v) for k, v in out.items()}
 
 
@@ -121,6 +175,14 @@ CASE_NAMES = [
     "regime_changes", "loss_sa_regime_sb", "loss_sa_regime_bb",
     "bt_ae_err", "bt_col_summary", "bt_diag_summary",
     "boot_analytical_cl", "boot_parametric_cl",
+    # multi-column groups oracle
+    "mc_triangle", "mc_calendar", "mc_total",
+    "mc_cl", "mc_ed", "mc_loss_sa", "mc_premium",
+    "mc_ratio_sa", "mc_ratio_ed_delta",
+    "mc_maturity", "mc_maturity_point",
+    "mc_regime_changes", "mc_loss_sa_regime_sb",
+    "mc_bt_ae_err", "mc_bt_col_summary", "mc_bt_diag_summary",
+    "mc_boot_analytical_cl", "mc_boot_parametric_cl",
 ]
 
 
