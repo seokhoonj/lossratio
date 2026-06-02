@@ -59,9 +59,9 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["triangle"] = _frame(tri)
     out["calendar"] = _frame(tri.calendar_agg())
     out["total"] = _frame(tri.total_agg())
-    out["cl"] = _frame(lr.CL().fit(tri))
-    out["ed"] = _frame(lr.ED().fit(tri))
-    out["loss_sa"] = _frame(lr.Loss(method="sa").fit(tri))
+    out["cl"] = _frame(lr.ChainLadder().fit(tri))
+    out["ed"] = _frame(lr.ExposureDriven().fit(tri))
+    out["loss_sa"] = _frame(lr.StageAdaptive().fit(tri))
     out["premium"] = _frame(lr.Premium().fit(tri))
     out["ratio_sa"] = _frame(lr.Ratio(method="sa").fit(tri))
     out["ratio_ed_delta"] = _frame(lr.Ratio(method="ed", se_method="delta").fit(tri))
@@ -91,8 +91,8 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     reg_sb = tri.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged")
     reg_bb = tri.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged_borrowed")
     out["regime_changes"] = reg_sb.changes
-    out["loss_sa_regime_sb"] = _frame(lr.Loss(method="sa", regime=reg_sb).fit(tri))
-    out["loss_sa_regime_bb"] = _frame(lr.Loss(method="sa", regime=reg_bb).fit(tri))
+    out["loss_sa_regime_sb"] = _frame(lr.StageAdaptive(regime=reg_sb).fit(tri))
+    out["loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=reg_bb).fit(tri))
 
     # --- backtest ---
     bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
@@ -121,6 +121,30 @@ CASE_NAMES = [
 ]
 
 
+# Cases whose RESULT CLASS changed in the rewrite (CLFit/EDFit -> the
+# role-based LossFit): the fixtures keep the original schema, so we compare
+# only the numeric columns BOTH schemas carry -- the loss projection and the
+# Mack SE decomposition. Intentionally outside this intersection: the
+# premium_* / loss_ci_* columns the new LossFit adds, and the *_se2 /
+# proc_cv / param_cv columns the old CLFit/EDFit carried. The shared columns
+# must still match the pinned oracle bit-for-bit on PROJECTED cells (both
+# route _fit_mack); the one convention change is observed-cell projection SE,
+# which the old CLFit/EDFit wrote as 0.0 and the new LossFit leaves null --
+# normalized via fill_null(0.0) on both sides before the compare.
+_REDESIGNED_SHARED_COLS: dict[str, list[str]] = {
+    "cl": [
+        "coverage", "cohort", "dev",
+        "loss_obs", "loss_proj", "incr_loss_proj",
+        "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
+    ],
+    "ed": [
+        "coverage", "cohort", "dev",
+        "loss_obs", "loss_proj", "incr_loss_proj",
+        "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
+    ],
+}
+
+
 @pytest.fixture(scope="session")
 def outputs() -> dict[str, pl.DataFrame]:
     return golden_outputs()
@@ -134,6 +158,13 @@ def test_golden_master(name: str, outputs: dict[str, pl.DataFrame]) -> None:
     )
     expected = pl.read_parquet(path)
     got = outputs[name]
+    cols = _REDESIGNED_SHARED_COLS.get(name)
+    if cols is not None:
+        # Normalize the observed-cell SE convention (old 0.0 vs new null) so
+        # the compare pins the real projected values, not the sentinel.
+        fill = pl.col(pl.Float64).fill_null(0.0)
+        got = _sorted(got.select(cols).with_columns(fill))
+        expected = _sorted(expected.select(cols).with_columns(fill))
     assert_frame_equal(got, expected, check_exact=False, rel_tol=1e-9, abs_tol=1e-9)
 
 
