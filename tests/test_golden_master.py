@@ -77,7 +77,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     )
 
     # --- convergence (SUR) ---
-    conv = lr.detect_convergence(sur)
+    conv = lr.LossRatio(method="sa").fit(sur).convergence()
     out["convergence"] = _frame(conv)
     out["convergence_point"] = pl.DataFrame(
         {

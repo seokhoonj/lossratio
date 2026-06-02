@@ -12,7 +12,7 @@ from .backtest import Backtest, BacktestFit
 from .bootstrap import Bootstrap, BootstrapTriangle
 from .calendar import Calendar
 from .chain_ladder import ChainLadder
-from .convergence import Convergence, detect_convergence
+from .convergence import Convergence
 from .datasets import load_experience, make_experience
 from .exposure_driven import ExposureDriven
 from .experience import validate_experience
@@ -58,7 +58,6 @@ __all__ = [
     "TriangleValidation",
     "__version__",
     "derive_grain_columns",
-    "detect_convergence",
     "load_experience",
     "make_experience",
     "validate_experience",

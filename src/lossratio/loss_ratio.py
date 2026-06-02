@@ -355,6 +355,10 @@ class RatioFit:
         cls, triangle: "Triangle", estimator: "LossRatio"
     ) -> "RatioFit":
         self = cls.__new__(cls)
+        # Retained for `convergence()`, which re-drives backtests on the
+        # source triangle with this fit's own estimator config.
+        self._triangle = triangle
+        self._estimator = estimator
         self._output_type = triangle._output_type
         self._groups = triangle._groups
         self._cohort = triangle._cohort
@@ -537,6 +541,25 @@ class RatioFit:
     def maturity_point(self):
         """Detected maturity (delegated to LossFit)."""
         return self.loss_fit.maturity_point
+
+    def convergence(self, **kwargs: Any) -> "Convergence":
+        """Detect where this fit's projected loss ratio converges.
+
+        Re-drives a calendar-diagonal hold-out backtest over candidate
+        development periods on the source triangle, using this fit's own
+        estimator config (pass ``estimator=`` to override), and flags the
+        first dev at which the projected loss ratio stabilises (drift /
+        slope / dispersion criteria). Returns a :class:`Convergence`.
+
+        Extra keyword arguments (``method`` / ``max_drift`` / ``max_slope``
+        / ``max_dispersion`` / ``window`` / ``maturity_point`` /
+        ``holdout_max`` / ``min_n_cohorts``) are forwarded to the
+        convergence detector.
+        """
+        from .convergence import detect_convergence
+
+        kwargs.setdefault("estimator", self._estimator)
+        return detect_convergence(self._triangle, **kwargs)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

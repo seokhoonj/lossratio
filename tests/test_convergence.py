@@ -19,6 +19,11 @@ def _sur_triangle() -> lr.Triangle:
     return lr.Triangle(exp)
 
 
+def _converge(tri: lr.Triangle, **kwargs):
+    """Convergence via the fit method (default sa estimator), the public path."""
+    return lr.LossRatio(method="sa").fit(tri).convergence(**kwargs)
+
+
 # ----- helper unit tests -----
 
 
@@ -58,7 +63,7 @@ def test_compute_dispersion_schema():
 
 def test_detect_convergence_returns_object():
     tri = _sur_triangle()
-    conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
+    conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     assert isinstance(conv, lr.Convergence)
     assert conv.method == "tail"
     assert conv.dev_max == 36
@@ -70,7 +75,7 @@ def test_detect_convergence_methods_dispatch():
     # With loose thresholds we expect at least one method to fire.
     results = {}
     for method in ("tail", "window", "slope"):
-        results[method] = lr.detect_convergence(
+        results[method] = _converge(
             tri, method=method,
             max_drift=0.1, max_slope=0.01, max_dispersion=1.0,
         ).convergence_point
@@ -81,7 +86,7 @@ def test_detect_convergence_methods_dispatch():
 
 def test_detect_convergence_summary_table():
     tri = _sur_triangle()
-    conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
+    conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     df = conv.summary()
     if hasattr(df, "to_polars"):
         df = df.to_polars()
@@ -96,7 +101,7 @@ def test_detect_convergence_summary_table():
 
 def test_detect_convergence_pass_arrays_consistency():
     tri = _sur_triangle()
-    conv = lr.detect_convergence(
+    conv = _converge(
         tri, method="tail", max_drift=0.05, max_dispersion=0.5,
     )
     # Diagnostic vectors all have the same length as dev_cand.
@@ -111,7 +116,7 @@ def test_detect_convergence_pass_arrays_consistency():
 
 def test_detect_convergence_manual_maturity_point():
     tri = _sur_triangle()
-    conv = lr.detect_convergence(
+    conv = _converge(
         tri, maturity_point=10, max_drift=0.1, max_dispersion=1.0,
     )
     assert conv.maturity_point == 10
@@ -122,7 +127,7 @@ def test_detect_convergence_no_candidate_warns():
     """When maturity_point + 2 > dev_max, dev_cand is empty and a warning fires."""
     tri = _sur_triangle()
     with pytest.warns(UserWarning, match="No candidate dev points"):
-        conv = lr.detect_convergence(tri, maturity_point=40)
+        conv = _converge(tri, maturity_point=40)
     assert conv.convergence_point is None
     assert conv.dev_cand == []
 
@@ -130,16 +135,16 @@ def test_detect_convergence_no_candidate_warns():
 def test_detect_convergence_validation_errors():
     tri = _sur_triangle()
     with pytest.raises(ValueError, match="method must be one of"):
-        lr.detect_convergence(tri, method="bogus")
+        _converge(tri, method="bogus")
     with pytest.raises(ValueError, match="max_drift"):
-        lr.detect_convergence(tri, max_drift=-1)
+        _converge(tri, max_drift=-1)
     with pytest.raises(ValueError, match="window must be"):
-        lr.detect_convergence(tri, window=1)
+        _converge(tri, window=1)
 
 
 def test_detect_convergence_multi_group():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
+    conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     # Multi-group: detection succeeds (dispersion collapsed via median
     # across groups). convergence_point may be None depending on data, but the
     # diagnostic series must still be populated.
@@ -162,7 +167,7 @@ def test_extract_portfolio_ratio_helper():
 
 def test_convergence_repr_contains_key_fields():
     tri = _sur_triangle()
-    conv = lr.detect_convergence(tri, max_drift=0.1, max_dispersion=1.0)
+    conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     r = repr(conv)
     for token in ("method=", "convergence_point=", "maturity_point=", "dev_max=", "candidates="):
         assert token in r
