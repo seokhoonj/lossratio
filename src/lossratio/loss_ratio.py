@@ -150,7 +150,7 @@ class LossRatio:
         auto-detect tuned by ``max_cv`` / ``max_rse`` / ``min_run``),
         a :class:`~lossratio.Maturity` object (explicit override), a
         callable ``f(triangle) -> Maturity`` (lazy spec — e.g.
-        :func:`~lossratio.maturity_spec`), or ``None`` (no switch, SA
+        :meth:`~lossratio.Maturity.detect`), or ``None`` (no switch, SA
         falls back to ED). Forwarded to the inner :class:`Loss`.
         Consulted only when ``method="sa"``.
     premium_regime

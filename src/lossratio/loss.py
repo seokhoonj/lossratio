@@ -615,11 +615,11 @@ class Loss:
           group from the loss triangle, tuned by ``max_cv`` /
           ``max_rse`` / ``min_run``.
         * a :class:`~lossratio.Maturity` object (e.g. from
-          :func:`~lossratio.maturity_at` or
+          :meth:`~lossratio.Maturity.at` or
           ``triangle.link().ata().maturity()``): use its ``mat_k``
           directly, overriding auto-detection.
         * a callable ``f(triangle) -> Maturity`` (e.g. the lazy spec
-          from :func:`~lossratio.maturity_spec`): invoked on the fit's
+          from :meth:`~lossratio.Maturity.detect`): invoked on the fit's
           triangle -- inside backtest this is the masked fold, so the
           detected switch never peeks at held-out cells.
         * ``None``: no maturity switch -- ``"sa"`` falls back to ED

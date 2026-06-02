@@ -447,7 +447,7 @@ def test_summary_manual_maturity_at_has_r_parity_schema():
     """`maturity_at()` (manual) emits the same R column set with stat
     columns NaN-filled (no factor data backs a manual override).
     """
-    mat = lr.maturity_at(change=4)
+    mat = lr.Maturity.at(change=4)
     smr = mat.summary()
     for col in _R_SUMMARY_STAT_COLS:
         assert col in smr.columns, f"missing column: {col}"

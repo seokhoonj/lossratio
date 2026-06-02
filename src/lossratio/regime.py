@@ -756,7 +756,7 @@ class Regime:
     ) -> "Regime":
         """Construct a Regime by hand (no auto-detection).
 
-        Used by :func:`regime_at` to wrap user-supplied change points.
+        Used by :meth:`Regime.at` to wrap user-supplied change points.
         ``changes_df`` carries one row per change point with at least a
         ``change`` (Date) column plus the group column if any.
         """
@@ -778,6 +778,146 @@ class Regime:
         self.dropped = []
         self.treatment = treatment
         return self
+
+    @classmethod
+    def at(
+        cls,
+        change: Any,
+        *,
+        groups: Mapping[str, Sequence[Any]] | None = None,
+        treatment: str = "segment_bridged",
+    ) -> "Regime":
+        """Build a :class:`Regime` from explicit, user-supplied change points.
+
+        Use this when you already know where the cohort regime shifts (e.g.
+        a policy revision date) and want a *fixed* regime tested across
+        backtest folds. Contrast with :meth:`detect`, which defers
+        detection to fit / backtest time so each fold uses change points
+        derived from its own masked training data.
+
+        Parameters
+        ----------
+        change
+            Cohort date(s) where a new regime starts. A single value (str
+            ``"YYYY-MM-DD"`` / ``date`` / ``datetime``) or a sequence of
+            such values.
+        groups
+            Optional mapping ``{column_name: [values]}`` of group columns
+            aligned 1:1 with ``change``. Required when the Triangle is
+            grouped and different groups carry different change points.
+        treatment
+            Regime application mode. Both modes mask the triangle to a
+            *bridged* development band -- each segment's mini-triangle wall
+            (``dev >= max_cal - seg_last + 1``) widened by a
+            calendar-diagonal bridge to the next segment's first-cohort
+            midpoint dev, which closes the factor gaps at the segment
+            boundaries so every cohort projects to full development.
+            ``"segment_bridged"`` (default) pools the whole band into a
+            single factor set (the development pattern is shared across
+            regimes). ``"segment_bridged_borrowed"`` estimates factors per
+            segment (early-dev factors stay regime-specific) and borrows
+            the late-dev factors a segment cannot reach from a donor
+            segment that can.
+
+        Returns
+        -------
+        Regime
+            A manually-constructed Regime suitable for the same 4-type
+            dispatch slots that accept auto-detected Regimes.
+
+        Examples
+        --------
+        >>> Regime.at(change="2024-07-01")
+        >>> Regime.at(
+        ...     change=["2024-07-01", "2024-10-01"],
+        ...     groups={"coverage": ["SUR", "CI"]},
+        ... )
+        """
+        if treatment not in _VALID_TREATMENTS:
+            raise ValueError(
+                f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
+            )
+
+        if isinstance(change, (str, date, datetime)) or not isinstance(
+            change, Sequence
+        ):
+            change_seq: list[Any] = [change]
+        else:
+            change_seq = list(change)
+        if not change_seq:
+            raise ValueError("`change` must have length >= 1")
+        parsed = [_coerce_to_date(v) for v in change_seq]
+        n = len(parsed)
+
+        groups = dict(groups) if groups else {}
+        for col, vals in groups.items():
+            if not isinstance(vals, Sequence) or isinstance(vals, str):
+                vals = [vals]
+                groups[col] = vals
+            if len(vals) != n:
+                raise ValueError(
+                    f"All arguments must have equal length; "
+                    f"`change`={n} but `groups[{col!r}]`={len(vals)}"
+                )
+
+        # `regime_id = 2` per row mirrors R's `regime_at()`: each change row
+        # marks "transition into the next regime". The id is not a segment
+        # counter -- segment_wise consumers index off `change`, not the id.
+        columns: dict[str, Any] = dict(groups)
+        columns["change"] = parsed
+        columns["regime_id"] = [2] * n
+        changes_df = pl.DataFrame(
+            columns,
+            schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
+        )
+
+        group_col = next(iter(groups)) if groups else None
+        return cls._manual(
+            changes_df=changes_df,
+            treatment=treatment,
+            groups=group_col,
+        )
+
+    @classmethod
+    def detect(
+        cls,
+        target: str = "ratio",
+        window: int = 12,
+        method: str = "e_divisive",
+        *,
+        n_regimes: int | None = None,
+        sig_level: float = 0.05,
+        R: int = 999,
+        min_size: int = 3,
+        seed: int | None = None,
+        treatment: str = "segment_bridged",
+    ) -> Callable[["Triangle"], "Regime"]:
+        """Build a lazy regime-detection spec.
+
+        Captures :meth:`Triangle.detect_regime` arguments without running
+        detection. The returned closure is invoked by the consumer
+        (fit / backtest) on its own *internal* triangle -- crucially, inside
+        backtest this is the **masked** training triangle of each fold, so
+        change points never peek at held-out cells.
+
+        Contrast with :meth:`at`, which produces an eager Regime fixed at
+        construction time.
+        """
+        def _spec(tri: "Triangle") -> "Regime":
+            regime = tri.detect_regime(
+                target=target,
+                window=window,
+                method=method,
+                n_regimes=n_regimes,
+                sig_level=sig_level,
+                R=R,
+                min_size=min_size,
+                seed=seed,
+            )
+            regime.treatment = treatment
+            return regime
+
+        return _spec
 
     @property
     def changes(self):
@@ -851,7 +991,7 @@ class Regime:
 
 
 # ---------------------------------------------------------------------------
-# Helper factories (R parity: regime_at + regime_spec)
+# Internal helper for Regime.at
 # ---------------------------------------------------------------------------
 
 
@@ -873,142 +1013,6 @@ def _coerce_to_date(value: Any) -> date:
     )
 
 
-def regime_at(
-    change: Any,
-    *,
-    groups: Mapping[str, Sequence[Any]] | None = None,
-    treatment: str = "segment_bridged",
-) -> "Regime":
-    """Build a :class:`Regime` from explicit, user-supplied change points.
-
-    Use this when you already know where the cohort regime shifts (e.g.
-    a policy revision date) and want a *fixed* regime tested across
-    backtest folds. Contrast with :func:`regime_spec`, which defers
-    detection to fit / backtest time so each fold uses change points
-    derived from its own masked training data.
-
-    Parameters
-    ----------
-    change
-        Cohort date(s) where a new regime starts. A single value (str
-        ``"YYYY-MM-DD"`` / ``date`` / ``datetime``) or a sequence of
-        such values.
-    groups
-        Optional mapping ``{column_name: [values]}`` of group columns
-        aligned 1:1 with ``change``. Required when the Triangle is
-        grouped and different groups carry different change points.
-    treatment
-        Regime application mode. Both modes mask the triangle to a
-        *bridged* development band -- each segment's mini-triangle wall
-        (``dev >= max_cal - seg_last + 1``) widened by a
-        calendar-diagonal bridge to the next segment's first-cohort
-        midpoint dev, which closes the factor gaps at the segment
-        boundaries so every cohort projects to full development.
-        ``"segment_bridged"`` (default) pools the whole band into a
-        single factor set (the development pattern is shared across
-        regimes). ``"segment_bridged_borrowed"`` estimates factors per
-        segment (early-dev factors stay regime-specific) and borrows
-        the late-dev factors a segment cannot reach from a donor
-        segment that can.
-
-    Returns
-    -------
-    Regime
-        A manually-constructed Regime suitable for the same 4-type
-        dispatch slots that accept auto-detected Regimes.
-
-    Examples
-    --------
-    >>> regime_at(change="2024-07-01")
-    >>> regime_at(
-    ...     change=["2024-07-01", "2024-10-01"],
-    ...     groups={"coverage": ["SUR", "CI"]},
-    ... )
-    """
-    if treatment not in _VALID_TREATMENTS:
-        raise ValueError(
-            f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
-        )
-
-    if isinstance(change, (str, date, datetime)) or not isinstance(
-        change, Sequence
-    ):
-        change_seq: list[Any] = [change]
-    else:
-        change_seq = list(change)
-    if not change_seq:
-        raise ValueError("`change` must have length >= 1")
-    parsed = [_coerce_to_date(v) for v in change_seq]
-    n = len(parsed)
-
-    groups = dict(groups) if groups else {}
-    for col, vals in groups.items():
-        if not isinstance(vals, Sequence) or isinstance(vals, str):
-            vals = [vals]
-            groups[col] = vals
-        if len(vals) != n:
-            raise ValueError(
-                f"All arguments must have equal length; "
-                f"`change`={n} but `groups[{col!r}]`={len(vals)}"
-            )
-
-    # `regime_id = 2` per row mirrors R's `regime_at()`: each change row
-    # marks "transition into the next regime". The id is not a segment
-    # counter — segment_wise consumers index off `change`, not the id.
-    columns: dict[str, Any] = dict(groups)
-    columns["change"] = parsed
-    columns["regime_id"] = [2] * n
-    changes_df = pl.DataFrame(
-        columns,
-        schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
-    )
-
-    group_col = next(iter(groups)) if groups else None
-    return Regime._manual(
-        changes_df=changes_df,
-        treatment=treatment,
-        groups=group_col,
-    )
-
-
-def regime_spec(
-    target: str = "ratio",
-    window: int = 12,
-    method: str = "e_divisive",
-    *,
-    n_regimes: int | None = None,
-    sig_level: float = 0.05,
-    R: int = 999,
-    min_size: int = 3,
-    seed: int | None = None,
-    treatment: str = "segment_bridged",
-) -> Callable[["Triangle"], "Regime"]:
-    """Build a lazy regime-detection spec.
-
-    Captures :meth:`Triangle.detect_regime` arguments without running
-    detection. The returned closure is invoked by the consumer
-    (fit / backtest) on its own *internal* triangle -- crucially, inside
-    backtest this is the **masked** training triangle of each fold, so
-    change points never peek at held-out cells.
-
-    Contrast with :func:`regime_at`, which produces an eager Regime
-    fixed at construction time.
-    """
-    def _spec(tri: "Triangle") -> "Regime":
-        regime = tri.detect_regime(
-            target=target,
-            window=window,
-            method=method,
-            n_regimes=n_regimes,
-            sig_level=sig_level,
-            R=R,
-            min_size=min_size,
-            seed=seed,
-        )
-        regime.treatment = treatment
-        return regime
-
-    return _spec
 
 
 # ---------------------------------------------------------------------------

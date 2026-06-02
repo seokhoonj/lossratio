@@ -333,7 +333,7 @@ def test_maturity_object_overrides_auto_detect():
     assert auto_fit.maturity_point is None
 
     # an explicit Maturity object wins regardless of thresholds.
-    mat = lr.maturity_at(change=3)
+    mat = lr.Maturity.at(change=3)
     over_fit = lr.StageAdaptive(
         maturity=mat, max_cv=1e-9, max_rse=1e-9
     ).fit(tri)
@@ -343,7 +343,7 @@ def test_maturity_object_overrides_auto_detect():
 def test_maturity_callable_spec_dispatch():
     """A maturity_spec callable is invoked on the fit triangle."""
     tri = lr.Triangle(_toy_triangle_input())
-    spec = lr.maturity_spec(max_cv=10.0, max_rse=10.0, min_run=2)
+    spec = lr.Maturity.detect(max_cv=10.0, max_rse=10.0, min_run=2)
     fit = lr.StageAdaptive(maturity=spec).fit(tri)
     assert fit.maturity_point is not None
 
@@ -366,7 +366,7 @@ def test_maturity_invalid_string_raises():
 def test_ratio_maturity_object_overrides_auto_detect():
     """Ratio threads a Maturity object into the inner Loss fit."""
     tri = lr.Triangle(_toy_triangle_input())
-    mat = lr.maturity_at(change=3)
+    mat = lr.Maturity.at(change=3)
     fit = lr.LossRatio(
         method="sa", maturity=mat, max_cv=1e-9, max_rse=1e-9
     ).fit(tri)

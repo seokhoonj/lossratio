@@ -216,8 +216,8 @@ def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
 
 
 def test_backtest_plot_triangle_usage_explicit_maturity(bt_single):
-    from lossratio import maturity_at
-    mat = maturity_at(change=6)
+    from lossratio import Maturity
+    mat = Maturity.at(change=6)
     fig = bt_single.plot_triangle(view="usage", maturity=mat)
     try:
         assert isinstance(fig, plt.Figure)

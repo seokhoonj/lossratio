@@ -39,10 +39,6 @@ API 레퍼런스
 .. autoclass:: lossratio.Maturity
    :members:
 
-.. autofunction:: lossratio.maturity_at
-
-.. autofunction:: lossratio.maturity_spec
-
 .. autoclass:: lossratio.Convergence
    :members:
 
@@ -53,10 +49,6 @@ API 레퍼런스
 
 .. autoclass:: lossratio.Regime
    :members:
-
-.. autofunction:: lossratio.regime_at
-
-.. autofunction:: lossratio.regime_spec
 
 손해율 예측
 -----------
