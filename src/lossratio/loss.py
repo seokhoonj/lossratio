@@ -49,6 +49,14 @@ if TYPE_CHECKING:
 _VALID_METHODS = ("ed", "cl", "sa")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 
+# Map the internal method label to the public model name carried on
+# LossFit.model (full words, per the model-naming convention).
+_METHOD_TO_MODEL = {
+    "cl": "chain_ladder",
+    "ed": "exposure_driven",
+    "sa": "stage_adaptive",
+}
+
 
 # ---------------------------------------------------------------------------
 # Internal: per-group SA / ED / CL projection (loss + variance decomposition)
@@ -770,6 +778,12 @@ class LossFit:
         # Bootstrap slots -- ci_type is "analytical" unless a bootstrap ran.
         self.boots: Any = None
         self.ci_type: str = "analytical"
+
+    @property
+    def model(self) -> str:
+        """Public model name (``"chain_ladder"`` / ``"exposure_driven"`` /
+        ``"stage_adaptive"``), derived from the internal ``method`` label."""
+        return _METHOD_TO_MODEL[self.method]
 
     @classmethod
     def _from_triangle(

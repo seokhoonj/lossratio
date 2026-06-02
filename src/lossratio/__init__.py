@@ -11,10 +11,12 @@ from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .bootstrap import Bootstrap, BootstrapTriangle
 from .calendar import Calendar
+from .chain_ladder import ChainLadder
 from .cl import CL, CLFit
 from .convergence import Convergence, detect_convergence
 from .datasets import load_experience, make_experience
 from .ed import ED, EDFit
+from .exposure_driven import ExposureDriven
 from .experience import validate_experience
 from .intensity import Intensity
 from .link import Link
@@ -23,6 +25,7 @@ from .ratio import Ratio, RatioFit
 from .maturity import Maturity, maturity_at, maturity_spec
 from .premium import Premium, PremiumFit
 from .regime import Regime, regime_at, regime_spec
+from .stage_adaptive import StageAdaptive
 from .total import Total
 from .triangle import Triangle, TriangleValidation
 from .uncertainty import Analytical, MonteCarlo, ResidualBootstrap
@@ -38,12 +41,14 @@ __all__ = [
     "BootstrapTriangle",
     "CL",
     "CLFit",
+    "ChainLadder",
     "MonteCarlo",
     "ResidualBootstrap",
     "Calendar",
     "Convergence",
     "ED",
     "EDFit",
+    "ExposureDriven",
     "Intensity",
     "Ratio",
     "RatioFit",
@@ -54,6 +59,7 @@ __all__ = [
     "Premium",
     "PremiumFit",
     "Regime",
+    "StageAdaptive",
     "Total",
     "Triangle",
     "TriangleValidation",
