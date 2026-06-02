@@ -27,8 +27,10 @@ from ._io import (
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
-from .cl import _fit_mack, _mack_f_var, _mack_step_cl, _mack_step_ed
-from .ed import _build_premium_matrix
+from ._mack import _fit_mack, _mack_f_var
+from ._mack import mack_step_cl as _mack_step_cl
+from ._mack import mack_step_ed as _mack_step_ed
+from ._mack import _build_premium_matrix
 
 if TYPE_CHECKING:
     from .triangle import Triangle

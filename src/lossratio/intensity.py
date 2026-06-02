@@ -23,7 +23,7 @@ from ._io import _arrays_to_long_df, mirror_output
 from ._mack import mack_sigma2
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
-from .cl import _build_value_matrix
+from ._mack import _build_value_matrix
 
 if TYPE_CHECKING:
     from .link import Link

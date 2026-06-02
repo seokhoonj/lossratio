@@ -16,7 +16,7 @@ import numpy as np
 import polars as pl
 
 from ._io import _iter_group_frames, mirror_output
-from .cl import _fit_mack
+from ._mack import _fit_mack
 
 if TYPE_CHECKING:
     from .ata import ATA

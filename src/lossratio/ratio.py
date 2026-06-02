@@ -270,7 +270,7 @@ class Ratio:
         if not isinstance(B, int) or B < 1:
             raise ValueError(f"B must be a positive integer, got {B!r}")
         _validate_recent(recent)
-        from .cl import _validate_tail
+        from ._mack import _validate_tail
         _validate_tail(tail)
         # R parity: tail is meaningful only when method='cl'. Warn on
         # other methods (same as Loss).

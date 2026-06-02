@@ -30,14 +30,16 @@ from ._io import (
 )
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
-from .cl import (
+from ._mack import (
     _build_loss_matrix,
+    _build_premium_matrix,
+    _fit_ed,
     _fit_mack,
     _mack_f_var,
-    _mack_step_cl,
-    _mack_step_ed,
+    _mack_g_var,
 )
-from .ed import _build_premium_matrix, _fit_ed, _mack_g_var
+from ._mack import mack_step_cl as _mack_step_cl
+from ._mack import mack_step_ed as _mack_step_ed
 from .maturity import Maturity, _compute_maturity, _resolve_maturity
 from .premium import Premium, PremiumFit
 from ._segment import _augment_segment_factors, _expand_to_full_grid
@@ -712,7 +714,7 @@ class Loss:
                 "premium_fit must be a PremiumFit instance or None"
             )
         _validate_recent(recent)
-        from .cl import _validate_tail
+        from ._mack import _validate_tail
         _validate_tail(tail)
         # R parity: `tail` is effective only when method='cl'. For other
         # methods the arg is accepted but no-op (matches R fit_sa, which
@@ -912,7 +914,7 @@ class LossFit:
         # constructor already warned + dropped the user's tail; here we keep
         # the no-op silent. Always populate `self.tail_factor` for
         # introspection (1.0 / per-group dict).
-        from .cl import _apply_tail_to_long_df, _compute_tail_factor
+        from ._mack import _apply_tail_to_long_df, _compute_tail_factor
 
         self.tail = estimator.tail
         if estimator.method == "cl" and estimator.tail is not False:

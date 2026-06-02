@@ -21,7 +21,7 @@ import polars as pl
 from ._io import _arrays_to_long_df, mirror_output
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
-from .cl import _build_value_matrix, _fit_mack
+from ._mack import _build_value_matrix, _fit_mack
 from .maturity import _compute_cv_rse
 
 if TYPE_CHECKING:

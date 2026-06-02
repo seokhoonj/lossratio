@@ -15,7 +15,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.cl import _compute_tail_factor, _validate_tail
+from lossratio._mack import _compute_tail_factor, _validate_tail
 
 
 # --- _compute_tail_factor helper ----------------------------------------
