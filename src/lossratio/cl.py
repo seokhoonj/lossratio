@@ -9,6 +9,9 @@ import numpy as np
 import polars as pl
 
 from ._io import _arrays_to_long_df, _nan_skip_diff, _nan_to_null, mirror_output
+from ._mack import mack_factor_var, mack_sigma2
+from ._mack import mack_step_cl as _mack_step_cl
+from ._mack import mack_step_ed as _mack_step_ed
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 
@@ -47,77 +50,12 @@ class _MackResult:
 def _mack_f_var(result: _MackResult) -> np.ndarray:
     """Mack-style WLS variance of the chain ladder factor f_k.
 
-    Returns a per-link array of `sigma^2_k / sum_j C^L_{j,k}`, the
-    Var(f_hat_k) estimator from Mack (1993) for alpha = 1. Mirrors R's
-    `.mack_f_var()` (`R/cl.R`). NaN where the denom is zero (unfittable
-    link); caller decides how to handle.
+    Thin wrapper over :func:`lossratio._mack.mack_factor_var`: returns the
+    per-link `sigma^2_k / sum_j C^L_{j,k}` estimator (Mack 1993, alpha = 1).
+    Mirrors R's `.mack_f_var()` (`R/cl.R`). NaN where the denom is zero
+    (unfittable link); caller decides how to handle.
     """
-    sigma2 = result.sigma2_k
-    denom = result.sum_col_k
-    out = np.full_like(sigma2, np.nan)
-    mask = (denom > 0) & np.isfinite(sigma2)
-    out[mask] = sigma2[mask] / denom[mask]
-    return out
-
-
-def _mack_step_cl(
-    proc_acc: np.ndarray,
-    param_acc: np.ndarray,
-    pos: np.ndarray,
-    f: float,
-    sigma2: float,
-    f_var: float,
-    c: np.ndarray,
-) -> None:
-    """Advance the Mack CL (multiplicative) variance recursion one link.
-
-    Mutates the per-cohort process / parameter variance accumulators
-    in place, on the cohort subset selected by the boolean mask ``pos``::
-
-        proc'  = f^2 * proc  + sigma2   * C
-        param' = f^2 * param + C^2 * Var(f_hat)
-
-    ``c`` is the full-length cumulative-loss-at-dev-k vector (only
-    ``c[pos]`` is read). Each term is applied only when its scalar is
-    finite, matching the per-link guards in Mack (1993). This is the
-    1D-accumulator form of the matrix recursion in :func:`_fit_mack`;
-    the loss / premium projection loops call it so they cannot drift
-    from the canonical formula.
-    """
-    if np.isfinite(f):
-        f2 = f ** 2
-        proc_acc[pos] = f2 * proc_acc[pos]
-        param_acc[pos] = f2 * param_acc[pos]
-    if np.isfinite(sigma2):
-        proc_acc[pos] = proc_acc[pos] + sigma2 * c[pos]
-    if np.isfinite(f_var):
-        param_acc[pos] = param_acc[pos] + (c[pos] ** 2) * f_var
-
-
-def _mack_step_ed(
-    proc_acc: np.ndarray,
-    param_acc: np.ndarray,
-    pos: np.ndarray,
-    sigma2_g: float,
-    g_var: float,
-    p: np.ndarray,
-) -> None:
-    """Advance the exposure-driven (additive) variance recursion one link.
-
-    In-place counterpart to :func:`_mack_step_cl` for the ED link::
-
-        proc'  = proc  + sigma2_g * P
-        param' = param + P^2 * Var(g_hat)
-
-    The additive link contributes an exposure-anchored increment with
-    no multiplicative carry of the prior accumulators (no ``f^2`` term).
-    ``p`` is the full-length exposure-at-dev-k vector (only ``p[pos]``
-    is read). Terms apply only when finite.
-    """
-    if np.isfinite(sigma2_g):
-        proc_acc[pos] = proc_acc[pos] + sigma2_g * p[pos]
-    if np.isfinite(g_var):
-        param_acc[pos] = param_acc[pos] + (p[pos] ** 2) * g_var
+    return mack_factor_var(result.sigma2_k, result.sum_col_k)
 
 
 def _build_value_matrix(
@@ -362,10 +300,7 @@ def _fit_mack(
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else np.nan
 
         if n_k >= 2 and f_k[k] != 0:
-            indiv = ck1_eff / ck_eff
-            sigma2_k[k] = (
-                ck_eff * (indiv - f_k[k]) ** 2
-            ).sum() / (n_k - 1)
+            sigma2_k[k] = mack_sigma2(ck1_eff, ck_eff, f_k[k], n_k)
         else:
             sigma2_k[k] = 0.0
 
@@ -409,9 +344,7 @@ def _fit_mack(
     )
     alpha = 1.0  # only alpha = 1 is supported in this worker
     # f_var_k = sigma^2_k / sum_col_k -- Mack's Var(f_hat_k).
-    f_var_k = np.full_like(sigma2_k, np.nan)
-    fv_mask = (sum_col_k > 0) & np.isfinite(sigma2_k)
-    f_var_k[fv_mask] = sigma2_k[fv_mask] / sum_col_k[fv_mask]
+    f_var_k = mack_factor_var(sigma2_k, sum_col_k)
 
     # Sequential along dev, vectorised across cohorts. Each cohort starts
     # accumulating at its first projected dev (last_obs + 1); cohorts not
