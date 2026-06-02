@@ -20,6 +20,14 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
+from ._io import (
+    _iter_group_frames,
+    format_group_value,
+    group_eq,
+    normalize_groups,
+    set_group_values,
+)
+
 if TYPE_CHECKING:
     from .link import Link
 
@@ -221,7 +229,7 @@ def _ata_summary(
     coefficient of variation of the per-cell ``ata`` values; RSE is
     ``SE(f) / f`` derived from the cross-cohort variance.
     """
-    by = ([groups] if groups is not None else []) + ["ata_from", "ata_to"]
+    by = [*normalize_groups(groups), "ata_from", "ata_to"]
     valid = cells.filter(
         pl.col("ata").is_finite() & pl.col("loss_from").is_finite()
     )
@@ -267,7 +275,7 @@ def _ed_summary(
     cells: pl.DataFrame, groups: str | None
 ) -> pl.DataFrame:
     """Per-link ED intensity summary -- mean, median, weighted g."""
-    by = ([groups] if groups is not None else []) + ["ata_from", "ata_to"]
+    by = [*normalize_groups(groups), "ata_from", "ata_to"]
     valid = cells.filter(
         pl.col("intensity").is_finite() & pl.col("premium_from").is_finite()
     )
@@ -295,18 +303,9 @@ def _detect_maturity_overlay(
     ``min_run`` consecutive links (per group). Returns one row per
     group, with columns ``[groups?, ata_from, ata_to, cv, rse]``.
     """
-    by_iter: list[Any]
-    if groups is None:
-        by_iter = [None]
-    else:
-        by_iter = summary[groups].unique(maintain_order=True).to_list()
-
     out_rows: list[dict[str, Any]] = []
-    for g in by_iter:
-        sub = (
-            summary if groups is None
-            else summary.filter(pl.col(groups) == g)
-        ).sort("ata_from")
+    for value, sub in _iter_group_frames(summary, groups):
+        sub = sub.sort("ata_from")
         cv = sub["cv"].to_numpy()
         rse = sub["rse"].to_numpy()
         ata_from = sub["ata_from"].to_numpy()
@@ -325,8 +324,7 @@ def _detect_maturity_overlay(
         if hit_idx is None:
             continue
         row: dict[str, Any] = {}
-        if groups is not None:
-            row[groups] = g
+        set_group_values(row, groups, value)
         row["ata_from"] = int(ata_from[hit_idx])
         row["ata_to"] = int(ata_to[hit_idx])
         row["cv"] = float(cv[hit_idx])
@@ -372,7 +370,7 @@ def _plot_per_link_scalar(
         _apply_maturity_overlay(ax, maturity, group_value, groups, y_max=hline)
         _set_link_xticks(ax, x, link_labels)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, linewidth=0.3, alpha=0.5)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
@@ -420,7 +418,7 @@ def _plot_summary_lines(
         _apply_maturity_overlay(ax, maturity, group_value, groups, y_max=None)
         _set_link_xticks(ax, x, link_labels)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.legend(loc="best", fontsize=8, frameon=False)
         ax.grid(True, linewidth=0.3, alpha=0.5)
     _finalize_facet_grid(
@@ -499,7 +497,7 @@ def _plot_per_link_distribution(
         _apply_maturity_overlay(ax, maturity, group_value, groups, y_max=None)
         _set_link_xticks(ax, ata_from_vals, link_labels)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, linewidth=0.3, alpha=0.5)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
@@ -516,12 +514,7 @@ def _plot_per_link_distribution(
 def _resolve_facets(
     df: pl.DataFrame, groups: str | None
 ) -> list[tuple[Any, pl.DataFrame]]:
-    if groups is None:
-        return [(None, df)]
-    out: list[tuple[Any, pl.DataFrame]] = []
-    for g in df[groups].unique(maintain_order=True).to_list():
-        out.append((g, df.filter(pl.col(groups) == g)))
-    return out
+    return list(_iter_group_frames(df, groups))
 
 
 def _create_facet_grid(
@@ -591,7 +584,7 @@ def _apply_maturity_overlay(
     if maturity is None or maturity.height == 0:
         return
     if groups is not None:
-        sub = maturity.filter(pl.col(groups) == group_value)
+        sub = maturity.filter(group_eq(groups, group_value))
     else:
         sub = maturity
     if sub.height == 0:

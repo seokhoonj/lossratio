@@ -19,6 +19,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
+from ._io import _iter_group_frames, format_group_value
 from ._plot import (
     _auto_divisor,
     _cohort_label,
@@ -73,16 +74,7 @@ def plot_cl_reserve(
     amount_divisor = float(amount_divisor)
 
     # Facet by group.
-    if groups is None:
-        facets = [(None, summary)]
-    else:
-        seen: list = []
-        seen_set: set = set()
-        for g in summary[groups].to_list():
-            if g not in seen_set:
-                seen_set.add(g)
-                seen.append(g)
-        facets = [(g, summary.filter(pl.col(groups) == g)) for g in seen]
+    facets = list(_iter_group_frames(summary, groups))
 
     n = len(facets)
     if nrow is None and ncol is None:
@@ -143,7 +135,7 @@ def plot_cl_reserve(
 
         ax.axvline(0.0, color="red", linestyle="--", linewidth=0.7)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, axis="x", linewidth=0.3, alpha=0.5)
 
     for idx in range(n, nrow * ncol):

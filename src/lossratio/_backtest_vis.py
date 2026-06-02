@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
+from ._io import _iter_group_frames, format_group_value
 from ._plot import (
     _cohort_label,
     _format_period_series,
@@ -158,15 +159,7 @@ def plot_triangle_backtest(
     )
 
     # Faceting
-    if groups is None:
-        facets = [(None, work)]
-    else:
-        seen, sset = [], set()
-        for g in work[groups].to_list():
-            if g not in sset:
-                sset.add(g)
-                seen.append(g)
-        facets = [(g, work.filter(pl.col(groups) == g)) for g in seen]
+    facets = list(_iter_group_frames(work, groups))
 
     n = len(facets)
     if nrow is None and ncol is None:
@@ -224,7 +217,7 @@ def plot_triangle_backtest(
             spine.set_linewidth(0.4)
         ax.tick_params(length=0)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         last_drawn = ax
 
     for idx in range(n, nrow * ncol):
@@ -271,15 +264,7 @@ def _plot_aggregated_lines(
     """col / diag plot: line per stat across x_col, faceted by group."""
     import matplotlib.pyplot as plt
 
-    if groups is None:
-        facets = [(None, summary)]
-    else:
-        seen, sset = [], set()
-        for g in summary[groups].to_list():
-            if g not in sset:
-                sset.add(g)
-                seen.append(g)
-        facets = [(g, summary.filter(pl.col(groups) == g)) for g in seen]
+    facets = list(_iter_group_frames(summary, groups))
 
     n = len(facets)
     if nrow is None and ncol is None:
@@ -322,7 +307,7 @@ def _plot_aggregated_lines(
 
         ax.yaxis.set_major_formatter(_percent_formatter())
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.legend(loc="best", fontsize=8, frameon=False)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
@@ -357,15 +342,7 @@ def _plot_cell_curves(
             f"Backtest has no `{ae_err_col}` column."
         )
 
-    if groups is None:
-        facets = [(None, ae_err)]
-    else:
-        seen, sset = [], set()
-        for g in ae_err[groups].to_list():
-            if g not in sset:
-                sset.add(g)
-                seen.append(g)
-        facets = [(g, ae_err.filter(pl.col(groups) == g)) for g in seen]
+    facets = list(_iter_group_frames(ae_err, groups))
 
     n = len(facets)
     if nrow is None and ncol is None:
@@ -411,7 +388,7 @@ def _plot_cell_curves(
 
         ax.yaxis.set_major_formatter(_percent_formatter())
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
     for idx in range(n, nrow * ncol):

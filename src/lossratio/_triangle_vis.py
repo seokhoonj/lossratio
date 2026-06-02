@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
+from ._io import (
+    _iter_group_frames,
+    format_group_value,
+    group_eq,
+    normalize_groups,
+)
 from ._plot import (
     _AMOUNT_METRICS,
     _PROP_METRICS,
@@ -183,16 +189,7 @@ def plot_triangle(
     )
 
     # Faceting setup.
-    if grp is None:
-        facets = [(None, df)]
-    else:
-        groups_in_order: list = []
-        seen = set()
-        for g in df[grp].to_list():
-            if g not in seen:
-                seen.add(g)
-                groups_in_order.append(g)
-        facets = [(g, df.filter(pl.col(grp) == g)) for g in groups_in_order]
+    facets = list(_iter_group_frames(df, grp))
 
     n_facets = len(facets)
     if nrow is None and ncol is None:
@@ -229,7 +226,7 @@ def plot_triangle(
             when=meta.when,
             label_size=label_size,
         )
-        title = str(group_value) if group_value is not None else ""
+        title = format_group_value(group_value)
         if title:
             # ggplot2 facet strip: grey85 rectangle with a black outline and
             # a centered label, sitting in the reserved gap above the panel.
@@ -501,8 +498,7 @@ def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
 def _seg_dev_min(
     grp_rows: pl.DataFrame,
     cd_vec: list,
-    group_col: str | None,
-    group_value: Any,
+    group_cols: list[str],
     bridge: bool = False,
 ) -> pl.DataFrame:
     """Compute per-cell ``dev_min`` for the segment_wise mini-triangle.
@@ -515,7 +511,7 @@ def _seg_dev_min(
     the calendar-diagonal bridge (segment_wise_bridged treatment);
     when ``False`` only the natural wall applies.
 
-    The returned frame has columns ``[group_col?, cohort, dev,
+    The returned frame has columns ``[*group_cols, cohort, dev,
     _seg_dev_min]`` that the caller joins back onto the expanded grid
     to override ``is_fit_data``.
     """
@@ -539,9 +535,7 @@ def _seg_dev_min(
     )
 
     work = grp_rows.with_columns(pl.Series("_seg_dev_min", dev_min_arr))
-    keep_cols = (
-        [group_col] if group_col is not None else []
-    ) + ["cohort", "dev", "_seg_dev_min"]
+    keep_cols = list(group_cols) + ["cohort", "dev", "_seg_dev_min"]
     return work.select(keep_cols)
 
 
@@ -576,7 +570,7 @@ def _compute_triangle_usage(
     obs = triangle.df  # polars, standardized columns
 
     grp = triangle.groups
-    grp_cols: list[str] = [grp] if grp is not None else []
+    grp_cols: list[str] = normalize_groups(grp)
 
     # 1. Build the full (group x cohort x dev) grid.
     if grp_cols:
@@ -670,8 +664,10 @@ def _compute_triangle_usage(
             from .regime import _regime_cutoff_map
             cutoff_map = _regime_cutoff_map(regime)
             if cutoff_map is not None:
+                reg_grp_cols = normalize_groups(regime.groups)
                 if "_cutoff" in cutoff_map.columns and cutoff_map.height == 1 and (
-                    regime.groups is None or regime.groups not in cutoff_map.columns
+                    not reg_grp_cols
+                    or not all(g in cutoff_map.columns for g in reg_grp_cols)
                 ):
                     cd_scalar = cutoff_map["_cutoff"][0]
                 else:
@@ -683,7 +679,9 @@ def _compute_triangle_usage(
 
     if cd_df is not None:
         # broadcast per-group change date onto expanded rows
-        expanded = expanded.join(cd_df, on=regime.groups, how="left")
+        expanded = expanded.join(
+            cd_df, on=normalize_groups(regime.groups), how="left"
+        )
         change_pass_expr = pl.col("_cd_join").is_null() | (
             pl.col("cohort") >= pl.col("_cd_join")
         )
@@ -750,26 +748,22 @@ def _compute_triangle_usage(
         )
         if bp is not None and bp.height > 0 and "change" in bp.columns:
             reg_groups = getattr(regime, "groups", None)
-            if reg_groups is not None and reg_groups in expanded.columns:
+            reg_grp_cols = normalize_groups(reg_groups)
+            if reg_grp_cols and all(
+                g in expanded.columns for g in reg_grp_cols
+            ):
                 # per-group segments
-                gb_iter = bp.sort([reg_groups, "change"])
-                affected_groups = (
-                    gb_iter.select(reg_groups).unique(maintain_order=True)
-                )
                 dev_min_parts: list[pl.DataFrame] = []
-                for g_row in affected_groups.iter_rows(named=True):
-                    g_val = g_row[reg_groups]
-                    cd_vec = (
-                        bp.filter(pl.col(reg_groups) == g_val)
-                        .sort("change")["change"]
-                        .to_list()
-                    )
-                    grp_rows = expanded.filter(pl.col(reg_groups) == g_val)
+                for g_val, grp_changes in _iter_group_frames(
+                    bp.sort([*reg_grp_cols, "change"]), reg_groups
+                ):
+                    cd_vec = grp_changes.sort("change")["change"].to_list()
+                    grp_rows = expanded.filter(group_eq(reg_groups, g_val))
                     if grp_rows.height == 0 or not cd_vec:
                         continue
                     dev_min_parts.append(
                         _seg_dev_min(
-                            grp_rows, cd_vec, reg_groups, g_val,
+                            grp_rows, cd_vec, reg_grp_cols,
                             bridge=is_bridged,
                         )
                     )
@@ -777,7 +771,7 @@ def _compute_triangle_usage(
                     dev_min_df = pl.concat(dev_min_parts)
                     expanded = expanded.join(
                         dev_min_df,
-                        on=[reg_groups, "cohort", "dev"],
+                        on=[*reg_grp_cols, "cohort", "dev"],
                         how="left",
                     ).with_columns(
                         pl.when(pl.col("_seg_dev_min").is_not_null())
@@ -790,7 +784,7 @@ def _compute_triangle_usage(
                 cd_vec = bp.sort("change")["change"].to_list()
                 if cd_vec:
                     dev_min_df = _seg_dev_min(
-                        expanded, cd_vec, None, None, bridge=is_bridged,
+                        expanded, cd_vec, [], bridge=is_bridged,
                     )
                     expanded = expanded.join(
                         dev_min_df, on=["cohort", "dev"], how="left",
@@ -916,18 +910,7 @@ def _plot_triangle_usage(
         x_labels = [str(d) for d in x_levels]
         x_axis_label = _pretty_var_label(dev)
 
-    if grp is None:
-        facets = [(None, usage_df)]
-    else:
-        seen: set = set()
-        groups_in_order: list = []
-        for g in usage_df[grp].to_list():
-            if g not in seen:
-                seen.add(g)
-                groups_in_order.append(g)
-        facets = [
-            (g, usage_df.filter(pl.col(grp) == g)) for g in groups_in_order
-        ]
+    facets = list(_iter_group_frames(usage_df, grp))
 
     n_facets = len(facets)
     if nrow is None and ncol is None:
@@ -960,9 +943,15 @@ def _plot_triangle_usage(
         from .regime import _regime_cutoff_map
         cm = _regime_cutoff_map(regime_obj)
         if cm is not None:
-            if regime_obj.groups is not None and regime_obj.groups in cm.columns:
+            gcols = normalize_groups(regime_obj.groups)
+            if gcols and all(g in cm.columns for g in gcols):
+                is_single = isinstance(regime_obj.groups, str)
                 per_group_cd = {
-                    row[regime_obj.groups]: row["_cutoff"]
+                    (
+                        row[gcols[0]]
+                        if is_single
+                        else tuple(row[c] for c in gcols)
+                    ): row["_cutoff"]
                     for row in cm.iter_rows(named=True)
                 }
             else:
@@ -1052,7 +1041,7 @@ def _plot_triangle_usage(
         for spine in ax.spines.values():
             spine.set_visible(False)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=10)
+            ax.set_title(format_group_value(group_value), fontsize=10)
 
     for idx in range(n_facets, nrow * ncol):
         r, c = divmod(idx, ncol)
@@ -1265,16 +1254,9 @@ def plot(
         )
         summary = False
 
-    if grp is None:
-        facets: list[tuple[Any, pl.DataFrame]] = [(None, df)]
-    else:
-        order: list[Any] = []
-        seen: set = set()
-        for g in df[grp].to_list():
-            if g not in seen:
-                seen.add(g)
-                order.append(g)
-        facets = [(g, df.filter(pl.col(grp) == g)) for g in order]
+    facets: list[tuple[Any, pl.DataFrame]] = list(
+        _iter_group_frames(df, grp)
+    )
     n_facets = len(facets)
 
     if nrow is None and ncol is None:
@@ -1328,7 +1310,7 @@ def plot(
                 (0.0, 1.0), 1.0, strip_h, transform=ax.transAxes,
                 facecolor=_STRIP_FILL, edgecolor=_STRIP_EDGE, linewidth=0.5,
                 clip_on=False, zorder=3))
-            ax.text(0.5, 1.0 + strip_h / 2.0, str(group_value),
+            ax.text(0.5, 1.0 + strip_h / 2.0, format_group_value(group_value),
                     transform=ax.transAxes, ha="center", va="center",
                     fontsize=8.5, color=_STRIP_TEXT, clip_on=False, zorder=4)
 

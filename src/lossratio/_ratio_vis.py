@@ -19,6 +19,11 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
+from ._io import (
+    _iter_group_frames,
+    format_group_value,
+    normalize_groups,
+)
 from ._plot import (
     _auto_divisor,
     _format_period_series,
@@ -169,8 +174,8 @@ def plot_ratio_fit(
 
     if per_group and groups is not None:
         out_figs = []
-        for gv in work[groups].unique(maintain_order=True).to_list():
-            sub = work.filter(pl.col(groups) == gv)
+        group_label = " | ".join(normalize_groups(groups))
+        for value, sub in _iter_group_frames(work, groups):
             fig = _render_facets(
                 sub,
                 facet_keys=["_coh_lbl"],
@@ -178,7 +183,7 @@ def plot_ratio_fit(
                 amount_divisor=amount_divisor,
                 y_axis_kind=y_axis_kind,
                 hline=hline,
-                title=f"{title_base} [{groups} = {gv}]",
+                title=f"{title_base} [{group_label} = {format_group_value(value)}]",
                 x_label=x_label,
                 y_label=y_label,
                 caption=caption,
@@ -189,7 +194,7 @@ def plot_ratio_fit(
             out_figs.append(fig)
         return out_figs
 
-    facet_keys = ([groups] if groups is not None else []) + ["_coh_lbl"]
+    facet_keys = [*normalize_groups(groups), "_coh_lbl"]
     return _render_facets(
         work,
         facet_keys=facet_keys,
@@ -296,7 +301,7 @@ def plot_projection_fit(
         else None
     )
 
-    facet_keys = ([groups] if groups is not None else []) + ["_coh_lbl"]
+    facet_keys = [*normalize_groups(groups), "_coh_lbl"]
     return _render_facets(
         work,
         facet_keys=facet_keys,

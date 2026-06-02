@@ -14,10 +14,18 @@ from lossratio._io import (
     _arrays_to_long_df,
     _iter_group_frames,
     fill_group_columns,
+    format_group_value,
     group_eq,
     normalize_groups,
     set_group_values,
 )
+
+
+def test_format_group_value():
+    assert format_group_value(None) == ""
+    assert format_group_value("SUR") == "SUR"
+    assert format_group_value(("SUR", "TM")) == "SUR | TM"
+    assert format_group_value(6) == "6"
 
 
 def test_normalize_groups():

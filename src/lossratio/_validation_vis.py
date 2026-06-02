@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
+from ._io import _iter_group_frames, format_group_value
 from ._period import add_periods, infer_grain, resolve_grain
 from ._plot import (
     _format_period_series,
@@ -50,15 +51,7 @@ def plot_validation(
     coh = tv.cohort
     coh_type = _get_period_type(coh)
 
-    if groups is None:
-        facets = [(None, gaps)]
-    else:
-        seen, sset = [], set()
-        for g in gaps[groups].to_list():
-            if g not in sset:
-                sset.add(g)
-                seen.append(g)
-        facets = [(g, gaps.filter(pl.col(groups) == g)) for g in seen]
+    facets = list(_iter_group_frames(gaps, groups))
 
     n = len(facets)
     if nrow is None and ncol is None:
@@ -95,7 +88,7 @@ def plot_validation(
         ax.set_xticks(x)
         ax.set_xticklabels(lab, rotation=45, ha="right", fontsize=8)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
         ax.legend(loc="best", fontsize=7, frameon=False)
         ax.grid(True, axis="y", linewidth=0.3, alpha=0.5)
 
@@ -169,15 +162,7 @@ def plot_triangle_validation(
                 f"from {coh!r}: {e}"
             ) from e
 
-    if groups is None:
-        facets = [(None, gaps)]
-    else:
-        seen, sset = [], set()
-        for g in gaps[groups].to_list():
-            if g not in sset:
-                sset.add(g)
-                seen.append(g)
-        facets = [(g, gaps.filter(pl.col(groups) == g)) for g in seen]
+    facets = list(_iter_group_frames(gaps, groups))
 
     n = len(facets)
     if nrow is None and ncol is None:
@@ -232,7 +217,7 @@ def plot_triangle_validation(
             spine.set_linewidth(0.4)
         ax.tick_params(length=0)
         if group_value is not None:
-            ax.set_title(str(group_value), fontsize=9)
+            ax.set_title(format_group_value(group_value), fontsize=9)
 
     for idx in range(n, nrow * ncol):
         r, c = divmod(idx, ncol)

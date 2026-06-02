@@ -152,6 +152,20 @@ def set_group_values(
         row[col] = val
 
 
+def format_group_value(value: Any) -> str:
+    """Human-readable label for a group value (e.g. a facet title).
+
+    A scalar (single ``str`` group) -> ``str(value)``; a multi-column
+    tuple -> the parts joined with ``" | "``; ``None`` -> ``""``. The
+    single-column path is identical to ``str(value)``.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, tuple):
+        return " | ".join(str(v) for v in value)
+    return str(value)
+
+
 def _iter_group_frames(
     df: pl.DataFrame, groups: "str | Sequence[str] | None"
 ) -> Iterator[tuple[Any, pl.DataFrame]]:

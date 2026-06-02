@@ -21,6 +21,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
+from ._io import (
+    _iter_group_frames,
+    format_group_value,
+    group_eq,
+    normalize_groups,
+)
 from ._plot import (
     _cohort_label,
     _format_period_series,
@@ -56,18 +62,18 @@ def plot_regime(
     if groups is None:
         facets = [(None, labels, changes)]
     else:
-        seen, sset = [], set()
-        for g in labels[groups].to_list():
-            if g not in sset:
-                sset.add(g)
-                seen.append(g)
+        changes_has_groups = all(
+            c in changes.columns for c in normalize_groups(groups)
+        )
         facets = [
             (
                 g,
-                labels.filter(pl.col(groups) == g),
-                changes.filter(pl.col(groups) == g) if groups in changes.columns else changes,
+                sub_labels,
+                changes.filter(group_eq(groups, g))
+                if changes_has_groups
+                else changes,
             )
-            for g in seen
+            for g, sub_labels in _iter_group_frames(labels, groups)
         ]
 
     n = len(facets)
@@ -136,7 +142,7 @@ def plot_regime(
 
         title_parts = []
         if group_value is not None:
-            title_parts.append(str(group_value))
+            title_parts.append(format_group_value(group_value))
         if change_vals.size:
             if coh_type is not None:
                 change_labels = _format_period_series(
