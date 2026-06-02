@@ -266,6 +266,19 @@ def test_by_none_uses_stored_multi_column_groups():
     assert reg._changes_df.select(["coverage", "block"]).unique().height >= 1
 
 
+def test_derived_target_multi_column_per_combination():
+    """A DERIVED target (loss_ata) must derive its lag per (group..., cohort)
+    on a multi-column triangle -- the shift partition must include every group
+    column, not the nested list `[groups, "cohort"]` (regression for B4). The
+    label table should carry both group columns for all 8 combinations."""
+    tri = _two_col_triangle()
+    reg = tri.detect_regime(target="loss_ata", seed=20260524)
+    assert reg.groups == ["coverage", "block"]
+    for col in ("coverage", "block"):
+        assert col in reg._labels_df.columns
+    assert reg._labels_df.select(["coverage", "block"]).unique().height == 8
+
+
 def test_resolve_by_helper():
     """Direct unit test of the ``by`` resolver semantics."""
     tri = _multi_group_triangle()

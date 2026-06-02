@@ -275,7 +275,7 @@ def _compute_tail_factor(f_sel: np.ndarray, tail: bool | float) -> float:
 def _apply_tail_to_long_df(
     long_df: pl.DataFrame,
     tail_factor: float,
-    groups: str | None,
+    groups: str | list[str] | None,
     role: str = "loss",
 ) -> pl.DataFrame:
     """Append ``_tail``-suffixed companion columns to the last-dev row

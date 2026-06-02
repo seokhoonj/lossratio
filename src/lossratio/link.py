@@ -31,7 +31,7 @@ _VALID_TARGETS = ("loss", "premium", "ratio")
 
 def _build_link_df(
     tri_df: pl.DataFrame,
-    groups: str | None,
+    groups: str | list[str] | None,
     target: str,
     exposure: str | None,
     weight: str | None,

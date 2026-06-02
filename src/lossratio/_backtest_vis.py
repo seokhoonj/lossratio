@@ -252,7 +252,7 @@ def plot_triangle_backtest(
 def _plot_aggregated_lines(
     summary: pl.DataFrame,
     *,
-    groups: str | None,
+    groups: str | list[str] | None,
     x_col: str,
     x_label: str,
     stat_cols: list[tuple[str, str]],
@@ -324,7 +324,7 @@ def _plot_aggregated_lines(
 def _plot_cell_curves(
     ae_err: pl.DataFrame,
     *,
-    groups: str | None,
+    groups: str | list[str] | None,
     ae_err_col: str,
     x_label: str,
     title: str,

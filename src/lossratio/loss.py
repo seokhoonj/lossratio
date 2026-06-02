@@ -490,7 +490,7 @@ def _loss_long_df(
     result: _LossResult,
     cohorts: list,
     pf_sub: pl.DataFrame,
-    groups: str | None,
+    groups: str | list[str] | None,
     group_value: Any | None,
     conf_level: float,
 ) -> pl.DataFrame:

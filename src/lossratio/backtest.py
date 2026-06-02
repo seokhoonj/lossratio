@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _add_cal_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
+def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.DataFrame:
     """Add a 1-based calendar index per cell (R parity).
 
     Calendar index counts the antidiagonal:
@@ -45,7 +45,7 @@ def _add_cal_idx(tri_df: pl.DataFrame, groups: str | None) -> pl.DataFrame:
 def _build_masked_df(
     tri_df: pl.DataFrame,
     holdout: int,
-    groups: str | None,
+    groups: str | list[str] | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Mask the most recent ``holdout`` calendar diagonals.
 

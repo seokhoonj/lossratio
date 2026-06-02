@@ -220,7 +220,7 @@ def _plot_link_ed(
 
 
 def _ata_summary(
-    cells: pl.DataFrame, groups: str | None
+    cells: pl.DataFrame, groups: str | list[str] | None
 ) -> pl.DataFrame:
     """Per-link ATA summary -- mean, median, weighted Mack f, CV, RSE.
 
@@ -272,7 +272,7 @@ def _ata_summary(
 
 
 def _ed_summary(
-    cells: pl.DataFrame, groups: str | None
+    cells: pl.DataFrame, groups: str | list[str] | None
 ) -> pl.DataFrame:
     """Per-link ED intensity summary -- mean, median, weighted g."""
     by = [*normalize_groups(groups), "ata_from", "ata_to"]
@@ -293,7 +293,7 @@ def _ed_summary(
 
 def _detect_maturity_overlay(
     summary: pl.DataFrame,
-    groups: str | None,
+    groups: str | list[str] | None,
     *,
     max_cv: float,
     max_rse: float,
@@ -341,7 +341,7 @@ def _detect_maturity_overlay(
 def _plot_per_link_scalar(
     summary: pl.DataFrame,
     *,
-    groups: str | None,
+    groups: str | list[str] | None,
     y_col: str,
     y_label: str,
     title: str,
@@ -382,7 +382,7 @@ def _plot_per_link_scalar(
 def _plot_summary_lines(
     summary: pl.DataFrame,
     *,
-    groups: str | None,
+    groups: str | list[str] | None,
     value_cols: tuple[str, ...],
     y_label: str,
     title: str,
@@ -431,7 +431,7 @@ def _plot_summary_lines(
 def _plot_per_link_distribution(
     cells: pl.DataFrame,
     *,
-    groups: str | None,
+    groups: str | list[str] | None,
     y_col: str,
     kind: str,
     y_label: str,
@@ -512,7 +512,7 @@ def _plot_per_link_distribution(
 
 
 def _resolve_facets(
-    df: pl.DataFrame, groups: str | None
+    df: pl.DataFrame, groups: str | list[str] | None
 ) -> list[tuple[Any, pl.DataFrame]]:
     return list(_iter_group_frames(df, groups))
 
@@ -578,7 +578,7 @@ def _apply_maturity_overlay(
     ax,
     maturity: pl.DataFrame | None,
     group_value: Any,
-    groups: str | None,
+    groups: str | list[str] | None,
     y_max: float | None,
 ) -> None:
     if maturity is None or maturity.height == 0:

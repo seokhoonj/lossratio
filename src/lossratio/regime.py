@@ -50,7 +50,7 @@ _WINDOW_AUTO_SEQ = tuple(range(2, 25))  # 2..24, mirrors R default
 def _derive_regime_target(
     df: pl.DataFrame,
     target: str,
-    groups: str | None,
+    groups: str | list[str] | None,
 ) -> tuple[pl.DataFrame, str]:
     """Compute a diagnostic derived metric column on ``df``.
 
@@ -76,7 +76,7 @@ def _derive_regime_target(
             f"Expected one of {_DERIVED_TARGETS}."
         )
 
-    by_cols = ["cohort"] if groups is None else [groups, "cohort"]
+    by_cols = [*normalize_groups(groups), "cohort"]
 
     if target == "loss_ata":
         derived = pl.col("loss") / pl.col("loss").shift(1).over(by_cols)

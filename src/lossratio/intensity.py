@@ -148,7 +148,7 @@ def _compute_intensity(
 
 def _diagnostic_to_df(
     result: _IntensityResult,
-    groups: str | None,
+    groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Convert an intensity result into a long-format diagnostic DataFrame."""

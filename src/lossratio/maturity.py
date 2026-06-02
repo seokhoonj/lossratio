@@ -289,7 +289,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
 def _enriched_ata_diagnostic(
     ata_df: pl.DataFrame,
     link_df: pl.DataFrame,
-    groups: str | None,
+    groups: str | list[str] | None,
 ) -> pl.DataFrame:
     """Per-link diagnostic with the full R ``ATASummary`` column set.
 
@@ -352,7 +352,7 @@ def _enriched_ata_diagnostic(
     return merged
 
 
-def _na_row(groups: str | None, group_value: Any | None) -> dict[str, Any]:
+def _na_row(groups: str | list[str] | None, group_value: Any | None) -> dict[str, Any]:
     """All-NaN row for a group where no stable ATA run was found.
 
     Matches the no-match branch of R's ``.first_mature_row()``
@@ -370,7 +370,7 @@ def _na_row(groups: str | None, group_value: Any | None) -> dict[str, Any]:
 def _slice_first_stable_row(
     diag_df: pl.DataFrame,
     min_run: int,
-    groups: str | None,
+    groups: str | list[str] | None,
     group_value: Any | None,
 ) -> dict[str, Any]:
     """Pick the first stable-run row of a single-group diagnostic frame.
@@ -405,7 +405,7 @@ def _slice_first_stable_row(
 
 def _build_mat_k_df(
     diag_df: pl.DataFrame,
-    groups: str | None,
+    groups: str | list[str] | None,
     min_run: int,
 ) -> pl.DataFrame:
     """Per-group "first mature row" frame -- R ``Maturity`` schema.

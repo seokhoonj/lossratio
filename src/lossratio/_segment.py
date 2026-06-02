@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 def _expand_to_full_grid(
     df: pl.DataFrame,
     triangle: "Triangle",
-    groups: str | None,
+    groups: str | list[str] | None,
     cohort_col: str,
 ) -> pl.DataFrame:
     """Expand a segment_wise fit output onto the parent triangle's full
