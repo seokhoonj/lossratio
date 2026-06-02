@@ -25,17 +25,21 @@ from .premium import Premium, PremiumFit
 from .regime import Regime, regime_at, regime_spec
 from .total import Total
 from .triangle import Triangle, TriangleValidation
+from .uncertainty import Analytical, MonteCarlo, ResidualBootstrap
 
 __version__ = "0.0.1.dev10"
 
 __all__ = [
     "ATA",
+    "Analytical",
     "Backtest",
     "BacktestFit",
     "Bootstrap",
     "BootstrapTriangle",
     "CL",
     "CLFit",
+    "MonteCarlo",
+    "ResidualBootstrap",
     "Calendar",
     "Convergence",
     "ED",

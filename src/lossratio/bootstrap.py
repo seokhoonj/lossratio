@@ -2634,23 +2634,30 @@ class BootstrapTriangle:
 
 
 class Bootstrap:
-    """Triangle-level bootstrap configuration estimator.
+    """Triangle-level bootstrap engine (internal config object).
 
     sklearn-style: construct with the run configuration, then call
     :meth:`fit` on a :class:`Triangle` to obtain a
-    :class:`BootstrapTriangle`.
+    :class:`BootstrapTriangle`. This is the resampling / simulation engine
+    that sits BEHIND the public uncertainty strategies
+    (:class:`~lossratio.ResidualBootstrap` / :class:`~lossratio.MonteCarlo`
+    in :mod:`lossratio.uncertainty`); prefer those on a model's
+    ``uncertainty=`` argument over constructing this directly.
 
-    Phase 1 implements only ``type="analytical"`` with ``method="cl"``
-    -- the Mack (1993) closed-form propagation. ``nonparametric`` /
-    ``parametric`` types and the ``ed`` / ``sa`` methods are deferred to
-    later phases and raise :class:`NotImplementedError`.
+    All three paradigms are implemented: ``type="analytical"`` (Mack 1993
+    closed-form propagation, ``method="cl"`` + ``process="normal"`` only),
+    ``type="nonparametric"`` (England-Verrall residual resampling), and
+    ``type="parametric"`` (process-distribution cell simulation), each over
+    ``method`` in ``{"cl", "ed", "sa"}``. The constructor validates the
+    coherent combinations below.
 
     Parameters
     ----------
     type
-        Bootstrap paradigm. Phase 1 supports only ``"analytical"``.
+        Bootstrap paradigm: ``"analytical"`` / ``"nonparametric"`` /
+        ``"parametric"``.
     method
-        Fit-model paradigm. Phase 1 supports only ``"cl"``.
+        Fit-model paradigm: ``"cl"`` / ``"ed"`` / ``"sa"``.
     process
         Stage 2 process distribution. ``type="analytical"`` requires
         ``"normal"`` (Mack closed-form propagation).
