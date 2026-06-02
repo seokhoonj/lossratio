@@ -149,9 +149,25 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
         }
     )
 
+    # multi-column convergence pools to a single portfolio point (by design);
+    # pin it so the multi-col convergence path is covered.
+    mc_conv = lr.LossRatio(method="sa").fit(mc).convergence()
+    out["mc_convergence"] = _frame(mc_conv)
+    out["mc_convergence_point"] = pl.DataFrame(
+        {
+            "convergence_point": [mc_conv.point],
+            "maturity_point": [mc_conv.maturity_point],
+        },
+        schema={"convergence_point": pl.Int64, "maturity_point": pl.Int64},
+    )
+
     mc_reg = mc.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged")
+    mc_reg_bb = mc.detect_regime(
+        target="ratio", seed=SEED, treatment="segment_bridged_borrowed"
+    )
     out["mc_regime_changes"] = mc_reg.changes
     out["mc_loss_sa_regime_sb"] = _frame(lr.StageAdaptive(regime=mc_reg).fit(mc))
+    out["mc_loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=mc_reg_bb).fit(mc))
 
     mc_bt = lr.Backtest(lr.LossRatio(method="sa"), holdout=6, target="ratio").fit(mc)
     out["mc_bt_ae_err"] = mc_bt.ae_err
@@ -180,7 +196,8 @@ CASE_NAMES = [
     "mc_cl", "mc_ed", "mc_loss_sa", "mc_premium",
     "mc_ratio_sa", "mc_ratio_ed_delta",
     "mc_maturity", "mc_maturity_point",
-    "mc_regime_changes", "mc_loss_sa_regime_sb",
+    "mc_convergence", "mc_convergence_point",
+    "mc_regime_changes", "mc_loss_sa_regime_sb", "mc_loss_sa_regime_bb",
     "mc_bt_ae_err", "mc_bt_col_summary", "mc_bt_diag_summary",
     "mc_boot_analytical_cl", "mc_boot_parametric_cl",
 ]
