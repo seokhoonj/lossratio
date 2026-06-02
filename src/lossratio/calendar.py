@@ -72,7 +72,7 @@ class Calendar:
             )
 
         # Cumulative loss / premium per group.
-        cum_keys = [grp] if grp is not None else []
+        cum_keys = normalize_groups(grp)
         if cum_keys:
             ds = ds.with_columns(
                 pl.col("incr_loss").cum_sum().over(cum_keys).alias("loss"),

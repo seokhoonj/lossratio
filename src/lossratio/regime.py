@@ -26,6 +26,7 @@ from scipy.spatial.distance import pdist
 from ._e_divisive import e_divisive
 from ._io import (
     _iter_group_frames,
+    collapse_groups,
     fill_group_columns,
     group_eq,
     mirror_output,
@@ -767,7 +768,7 @@ class Regime:
         *,
         changes_df: pl.DataFrame,
         treatment: str,
-        groups: str | None,
+        groups: str | list[str] | None,
     ) -> "Regime":
         """Construct a Regime by hand (no auto-detection).
 
@@ -886,11 +887,11 @@ class Regime:
             schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
         )
 
-        group_col = next(iter(groups)) if groups else None
+        group_spec = collapse_groups(list(groups.keys())) if groups else None
         return cls._manual(
             changes_df=changes_df,
             treatment=treatment,
-            groups=group_col,
+            groups=group_spec,
         )
 
     @classmethod

@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _arrays_to_long_df, _nan_skip_diff, _nan_to_null, mirror_output
+from ._io import normalize_groups
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 
@@ -295,7 +295,7 @@ def _apply_tail_to_long_df(
     param_se = f"{role}_param_se"
     total_se = f"{role}_total_se"
 
-    keys = ([groups] if groups is not None else []) + ["cohort"]
+    keys = [*normalize_groups(groups), "cohort"]
     # Identify the last-dev row per cohort: rank by `dev` descending and pick rank==1.
     last_marker = (
         long_df.with_columns(

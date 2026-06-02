@@ -54,6 +54,23 @@ def test_regime_at_with_groups():
     assert changes["regime_id"].to_list() == [2, 2]
 
 
+def test_regime_at_with_multi_column_groups():
+    """A multi-column groups mapping must keep ALL group columns -- both as
+    the Regime's ``.groups`` (a list) and as columns of ``.changes``.
+    Regression for B3: ``Regime.at`` previously stored only the first key."""
+    r = lr.Regime.at(
+        change=["2024-07-01", "2025-01-01"],
+        groups={"coverage": ["SUR", "SUR"], "block": ["E", "O"]},
+    )
+    assert r.groups == ["coverage", "block"]
+    changes = r.changes
+    assert set(changes.columns) >= {"coverage", "block", "change", "regime_id"}
+    assert changes["coverage"].to_list() == ["SUR", "SUR"]
+    assert changes["block"].to_list() == ["E", "O"]
+    # The two distinct (coverage, block) change dates must NOT collapse.
+    assert changes.select(["coverage", "block"]).unique().height == 2
+
+
 def test_regime_at_segment_bridged_borrowed_treatment():
     r = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
     assert r.treatment == "segment_bridged_borrowed"
