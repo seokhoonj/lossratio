@@ -133,13 +133,13 @@ def _borrowed_premium_group(
     Mirrors the loss-side borrow: ``premium_obs`` is the group's
     full-range matrix; estimate factors per segment on its row subset,
     donor-augment the late-dev factors (via the shared
-    :func:`lossratio.loss._augment_segment_factors`), then re-project
+    :func:`lossratio._segment._augment_segment_factors`), then re-project
     each segment with the augmented factors so every cohort's premium
     reaches full development. Returns ``({segment_id: _PremiumResult},
     {segment_id: row_indices})``.
     """
     from ._recent import recent_link_mask
-    from .loss import _augment_segment_factors
+    from ._segment import _augment_segment_factors
 
     n_cohorts, n_devs = premium_obs.shape
     segs = sorted({int(s) for s in seg_of_cohort})
@@ -513,7 +513,7 @@ class PremiumFit:
         per-segment factors, donor-borrow the late-dev factors, and
         re-project each segment to full development.
         """
-        from .loss import _expand_to_full_grid
+        from ._segment import _expand_to_full_grid
         from .regime import _apply_regime_filter
 
         masked = _apply_regime_filter(triangle, regime)
