@@ -42,8 +42,8 @@ from ._mack import (
     _mack_f_var,
     _mack_g_var,
 )
-from ._mack import mack_step_cl as _mack_step_cl
-from ._mack import mack_step_ed as _mack_step_ed
+from ._mack import _mack_step_cl
+from ._mack import _mack_step_ed
 from .maturity import Maturity, _compute_maturity, _resolve_maturity
 from .premium import Premium, PremiumFit
 from ._segment import _augment_segment_factors, _expand_to_full_grid

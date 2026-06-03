@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-def mack_sigma2(
+def _mack_sigma2(
     num_eff: np.ndarray,
     denom_eff: np.ndarray,
     factor: float,
@@ -64,7 +64,7 @@ def mack_sigma2(
     return float((resid ** 2 / denom_eff).sum() / (n - 1))
 
 
-def mack_factor_var(
+def _mack_factor_var(
     sigma2: np.ndarray,
     sum_denom: np.ndarray,
 ) -> np.ndarray:
@@ -84,7 +84,7 @@ def mack_factor_var(
     return out
 
 
-def mack_step_cl(
+def _mack_step_cl(
     proc_acc: np.ndarray,
     param_acc: np.ndarray,
     pos: np.ndarray,
@@ -118,7 +118,7 @@ def mack_step_cl(
         param_acc[pos] = param_acc[pos] + (c[pos] ** 2) * f_var
 
 
-def mack_step_ed(
+def _mack_step_ed(
     proc_acc: np.ndarray,
     param_acc: np.ndarray,
     pos: np.ndarray,
@@ -128,7 +128,7 @@ def mack_step_ed(
 ) -> None:
     """Advance the exposure-driven (additive) variance recursion one link.
 
-    In-place counterpart to :func:`mack_step_cl` for the ED link::
+    In-place counterpart to :func:`_mack_step_cl` for the ED link::
 
         proc'  = proc  + sigma2_g * P
         param' = param + P^2 * Var(g_hat)
@@ -170,12 +170,12 @@ class _MackResult:
 def _mack_f_var(result: _MackResult) -> np.ndarray:
     """Mack-style WLS variance of the chain ladder factor f_k.
 
-    Thin wrapper over :func:`lossratio._mack.mack_factor_var`: returns the
+    Thin wrapper over :func:`lossratio._mack._mack_factor_var`: returns the
     per-link `sigma^2_k / sum_j C^L_{j,k}` estimator (Mack 1993, alpha = 1).
     Mirrors R's `.mack_f_var()` (`R/cl.R`). NaN where the denom is zero
     (unfittable link); caller decides how to handle.
     """
-    return mack_factor_var(result.sigma2_k, result.sum_col_k)
+    return _mack_factor_var(result.sigma2_k, result.sum_col_k)
 
 
 def _build_value_matrix(
@@ -267,7 +267,7 @@ def _fit_mack(
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else np.nan
 
         if n_k >= 2 and f_k[k] != 0:
-            sigma2_k[k] = mack_sigma2(ck1_eff, ck_eff, f_k[k], n_k)
+            sigma2_k[k] = _mack_sigma2(ck1_eff, ck_eff, f_k[k], n_k)
         else:
             sigma2_k[k] = 0.0
 
@@ -294,7 +294,7 @@ def _fit_mack(
     #   proc_{i, k+1}  = f_k^2 * proc_{i, k}  + sigma^2_k * C_{i,k}^alpha
     #   param_{i, k+1} = f_k^2 * param_{i, k} + C_{i,k}^2  * Var(f_k)
     #
-    # This is the whole-triangle matrix form; :func:`mack_step_cl` is the
+    # This is the whole-triangle matrix form; :func:`_mack_step_cl` is the
     # per-link 1D form used by the loss / premium projection loops -- keep
     # the two in sync if the formula ever changes.
     # with Var(f_k) = sigma^2_k / sum_col_k[k]. R parity: observed cells
@@ -311,7 +311,7 @@ def _fit_mack(
     )
     alpha = 1.0  # only alpha = 1 is supported in this worker
     # f_var_k = sigma^2_k / sum_col_k -- Mack's Var(f_hat_k).
-    f_var_k = mack_factor_var(sigma2_k, sum_col_k)
+    f_var_k = _mack_factor_var(sigma2_k, sum_col_k)
 
     # Sequential along dev, vectorised across cohorts. Each cohort starts
     # accumulating at its first projected dev (last_obs + 1); cohorts not
@@ -380,10 +380,10 @@ def _mack_g_var(result: _EDResult) -> np.ndarray:
     `.mack_g_var()` (`R/ed.R`). Same WLS form as `_mack_f_var` -- the
     "Mack" name reflects shared mathematical machinery, not chain ladder
     specifically. Thin wrapper over
-    :func:`lossratio._mack.mack_factor_var`. NaN where the denom is zero
+    :func:`lossratio._mack._mack_factor_var`. NaN where the denom is zero
     (unfittable link).
     """
-    return mack_factor_var(result.sigma2_g_k, result.sum_premium_k)
+    return _mack_factor_var(result.sigma2_g_k, result.sum_premium_k)
 
 
 def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
@@ -458,7 +458,7 @@ def _fit_ed(
         g_k[k] = sum_loss / sum_crp if sum_crp > 0 else 0.0
 
         if n_k >= 2 and sum_crp > 0:
-            sigma2_g_k[k] = mack_sigma2(dl_eff, ck_eff, g_k[k], n_k)
+            sigma2_g_k[k] = _mack_sigma2(dl_eff, ck_eff, g_k[k], n_k)
         else:
             sigma2_g_k[k] = 0.0
 
