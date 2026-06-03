@@ -1,4 +1,4 @@
-"""Smoke tests for ``LossFit.plot(type='projection' | 'reserve')``.
+"""Smoke tests for ``LossFit.plot(kind='projection' | 'reserve')``.
 
 Mirrors the R sibling's ``plot.CLFit`` two-type dispatcher
 (``R/cl-vis.R``). Plot bit-parity is not in scope; these tests assert
@@ -51,7 +51,7 @@ def test_cl_projection_default_type(tri_single):
 
 def test_cl_projection_multi_group(tri_multi):
     cf = lr.ChainLadder().fit(tri_multi)
-    fig = cf.plot(type="projection")
+    fig = cf.plot(kind="projection")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -60,7 +60,7 @@ def test_cl_projection_multi_group(tri_multi):
 
 def test_cl_projection_show_interval_false(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(type="projection", show_interval=False)
+    fig = cf.plot(kind="projection", show_interval=False)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert not captions
@@ -70,7 +70,7 @@ def test_cl_projection_show_interval_false(tri_single):
 
 def test_cl_projection_show_interval_true_has_caption(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(type="projection", show_interval=True)
+    fig = cf.plot(kind="projection", show_interval=True)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert captions
@@ -81,7 +81,7 @@ def test_cl_projection_show_interval_true_has_caption(tri_single):
 
 def test_cl_projection_bootstrap_caption(tri_single):
     cf = lr.ChainLadder(uncertainty=lr.MonteCarlo(seed=0, B=50)).fit(tri_single)
-    fig = cf.plot(type="projection")
+    fig = cf.plot(kind="projection")
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert any("bootstrap" in c for c in captions)
@@ -94,7 +94,7 @@ def test_cl_projection_bootstrap_caption(tri_single):
 
 def test_cl_reserve_renders(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(type="reserve")
+    fig = cf.plot(kind="reserve")
     try:
         assert isinstance(fig, plt.Figure)
         assert "Reserve" in fig._suptitle.get_text()
@@ -110,7 +110,7 @@ def test_cl_reserve_renders(tri_single):
 
 def test_cl_reserve_multi_group(tri_multi):
     cf = lr.ChainLadder().fit(tri_multi)
-    fig = cf.plot(type="reserve")
+    fig = cf.plot(kind="reserve")
     try:
         assert isinstance(fig, plt.Figure)
         n_groups = cf._df["coverage"].n_unique()
@@ -122,7 +122,7 @@ def test_cl_reserve_multi_group(tri_multi):
 
 def test_cl_reserve_show_interval_false(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(type="reserve", show_interval=False)
+    fig = cf.plot(kind="reserve", show_interval=False)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert not captions
@@ -132,7 +132,7 @@ def test_cl_reserve_show_interval_false(tri_single):
 
 def test_cl_reserve_show_interval_true_has_caption(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(type="reserve", show_interval=True)
+    fig = cf.plot(kind="reserve", show_interval=True)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert captions
@@ -145,11 +145,11 @@ def test_cl_reserve_show_interval_true_has_caption(tri_single):
 
 def test_cl_plot_invalid_type(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    with pytest.raises(ValueError, match="type"):
-        cf.plot(type="bogus")
+    with pytest.raises(ValueError, match="kind"):
+        cf.plot(kind="bogus")
 
 
 def test_cl_plot_invalid_divisor(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
     with pytest.raises(ValueError, match="amount_divisor"):
-        cf.plot(type="reserve", amount_divisor="too-much")
+        cf.plot(kind="reserve", amount_divisor="too-much")

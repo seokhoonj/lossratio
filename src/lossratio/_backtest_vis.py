@@ -1,6 +1,6 @@
 """Backtest result visualisation -- matplotlib backend.
 
-Implements ``BacktestFit.plot(type=...)`` (per-dev / per-diagonal /
+Implements ``BacktestFit.plot(view=...)`` (per-dev / per-diagonal /
 per-cell A/E error aggregates) and ``BacktestFit.plot_triangle()``
 (diverging red/blue heatmap of A/E error on the held-out wedge).
 Mirrors the R sibling's ``plot.Backtest`` and
@@ -43,16 +43,16 @@ _STAT_COLUMNS = (
 
 def plot_backtest(
     fit: BacktestFit,
-    type: str = "col",
+    view: str = "col",
     cell_type: str = "cumulative",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
     """Backtest plot dispatcher."""
-    if type not in _VALID_TYPES:
+    if view not in _VALID_TYPES:
         raise ValueError(
-            f"`type` must be one of {_VALID_TYPES!r}; got {type!r}."
+            f"`view` must be one of {_VALID_TYPES!r}; got {view!r}."
         )
     if cell_type not in _VALID_CELL_TYPES:
         raise ValueError(
@@ -65,7 +65,7 @@ def plot_backtest(
     stat_cols = [(lab, incr if is_incr else cum) for lab, cum, incr in _STAT_COLUMNS]
     ae_err_col = "incr_ae_err" if is_incr else "ae_err"
 
-    if type == "col":
+    if view == "col":
         return _plot_aggregated_lines(
             fit._col_summary,
             groups=fit._groups,
@@ -75,7 +75,7 @@ def plot_backtest(
             title=f"Backtest A/E Error by development period ({cum_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if type == "diag":
+    if view == "diag":
         return _plot_aggregated_lines(
             fit._diag_summary,
             groups=fit._groups,

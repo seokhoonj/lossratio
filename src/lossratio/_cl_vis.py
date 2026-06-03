@@ -1,7 +1,7 @@
 """Reserve bar-chart visualisation -- matplotlib backend.
 
-Implements the ``type="reserve"`` branch of :meth:`LossFit.plot`. The
-``type="projection"`` branch forwards to the shared projection-curve
+Implements the ``kind="reserve"`` branch of :meth:`LossFit.plot`. The
+``kind="projection"`` branch forwards to the shared projection-curve
 helper in ``_ratio_vis``.
 
 A horizontal bar chart of per-cohort reserve (``loss_ult - latest``)
@@ -57,7 +57,7 @@ def plot_cl_reserve(
 
     if "reserve" not in summary.columns:
         raise ValueError(
-            "`type='reserve'` requires a `reserve` column on "
+            "`kind='reserve'` requires a `reserve` column on "
             "`summary()`. Got columns: "
             f"{summary.columns!r}."
         )

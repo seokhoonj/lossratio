@@ -484,7 +484,7 @@ class BacktestFit:
 
     def plot(
         self,
-        type: str = "col",
+        view: str = "col",
         cell_type: str = "cumulative",
         nrow: int | None = None,
         ncol: int | None = None,
@@ -494,9 +494,9 @@ class BacktestFit:
 
         Parameters
         ----------
-        type
-            ``"col"`` (default; aggregated by development period),
-            ``"diag"`` (aggregated by calendar diagonal), or
+        view
+            The aggregation the error is viewed over: ``"col"`` (default;
+            by development period), ``"diag"`` (by calendar diagonal), or
             ``"cell"`` (per-cell scatter / line, one line per cohort).
         cell_type
             ``"cumulative"`` (default; uses ``ae_err_*`` columns) or
@@ -512,7 +512,7 @@ class BacktestFit:
         """
         from ._backtest_vis import plot_backtest
         return plot_backtest(
-            self, type=type, cell_type=cell_type,
+            self, view=view, cell_type=cell_type,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 

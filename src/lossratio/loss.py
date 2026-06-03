@@ -1335,7 +1335,7 @@ class LossFit:
 
     def plot(
         self,
-        type: str = "projection",
+        kind: str = "projection",
         conf_level: float | None = None,
         show_interval: bool = True,
         amount_divisor: float | str = "auto",
@@ -1347,7 +1347,7 @@ class LossFit:
 
         Parameters
         ----------
-        type
+        kind
             ``"projection"`` (default) or ``"reserve"``.
 
             * ``"projection"`` -- per-cohort cumulative observed loss
@@ -1372,11 +1372,11 @@ class LossFit:
         -------
         matplotlib.figure.Figure
         """
-        if type not in ("projection", "reserve"):
+        if kind not in ("projection", "reserve"):
             raise ValueError(
-                f"`type` must be 'projection' or 'reserve'; got {type!r}."
+                f"`kind` must be 'projection' or 'reserve'; got {kind!r}."
             )
-        if type == "reserve":
+        if kind == "reserve":
             from ._cl_vis import plot_cl_reserve
             return plot_cl_reserve(
                 self,

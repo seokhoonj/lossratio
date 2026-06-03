@@ -59,7 +59,7 @@ def test_maturity_full_schema_matches_r():
     """
     r = _load("maturity_schema")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = tri.detect_maturity(loss="loss").summary()
+    py = tri.detect_maturity(target="loss").summary()
 
     # Single-group input -> one row each. Align trivially without sort.
     assert py.height == 1 and r.height == 1, (
@@ -98,7 +98,7 @@ def test_maturity_change_equals_mat_k():
     """
     r = _load("maturity_schema")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    mat = tri.detect_maturity(loss="loss")
+    mat = tri.detect_maturity(target="loss")
     summary_change = mat.summary()["change"][0]
     mat_k_value = mat.point["surgery"]
     r_change = r["change"][0]

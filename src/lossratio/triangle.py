@@ -565,7 +565,7 @@ class Triangle:
 
     def detect_maturity(
         self,
-        loss: str = "loss",
+        target: str = "loss",
         weight: str | None = None,
         max_cv: float = 0.15,
         max_rse: float = 0.05,
@@ -574,8 +574,7 @@ class Triangle:
         """Detect the age-to-age maturity point ``k*``.
 
         Convenience entry point for the canonical chain
-        ``triangle.link(target=loss, weight=weight).ata().maturity(...)``.
-        Mirrors the R sibling's ``detect_maturity(triangle, ...)``.
+        ``triangle.link(target=target, weight=weight).ata().maturity(...)``.
 
         Maturity is determined jointly by:
 
@@ -585,11 +584,12 @@ class Triangle:
 
         Parameters
         ----------
-        loss
+        target
             Cumulative metric used as the link numerator. Default
             ``"loss"`` (chain-ladder convention). One of ``"loss"``,
             ``"premium"``, ``"ratio"``. Forwarded to
-            :meth:`Triangle.link` as ``target``.
+            :meth:`Triangle.link` as ``target`` (matching ``link`` /
+            ``detect_regime`` / ``Maturity.detect``).
         weight
             Optional WLS weight column. Forwarded to :meth:`Triangle.link`.
         max_cv
@@ -609,15 +609,13 @@ class Triangle:
 
         Notes
         -----
-        The R sibling additionally exposes ``alpha`` (WLS variance
-        structure), ``groups`` (rebucket to a coarser partition),
-        ``min_valid_ratio`` and ``min_n_valid`` thresholds. Those are
-        not yet plumbed through the Python ATA pipeline; the Python
-        default thresholds (CV / RSE only) are the active subset of the
-        R defaults.
+        ``alpha`` (WLS variance structure), ``groups`` (rebucket to a
+        coarser partition), and ``min_valid_ratio`` / ``min_n_valid``
+        thresholds are not yet plumbed through the ATA pipeline; the
+        active thresholds are CV / RSE only.
         """
         return (
-            self.link(target=loss, weight=weight)
+            self.link(target=target, weight=weight)
             .ata()
             .maturity(max_cv=max_cv, max_rse=max_rse, min_run=min_run)
         )

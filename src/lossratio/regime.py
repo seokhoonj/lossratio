@@ -642,7 +642,7 @@ class Regime:
             maturity_by_combo: dict[Any, int | None] = {}
             if grp is not None:
                 try:
-                    mat = triangle.detect_maturity(loss=mat_loss)
+                    mat = triangle.detect_maturity(target=mat_loss)
                     mat_df = mat.summary()
                     # Coerce mat_df to polars if needed (mirror_output
                     # may have returned pandas).

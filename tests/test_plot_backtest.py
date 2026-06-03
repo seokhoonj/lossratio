@@ -1,4 +1,4 @@
-"""Smoke tests for ``BacktestFit.plot(type=...)`` and ``.plot_triangle()``.
+"""Smoke tests for ``BacktestFit.plot(view=...)`` and ``.plot_triangle()``.
 
 Mirrors the R sibling's ``plot.Backtest`` 3-type dispatcher and
 ``plot_triangle.Backtest`` value-view heatmap.
@@ -44,7 +44,7 @@ def _close(fig):
 
 @pytest.mark.parametrize("type_", ["col", "diag", "cell"])
 def test_backtest_plot_types(bt_multi, type_):
-    fig = bt_multi.plot(type=type_)
+    fig = bt_multi.plot(view=type_)
     try:
         assert isinstance(fig, plt.Figure)
         title = fig._suptitle.get_text()
@@ -56,7 +56,7 @@ def test_backtest_plot_types(bt_multi, type_):
 
 @pytest.mark.parametrize("type_", ["col", "diag", "cell"])
 def test_backtest_plot_incremental(bt_multi, type_):
-    fig = bt_multi.plot(type=type_, cell_type="incremental")
+    fig = bt_multi.plot(view=type_, cell_type="incremental")
     try:
         assert isinstance(fig, plt.Figure)
         assert "incremental" in fig._suptitle.get_text()
@@ -73,8 +73,8 @@ def test_backtest_plot_single_group(bt_single):
 
 
 def test_backtest_plot_invalid_type(bt_single):
-    with pytest.raises(ValueError, match="type"):
-        bt_single.plot(type="bogus")
+    with pytest.raises(ValueError, match="view"):
+        bt_single.plot(view="bogus")
 
 
 def test_backtest_plot_invalid_cell_type(bt_single):
