@@ -15,9 +15,10 @@ intensity ``g_k -> 0`` (tail increment = ``Sum future g_k * premium``).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ._types import RegimeArg, TailArg, UncertaintyArg
     from .loss import LossFit
     from .triangle import Triangle
 
@@ -60,13 +61,13 @@ class ExposureDriven:
     def __init__(
         self,
         *,
-        alpha:       float      = 1.0,
-        sigma_method: str       = "locf",
-        recent:      int | None = None,
-        regime:      Any        = None,
-        tail:        Any        = False,
-        conf_level:  float      = 0.95,
-        uncertainty: Any        = None,
+        alpha:        float          = 1.0,
+        sigma_method: str            = "locf",
+        recent:       int | None     = None,
+        regime:       RegimeArg      = None,
+        tail:         TailArg        = False,
+        conf_level:   float          = 0.95,
+        uncertainty:  UncertaintyArg = None,
     ) -> None:
         self.alpha       = alpha
         self.sigma_method = sigma_method

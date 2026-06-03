@@ -13,9 +13,10 @@ argument (auto-detected per group by default).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
     from .loss import LossFit
     from .triangle import Triangle
 
@@ -69,17 +70,17 @@ class StageAdaptive:
     def __init__(
         self,
         *,
-        alpha:       float      = 1.0,
-        sigma_method: str       = "locf",
-        maturity:    Any        = "auto",
-        max_cv:      float      = 0.15,
-        max_rse:     float      = 0.05,
-        min_run:     int        = 2,
-        recent:      int | None = None,
-        regime:      Any        = None,
-        tail:        Any        = False,
-        conf_level:  float      = 0.95,
-        uncertainty: Any        = None,
+        alpha:        float          = 1.0,
+        sigma_method: str            = "locf",
+        maturity:     MaturityArg    = "auto",
+        max_cv:       float          = 0.15,
+        max_rse:      float          = 0.05,
+        min_run:      int            = 2,
+        recent:       int | None     = None,
+        regime:       RegimeArg      = None,
+        tail:         TailArg        = False,
+        conf_level:   float          = 0.95,
+        uncertainty:  UncertaintyArg = None,
     ) -> None:
         from .uncertainty import ResidualBootstrap
 

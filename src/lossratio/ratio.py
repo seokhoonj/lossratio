@@ -22,6 +22,7 @@ from .loss import Loss, LossFit
 from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
+    from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
     from .triangle import Triangle
 
 
@@ -197,21 +198,21 @@ class Ratio:
         self,
         method: str = "ed",
         loss_alpha: float = 1.0,
-        loss_regime: Any = None,
+        loss_regime: RegimeArg = None,
         premium_method: str = "ed",
         premium_alpha: float = 1.0,
-        premium_regime: Any = None,
+        premium_regime: RegimeArg = None,
         sigma_method: str = "locf",
         recent: int | None = None,
-        maturity: Any = "auto",
+        maturity: MaturityArg = "auto",
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
         se_method: str = "fixed",
         rho: float = 0.95,
         conf_level: float = 0.95,
-        tail: Any = False,
-        uncertainty: Any = None,
+        tail: TailArg = False,
+        uncertainty: UncertaintyArg = None,
         # backwards-compat alias for loss_alpha (pre-Phase-5 callers)
         alpha: float | None = None,
     ) -> None:

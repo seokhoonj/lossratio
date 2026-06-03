@@ -49,6 +49,7 @@ from .premium import Premium, PremiumFit
 from ._segment import _augment_segment_factors, _expand_to_full_grid
 
 if TYPE_CHECKING:
+    from ._types import MaturityArg, RegimeArg, TailArg
     from .triangle import Triangle
 
 
@@ -676,14 +677,14 @@ class Loss:
         premium_fit: PremiumFit | None = None,
         premium_method: str = "ed",
         premium_alpha: float = 1.0,
-        maturity: Any = "auto",
+        maturity: MaturityArg = "auto",
         max_cv: float = 0.15,
         max_rse: float = 0.05,
         min_run: int = 2,
         conf_level: float = 0.95,
-        regime: Any = None,
+        regime: RegimeArg = None,
         recent: int | None = None,
-        tail: Any = False,
+        tail: TailArg = False,
         bootstrap: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:

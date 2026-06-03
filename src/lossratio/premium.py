@@ -35,6 +35,7 @@ from ._mack import _mack_step_ed
 from ._mack import _build_premium_matrix
 
 if TYPE_CHECKING:
+    from ._types import RegimeArg, TailArg
     from .triangle import Triangle
 
 
@@ -388,9 +389,9 @@ class Premium:
         method: str = "ed",
         alpha: float = 1.0,
         sigma_method: str = "locf",
-        regime: Any = None,
+        regime: RegimeArg = None,
         recent: int | None = None,
-        tail: Any = False,
+        tail: TailArg = False,
         conf_level: float = 0.95,
     ) -> None:
         if method not in _VALID_METHODS:
