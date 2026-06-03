@@ -281,13 +281,14 @@ def test_ratio_ed_tail_propagates(tri):
     assert all(s > 0.0 for s in rf.loss_fit.tail_factor.values())
 
 
-def test_ratio_sa_tail_warns(tri):
-    # SA carries no tail yet -> the dispatcher warns and drops it.
+def test_ratio_sa_tail_propagates(tri):
+    # SA tail is active (post-maturity CL / ED fallback); it surfaces on
+    # the RatioFit and emits no "has no effect" warning.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         rf = lr.LossRatio(method="sa", tail=True).fit(tri)
-    assert any("has no effect" in str(w.message) for w in caught)
-    assert "loss_tail" not in rf._df.columns
+    assert "loss_tail" in rf._df.columns
+    assert not any("has no effect" in str(w.message) for w in caught)
 
 
 def test_ratio_tail_attr_round_trip(tri):
@@ -384,3 +385,56 @@ def test_ed_tail_se_scaling(tri):
     ef_factor = (last["loss_tail"] / last["loss_proj"]).to_numpy()
     mask = np.isfinite(se) & np.isfinite(se_t) & np.isfinite(ef_factor)
     assert np.allclose(se_t[mask], ef_factor[mask] * se[mask])
+
+
+# --- StageAdaptive(tail=...) : stage-of-the-edge tail -------------------
+
+
+def test_sa_default_no_tail_columns(tri):
+    sa = lr.StageAdaptive().fit(tri)
+    assert all("tail" not in c for c in sa._df.columns)
+
+
+def test_sa_tail_post_maturity_cl_is_multiplicative(tri):
+    # With a detected maturity the last stage is CL -> the tail is the
+    # multiplicative factor applied to the last cumulative loss.
+    sa = lr.StageAdaptive(tail=True).fit(tri)
+    assert "loss_tail" in sa._df.columns
+    assert all(v.mat_k is not None for v in sa._internals.values())
+    last = (
+        sa._df.with_columns(
+            pl.col("dev").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_dev_rank")
+        )
+        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
+    )
+    r = last["_ratio"].drop_nulls().to_numpy()
+    assert np.allclose(r[np.isfinite(r)], sa.tail_factor["CAN"])
+
+
+def test_sa_tail_all_ed_is_additive(tri):
+    # With maturity=None the SA fit is ED throughout -> the additive tail.
+    sa = lr.StageAdaptive(maturity=None, tail=True).fit(tri)
+    assert all(v.mat_k is None for v in sa._internals.values())
+    sum_g = compute_tail_increment(
+        sa._internals["CAN"].g_sel, True, grain=tri.grain
+    ).factor
+    last = (
+        sa._df.with_columns(
+            pl.col("dev").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_dev_rank")
+        )
+        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .with_columns(
+            (pl.col("loss_proj") + pl.col("premium_proj") * sum_g).alias("_expect")
+        )
+    )
+    lt = last["loss_tail"].drop_nulls().to_numpy()
+    ex = last["_expect"].drop_nulls().to_numpy()
+    assert np.allclose(lt, ex)
+
+
+def test_sa_tail_numeric_is_multiplicative(tri):
+    sa = lr.StageAdaptive(tail=1.1).fit(tri)
+    assert all(v == pytest.approx(1.1) for v in sa.tail_factor.values())

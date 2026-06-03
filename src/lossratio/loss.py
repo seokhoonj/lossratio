@@ -720,17 +720,10 @@ class Loss:
         _validate_recent(recent)
         from .tail import validate_tail
         validate_tail(tail)
-        # The tail is effective for the cl (multiplicative f->1) and ed
-        # (additive g->0) methods. sa carries no tail yet (its late-dev
-        # stage is CL, but the maturity split makes the extrapolation
-        # non-trivial); the arg is accepted but no-op there.
-        if tail is not False and method not in ("cl", "ed"):
-            import warnings as _warnings
-            _warnings.warn(
-                f"`tail` has no effect when method={method!r} (effective "
-                f"only for method='cl' / 'ed'); ignoring.",
-                stacklevel=3,
-            )
+        # The tail is effective for every loss method: cl (multiplicative
+        # f->1), ed (additive g->0), and sa (the tail of whichever stage is
+        # active at the last development column -- post-maturity CL when a
+        # switch is found, else ED).
         self.method = method
         self.alpha = alpha
         self.sigma_method = sigma_method
@@ -933,30 +926,53 @@ class LossFit:
         method = estimator.method
         tail = estimator.tail
         is_numeric = isinstance(tail, (int, float)) and not isinstance(tail, bool)
-        tail_active = tail is not False and method in ("cl", "ed")
+        tail_active = tail is not False
 
-        def _apply_group_tail(
-            sub_result: _LossResult, grp_long: pl.DataFrame, g: Any
+        def _apply_cl_tail(
+            f_sel: np.ndarray, grp_long: pl.DataFrame, g: Any, warn: bool
         ) -> tuple[float, bool, pl.DataFrame]:
-            if is_numeric or method == "cl":
-                # Numeric = explicit multiplicative factor (either method);
-                # cl True/Tail = computed multiplicative factor.
-                res = compute_tail_factor(sub_result.f_sel, tail, grain)
-                if not is_numeric:
-                    maybe_warn_tail(res, group=g)
-                if res.factor > 1.0 and np.isfinite(res.factor):
-                    grp_long = apply_tail_to_long_df(
-                        grp_long, res.factor, groups=groups, role="loss",
-                    )
-                return res.factor, res.diverged, grp_long
-            # method == "ed", True/Tail -> additive g->0 tail.
-            res = compute_tail_increment(sub_result.g_sel, tail, grain)
+            res = compute_tail_factor(f_sel, tail, grain)
+            if warn:
+                maybe_warn_tail(res, group=g)
+            if res.factor > 1.0 and np.isfinite(res.factor):
+                grp_long = apply_tail_to_long_df(
+                    grp_long, res.factor, groups=groups, role="loss",
+                )
+            return res.factor, res.diverged, grp_long
+
+        def _apply_ed_tail(
+            g_sel: np.ndarray, grp_long: pl.DataFrame, g: Any
+        ) -> tuple[float, bool, pl.DataFrame]:
+            res = compute_tail_increment(g_sel, tail, grain)
             maybe_warn_tail(res, group=g)
             if res.factor > 0.0 and np.isfinite(res.factor):
                 grp_long = apply_ed_tail_to_long_df(
                     grp_long, res.factor, groups=groups, role="loss",
                 )
             return res.factor, res.diverged, grp_long
+
+        def _apply_group_tail(
+            sub_result: _LossResult, grp_long: pl.DataFrame, g: Any
+        ) -> tuple[float, bool, pl.DataFrame]:
+            # A numeric tail is an explicit multiplicative factor for every
+            # method (the f_sel is ignored -- the factor is used directly).
+            if is_numeric:
+                return _apply_cl_tail(sub_result.f_sel, grp_long, g, warn=False)
+            if method == "cl":
+                return _apply_cl_tail(sub_result.f_sel, grp_long, g, warn=True)
+            if method == "ed":
+                return _apply_ed_tail(sub_result.g_sel, grp_long, g)
+            # method == "sa": the tail follows the stage active at the last
+            # development column. A finite mat_k means the post-maturity CL
+            # stage reaches the edge -> CL tail fit on the post-maturity
+            # factors (dev >= mat_k, i.e. links k >= mat_k - 2). No mat_k
+            # (all-ED fallback) -> the additive ED tail.
+            mat_k = sub_result.mat_k
+            if mat_k is None:
+                return _apply_ed_tail(sub_result.g_sel, grp_long, g)
+            cl_start = max(int(mat_k) - 2, 0)
+            f_post = sub_result.f_sel[cl_start:]
+            return _apply_cl_tail(f_post, grp_long, g, warn=True)
 
         if tail_active:
             factor_map: dict[Any, float] = {}
