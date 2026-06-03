@@ -458,3 +458,47 @@ def test_sa_tail_all_ed_is_additive(tri):
 def test_sa_tail_numeric_is_multiplicative(tri):
     sa = lr.StageAdaptive(tail=1.1).fit(tri)
     assert all(v == pytest.approx(1.1) for v in sa.tail_factor.values())
+
+
+# --- Premium(tail=...) : multiplicative tail on cum-premium factors -----
+
+
+def test_premium_default_no_tail_columns(tri):
+    pf = lr.Premium().fit(tri)
+    assert all("tail" not in c for c in pf._df.columns)
+    assert all(v == 1.0 for v in pf.premium_tail_factor.values())
+
+
+def test_premium_tail_true_adds_companion_columns(tri):
+    pf = lr.Premium(tail=True).fit(tri)
+    tail_cols = {c for c in pf._df.columns if c.endswith("_tail")}
+    assert "premium_tail" in tail_cols
+    assert "premium_total_se_tail" in tail_cols
+    assert "premium_total_cv_tail" in tail_cols
+    # The cumulative premium develops multiplicatively -> every group has a
+    # convergent factor > 1 on this fixture.
+    assert all(v > 1.0 for v in pf.premium_tail_factor.values())
+
+
+def test_premium_tail_numeric_is_multiplicative(tri):
+    pf = lr.Premium(tail=1.1).fit(tri)
+    assert all(v == pytest.approx(1.1) for v in pf.premium_tail_factor.values())
+    last = (
+        pf._df.with_columns(
+            pl.col("dev").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_dev_rank")
+        )
+        .filter(pl.col("_dev_rank") == 1)
+        .with_columns((pl.col("premium_tail") / pl.col("premium_proj")).alias("_ratio"))
+    )
+    r = last["_ratio"].drop_nulls().to_numpy()
+    assert np.allclose(r[np.isfinite(r)], 1.1)
+
+
+def test_premium_tail_method_invariant(tri):
+    # The premium point projection (and thus the tail factor) is the CL
+    # recursion regardless of `method` (which only changes the SE).
+    ed = lr.Premium(method="ed", tail=True).fit(tri)
+    cl = lr.Premium(method="cl", tail=True).fit(tri)
+    for g in ed.premium_tail_factor:
+        assert ed.premium_tail_factor[g] == pytest.approx(cl.premium_tail_factor[g])

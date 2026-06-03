@@ -364,7 +364,14 @@ class Premium:
         any ``regime`` cohort cut. ``None`` (default) leaves the fit
         byte-unchanged.
     tail
-        Reserved; not yet implemented.
+        Tail extension beyond the observed window. ``False`` (default)
+        applies no tail; a positive number is an explicit multiplicative
+        factor; ``True`` / a :class:`~lossratio.Tail` spec computes the
+        convergence-gated multiplicative tail on the cumulative-premium
+        development factors (the premium point projection is always the CL
+        multiplicative recursion). Persistency -- the net of mortality /
+        lapse decay and per-head aging -- is carried by the observed
+        premium factors, so the tail extrapolates those directly.
     conf_level
         Confidence level for the analytical CI. Default ``0.95``.
 
@@ -383,7 +390,7 @@ class Premium:
         sigma_method: str = "locf",
         regime: Any = None,
         recent: int | None = None,
-        tail: bool = False,
+        tail: Any = False,
         conf_level: float = 0.95,
     ) -> None:
         if method not in _VALID_METHODS:
@@ -399,10 +406,8 @@ class Premium:
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
                 f"got {sigma_method!r}"
             )
-        if tail:
-            raise NotImplementedError(
-                "tail factor not yet implemented in the Python sibling"
-            )
+        from .tail import validate_tail
+        validate_tail(tail)
         if not (0.0 < conf_level < 1.0):
             raise ValueError(
                 f"conf_level must be in (0, 1), got {conf_level!r}"
@@ -486,19 +491,65 @@ class PremiumFit:
         groups = triangle._groups
         recent = estimator.recent
 
+        # The premium point projection is always the CL multiplicative
+        # recursion, so the optional tail is the multiplicative tail on the
+        # cumulative-premium factors (`result.f_k`), symmetric to the loss
+        # tail. A numeric tail is an explicit factor.
+        from .tail import (
+            apply_tail_to_long_df,
+            compute_tail_factor,
+            maybe_warn_tail,
+        )
+
+        tail = estimator.tail
+        grain = triangle.grain
+        is_numeric = isinstance(tail, (int, float)) and not isinstance(tail, bool)
+        self.tail = tail
+        factor_map: dict[Any, float] = {}
+        diverged_map: dict[Any, bool] = {}
+
         parts: list[pl.DataFrame] = []
+        keys: list[Any] = []
         for g, sub in _iter_group_frames(tri_df, groups):
+            keys.append(g)
             premium_obs, cohorts, _ = _build_premium_matrix(sub)
             result = _fit_premium_single(
                 premium_obs, estimator.method, estimator.sigma_method,
                 link_mask=recent_link_mask(premium_obs, recent),
             )
-            parts.append(
-                _premium_long_df(
-                    result, cohorts, groups, g, estimator.conf_level
-                )
+            df_g = _premium_long_df(
+                result, cohorts, groups, g, estimator.conf_level
             )
-        self._df = pl.concat(parts) if parts else pl.DataFrame()
+            if tail is not False:
+                res = compute_tail_factor(result.f_k, tail, grain)
+                if not is_numeric:
+                    maybe_warn_tail(res, group=g)
+                factor_map[g] = res.factor
+                diverged_map[g] = res.diverged
+                if res.factor > 1.0 and np.isfinite(res.factor):
+                    df_g = apply_tail_to_long_df(
+                        df_g, res.factor, groups, role="premium"
+                    )
+            parts.append(df_g)
+
+        # Diverged groups carry no `_tail` columns -> diagonal union (only
+        # when a tail is requested; the default path stays byte-identical).
+        if tail is not False:
+            self._df = pl.concat(parts, how="diagonal") if parts else pl.DataFrame()
+            if groups is None:
+                self.premium_tail_factor = factor_map.get(None, 1.0)
+                self.premium_tail_diverged = diverged_map.get(None, False)
+            else:
+                self.premium_tail_factor = factor_map
+                self.premium_tail_diverged = diverged_map
+        else:
+            self._df = pl.concat(parts) if parts else pl.DataFrame()
+            if groups is None:
+                self.premium_tail_factor = 1.0
+                self.premium_tail_diverged = False
+            else:
+                self.premium_tail_factor = {g: 1.0 for g in keys}
+                self.premium_tail_diverged = {g: False for g in keys}
         return self
 
     @classmethod
