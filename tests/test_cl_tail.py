@@ -98,7 +98,19 @@ def test_divergence_guard_flag_keeps_one_and_warns():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         maybe_warn_tail(res)
-    assert any("do not decay" in str(w.message) for w in caught)
+    assert any("does not converge" in str(w.message) for w in caught)
+
+
+def test_divergence_boundary_is_curve_specific():
+    # A slowly-decaying excess (f - 1 ~ k^-0.5, slope ~ -0.5) converges for
+    # the exponential sum but DIVERGES for inverse_power (Sum k^b is finite
+    # only for b < -1). The guard must be curve-aware.
+    f = 1.0 + np.arange(1, 9, dtype=float) ** -0.5
+    ip = compute_tail_factor(f, Tail(curve="inverse_power"), grain="M")
+    ex = compute_tail_factor(f, Tail(curve="exponential"), grain="M")
+    assert ip.diverged and ip.factor == 1.0
+    assert -1.0 <= ip.slope < 0.0  # negative (decaying) yet past the -1 boundary
+    assert not ex.diverged
 
 
 def test_grain_aware_horizon_cap():
@@ -278,7 +290,9 @@ def test_ratio_ed_tail_propagates(tri):
     # ED tail is active (additive g->0); it surfaces on the RatioFit.
     rf = lr.LossRatio(method="ed", tail=True).fit(tri)
     assert "loss_tail" in rf._df.columns
-    assert all(s > 0.0 for s in rf.loss_fit.tail_factor.values())
+    # Mixed convergence under the curve-aware guard: at least one group's
+    # additive tail is positive.
+    assert any(s > 0.0 for s in rf.loss_fit.tail_factor.values())
 
 
 def test_ratio_sa_tail_propagates(tri):
@@ -333,7 +347,10 @@ def test_ed_tail_true_adds_companion_columns(tri):
     assert "loss_tail" in tail_cols
     assert "loss_total_se_tail" in tail_cols
     assert "loss_total_cv_tail" in tail_cols
-    assert all(s > 0.0 for s in ef.tail_factor.values())
+    # Under the curve-aware divergence guard some groups converge
+    # (Sum_g > 0) and some diverge (0.0); at least one converges so the
+    # companion columns exist.
+    assert any(s > 0.0 for s in ef.tail_factor.values())
 
 
 def test_ed_tail_additive_increment(tri):
@@ -397,20 +414,23 @@ def test_sa_default_no_tail_columns(tri):
 
 def test_sa_tail_post_maturity_cl_is_multiplicative(tri):
     # With a detected maturity the last stage is CL -> the tail is the
-    # multiplicative factor applied to the last cumulative loss.
+    # multiplicative factor applied to the last cumulative loss. Use a
+    # group whose post-maturity factors actually converge (SUR; the
+    # curve-aware guard diverges the slow-decaying groups to 1.0).
     sa = lr.StageAdaptive(tail=True).fit(tri)
     assert "loss_tail" in sa._df.columns
     assert all(v.mat_k is not None for v in sa._internals.values())
+    assert sa.tail_factor["SUR"] > 1.0  # this group converges
     last = (
         sa._df.with_columns(
             pl.col("dev").rank(method="dense", descending=True)
             .over(["coverage", "cohort"]).alias("_dev_rank")
         )
-        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "SUR"))
         .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
     )
     r = last["_ratio"].drop_nulls().to_numpy()
-    assert np.allclose(r[np.isfinite(r)], sa.tail_factor["CAN"])
+    assert np.allclose(r[np.isfinite(r)], sa.tail_factor["SUR"])
 
 
 def test_sa_tail_all_ed_is_additive(tri):

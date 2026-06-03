@@ -984,7 +984,10 @@ class LossFit:
                 factor_map[g] = val
                 diverged_map[g] = div
                 parts.append(grp_long)
-            long_df = parts[0] if groups is None else pl.concat(parts)
+            # Groups can converge or diverge independently, so a diverged
+            # group carries no `_tail` columns while a convergent one does;
+            # `diagonal` unions the schemas (missing tail cells -> null).
+            long_df = parts[0] if groups is None else pl.concat(parts, how="diagonal")
             if groups is None:
                 self.tail_factor = factor_map[None]
                 self.tail_diverged = diverged_map[None]

@@ -6,11 +6,14 @@ develops over decades, so ``f_k`` does NOT reach 1 within the observed
 window -- the tail is an extrapolation whose validity must be GATED by
 convergence evidence, not blindly curve-fitted:
 
-* CONVERGED (the fitted excess ``f_k - 1`` decays, slope ``< 0``):
-  evidence-based extrapolation continued to the convergence tolerance.
-* NOT CONVERGED (slope ``>= 0`` -- the divergence guard fires): there is
-  no finite evidence-based tail. ``on_diverge`` decides the policy --
-  ``"flag"`` keeps the estimate, warns, and marks the fit so the
+* CONVERGED (the fitted excess ``f_k - 1`` decays fast enough for the
+  tail to be finite): evidence-based extrapolation continued to the
+  convergence tolerance.
+* NOT CONVERGED (the decay is too slow -- the divergence guard fires at
+  the curve's convergence boundary: ``b >= 0`` for ``exponential``,
+  ``b >= -1`` for ``inverse_power``, the p-series boundary): there is no
+  finite evidence-based tail. ``on_diverge`` decides the policy --
+  ``"flag"`` keeps the observed ultimate, warns, and marks the fit so the
   uncertainty can be widened; ``"refuse"`` caps at the observed ultimate.
 
 Curve family (the decay law of the excess ``f_k - 1``):
@@ -45,6 +48,14 @@ _DEFAULT_HORIZON_YEARS = 50
 _CURVES = ("inverse_power", "exponential")
 _ON_DIVERGE = ("flag", "refuse")
 
+# Curve-specific divergence boundary on the fitted decay slope `b`. The tail
+# (a product of `1 + e^a*term_k` for CL, or a sum of `e^a*term_k` for ED) is
+# finite iff `Sum_k term_k` converges:
+#   - exponential, term = e^(b*k): Sum converges iff b < 0.
+#   - inverse_power, term = k^b:   Sum converges iff b < -1 (a p-series).
+# So `b >= threshold` is a divergent (horizon-dependent) tail and is gated.
+_DIVERGENCE_SLOPE = {"exponential": 0.0, "inverse_power": -1.0}
+
 
 @dataclass
 class Tail:
@@ -58,11 +69,13 @@ class Tail:
         ``"exponential"`` (``f - 1 = exp(a + b*i)`` -- a lighter
         geometric tail).
     on_diverge
-        Policy when the fitted decay slope is non-negative (the excess
-        does not decay, so no convergent tail exists): ``"flag"``
-        (default) keeps the estimate, emits a warning, and marks the fit
-        for uncertainty widening; ``"refuse"`` caps at the observed
-        ultimate (tail factor ``1.0``).
+        Policy when the fit decays too slowly to converge (slope past the
+        curve's convergence boundary: ``b >= 0`` for ``exponential``,
+        ``b >= -1`` for ``inverse_power`` -- the p-series boundary): so no
+        finite evidence-based tail exists. ``"flag"`` (default) keeps the
+        observed ultimate, emits a warning, and marks the fit for
+        uncertainty widening; ``"refuse"`` caps at the observed ultimate
+        (tail factor ``1.0``) silently.
     tol
         Convergence tolerance on the per-step excess ``f - 1``.
         Extrapolation stops once the projected excess falls below this.
@@ -203,8 +216,9 @@ def compute_tail_factor(
     excess = f_vals[pos] - 1.0     # > 0 on the f > 1 subset
 
     a, b = _fit_decay(excess, idx, cfg.curve)
-    if b >= 0.0:
-        # Non-decaying excess: there is no finite evidence-based tail.
+    if b >= _DIVERGENCE_SLOPE[cfg.curve]:
+        # The excess decays too slowly to give a finite tail (b >= 0 for
+        # exponential, b >= -1 for inverse_power -- the p-series boundary).
         # Do not fabricate a convergent extrapolation from divergent data.
         reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
         return _TailResult(1.0, cfg.curve, b, 0, True, False, reason)
@@ -250,7 +264,9 @@ def compute_tail_increment(
     g_vals = g_sel[pos]
 
     a, b = _fit_decay(g_vals, idx, cfg.curve)
-    if b >= 0.0:
+    if b >= _DIVERGENCE_SLOPE[cfg.curve]:
+        # Intensity decays too slowly to give a finite Sum g (b >= 0 for
+        # exponential, b >= -1 for inverse_power -- the p-series boundary).
         reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
         return _TailResult(0.0, cfg.curve, b, 0, True, False, reason)
 
@@ -447,10 +463,11 @@ def maybe_warn_tail(result: _TailResult, group: Any = None) -> None:
     where = "" if group is None else f" (group {group!r})"
     if result.reason == "diverged_flagged":
         warnings.warn(
-            f"Tail factors do not decay{where}: the fitted decay slope is "
-            f"non-negative, so no convergent tail exists. Keeping the observed "
-            f"ultimate (tail factor 1.0) and flagging the fit; treat the tail "
-            f"with wide uncertainty. Pass on_diverge='refuse' to silence.",
+            f"Tail does not converge{where}: the fitted factors decay too "
+            f"slowly (slope b={result.slope:.3g} past the curve's convergence "
+            f"boundary), so no finite evidence-based tail exists. Keeping the "
+            f"observed ultimate (tail factor 1.0) and flagging the fit; treat "
+            f"the tail with wide uncertainty. Pass on_diverge='refuse' to silence.",
             stacklevel=3,
         )
     elif result.reason == "horizon_capped":
