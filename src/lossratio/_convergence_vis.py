@@ -4,7 +4,7 @@ Implements ``Convergence.plot()``: 5-panel stacked column showing
 ``ratio`` / ``drift_window`` / ``drift_tail`` / ``|slope|`` /
 ``dispersion`` series across candidate dev cutoffs, with threshold
 hlines, a maturity (``maturity_point``) reference vline, and the detected
-convergence point (``convergence_point``) vline. Mirrors the R sibling's
+convergence point (``convergence_point``) vline. Mirrors R's
 ``plot.Convergence`` (``R/convergence.R``).
 """
 

@@ -1,7 +1,7 @@
 """Link-factor diagnostic visualisation -- matplotlib backend.
 
 Implements ``Link.plot()`` / ``ATA.plot()`` / ``Intensity.plot()``.
-Mirrors the R sibling's ``plot.Link`` dispatcher (``R/link-vis.R``) and
+Mirrors R's ``plot.Link`` dispatcher (``R/link-vis.R``) and
 its two internal branches ``.plot_link_ata`` (5 types:
 ``cv`` / ``rse`` / ``summary`` / ``box`` / ``point``) and
 ``.plot_link_ed`` (3 types: ``summary`` / ``box`` / ``point``).

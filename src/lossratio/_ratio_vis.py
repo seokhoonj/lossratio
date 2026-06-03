@@ -1,7 +1,7 @@
 """Projection-curve visualisation -- matplotlib backend.
 
 Implements ``RatioFit.plot()`` / ``LossFit.plot()`` / ``PremiumFit.plot()``.
-Mirrors the R sibling's ``plot.RatioFit`` (``R/ratio-vis.R``) and the
+Mirrors R's ``plot.RatioFit`` (``R/ratio-vis.R``) and the
 shared ``.plot_projection_fit`` helper (``R/cl-vis.R``).
 
 Per-cohort projection curves: solid observed line + bridge segment +

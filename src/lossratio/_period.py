@@ -392,7 +392,7 @@ def derive_grain_columns(df: Any) -> Any:
     Letter-suffix family: ``_m`` / ``_q`` / ``_h`` / ``_y`` = monthly /
     quarterly / half-yearly / yearly. The yearly underwriting and
     calendar columns are bare (``uy`` / ``cy``, no suffix), matching
-    the R sibling's column scheme.
+    R's column scheme.
 
     The 12 grain columns (4 grains × 3 axes) are:
 

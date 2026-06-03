@@ -59,8 +59,7 @@ class Triangle:
     - Requested grain must be at least as coarse as input (no
       decomposition: yearly input cannot be viewed monthly).
 
-    Three-mode dispatch on ``calendar`` / ``dev`` (mirrors the R
-    sibling's ``as_triangle``):
+    Three-mode dispatch on ``calendar`` / ``dev`` (mirrors R's ``as_triangle``):
 
     - mode 1 (cohort + calendar): ``dev`` is derived from the two.
     - mode 2 (cohort + dev, no calendar): the supplied ``dev`` column
@@ -520,7 +519,7 @@ class Triangle:
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
-        Mirrors the R sibling's ``detect_regime(triangle, ...)``. The
+        Mirrors R's ``detect_regime(triangle, ...)``. The
         default ``window="auto"`` resolves each group's trajectory
         window via :meth:`detect_maturity`, falling back to the elbow
         heuristic and finally to a fixed default (``6``) when neither
@@ -628,7 +627,7 @@ class Triangle:
         :class:`Backtest`. ``holdout=0`` returns a shallow copy with the
         same underlying frame (no rows removed).
 
-        Mirrors the R sibling's ``mask_triangle(x, holdout)``.
+        Mirrors R's ``mask_triangle(x, holdout)``.
 
         Parameters
         ----------
@@ -863,7 +862,7 @@ class TriangleValidation:
        ``cohort + calendar + grain`` (mirrors the
        :class:`Triangle` 3-mode dispatch).
 
-    Mirrors the R sibling's ``validate_triangle(...)`` which returns a
+    Mirrors R's ``validate_triangle(...)`` which returns a
     ``TriangleValidation`` object.
 
     Parameters

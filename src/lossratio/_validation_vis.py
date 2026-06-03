@@ -2,8 +2,7 @@
 
 Implements ``TriangleValidation.plot()`` (cohort-level bar chart of
 observed vs expected dev counts) and ``TriangleValidation.plot_triangle(x_axis="dev")``
-(cohort x dev heatmap of observed / missing cells). Mirrors the R
-sibling's ``plot.TriangleValidation`` and
+(cohort x dev heatmap of observed / missing cells). Mirrors R's ``plot.TriangleValidation`` and
 ``plot_triangle.TriangleValidation`` (``R/triangle.R``).
 """
 

@@ -11,7 +11,7 @@ development cells of older cohorts still leak into the wedge (that is
 intentional — strict cohort-axis cuts are the separate ``regime``
 argument).
 
-Python sibling of R ``.apply_recent_filter`` (``R/utils.R``). R operates
+Python counterpart of R ``.apply_recent_filter`` (``R/utils.R``). R operates
 on the long-format ``Link`` table, one row per ``(cohort, link)`` pair,
 filtering rows by the calendar index of the link's *source* dev
 (``ata_from``). The numpy kernels here work on the

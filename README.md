@@ -45,7 +45,7 @@ Working components:
   and by-diagonal A/E Error summaries — `ae_err = actual /
   predicted - 1`).
 
-Not yet ported from the R sibling: `Calendar` / `Total`
+Not yet implemented in Python: `Calendar` / `Total`
 aggregations and the `Convergence` diagnostic.
 
 ## Quick Start

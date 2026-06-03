@@ -117,7 +117,7 @@ def _detect_mat_k(stable_k: np.ndarray, min_run: int) -> int | None:
     """First link index k where stable_k[k : k + min_run] are all True.
 
     Returns the *target* dev value of that link (1-indexed; equivalent
-    to ``ata_to`` in R sibling). With this convention the development
+    to ``ata_to`` in R). With this convention the development
     region splits as ED = ``dev < mat_k`` and CL = ``dev >= mat_k``.
 
     Returns ``None`` if no such window exists.
@@ -728,7 +728,7 @@ def _resolve_maturity(
 ) -> "Maturity | None":
     """Resolve a 4-type ``maturity`` input to a Maturity object (or None).
 
-    Python sibling of R's ``.resolve_maturity()`` (see ``R/regime.R``).
+    Python counterpart of R's ``.resolve_maturity()`` (see ``R/regime.R``).
     Used by :class:`~lossratio.Loss` / :class:`~lossratio.Ratio` to
     normalise the ``maturity`` argument into a single representation:
     either ``None`` (no maturity override -- caller's default behaviour)

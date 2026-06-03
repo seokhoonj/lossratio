@@ -105,7 +105,7 @@ def _kneedle_elbow(
 ) -> int | None:
     """Kneedle elbow on a (decreasing) ``change_count`` vs ``window`` curve.
 
-    Direct port of R's ``.kneedle_elbow`` in
+    Mirrors R's ``.kneedle_elbow`` in
     ``R/regime-optimal-window.R``. Both axes are normalised to ``[0, 1]``
     and the elbow is the index with the maximum vertical *deficit*
     below the diagonal line ``y = 1 - x``. Returns ``None`` when the
@@ -952,7 +952,7 @@ class Regime:
         their detected ``regime_id`` with vertical dashed lines at
         change points.
 
-        **R divergence:** the R sibling's ``plot.Regime`` draws a PCA
+        **R divergence:** R's ``plot.Regime`` draws a PCA
         scatter of cohort trajectories with loading arrows and 90%
         ellipses, sourced from the Regime object's ``trajectory`` /
         ``pca`` / ``labels`` slots. Python ``Regime`` carries only

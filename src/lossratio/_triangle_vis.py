@@ -1,7 +1,7 @@
 """Triangle visualisation -- matplotlib backend.
 
 Implements ``Triangle.plot_triangle(view="value" | "usage")``. Mirrors
-the R sibling's ``plot_triangle.Triangle`` (``R/triangle-vis.R``).
+R's ``plot_triangle.Triangle`` (``R/triangle-vis.R``).
 """
 
 from __future__ import annotations

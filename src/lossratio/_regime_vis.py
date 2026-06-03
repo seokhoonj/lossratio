@@ -1,7 +1,7 @@
 """Regime visualisation -- matplotlib backend.
 
 Implements ``Regime.plot()``: per-group cohort timeline with regime
-segments and change-point vlines. **R divergence:** the R sibling's
+segments and change-point vlines. **R divergence:** R's
 ``plot.Regime`` draws a PCA scatter of cohort trajectories with
 loading arrows and 90% ellipses, sourced from
 ``Regime$trajectory`` / ``Regime$pca`` / ``Regime$labels``. Python

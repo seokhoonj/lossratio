@@ -1,6 +1,6 @@
 """Triangle-level bootstrap -- Phase 1: analytical CL (Mack closed-form).
 
-This module ports the bootstrap worker of the R sibling package. Phase 1
+This module mirrors the bootstrap worker of the R package. Phase 1
 implements only the ``type="analytical"`` / ``method="cl"`` paradigm --
 the Mack (1993) closed-form propagation -- together with the
 paradigm-agnostic summary kernel that decomposes per-cell predictive
@@ -957,8 +957,7 @@ def _cell_residuals_ed(
         ``loss_delta`` and the from-side cumulative premium column
         named by ``from_col``.
     from_col
-        Name of the from-side cumulative premium column. Both the R
-        sibling and the Python ``Link`` emit ``premium_from`` -- the
+        Name of the from-side cumulative premium column. Both the R and the Python ``Link`` emit ``premium_from`` -- the
         default matches.
 
     Returns
@@ -3303,7 +3302,7 @@ class Bootstrap:
 
 
 # ---------------------------------------------------------------------------
-# Section 6 -- Shared resolve / overlay helpers (R sibling parity)
+# Section 6 -- Shared resolve / overlay helpers (R parity)
 # ---------------------------------------------------------------------------
 
 
