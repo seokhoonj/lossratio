@@ -56,9 +56,9 @@ def test_ratio_invalid_method_raises():
         lr.Ratio(method="bogus")
 
 
-def test_ratio_alpha_other_raises():
+def test_ratio_loss_alpha_other_raises():
     with pytest.raises(NotImplementedError, match="alpha"):
-        lr.Ratio(alpha=2.0)
+        lr.Ratio(loss_alpha=2.0)
 
 
 def test_ratio_output_columns():

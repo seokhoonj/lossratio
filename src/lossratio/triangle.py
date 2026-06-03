@@ -648,7 +648,7 @@ class Triangle:
             If ``holdout`` is negative, or if masking removes every
             observation.
         """
-        if not isinstance(holdout, (int,)) or isinstance(holdout, bool):
+        if not isinstance(holdout, int) or isinstance(holdout, bool):
             raise ValueError(
                 f"`holdout` must be a non-negative integer, got "
                 f"{type(holdout).__name__}."

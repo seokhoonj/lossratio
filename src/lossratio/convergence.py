@@ -15,6 +15,7 @@ import polars as pl
 from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from .triangle import Triangle
 
 
@@ -471,7 +472,7 @@ class Convergence:
         self.min_n_cohorts = min_n_cohorts
         return self
 
-    def summary(self) -> Any:
+    def summary(self) -> "FrameLike":
         """One-row-per-candidate diagnostic table."""
         df = pl.DataFrame({
             "dev": self.dev_cand,
@@ -489,7 +490,7 @@ class Convergence:
         return mirror_output(df, self._output_type)
 
     @property
-    def df(self) -> Any:
+    def df(self) -> "FrameLike":
         return self.summary()
 
     def plot(

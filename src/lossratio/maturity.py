@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 class _MaturityResult:
     """Internal single-group maturity detection result.
 
-    Used by :mod:`lr` (stage-adaptive method) to locate the
+    Used by the stage-adaptive method to locate the
     ED-to-CL switch point. End users get the public
     :class:`Maturity` (built via :meth:`ATA.maturity`).
     """
@@ -159,7 +159,7 @@ def _compute_maturity(
 ) -> _MaturityResult:
     """Internal: compute factor stats + stability flags + mat_k.
 
-    Used by :mod:`lr` for the stage-adaptive method's switch point.
+    Used by the stage-adaptive method's switch point.
     The public path is ``triangle.link().ata().maturity(...)``.
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
@@ -692,7 +692,7 @@ class Maturity:
     def summary(self):
         """One-row-per-group summary of the detected maturity link.
 
-        Schema (R parity with ``R/maturity.R``)::
+        Schema::
 
             [groups?, ata_from, change, ata_link,
              mean, median, wt, cv,

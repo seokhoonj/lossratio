@@ -5,8 +5,6 @@ premium across the cohort x dev grid. The point estimate is identical
 under both ``"cl"`` (Mack multiplicative) and ``"ed"`` (additive)
 recursions — the two methods differ only in how the variance
 accumulates forward.
-
-This is the Python sibling of R ``fit_premium()`` (see ``R/premium.R``).
 """
 
 from __future__ import annotations

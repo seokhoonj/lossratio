@@ -4,8 +4,6 @@
 :class:`Premium`. It delegates loss-side projection to :class:`Loss`,
 retrieves the embedded :class:`PremiumFit`, and composes the loss-ratio
 point + variance via the delta method.
-
-Python sibling of R ``fit_ratio()`` (see ``R/ratio.R``).
 """
 
 from __future__ import annotations
@@ -213,8 +211,6 @@ class Ratio:
         conf_level: float = 0.95,
         tail: TailArg = False,
         uncertainty: UncertaintyArg = None,
-        # backwards-compat alias for loss_alpha (pre-Phase-5 callers)
-        alpha: float | None = None,
     ) -> None:
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -235,9 +231,6 @@ class Ratio:
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
                 f"got {sigma_method!r}"
             )
-        if alpha is not None:
-            # legacy callers: alpha == loss_alpha
-            loss_alpha = float(alpha)
         if loss_alpha != 1.0:
             raise NotImplementedError(
                 f"loss_alpha={loss_alpha} not yet implemented; "
@@ -277,11 +270,6 @@ class Ratio:
         self.conf_level = conf_level
         self.tail = tail
         self.uncertainty = uncertainty
-
-    # alias for backwards compatibility with code reading `.alpha`
-    @property
-    def alpha(self) -> float:
-        return self.loss_alpha
 
     def fit(self, triangle: "Triangle") -> "RatioFit":
         """Fit the Ratio estimator on a Triangle."""
@@ -515,8 +503,6 @@ class RatioFit:
         ultimate loss and the tailed ultimate premium -- and hence
         ``ratio_tail`` -- were produced. Empty when no tail was requested.
         """
-        import polars as _pl
-
         from .tail import tail_report_frame
 
         loss_r = tail_report_frame(
@@ -529,7 +515,7 @@ class RatioFit:
             getattr(self.premium_fit, "tail", False),
             role="premium",
         )
-        combined = _pl.concat([loss_r, prem_r]) if (loss_r.height or prem_r.height) else loss_r
+        combined = pl.concat([loss_r, prem_r]) if (loss_r.height or prem_r.height) else loss_r
         return mirror_output(combined, self._output_type)
 
     @property

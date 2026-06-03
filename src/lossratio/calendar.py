@@ -10,6 +10,7 @@ from ._io import mirror_output, normalize_groups
 from ._period import add_periods
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from .triangle import Triangle
 
 
@@ -135,7 +136,7 @@ class Calendar:
         return self
 
     @property
-    def df(self) -> Any:
+    def df(self) -> "FrameLike":
         return mirror_output(self._df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:

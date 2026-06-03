@@ -9,8 +9,6 @@ Output columns use the role-specific ``loss_*`` naming. The full table
 also carries ``premium_*`` columns (taken from the embedded
 ``PremiumFit``) so downstream Ratio composition has everything in one
 place.
-
-Python sibling of R ``fit_loss()`` (see ``R/loss.R``).
 """
 
 from __future__ import annotations

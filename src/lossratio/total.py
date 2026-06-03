@@ -9,6 +9,7 @@ import polars as pl
 from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from .triangle import Triangle
 
 
@@ -64,7 +65,7 @@ class Total:
         return self
 
     @property
-    def df(self) -> Any:
+    def df(self) -> "FrameLike":
         return mirror_output(self._df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
