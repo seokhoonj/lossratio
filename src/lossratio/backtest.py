@@ -136,19 +136,19 @@ def _is_ratio_fit_estimator(estimator: Any) -> bool:
     so they are scored on ``target="loss"`` / ``"premium"`` directly.
     """
     # Late import to avoid circular dependency at module load time.
-    from .loss_ratio import LossRatio
+    from .ratio import Ratio
 
-    return isinstance(estimator, LossRatio)
+    return isinstance(estimator, Ratio)
 
 
 def _resolve_expected_column(target: str, fit_df_columns: list[str]) -> str:
     """Map ``target`` to the projection column on the refit output frame.
 
     The loss models (ChainLadder / ExposureDriven / StageAdaptive) emit a
-    ``LossFit`` carrying ``loss_proj`` + ``premium_proj``; ``LossRatio``
+    ``LossFit`` carrying ``loss_proj`` + ``premium_proj``; ``Ratio``
     emits a ``RatioFit`` that additionally carries ``ratio_proj``. So a
     role-named direct lookup suffices; ``target="ratio"`` is only
-    reachable for a LossRatio backtest (a loss model has no ``ratio_proj``
+    reachable for a Ratio backtest (a loss model has no ``ratio_proj``
     and raises here, which the estimator guard anticipates).
     """
     if target not in _VALID_TARGETS:
@@ -201,7 +201,7 @@ class Backtest:
     ----------
     estimator
         An ``lr.ChainLadder`` / ``lr.ExposureDriven`` / ``lr.StageAdaptive``
-        / ``lr.LossRatio`` instance (or any estimator whose
+        / ``lr.Ratio`` instance (or any estimator whose
         ``fit(triangle)`` returns a result class with a ``loss_proj``
         column in ``.df``).
 
@@ -221,7 +221,7 @@ class Backtest:
         Number of most recent calendar diagonals to mask.
     target
         Which projection to score: ``"ratio"`` (default), ``"loss"``,
-        or ``"premium"``. A ratio-fit estimator (``lr.LossRatio``) only
+        or ``"premium"``. A ratio-fit estimator (``lr.Ratio``) only
         supports ``target="ratio"``; use a loss model (``lr.ChainLadder``
         / ``lr.ExposureDriven`` / ``lr.StageAdaptive``) to score the loss
         or premium projection directly.
@@ -230,7 +230,7 @@ class Backtest:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr.Backtest(estimator=lr.LossRatio(method="sa"), holdout=6).fit(tri)
+    >>> bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6).fit(tri)
     >>> bt.ae_err
     >>> bt.col_summary
     >>> bt.diag_summary
@@ -255,7 +255,7 @@ class Backtest:
             raise ValueError(
                 f"target must be one of {_VALID_TARGETS}, got {target!r}"
             )
-        # Only LossRatio is a ratio-fit -- the ratio lane is its meaningful
+        # Only Ratio is a ratio-fit -- the ratio lane is its meaningful
         # target; use a loss model to backtest the loss / premium projection.
         if _is_ratio_fit_estimator(estimator) and target != "ratio":
             raise ValueError(
@@ -554,8 +554,8 @@ class BacktestFit:
             (``view='usage'`` only) override values for the filter
             overlays. By default the usage view reads ``recent`` and
             ``regime`` from the estimator that drove the backtest
-            (``recent`` from the loss model / ``LossRatio``; ``regime``
-            from the loss-side of ``LossRatio``, or ``regime`` of the
+            (``recent`` from the loss model / ``Ratio``; ``regime``
+            from the loss-side of ``Ratio``, or ``regime`` of the
             loss model); ``maturity`` defaults to ``None`` -- callers
             who want a maturity hline overlay must pass an explicit
             :class:`Maturity` instance or scalar (R parity:
@@ -604,7 +604,7 @@ class BacktestFit:
     def _infer_regime(self) -> Any:
         """Extract the loss-side regime from `self.estimator`, if any.
 
-        For ``lr.LossRatio``, prefer ``loss_regime`` (its loss-side);
+        For ``lr.Ratio``, prefer ``loss_regime`` (its loss-side);
         for the loss models (ChainLadder / ExposureDriven /
         StageAdaptive), ``regime``. The
         Triangle renderer accepts ``"auto"`` directly and runs
@@ -619,7 +619,7 @@ class BacktestFit:
     def _infer_maturity(self) -> Any:
         """Extract maturity from `self.estimator`, if any.
 
-        ``lr.StageAdaptive`` / ``lr.LossRatio`` carry a ``maturity`` slot.
+        ``lr.StageAdaptive`` / ``lr.Ratio`` carry a ``maturity`` slot.
         The Triangle renderer accepts ``"auto"`` directly and runs
         :meth:`Triangle.detect_maturity` inline, so a literal
         ``"auto"`` is forwarded as-is. ChainLadder / ExposureDriven have

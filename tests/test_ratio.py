@@ -47,22 +47,22 @@ def _date(s: str) -> pl.Expr:
 
 def test_ratio_default_method_is_ed():
     """R parity: fit_ratio() defaults to method='ed'."""
-    fit = lr.LossRatio().fit(lr.Triangle(_toy_triangle_input()))
+    fit = lr.Ratio().fit(lr.Triangle(_toy_triangle_input()))
     assert fit.method == "ed"
 
 
 def test_ratio_invalid_method_raises():
     with pytest.raises(ValueError, match="method"):
-        lr.LossRatio(method="bogus")
+        lr.Ratio(method="bogus")
 
 
 def test_ratio_alpha_other_raises():
     with pytest.raises(NotImplementedError, match="alpha"):
-        lr.LossRatio(alpha=2.0)
+        lr.Ratio(alpha=2.0)
 
 
 def test_ratio_output_columns():
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     expected = {
@@ -77,7 +77,7 @@ def test_ratio_output_columns():
 
 
 def test_ratio_output_shape():
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert fit.n_rows == 25  # 5 cohorts x 5 devs
@@ -91,7 +91,7 @@ def test_ratio_output_shape():
 def test_ratio_cl_method_matches_cl_fit():
     tri = lr.Triangle(_toy_triangle_input())
     cl_fit = lr.ChainLadder().fit(tri)
-    ratio_fit = lr.LossRatio(method="cl").fit(tri)
+    ratio_fit = lr.Ratio(method="cl").fit(tri)
 
     cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
     ratio_df = ratio_fit.to_polars().sort(["cohort", "dev"])
@@ -101,7 +101,7 @@ def test_ratio_cl_method_matches_cl_fit():
 
 
 def test_ratio_cl_ratio_proj_equals_loss_div_exposure():
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     df = fit.to_polars()
@@ -124,7 +124,7 @@ def test_ratio_cl_ratio_proj_equals_loss_div_exposure():
 def test_ratio_ed_method_matches_ed_fit():
     tri = lr.Triangle(_toy_triangle_input())
     ed_fit = lr.ExposureDriven().fit(tri)
-    ratio_fit = lr.LossRatio(method="ed").fit(tri)
+    ratio_fit = lr.Ratio(method="ed").fit(tri)
 
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
     ratio_df = ratio_fit.to_polars().sort(["cohort", "dev"])
@@ -140,7 +140,7 @@ def test_ratio_ed_method_matches_ed_fit():
 
 def test_ratio_sa_with_loose_thresholds_detects_mat_k_early():
     """With loose thresholds, mat_k should be detected (e.g., 1)."""
-    fit = lr.LossRatio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
+    fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
         lr.Triangle(_toy_triangle_input())
     )
     assert fit.maturity_point is not None
@@ -150,7 +150,7 @@ def test_ratio_sa_strict_thresholds_falls_back_to_ed():
     """When maturity not detected, SA falls back to ED throughout, so
     loss_proj should match the pure-ED projection."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.LossRatio(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
+    sa_fit = lr.Ratio(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
     ed_fit = lr.ExposureDriven().fit(tri)
 
     assert sa_fit.maturity_point is None
@@ -163,7 +163,7 @@ def test_ratio_sa_mat_k_two_matches_cl_projection():
     """With mat_k=2, every link's target dev (>= 2) lies in the CL
     region (target dev >= mat_k), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.LossRatio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
+    sa_fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.ChainLadder().fit(tri)
 
     if sa_fit.maturity_point == 2:
@@ -182,7 +182,7 @@ def test_ratio_sa_mat_k_two_matches_cl_projection():
 
 
 def test_ratio_summary_columns():
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     summary = fit.summary()
@@ -201,7 +201,7 @@ def test_ratio_summary_columns():
 
 
 def test_ratio_summary_fully_observed_cohort():
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
@@ -220,7 +220,7 @@ def test_ratio_summary_fully_observed_cohort():
 
 def test_ratio_with_group_var():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(df, groups="coverage")
     )
     assert "coverage" in fit.to_polars().columns
@@ -234,7 +234,7 @@ def test_ratio_groups_fitted_independently():
             base.with_columns(pl.lit("B").alias("coverage")),
         ]
     )
-    fit = lr.LossRatio(method="cl").fit(
+    fit = lr.Ratio(method="cl").fit(
         lr.Triangle(df_grouped, groups="coverage")
     )
     df = fit.to_polars().sort(["coverage", "cohort", "dev"])
@@ -245,7 +245,7 @@ def test_ratio_groups_fitted_independently():
 
 def test_ratio_sa_mat_k_per_group_dict():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    fit = lr.LossRatio(method="sa", max_cv=10.0, max_rse=10.0).fit(
+    fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0).fit(
         lr.Triangle(df, groups="coverage")
     )
     assert isinstance(fit.maturity_point, dict)
@@ -260,7 +260,7 @@ def test_ratio_sa_mat_k_per_group_dict():
 def test_ratio_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     df = pd.DataFrame(_toy_triangle_input().to_pandas())
-    fit = lr.LossRatio(method="cl").fit(lr.Triangle(df))
+    fit = lr.Ratio(method="cl").fit(lr.Triangle(df))
     assert isinstance(fit.df, pd.DataFrame)
     assert isinstance(fit.summary(), pd.DataFrame)
 
@@ -271,7 +271,7 @@ def test_ratio_pandas_input_mirror():
 
 
 def test_ratio_repr():
-    fit = lr.LossRatio(method="ed").fit(lr.Triangle(_toy_triangle_input()))
+    fit = lr.Ratio(method="ed").fit(lr.Triangle(_toy_triangle_input()))
     text = repr(fit)
     assert "RatioFit" in text
     assert "ed" in text
@@ -284,7 +284,7 @@ def test_ratio_repr():
 
 def test_ratio_default_premium_method_is_ed():
     """R parity: fit_ratio() defaults premium_method='ed'."""
-    assert lr.LossRatio().premium_method == "ed"
+    assert lr.Ratio().premium_method == "ed"
 
 
 def test_loss_default_method_is_ed():
@@ -296,7 +296,7 @@ def test_loss_default_method_is_ed():
 def test_ratio_explicit_method_still_works():
     """The default change must not affect explicit method= callers."""
     for m in ("sa", "ed", "cl"):
-        fit = lr.LossRatio(method=m).fit(lr.Triangle(_toy_triangle_input()))
+        fit = lr.Ratio(method=m).fit(lr.Triangle(_toy_triangle_input()))
         assert fit.method == m
 
 
@@ -367,7 +367,7 @@ def test_ratio_maturity_object_overrides_auto_detect():
     """Ratio threads a Maturity object into the inner Loss fit."""
     tri = lr.Triangle(_toy_triangle_input())
     mat = lr.Maturity.at(change=3)
-    fit = lr.LossRatio(
+    fit = lr.Ratio(
         method="sa", maturity=mat, max_cv=1e-9, max_rse=1e-9
     ).fit(tri)
     assert fit.maturity_point == 3
@@ -376,5 +376,5 @@ def test_ratio_maturity_object_overrides_auto_detect():
 def test_ratio_maturity_none_disables_sa_switch():
     """Ratio(method='sa', maturity=None) -> no maturity switch."""
     tri = lr.Triangle(_toy_triangle_input())
-    fit = lr.LossRatio(method="sa", maturity=None).fit(tri)
+    fit = lr.Ratio(method="sa", maturity=None).fit(tri)
     assert fit.maturity_point is None

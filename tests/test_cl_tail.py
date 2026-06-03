@@ -279,7 +279,7 @@ def test_loss_tail_default_false(tri):
 
 
 def test_ratio_cl_tail_propagates_through_loss_fit(tri):
-    rf = lr.LossRatio(method="cl", tail=True).fit(tri)
+    rf = lr.Ratio(method="cl", tail=True).fit(tri)
     # tail surfaced on the embedded LossFit
     assert isinstance(rf.loss_fit.tail_factor, dict)
     assert all(tf > 1.0 for tf in rf.loss_fit.tail_factor.values())
@@ -289,7 +289,7 @@ def test_ratio_cl_tail_propagates_through_loss_fit(tri):
 
 def test_ratio_ed_tail_propagates(tri):
     # ED tail is active (additive g->0); it surfaces on the RatioFit.
-    rf = lr.LossRatio(method="ed", tail=True).fit(tri)
+    rf = lr.Ratio(method="ed", tail=True).fit(tri)
     assert "loss_tail" in rf._df.columns
     # Mixed convergence under the curve-aware guard: at least one group's
     # additive tail is positive.
@@ -301,13 +301,13 @@ def test_ratio_sa_tail_propagates(tri):
     # the RatioFit and emits no "has no effect" warning.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        rf = lr.LossRatio(method="sa", tail=True).fit(tri)
+        rf = lr.Ratio(method="sa", tail=True).fit(tri)
     assert "loss_tail" in rf._df.columns
     assert not any("has no effect" in str(w.message) for w in caught)
 
 
 def test_ratio_tail_attr_round_trip(tri):
-    rf = lr.LossRatio(method="cl", tail=1.05).fit(tri)
+    rf = lr.Ratio(method="cl", tail=1.05).fit(tri)
     assert rf.tail == 1.05
 
 
@@ -526,7 +526,7 @@ def test_premium_tail_numeric_is_multiplicative(tri):
 def test_lossratio_tail_composes_consistent_ratio_tail(tri):
     # The ratio tail develops BOTH sides: ratio_tail = loss_ult / premium_ult
     # (loss_tail / premium_tail), not loss tailed over a frozen premium.
-    rf = lr.LossRatio(method="cl", tail=True).fit(tri)
+    rf = lr.Ratio(method="cl", tail=True).fit(tri)
     df = rf._df
     assert "loss_tail" in df.columns
     assert "premium_tail" in df.columns
@@ -545,7 +545,7 @@ def test_lossratio_tail_composes_consistent_ratio_tail(tri):
 
 
 def test_lossratio_default_no_ratio_tail(tri):
-    rf = lr.LossRatio(method="cl").fit(tri)
+    rf = lr.Ratio(method="cl").fit(tri)
     assert "ratio_tail" not in rf._df.columns
 
 
@@ -573,7 +573,7 @@ def test_tail_report_empty_without_tail(tri):
 
 
 def test_lossratio_tail_report_covers_both_sides(tri):
-    rf = lr.LossRatio(method="cl", tail=True).fit(tri)
+    rf = lr.Ratio(method="cl", tail=True).fit(tri)
     rep = rf.tail_report
     roles = set(rep["role"].to_list())
     assert roles == {"loss", "premium"}

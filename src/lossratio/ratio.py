@@ -1,6 +1,6 @@
-"""Loss-ratio composition layer (``LossRatio``).
+"""Loss-ratio composition layer (``Ratio``).
 
-:class:`LossRatio` is the composition layer over :class:`Loss` and
+:class:`Ratio` is the composition layer over :class:`Loss` and
 :class:`Premium`. It delegates loss-side projection to :class:`Loss`,
 retrieves the embedded :class:`PremiumFit`, and composes the loss-ratio
 point + variance via the delta method.
@@ -122,7 +122,7 @@ def _compose_ratio_stats(
     return full
 
 
-class LossRatio:
+class Ratio:
     """Loss-ratio estimator (composition over :class:`Loss` + :class:`Premium`).
 
     Parameters
@@ -327,7 +327,7 @@ class RatioFit:
 
     @classmethod
     def _from_triangle(
-        cls, triangle: "Triangle", estimator: "LossRatio"
+        cls, triangle: "Triangle", estimator: "Ratio"
     ) -> "RatioFit":
         self = cls.__new__(cls)
         # Retained for `convergence()`, which re-drives backtests on the
@@ -453,7 +453,7 @@ class RatioFit:
         self,
         full: pl.DataFrame,
         triangle: "Triangle",
-        estimator: "LossRatio",
+        estimator: "Ratio",
     ) -> pl.DataFrame:
         """Resolve + overlay a loss-side bootstrap onto the ratio ``$full``.
 

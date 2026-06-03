@@ -18,7 +18,7 @@ from .experience import validate_experience
 from .intensity import Intensity
 from .link import Link
 from .loss import LossFit
-from .loss_ratio import LossRatio, RatioFit
+from .ratio import Ratio, RatioFit
 from .maturity import Maturity
 from .premium import Premium, PremiumFit
 from .regime import Regime
@@ -42,7 +42,7 @@ __all__ = [
     "Convergence",
     "ExposureDriven",
     "Intensity",
-    "LossRatio",
+    "Ratio",
     "RatioFit",
     "Link",
     "LossFit",

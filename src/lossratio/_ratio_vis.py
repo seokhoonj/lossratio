@@ -34,7 +34,7 @@ from ._plot import (
 if TYPE_CHECKING:
     from .loss import LossFit
     from .premium import PremiumFit
-    from .loss_ratio import RatioFit
+    from .ratio import RatioFit
 
 
 _VALID_METRICS = ("ratio", "loss", "premium")

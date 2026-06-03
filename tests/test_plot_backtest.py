@@ -178,7 +178,7 @@ def test_backtest_plot_triangle_usage_inherits_regime_from_estimator(tri_multi):
 def test_backtest_plot_triangle_usage_loss_regime_for_ratio(tri_multi):
     reg = tri_multi.detect_regime(window=12)
     bt = lr.Backtest(
-        estimator=lr.LossRatio(method="cl", loss_regime=reg),
+        estimator=lr.Ratio(method="cl", loss_regime=reg),
         holdout=4, target="ratio",
     ).fit(tri_multi)
     inferred = bt._infer_regime()

@@ -63,8 +63,8 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["ed"] = _frame(lr.ExposureDriven().fit(tri))
     out["loss_sa"] = _frame(lr.StageAdaptive().fit(tri))
     out["premium"] = _frame(lr.Premium().fit(tri))
-    out["ratio_sa"] = _frame(lr.LossRatio(method="sa").fit(tri))
-    out["ratio_ed_delta"] = _frame(lr.LossRatio(method="ed", se_method="delta").fit(tri))
+    out["ratio_sa"] = _frame(lr.Ratio(method="sa").fit(tri))
+    out["ratio_ed_delta"] = _frame(lr.Ratio(method="ed", se_method="delta").fit(tri))
 
     # --- maturity ---
     mat = tri.link().ata().maturity()
@@ -77,7 +77,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     )
 
     # --- convergence (SUR) ---
-    conv = lr.LossRatio(method="sa").fit(sur).convergence()
+    conv = lr.Ratio(method="sa").fit(sur).convergence()
     out["convergence"] = _frame(conv)
     out["convergence_point"] = pl.DataFrame(
         {
@@ -95,7 +95,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=reg_bb).fit(tri))
 
     # --- backtest ---
-    bt = lr.Backtest(lr.LossRatio(method="sa"), holdout=6, target="ratio").fit(tri)
+    bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
     out["bt_ae_err"] = bt.ae_err
     out["bt_col_summary"] = bt.col_summary
     out["bt_diag_summary"] = bt.diag_summary
@@ -131,9 +131,9 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["mc_ed"] = _frame(lr.ExposureDriven().fit(mc))
     out["mc_loss_sa"] = _frame(lr.StageAdaptive().fit(mc))
     out["mc_premium"] = _frame(lr.Premium().fit(mc))
-    out["mc_ratio_sa"] = _frame(lr.LossRatio(method="sa").fit(mc))
+    out["mc_ratio_sa"] = _frame(lr.Ratio(method="sa").fit(mc))
     out["mc_ratio_ed_delta"] = _frame(
-        lr.LossRatio(method="ed", se_method="delta").fit(mc)
+        lr.Ratio(method="ed", se_method="delta").fit(mc)
     )
 
     mc_mat = mc.link().ata().maturity()
@@ -151,7 +151,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
 
     # multi-column convergence pools to a single portfolio point (by design);
     # pin it so the multi-col convergence path is covered.
-    mc_conv = lr.LossRatio(method="sa").fit(mc).convergence()
+    mc_conv = lr.Ratio(method="sa").fit(mc).convergence()
     out["mc_convergence"] = _frame(mc_conv)
     out["mc_convergence_point"] = pl.DataFrame(
         {
@@ -169,7 +169,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["mc_loss_sa_regime_sb"] = _frame(lr.StageAdaptive(regime=mc_reg).fit(mc))
     out["mc_loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=mc_reg_bb).fit(mc))
 
-    mc_bt = lr.Backtest(lr.LossRatio(method="sa"), holdout=6, target="ratio").fit(mc)
+    mc_bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(mc)
     out["mc_bt_ae_err"] = mc_bt.ae_err
     out["mc_bt_col_summary"] = mc_bt.col_summary
     out["mc_bt_diag_summary"] = mc_bt.diag_summary

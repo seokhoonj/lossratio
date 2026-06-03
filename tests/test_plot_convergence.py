@@ -15,7 +15,7 @@ import lossratio as lr
 @pytest.fixture
 def conv():
     tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
-    return lr.LossRatio(method="sa").fit(tri).convergence()
+    return lr.Ratio(method="sa").fit(tri).convergence()
 
 
 def _close(fig):

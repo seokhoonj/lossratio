@@ -735,7 +735,7 @@ def _resolve_maturity(
     """Resolve a 4-type ``maturity`` input to a Maturity object (or None).
 
     Python sibling of R's ``.resolve_maturity()`` (see ``R/regime.R``).
-    Used by :class:`~lossratio.Loss` / :class:`~lossratio.LossRatio` to
+    Used by :class:`~lossratio.Loss` / :class:`~lossratio.Ratio` to
     normalise the ``maturity`` argument into a single representation:
     either ``None`` (no maturity override -- caller's default behaviour)
     or a :class:`Maturity` object.

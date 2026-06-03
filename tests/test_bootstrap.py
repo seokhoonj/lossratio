@@ -1117,8 +1117,8 @@ def test_phase3_ratio_bootstrap_overlay(method):
     projection; only the SE overlay is the analytical bootstrap.
     """
     tri = _tri()
-    plain = lr.LossRatio(method=method).fit(tri)
-    boot = lr.LossRatio(method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal")).fit(tri)
+    plain = lr.Ratio(method=method).fit(tri)
+    boot = lr.Ratio(method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal")).fit(tri)
 
     assert plain.ci_type == "analytical"
     assert plain.boots is None
@@ -1177,11 +1177,11 @@ def test_phase3_ratio_no_bootstrap_unchanged():
     ``ci_type='analytical'``, ``boots is None``, and the output frame is
     byte-equal to a fresh analytical fit."""
     tri = _tri()
-    fit = lr.LossRatio(method="sa").fit(tri)
+    fit = lr.Ratio(method="sa").fit(tri)
     assert fit.ci_type == "analytical"
     assert fit.boots is None
 
-    fresh = lr.LossRatio(method="sa").fit(tri)
+    fresh = lr.Ratio(method="sa").fit(tri)
     a = fit.to_polars().sort(["coverage", "cohort", "dev"])
     b = fresh.to_polars().sort(["coverage", "cohort", "dev"])
     assert a.columns == b.columns
@@ -1205,7 +1205,7 @@ def test_phase3_ratio_summary_statistically_close_to_r(method):
     """
     r = _load(f"ratio_{method}_boot_summary").sort(["coverage", "cohort"])
     tri = _tri()
-    fit = lr.LossRatio(
+    fit = lr.Ratio(
         method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=4000, seed=20260522),
         se_method="fixed",
     ).fit(tri)
@@ -1240,7 +1240,7 @@ def test_phase3_ratio_se_consistency():
     bootstrap ``loss_total_se`` but the premium-fixed division is pure
     arithmetic."""
     tri = _tri()
-    fit = lr.LossRatio(
+    fit = lr.Ratio(
         method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=200, seed=11), se_method="fixed"
     ).fit(tri)
     assert fit.ci_type == "bootstrap"
@@ -1267,9 +1267,9 @@ def test_phase3_ratio_seed_reproducible():
     """Same seed -> identical Ratio bootstrap summary; a different seed
     changes the Monte-Carlo ``ratio_se``."""
     tri = _tri()
-    a = lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
-    b = lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
-    c = lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=43)).fit(tri)
+    a = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
+    b = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
+    c = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=43)).fit(tri)
 
     sa, sb, sc = a.summary(), b.summary(), c.summary()
     # same seed -> bit-identical ratio_se.
@@ -1305,13 +1305,13 @@ def test_phase3_ratio_seed_reproducible():
 
 
 def test_phase5_backtest_bootstrap_runs_without_error():
-    """``Backtest(estimator=lr.LossRatio(method='sa', bootstrap='auto'))``
+    """``Backtest(estimator=lr.Ratio(method='sa', bootstrap='auto'))``
     runs end-to-end -- each masked-triangle refit rebuilds the bootstrap
     on the masked data (no leakage) and the result carries an ``ae_err``
     table."""
     tri = _tri()
     bt = lr.Backtest(
-        estimator=lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
+        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1329,12 +1329,12 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
     effect of the bootstrap is extra compute per fold."""
     tri = _tri()
     analytic = lr.Backtest(
-        estimator=lr.LossRatio(method="sa"),
+        estimator=lr.Ratio(method="sa"),
         holdout=6,
         target="ratio",
     ).fit(tri)
     booted = lr.Backtest(
-        estimator=lr.LossRatio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
+        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1364,7 +1364,7 @@ def test_phase5_backtest_bootstrap_config_form_safe():
     triangle (leakage-safe by construction)."""
     tri = _tri()
     bt = lr.Backtest(
-        estimator=lr.LossRatio(
+        estimator=lr.Ratio(
             method="sa",
             uncertainty=lr.MonteCarlo(
                 draw="parameter", process="normal", B=80, seed=2
@@ -1396,7 +1396,7 @@ def test_phase5_backtest_bootstrap_callable_form_safe():
         return lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=3)
 
     bt = lr.Backtest(
-        estimator=lr.LossRatio(method="sa", uncertainty=make_unc),
+        estimator=lr.Ratio(method="sa", uncertainty=make_unc),
         holdout=6,
         target="ratio",
     ).fit(tri)

@@ -182,7 +182,7 @@ def detect_convergence(
         Minimum cohorts required to compute dispersion. Default ``5``.
     **backtest_kwargs
         Forwarded to ``Backtest`` (e.g. ``estimator`` choice). Defaults
-        to ``lr.LossRatio(method="sa")``.
+        to ``lr.Ratio(method="sa")``.
 
     Returns
     -------
@@ -190,7 +190,7 @@ def detect_convergence(
         Result object exposing ``convergence_point``, ``maturity_point``, ``dev_max``, the
         candidate dev sequence and per-criterion diagnostics.
     """
-    from .loss_ratio import LossRatio
+    from .ratio import Ratio
     from .backtest import Backtest
 
     if method not in _VALID_METHODS:
@@ -251,7 +251,7 @@ def detect_convergence(
         )
 
     # 3. Ratio per candidate via cached backtest.
-    estimator = backtest_kwargs.pop("estimator", None) or LossRatio(method="sa")
+    estimator = backtest_kwargs.pop("estimator", None) or Ratio(method="sa")
     ratio_arr = np.full(len(dev_cand), np.nan)
     cache: dict[int, float] = {}
 

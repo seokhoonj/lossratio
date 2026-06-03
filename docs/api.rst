@@ -53,7 +53,7 @@ API 레퍼런스
 손해율 예측
 -----------
 
-.. autoclass:: lossratio.LossRatio
+.. autoclass:: lossratio.Ratio
    :members:
 
 .. autoclass:: lossratio.RatioFit

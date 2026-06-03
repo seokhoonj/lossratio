@@ -21,7 +21,7 @@ def _sur_triangle() -> lr.Triangle:
 
 def _converge(tri: lr.Triangle, **kwargs):
     """Convergence via the fit method (default sa estimator), the public path."""
-    return lr.LossRatio(method="sa").fit(tri).convergence(**kwargs)
+    return lr.Ratio(method="sa").fit(tri).convergence(**kwargs)
 
 
 # ----- helper unit tests -----
@@ -158,7 +158,7 @@ def test_extract_portfolio_ratio_helper():
     masked refit has any projectable cell."""
     tri = _sur_triangle()
     bt_fit = lr.Backtest(
-        estimator=lr.LossRatio(method="sa"), holdout=5, target="ratio",
+        estimator=lr.Ratio(method="sa"), holdout=5, target="ratio",
     ).fit(tri)
     val = _extract_portfolio_ratio(bt_fit)
     assert np.isfinite(val)
