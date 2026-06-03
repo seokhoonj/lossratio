@@ -23,6 +23,7 @@ from .maturity import Maturity
 from .premium import Premium, PremiumFit
 from .regime import Regime
 from .stage_adaptive import StageAdaptive
+from .tail import Tail
 from .total import Total
 from .triangle import Triangle, TriangleValidation
 from .uncertainty import Analytical, MonteCarlo, ResidualBootstrap
@@ -50,6 +51,7 @@ __all__ = [
     "PremiumFit",
     "Regime",
     "StageAdaptive",
+    "Tail",
     "Total",
     "Triangle",
     "TriangleValidation",

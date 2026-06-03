@@ -28,12 +28,11 @@ core arithmetic is shared so the formula cannot drift between paths.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import polars as pl
 
-from ._io import normalize_groups
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 
@@ -214,159 +213,6 @@ def _build_value_matrix(
 def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     """Legacy alias: extract the ``loss`` column. Prefer ``_build_value_matrix``."""
     return _build_value_matrix(df, value_col="loss")
-
-
-def _validate_tail(tail: Any) -> None:
-    """Validate the ``tail`` argument shape."""
-    if isinstance(tail, bool):
-        return
-    if isinstance(tail, (int, float)) and not isinstance(tail, bool):
-        if not np.isfinite(tail):
-            raise ValueError(
-                f"`tail` must be a finite numeric or boolean; got {tail!r}."
-            )
-        return
-    raise TypeError(
-        f"`tail` must be bool or numeric; got {type(tail).__name__}."
-    )
-
-
-def _compute_tail_factor(f_sel: np.ndarray, tail: bool | float) -> float:
-    """R `.compute_tail_factor` (`R/cl.R:514`) Python port.
-
-    Computes the scalar tail factor from selected ATA factors:
-
-    - ``tail=False`` -> ``1.0`` (no-op).
-    - ``tail=True`` -> log-linear regression of ``log(f_sel - 1)`` on
-      the position index over the entries with ``f_sel > 1`` (need
-      >=2 such); extrapolate 100 steps and take the product. Guards
-      against unstable / runaway regressions: require >=3 finite
-      f_sel and require the product of the last two ``f > 1`` entries
-      to exceed ``1.0001``. If the extrapolated factor isn't finite or
-      exceeds ``2``, clamps to ``1.0``.
-    - numeric scalar -> used directly.
-    """
-    if isinstance(tail, bool):
-        if not tail:
-            return 1.0
-        f_vals = f_sel[np.isfinite(f_sel)]
-        if f_vals.size < 3 or np.any(f_vals <= 0):
-            return 1.0
-        idx = np.flatnonzero(f_vals > 1.0) + 1  # 1-indexed to match R `which`
-        if idx.size < 2:
-            return 1.0
-        ff = f_vals[idx - 1]
-        if ff[-2] * ff[-1] <= 1.0001:
-            return 1.0
-        # log(f - 1) = a + b * i  via OLS over the f > 1 subset
-        X = np.column_stack([np.ones_like(idx, dtype=float), idx.astype(float)])
-        y = np.log(ff - 1.0)
-        coef, *_ = np.linalg.lstsq(X, y, rcond=None)
-        a, b = float(coef[0]), float(coef[1])
-        future_i = np.arange(int(idx.max()) + 1, int(idx.max()) + 101, dtype=float)
-        future_f = np.exp(a + b * future_i) + 1.0
-        tail_factor = float(np.prod(future_f))
-        if not np.isfinite(tail_factor) or tail_factor > 2.0:
-            return 1.0
-        return tail_factor
-    return float(tail)
-
-
-def _apply_tail_to_long_df(
-    long_df: pl.DataFrame,
-    tail_factor: float,
-    groups: str | list[str] | None,
-    role: str = "loss",
-) -> pl.DataFrame:
-    """Append ``_tail``-suffixed companion columns to the last-dev row
-    of each cohort. Mirrors R `.cl_tail_factor` (`R/cl.R:729`).
-
-    The non-tail columns are left untouched; users can read
-    ``<role>_tail`` from the long table as the tail-adjusted ultimate.
-    """
-    if tail_factor <= 1.0 or not np.isfinite(tail_factor):
-        return long_df
-
-    proj_col = f"{role}_proj"
-    proc_se2 = f"{role}_proc_se2"
-    param_se2 = f"{role}_param_se2"
-    total_se2 = f"{role}_total_se2"
-    proc_se = f"{role}_proc_se"
-    param_se = f"{role}_param_se"
-    total_se = f"{role}_total_se"
-
-    keys = [*normalize_groups(groups), "cohort"]
-    # Identify the last-dev row per cohort: rank by `dev` descending and pick rank==1.
-    last_marker = (
-        long_df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True).over(keys).alias("_dev_rank")
-        )
-    )
-    is_last = pl.col("_dev_rank") == 1
-
-    # Some columns may be absent in worker-level CLFit (no SE^2 cache);
-    # fall back to deriving from the SE columns.
-    has_se2 = proc_se2 in long_df.columns
-
-    def _se2_expr(col_name: str, se_col: str) -> pl.Expr:
-        if has_se2:
-            return pl.col(col_name) * (tail_factor ** 2)
-        return (pl.col(se_col) ** 2) * (tail_factor ** 2)
-
-    out = last_marker.with_columns(
-        pl.when(is_last)
-        .then(pl.col(proj_col) * tail_factor)
-        .otherwise(None)
-        .alias(f"{role}_tail"),
-        pl.when(is_last)
-        .then(_se2_expr(proc_se2, proc_se))
-        .otherwise(None)
-        .alias(f"{role}_proc_se2_tail"),
-        pl.when(is_last)
-        .then(_se2_expr(param_se2, param_se))
-        .otherwise(None)
-        .alias(f"{role}_param_se2_tail"),
-        pl.when(is_last)
-        .then(_se2_expr(total_se2, total_se))
-        .otherwise(None)
-        .alias(f"{role}_total_se2_tail"),
-    )
-
-    out = out.with_columns(
-        pl.col(f"{role}_proc_se2_tail").sqrt().alias(f"{role}_proc_se_tail"),
-        pl.col(f"{role}_param_se2_tail").sqrt().alias(f"{role}_param_se_tail"),
-        pl.col(f"{role}_total_se2_tail").sqrt().alias(f"{role}_total_se_tail"),
-    )
-
-    tail_col = f"{role}_tail"
-    out = out.with_columns(
-        pl.when(
-            pl.col(tail_col).is_not_null()
-            & pl.col(tail_col).is_finite()
-            & (pl.col(tail_col) != 0.0)
-        )
-        .then(pl.col(f"{role}_proc_se_tail") / pl.col(tail_col).abs())
-        .otherwise(None)
-        .alias(f"{role}_proc_cv_tail"),
-        pl.when(
-            pl.col(tail_col).is_not_null()
-            & pl.col(tail_col).is_finite()
-            & (pl.col(tail_col) != 0.0)
-        )
-        .then(pl.col(f"{role}_param_se_tail") / pl.col(tail_col).abs())
-        .otherwise(None)
-        .alias(f"{role}_param_cv_tail"),
-        pl.when(
-            pl.col(tail_col).is_not_null()
-            & pl.col(tail_col).is_finite()
-            & (pl.col(tail_col) != 0.0)
-        )
-        .then(pl.col(f"{role}_total_se_tail") / pl.col(tail_col).abs())
-        .otherwise(None)
-        .alias(f"{role}_total_cv_tail"),
-    )
-
-    return out.drop("_dev_rank")
 
 
 def _fit_mack(

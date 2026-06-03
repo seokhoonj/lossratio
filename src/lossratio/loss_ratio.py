@@ -210,7 +210,7 @@ class LossRatio:
         se_method: str = "fixed",
         rho: float = 0.95,
         conf_level: float = 0.95,
-        tail: bool | float = False,
+        tail: Any = False,
         uncertainty: Any = None,
         # backwards-compat alias for loss_alpha (pre-Phase-5 callers)
         alpha: float | None = None,
@@ -254,8 +254,8 @@ class LossRatio:
                 f"conf_level must be in (0, 1), got {conf_level!r}"
             )
         _validate_recent(recent)
-        from ._mack import _validate_tail
-        _validate_tail(tail)
+        from .tail import validate_tail
+        validate_tail(tail)
         # R parity: tail is meaningful only when method='cl'. Warn on
         # other methods (same as Loss).
         if tail is not False and method != "cl":

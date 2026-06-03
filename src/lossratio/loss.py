@@ -683,7 +683,7 @@ class Loss:
         conf_level: float = 0.95,
         regime: Any = None,
         recent: int | None = None,
-        tail: bool | float = False,
+        tail: Any = False,
         bootstrap: Any = None,
     ) -> None:
         if method not in _VALID_METHODS:
@@ -718,8 +718,8 @@ class Loss:
                 "premium_fit must be a PremiumFit instance or None"
             )
         _validate_recent(recent)
-        from ._mack import _validate_tail
-        _validate_tail(tail)
+        from .tail import validate_tail
+        validate_tail(tail)
         # R parity: `tail` is effective only when method='cl'. For other
         # methods the arg is accepted but no-op (matches R fit_sa, which
         # declares tail but never uses it; ed doesn't declare it).
@@ -918,37 +918,50 @@ class LossFit:
         # constructor already warned + dropped the user's tail; here we keep
         # the no-op silent. Always populate `self.tail_factor` for
         # introspection (1.0 / per-group dict).
-        from ._mack import _apply_tail_to_long_df, _compute_tail_factor
+        from .tail import (
+            apply_tail_to_long_df,
+            compute_tail_factor,
+            maybe_warn_tail,
+        )
 
         self.tail = estimator.tail
+        grain = original_tri.grain
         if estimator.method == "cl" and estimator.tail is not False:
             if groups is None:
                 result = self._internals[None]
-                tf = _compute_tail_factor(result.f_sel, estimator.tail)
-                self.tail_factor = tf
-                if tf > 1.0 and np.isfinite(tf):
-                    long_df = _apply_tail_to_long_df(
-                        long_df, tf, groups=None, role="loss",
+                res = compute_tail_factor(result.f_sel, estimator.tail, grain)
+                maybe_warn_tail(res)
+                self.tail_factor = res.factor
+                self.tail_diverged = res.diverged
+                if res.factor > 1.0 and np.isfinite(res.factor):
+                    long_df = apply_tail_to_long_df(
+                        long_df, res.factor, groups=None, role="loss",
                     )
             else:
                 tail_factor_map: dict[Any, float] = {}
+                diverged_map: dict[Any, bool] = {}
                 parts: list[pl.DataFrame] = []
                 for g, sub_result in self._internals.items():
-                    tf = _compute_tail_factor(sub_result.f_sel, estimator.tail)
-                    tail_factor_map[g] = tf
+                    res = compute_tail_factor(sub_result.f_sel, estimator.tail, grain)
+                    maybe_warn_tail(res, group=g)
+                    tail_factor_map[g] = res.factor
+                    diverged_map[g] = res.diverged
                     grp_long = long_df.filter(group_eq(groups, g))
-                    if tf > 1.0 and np.isfinite(tf):
-                        grp_long = _apply_tail_to_long_df(
-                            grp_long, tf, groups=groups, role="loss",
+                    if res.factor > 1.0 and np.isfinite(res.factor):
+                        grp_long = apply_tail_to_long_df(
+                            grp_long, res.factor, groups=groups, role="loss",
                         )
                     parts.append(grp_long)
                 long_df = pl.concat(parts) if parts else long_df
                 self.tail_factor = tail_factor_map
+                self.tail_diverged = diverged_map
         else:
             if groups is None:
                 self.tail_factor = 1.0
+                self.tail_diverged = False
             else:
                 self.tail_factor = {g: 1.0 for g in self._internals.keys()}
+                self.tail_diverged = {g: False for g in self._internals.keys()}
 
         # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
         # With no bootstrap, `long_df` is the pure analytical SA / ED / CL

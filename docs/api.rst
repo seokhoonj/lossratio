@@ -68,6 +68,9 @@ API 레퍼런스
 .. autoclass:: lossratio.StageAdaptive
    :members:
 
+.. autoclass:: lossratio.Tail
+   :members:
+
 .. autoclass:: lossratio.LossFit
    :members:
 

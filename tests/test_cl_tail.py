@@ -15,69 +15,127 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio._mack import _compute_tail_factor, _validate_tail
+from lossratio.tail import Tail, compute_tail_factor, validate_tail
 
 
-# --- _compute_tail_factor helper ----------------------------------------
+# --- compute_tail_factor helper -----------------------------------------
 
 
 def test_compute_tail_factor_false_returns_one():
     f = np.array([1.5, 1.2, 1.1, 1.05, 1.02])
-    assert _compute_tail_factor(f, False) == 1.0
+    res = compute_tail_factor(f, False)
+    assert res.factor == 1.0
+    assert res.reason == "no_tail"
 
 
 def test_compute_tail_factor_numeric_passthrough():
     f = np.array([1.5, 1.2, 1.1])
-    assert _compute_tail_factor(f, 1.05) == pytest.approx(1.05)
+    res = compute_tail_factor(f, 1.05)
+    assert res.factor == pytest.approx(1.05)
+    assert res.reason == "user_factor"
 
 
-def test_compute_tail_factor_true_decaying_loglinear():
-    # Mack-style decaying factors -- log-linear regression should
-    # produce a finite tail factor between 1 and 2.
+def test_compute_tail_factor_true_decaying_converges():
+    # Decaying excess -- the default (inverse_power) extrapolation
+    # produces a finite tail factor > 1 with a negative decay slope.
     f = np.array([2.0, 1.4, 1.2, 1.1, 1.05])
-    tf = _compute_tail_factor(f, True)
-    assert 1.0 < tf < 2.0
+    res = compute_tail_factor(f, True, grain="M")
+    assert res.factor > 1.0 and np.isfinite(res.factor)
+    assert res.slope < 0.0
+    assert not res.diverged
+
+
+def test_inverse_power_heavier_than_exponential():
+    # On the same decaying series, the polynomial (inverse_power) tail
+    # is heavier than the geometric (exponential) tail.
+    f = np.array([2.0, 1.4, 1.2, 1.1, 1.05])
+    ip = compute_tail_factor(f, Tail(curve="inverse_power"), grain="M")
+    ex = compute_tail_factor(f, Tail(curve="exponential"), grain="M")
+    assert ip.factor > ex.factor
 
 
 def test_compute_tail_factor_true_insufficient_data_falls_back():
     # Only two finite factors -- below the >=3 threshold.
     f = np.array([1.5, 1.1, np.nan, np.nan, np.nan])
-    assert _compute_tail_factor(f, True) == 1.0
+    res = compute_tail_factor(f, True)
+    assert res.factor == 1.0
+    assert res.reason == "insufficient_factors"
 
 
 def test_compute_tail_factor_true_all_at_one_falls_back():
     # All f exactly 1 -- no factor exceeds 1, falls back.
     f = np.array([1.0, 1.0, 1.0, 1.0])
-    assert _compute_tail_factor(f, True) == 1.0
+    res = compute_tail_factor(f, True)
+    assert res.factor == 1.0
+    assert res.reason == "no_decaying_excess"
 
 
-def test_compute_tail_factor_true_runaway_clamped():
-    # Pathologically increasing factors -- log-linear extrapolates to
-    # an extreme tail factor; R guards by clamping to 1.0 when result
-    # exceeds 2.
+def test_divergence_guard_refuse_caps_at_one():
+    # Non-decaying (increasing) excess -- the divergence guard fires;
+    # "refuse" caps the tail factor at 1.0.
     f = np.array([1.5, 1.6, 1.7, 1.8, 1.9])
-    tf = _compute_tail_factor(f, True)
-    # Either a finite value <= 2, or 1.0 (guarded).
-    assert np.isfinite(tf) and tf <= 2.0
+    res = compute_tail_factor(f, Tail(on_diverge="refuse"), grain="M")
+    assert res.factor == 1.0
+    assert res.diverged
+    assert res.reason == "diverged_refused"
 
 
-def test_validate_tail_accepts_bool_and_numeric():
-    _validate_tail(True)
-    _validate_tail(False)
-    _validate_tail(1.05)
-    _validate_tail(2)
+def test_divergence_guard_flag_keeps_one_and_warns():
+    # "flag" (the default) also keeps the observed ultimate but flags
+    # the fit; the warning is emitted by `maybe_warn_tail` upstream.
+    from lossratio.tail import maybe_warn_tail
+
+    f = np.array([1.5, 1.6, 1.7, 1.8, 1.9])
+    res = compute_tail_factor(f, Tail(on_diverge="flag"), grain="M")
+    assert res.factor == 1.0
+    assert res.diverged
+    assert res.reason == "diverged_flagged"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        maybe_warn_tail(res)
+    assert any("do not decay" in str(w.message) for w in caught)
+
+
+def test_grain_aware_horizon_cap():
+    # A heavy tail that never reaches tol within the horizon is capped;
+    # a coarser grain (fewer steps/year) yields fewer steps.
+    f = np.array([2.0, 1.5, 1.3, 1.2, 1.15, 1.12, 1.1])
+    monthly = compute_tail_factor(f, Tail(max_horizon=None), grain="M")
+    yearly = compute_tail_factor(f, Tail(max_horizon=None), grain="Y")
+    if monthly.reason == "horizon_capped":
+        assert monthly.n_steps == 50 * 12
+        assert yearly.n_steps == 50 * 1
+
+
+def test_tail_spec_validation():
+    with pytest.raises(ValueError):
+        Tail(curve="bogus")
+    with pytest.raises(ValueError):
+        Tail(on_diverge="bogus")
+    with pytest.raises(ValueError):
+        Tail(tol=0.0)
+    with pytest.raises(ValueError):
+        Tail(max_horizon=0)
+
+
+def test_validate_tail_accepts_bool_numeric_and_spec():
+    validate_tail(True)
+    validate_tail(False)
+    validate_tail(1.05)
+    validate_tail(2)
+    validate_tail(Tail())
 
 
 def test_validate_tail_rejects_other_types():
     with pytest.raises(TypeError):
-        _validate_tail("yes")
+        validate_tail("yes")
     with pytest.raises(TypeError):
-        _validate_tail(None)
+        validate_tail(None)
 
 
 def test_validate_tail_rejects_inf():
     with pytest.raises(ValueError):
-        _validate_tail(float("inf"))
+        validate_tail(float("inf"))
 
 
 # --- CL.fit(tail=...) ---------------------------------------------------

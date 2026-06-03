@@ -39,8 +39,10 @@ class ChainLadder:
         :class:`~lossratio.Regime`. ``None`` (default) applies no filter.
     tail
         Tail-factor extension beyond the observed development window.
-        ``False`` (default) applies no tail; a positive number / ``True``
-        requests the log-linear tail factor.
+        ``False`` (default) applies no tail; a positive number is used
+        directly as the tail factor; ``True`` requests the default
+        convergence-gated extrapolation; a :class:`~lossratio.Tail` spec
+        configures the curve family, divergence policy, and horizon.
     conf_level
         Confidence level for the analytical CI on ``loss_proj``. Default
         ``0.95``.
@@ -58,7 +60,7 @@ class ChainLadder:
         sigma_method: str        = "locf",
         recent:      int | None  = None,
         regime:      Any         = None,
-        tail:        bool | float = False,
+        tail:        Any         = False,
         conf_level:  float       = 0.95,
         uncertainty: Any         = None,
     ) -> None:
