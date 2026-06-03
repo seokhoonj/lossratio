@@ -79,7 +79,7 @@ def test_window_auto_resolves_to_sweep_elbow():
         target="ratio",
         window="auto",
         method="e_divisive",
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     assert isinstance(reg.window, int)
@@ -120,7 +120,7 @@ def test_window_auto_optimal_window_helper_returns_none_on_homogeneous():
         method="e_divisive",
         sig_level=0.05,
         min_size=3,
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     # Homogeneous synthetic data: change count is flat (likely 0) -> None
@@ -164,7 +164,7 @@ def test_window_auto_fallback_when_helper_returns_none():
         method="e_divisive",
         sig_level=0.05,
         min_size=3,
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     assert elbow is None
@@ -192,7 +192,7 @@ def test_by_default_runs_per_group_when_triangle_grouped():
         target="ratio",
         window=12,
         method="e_divisive",
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     assert reg.groups == "coverage"
@@ -212,7 +212,7 @@ def test_by_empty_string_forces_pooled_on_grouped_triangle():
         window=12,
         by="",
         method="e_divisive",
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     assert reg.groups is None
@@ -224,10 +224,10 @@ def test_by_explicit_str_matches_default_on_grouped_triangle():
     """``by='coverage'`` should reproduce ``by=None`` on grouped input."""
     tri = _multi_group_triangle()
     a = Regime._from_triangle(
-        tri, target="ratio", window=12, by="coverage", R=99, seed=20260524
+        tri, target="ratio", window=12, by="coverage", n_permutations=99, seed=20260524
     )
     b = Regime._from_triangle(
-        tri, target="ratio", window=12, R=99, seed=20260524
+        tri, target="ratio", window=12, n_permutations=99, seed=20260524
     )
     assert a._changes_df.equals(b._changes_df)
     assert a._labels_df.equals(b._labels_df)
@@ -248,7 +248,7 @@ def test_by_multi_column_detects_per_combination():
     tri = _two_col_triangle()
     reg = Regime._from_triangle(
         tri, target="ratio", window=12,
-        by=["coverage", "block"], R=99, seed=20260524,
+        by=["coverage", "block"], n_permutations=99, seed=20260524,
     )
     assert reg.groups == ["coverage", "block"]
     for col in ("coverage", "block"):
@@ -321,7 +321,7 @@ def test_detect_regime_loss_ata_runs_end_to_end():
         target="loss_ata",
         window=8,
         method="e_divisive",
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     assert reg.target == "loss_ata"
@@ -338,7 +338,7 @@ def test_premium_ed_aliases_premium_ata():
         target="premium_ata",
         window=8,
         method="e_divisive",
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     b = Regime._from_triangle(
@@ -346,7 +346,7 @@ def test_premium_ed_aliases_premium_ata():
         target="premium_ed",
         window=8,
         method="e_divisive",
-        R=99,
+        n_permutations=99,
         seed=20260524,
     )
     assert a.target == b.target == "premium_ata"
@@ -364,6 +364,6 @@ def test_detect_regime_unknown_target_raises():
             target="not_a_real_column",
             window=8,
             method="e_divisive",
-            R=99,
+            n_permutations=99,
             seed=20260524,
         )

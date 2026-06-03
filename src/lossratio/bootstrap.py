@@ -2625,7 +2625,11 @@ class BootstrapTriangle:
     def __repr__(self) -> str:
         n_rows = self._summary.height
         m = self._meta
-        bits = [f"type={m['type']}", f"method={m['method']}", f"B={m['B']}"]
+        bits = [
+            f"type={m['type']}",
+            f"method={m['method']}",
+            f"n_replicates={m['n_replicates']}",
+        ]
         if self._groups is not None:
             n_groups = (
                 self._summary.select(normalize_groups(self._groups))
@@ -2711,7 +2715,7 @@ class Bootstrap:
         tail:        str          = "auto",
         min_pool:    int          = 5,
         maturity:    Any          = None,
-        B:           int          = 499,
+        n_replicates: int         = 499,
         seed:        int | None   = None,
         alpha:       float        = 1.0,
         quantile_ci: bool         = False,
@@ -2727,7 +2731,7 @@ class Bootstrap:
         self.tail        = tail
         self.min_pool    = min_pool
         self.maturity    = maturity
-        self.B           = B
+        self.n_replicates = n_replicates
         self.seed        = seed
         self.alpha       = alpha
         self.quantile_ci = quantile_ci
@@ -2794,8 +2798,8 @@ class Bootstrap:
                 "process='gamma' (default) or 'od_pois'."
             )
 
-        if not isinstance(B, (int, np.integer)) or B < 1:
-            raise ValueError("`B` must be a positive integer.")
+        if not isinstance(n_replicates, (int, np.integer)) or n_replicates < 1:
+            raise ValueError("`n_replicates` must be a positive integer.")
         if not np.isfinite(alpha):
             raise ValueError("`alpha` must be a finite numeric value.")
 
@@ -2912,7 +2916,7 @@ class Bootstrap:
             "pooling":     self.pooling,
             "hat_adj":     self.hat_adj,
             "demean":      self.demean,
-            "B":           int(self.B),
+            "n_replicates": int(self.n_replicates),
             "seed":        self.seed,
             "alpha":       float(self.alpha),
             "quantile_ci": self.quantile_ci,
@@ -2987,7 +2991,8 @@ class Bootstrap:
         Stage-2 kernel, building the per-group residual pools / ED
         intensity anchor / projected premium as each paradigm requires.
         """
-        B     = int(self.B)
+        # `n_replicates` is the public name; `B` is the local numpy axis dim.
+        B     = int(self.n_replicates)
         alpha = float(self.alpha)
         gi    = _build_group_inputs(loss_obs, anchor, cohorts, devs)
         n_coh, n_dev = loss_obs.shape

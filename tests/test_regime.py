@@ -22,7 +22,7 @@ def test_edivisive_detects_mean_shift():
             rng.normal(loc=3.0, scale=1.0, size=(25, 5)),
         ]
     )
-    res = e_divisive(X, sig_level=0.05, R=199, min_size=5, seed=20260509)
+    res = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
     assert res.breakpoints == [25]
     assert res.p_values[0] < 0.05
 
@@ -31,7 +31,7 @@ def test_edivisive_no_shift_returns_empty():
     """Homogeneous data — no significant breaks should be reported."""
     rng = np.random.default_rng(123)
     X = rng.normal(loc=0.0, scale=1.0, size=(50, 5))
-    res = e_divisive(X, sig_level=0.05, R=199, min_size=5, seed=20260509)
+    res = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
     assert res.breakpoints == []
     assert res.p_values == []
 
@@ -46,7 +46,7 @@ def test_edivisive_two_breaks():
             rng.normal(loc=-2.0, scale=0.5, size=(20, 4)),
         ]
     )
-    res = e_divisive(X, sig_level=0.05, R=199, min_size=5, seed=20260509)
+    res = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
     # Two breaks expected (around 20 and 40); allow ±2 tolerance
     assert len(res.breakpoints) == 2
     assert all(p < 0.05 for p in res.p_values)
@@ -58,7 +58,7 @@ def test_edivisive_too_short_returns_empty():
     """Data shorter than 2 * min_size — no split possible."""
     rng = np.random.default_rng(0)
     X = rng.normal(size=(5, 3))
-    res = e_divisive(X, sig_level=0.05, R=99, min_size=3, seed=1)
+    res = e_divisive(X, sig_level=0.05, n_permutations=99, min_size=3, seed=1)
     assert res.breakpoints == []
 
 
@@ -71,8 +71,8 @@ def test_edivisive_seed_reproducible():
             rng.normal(loc=2.5, scale=1.0, size=(20, 3)),
         ]
     )
-    r1 = e_divisive(X, sig_level=0.05, R=199, min_size=5, seed=20260509)
-    r2 = e_divisive(X, sig_level=0.05, R=199, min_size=5, seed=20260509)
+    r1 = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
+    r2 = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
     assert r1.breakpoints == r2.breakpoints
     assert r1.p_values == r2.p_values
 
@@ -184,7 +184,7 @@ def test_detect_regime_e_divisive_finds_shift():
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
-        target="ratio", window=12, method="e_divisive", min_size=3, R=199, seed=20260509
+        target="ratio", window=12, method="e_divisive", min_size=3, n_permutations=199, seed=20260509
     )
     assert isinstance(reg, lr.Regime)
     assert reg.method == "e_divisive"

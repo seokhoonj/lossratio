@@ -62,5 +62,5 @@ def test_rejects_residual_bootstrap() -> None:
 
 def test_monte_carlo_allowed() -> None:
     tri = _triangle()
-    fit = lr.StageAdaptive(uncertainty=lr.MonteCarlo(seed=42, B=50)).fit(tri)
+    fit = lr.StageAdaptive(uncertainty=lr.MonteCarlo(seed=42, n_replicates=50)).fit(tri)
     assert fit.ci_type == "bootstrap"

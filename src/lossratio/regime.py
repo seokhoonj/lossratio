@@ -183,7 +183,7 @@ def _detect_regime_single(
     method: str,
     n_regimes: int | None,
     sig_level: float,
-    R: int,
+    n_permutations: int,
     min_size: int,
     seed: int | None,
 ) -> dict[str, Any]:
@@ -200,7 +200,7 @@ def _detect_regime_single(
         breaks_idx = _e_divisive_breakpoints(
             mat,
             sig_level=sig_level,
-            R=R,
+            n_permutations=n_permutations,
             min_size=min_size,
             seed=seed,
         )
@@ -314,7 +314,7 @@ def _detect_regime_optimal_window(
     method: str = "e_divisive",
     sig_level: float = 0.05,
     min_size: int = 3,
-    R: int = 999,
+    n_permutations: int = 999,
     seed: int | None = None,
 ) -> int | None:
     """Pick a trajectory window via Kneedle elbow on the change-count curve.
@@ -339,7 +339,7 @@ def _detect_regime_optimal_window(
                 method=method,
                 n_regimes=None,
                 sig_level=sig_level,
-                R=R,
+                n_permutations=n_permutations,
                 min_size=min_size,
                 seed=seed,
             )
@@ -424,7 +424,7 @@ def _build_feature_matrix(
 def _e_divisive_breakpoints(
     mat: np.ndarray,
     sig_level: float,
-    R: int,
+    n_permutations: int,
     min_size: int,
     seed: int | None,
 ) -> list[int]:
@@ -432,7 +432,7 @@ def _e_divisive_breakpoints(
     res = e_divisive(
         mat,
         sig_level=sig_level,
-        R=R,
+        n_permutations=n_permutations,
         min_size=min_size,
         alpha=1.0,
         seed=seed,
@@ -530,7 +530,7 @@ class Regime:
         method: str = "e_divisive",
         n_regimes: int | None = None,
         sig_level: float = 0.05,
-        R: int = 999,
+        n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "segment_bridged",
@@ -698,7 +698,7 @@ class Regime:
                     method="e_divisive",
                     sig_level=sig_level,
                     min_size=min_size,
-                    R=R,
+                    n_permutations=n_permutations,
                     seed=seed,
                 )
                 window_per_combo.append(
@@ -722,7 +722,7 @@ class Regime:
                     method=method,
                     n_regimes=n_regimes,
                     sig_level=sig_level,
-                    R=R,
+                    n_permutations=n_permutations,
                     min_size=min_size,
                     seed=seed,
                 )
@@ -907,7 +907,7 @@ class Regime:
         *,
         n_regimes: int | None = None,
         sig_level: float = 0.05,
-        R: int = 999,
+        n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "segment_bridged",
@@ -930,7 +930,7 @@ class Regime:
                 method=method,
                 n_regimes=n_regimes,
                 sig_level=sig_level,
-                R=R,
+                n_permutations=n_permutations,
                 min_size=min_size,
                 seed=seed,
             )

@@ -84,22 +84,22 @@ class ResidualBootstrap:
         Tail-pooling strategy and minimum pool size for thin links.
     hat_adj, demean
         Hat-matrix bias correction and residual demeaning.
-    B, seed
+    n_replicates, seed
         Replicate count and reproducibility seed.
     quantile_ci
         Emit empirical percentile CI (``ci_lo`` / ``ci_hi``).
     """
 
-    residual:    str        = "cell"
-    process:     str        = "gamma"
-    pooling:     str        = "pooled"
-    tail:        str        = "auto"
-    min_pool:    int        = 5
-    hat_adj:     bool       = True
-    demean:      bool       = True
-    B:           int        = 499
-    seed:        int | None = None
-    quantile_ci: bool       = False
+    residual:     str        = "cell"
+    process:      str        = "gamma"
+    pooling:      str        = "pooled"
+    tail:         str        = "auto"
+    min_pool:     int        = 5
+    hat_adj:      bool       = True
+    demean:       bool       = True
+    n_replicates: int        = 499
+    seed:         int | None = None
+    quantile_ci:  bool       = False
 
     def _resolve(
         self, triangle: "Triangle", *, target: str, method: str
@@ -107,18 +107,18 @@ class ResidualBootstrap:
         from .bootstrap import Bootstrap
 
         return Bootstrap(
-            type        = "nonparametric",
-            method      = method,
-            residual    = self.residual,
-            process     = self.process,
-            pooling     = self.pooling,
-            tail        = self.tail,
-            min_pool    = self.min_pool,
-            hat_adj     = self.hat_adj,
-            demean      = self.demean,
-            B           = self.B,
-            seed        = self.seed,
-            quantile_ci = self.quantile_ci,
+            type         = "nonparametric",
+            method       = method,
+            residual     = self.residual,
+            process      = self.process,
+            pooling      = self.pooling,
+            tail         = self.tail,
+            min_pool     = self.min_pool,
+            hat_adj      = self.hat_adj,
+            demean       = self.demean,
+            n_replicates = self.n_replicates,
+            seed         = self.seed,
+            quantile_ci  = self.quantile_ci,
         ).fit(triangle, target=target)
 
 
@@ -149,18 +149,18 @@ class MonteCarlo:
         ``"process"`` (default) or ``"parameter"`` -- see above.
     hat_adj
         Hat-matrix bias correction (cell path).
-    B, seed
+    n_replicates, seed
         Replicate count and reproducibility seed.
     quantile_ci
         Emit empirical percentile CI (``ci_lo`` / ``ci_hi``).
     """
 
-    process:     str        = "gamma"
-    draw:        str        = "process"
-    hat_adj:     bool       = True
-    B:           int        = 499
-    seed:        int | None = None
-    quantile_ci: bool       = False
+    process:      str        = "gamma"
+    draw:         str        = "process"
+    hat_adj:      bool       = True
+    n_replicates: int        = 499
+    seed:         int | None = None
+    quantile_ci:  bool       = False
 
     def __post_init__(self) -> None:
         if self.draw not in ("process", "parameter"):
@@ -181,13 +181,13 @@ class MonteCarlo:
 
         engine_type = "analytical" if self.draw == "parameter" else "parametric"
         return Bootstrap(
-            type        = engine_type,
-            method      = method,
-            process     = self.process,
-            hat_adj     = self.hat_adj,
-            B           = self.B,
-            seed        = self.seed,
-            quantile_ci = self.quantile_ci,
+            type         = engine_type,
+            method       = method,
+            process      = self.process,
+            hat_adj      = self.hat_adj,
+            n_replicates = self.n_replicates,
+            seed         = self.seed,
+            quantile_ci  = self.quantile_ci,
         ).fit(triangle, target=target)
 
 

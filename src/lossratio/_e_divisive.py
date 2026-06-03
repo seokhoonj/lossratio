@@ -30,10 +30,10 @@ Notes
 * Distances are computed once via :func:`scipy.spatial.distance.pdist`
   and indexed thereafter (no quadratic recomputation per split).
 * The permutation test uses the unbiased estimator
-  ``(count + 1) / (R + 1)``.
+  ``(count + 1) / (n_permutations + 1)``.
 * The (tau, kappa) double loop in :func:`_best_split` runs in O(n^2)
   time and memory via a 2D prefix-sum table over the segment's
-  distance submatrix. R = 999 permutations on n in the low thousands
+  distance submatrix. ``n_permutations=999`` on n in the low thousands
   finish in seconds.
 """
 
@@ -185,28 +185,28 @@ def _permutation_p_value(
     D: np.ndarray,
     seg: np.ndarray,
     observed_q: float,
-    R: int,
+    n_permutations: int,
     min_size: int,
     rng: np.random.Generator,
 ) -> float:
     """Permutation test: probability of seeing Q >= observed under null.
 
-    Returns the unbiased p-value ``(count + 1) / (R + 1)``.
+    Returns the unbiased p-value ``(count + 1) / (n_permutations + 1)``.
     """
     count = 0
-    for _ in range(R):
+    for _ in range(n_permutations):
         perm = rng.permutation(seg)
         _, q_perm = _best_split(D, perm, min_size)
         if q_perm >= observed_q:
             count += 1
-    return (count + 1) / (R + 1)
+    return (count + 1) / (n_permutations + 1)
 
 
 def e_divisive(
     X: np.ndarray,
     *,
     sig_level: float = 0.05,
-    R: int = 999,
+    n_permutations: int = 999,
     min_size: int = 30,
     alpha: float = 1.0,
     seed: int | None = None,
@@ -226,7 +226,7 @@ def e_divisive(
         Significance threshold for the permutation test. The recursion
         stops as soon as the most extreme candidate split fails to reach
         this level.
-    R
+    n_permutations
         Number of permutations per significance test. Default is 999
         (gives p-value resolution of 0.001 and keeps RNG noise small
         on borderline tests).
@@ -287,7 +287,7 @@ def e_divisive(
 
         # Permutation test only on the chosen segment
         seg = np.arange(start, end)
-        p_value = _permutation_p_value(D, seg, q_obs, R, min_size, rng)
+        p_value = _permutation_p_value(D, seg, q_obs, n_permutations, min_size, rng)
 
         if p_value >= sig_level:
             break

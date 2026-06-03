@@ -57,14 +57,14 @@ def test_resolve_none_is_none():
 def test_residual_bootstrap_matches_engine():
     tri = _tri()
     strat = ResidualBootstrap(
-        residual="cell", process="gamma", B=B, seed=SEED
+        residual="cell", process="gamma", n_replicates=B, seed=SEED
     )._resolve(tri, target="loss", method="cl")
     engine = Bootstrap(
         type="nonparametric",
         method="cl",
         residual="cell",
         process="gamma",
-        B=B,
+        n_replicates=B,
         seed=SEED,
     ).fit(tri, target="loss")
     assert strat.summary.equals(engine.summary)
@@ -77,11 +77,11 @@ def test_residual_bootstrap_matches_engine():
 
 def test_montecarlo_process_matches_engine():
     tri = _tri()
-    strat = MonteCarlo(process="gamma", B=B, seed=SEED)._resolve(
+    strat = MonteCarlo(process="gamma", n_replicates=B, seed=SEED)._resolve(
         tri, target="loss", method="cl"
     )
     engine = Bootstrap(
-        type="parametric", method="cl", process="gamma", B=B, seed=SEED
+        type="parametric", method="cl", process="gamma", n_replicates=B, seed=SEED
     ).fit(tri, target="loss")
     assert strat.summary.equals(engine.summary)
 
@@ -94,10 +94,10 @@ def test_montecarlo_process_matches_engine():
 def test_montecarlo_parameter_matches_analytical_engine():
     tri = _tri()
     strat = MonteCarlo(
-        draw="parameter", process="normal", B=B, seed=SEED
+        draw="parameter", process="normal", n_replicates=B, seed=SEED
     )._resolve(tri, target="loss", method="cl")
     engine = Bootstrap(
-        type="analytical", method="cl", process="normal", B=B, seed=SEED
+        type="analytical", method="cl", process="normal", n_replicates=B, seed=SEED
     ).fit(tri, target="loss")
     assert strat.summary.equals(engine.summary)
 
@@ -119,11 +119,11 @@ def test_montecarlo_bad_draw_rejected():
 
 def test_resolve_callable_form():
     tri = _tri()
-    direct = MonteCarlo(process="gamma", B=B, seed=SEED)._resolve(
+    direct = MonteCarlo(process="gamma", n_replicates=B, seed=SEED)._resolve(
         tri, target="loss", method="cl"
     )
     via_callable = resolve_uncertainty(
-        lambda t: MonteCarlo(process="gamma", B=B, seed=SEED),
+        lambda t: MonteCarlo(process="gamma", n_replicates=B, seed=SEED),
         tri,
         target="loss",
         method="cl",

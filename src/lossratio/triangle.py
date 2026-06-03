@@ -513,7 +513,7 @@ class Triangle:
         method: str = "e_divisive",
         n_regimes: int | None = None,
         sig_level: float = 0.05,
-        R: int = 999,
+        n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "segment_bridged",
@@ -544,7 +544,7 @@ class Triangle:
             names a single group column; a sequence of column names
             (e.g. ``["coverage", "channel"]``) runs detection per
             group COMBINATION.
-        method, n_regimes, sig_level, R, min_size, seed, treatment
+        method, n_regimes, sig_level, n_permutations, min_size, seed, treatment
             See :class:`Regime` for full description.
         """
         from .regime import Regime
@@ -557,7 +557,7 @@ class Triangle:
             method=method,
             n_regimes=n_regimes,
             sig_level=sig_level,
-            R=R,
+            n_permutations=n_permutations,
             min_size=min_size,
             seed=seed,
             treatment=treatment,

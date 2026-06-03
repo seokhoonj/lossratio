@@ -105,10 +105,10 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     # internal import. ---
     from lossratio.bootstrap import Bootstrap
     out["boot_analytical_cl"] = _frame(
-        Bootstrap(type="analytical", method="cl", seed=SEED, B=B).fit(tri, target="loss")
+        Bootstrap(type="analytical", method="cl", seed=SEED, n_replicates=B).fit(tri, target="loss")
     )
     out["boot_parametric_cl"] = _frame(
-        Bootstrap(type="parametric", method="cl", seed=SEED, B=B).fit(tri, target="loss")
+        Bootstrap(type="parametric", method="cl", seed=SEED, n_replicates=B).fit(tri, target="loss")
     )
 
     # --- multi-column groups (the representation-flip oracle) -------------
@@ -175,10 +175,10 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["mc_bt_diag_summary"] = mc_bt.diag_summary
 
     out["mc_boot_analytical_cl"] = _frame(
-        Bootstrap(type="analytical", method="cl", seed=SEED, B=B).fit(mc, target="loss")
+        Bootstrap(type="analytical", method="cl", seed=SEED, n_replicates=B).fit(mc, target="loss")
     )
     out["mc_boot_parametric_cl"] = _frame(
-        Bootstrap(type="parametric", method="cl", seed=SEED, B=B).fit(mc, target="loss")
+        Bootstrap(type="parametric", method="cl", seed=SEED, n_replicates=B).fit(mc, target="loss")
     )
 
     return {k: _sorted(v) for k, v in out.items()}

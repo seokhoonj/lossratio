@@ -10,7 +10,7 @@ Monte-Carlo bootstrap SE is *not* bit-comparable to the R sibling:
   fixed ``_injected_fstar``.
 * Layer 3 -- statistical / behavioural. The Monte-Carlo summary
   (``total_se`` etc.) is checked against the analytical Mack reference
-  and the R B=4000 fixture only up to Monte-Carlo noise -- a tolerant
+  and the R n_replicates=4000 fixture only up to Monte-Carlo noise -- a tolerant
   median-relative-difference band, never bit-equality.
 """
 
@@ -101,7 +101,7 @@ def test_bootstrap_anchor_matches_r():
     must match R to machine precision -- no RNG is involved."""
     r = _load("boot_anchor").sort(["ata_from"])
     tri = _tri()
-    bt = Bootstrap(type="analytical", method="cl", B=8, seed=1).fit(tri)
+    bt = Bootstrap(type="analytical", method="cl", n_replicates=8, seed=1).fit(tri)
 
     f_anchor = bt.f_anchor.sort(["ata_from"])
     sigma2_anchor = bt.sigma2_anchor.sort(["ata_from"])
@@ -182,7 +182,7 @@ def test_boot_summary_decompose_unit():
 def test_boot_summary_decompose_edge_cases():
     """``n < 2 -> NaN`` and ``mean_proj <= 0 -> total_cv NaN`` branches."""
     # ---- n < 2: only one finite replicate-pair -> all-NaN cell ----
-    cum_mean = np.array([[[5.0, np.nan, np.nan]]])      # 1 cohort, 1 dev, B=3
+    cum_mean = np.array([[[5.0, np.nan, np.nan]]])      # 1 cohort, 1 dev, n_replicates=3
     cum_sampled = np.array([[[6.0, np.nan, np.nan]]])
     out = _boot_summary_decompose(cum_mean, cum_sampled)
     assert np.isnan(out["mean_proj"][0])
@@ -257,9 +257,9 @@ def test_boot_kernel_injected_fstar_deterministic():
 def test_bootstrap_seed_reproducible():
     """Same seed -> identical summary; different seed -> different."""
     tri = _tri()
-    a = Bootstrap(type="analytical", method="cl", B=300, seed=42).fit(tri)
-    b = Bootstrap(type="analytical", method="cl", B=300, seed=42).fit(tri)
-    c = Bootstrap(type="analytical", method="cl", B=300, seed=43).fit(tri)
+    a = Bootstrap(type="analytical", method="cl", n_replicates=300, seed=42).fit(tri)
+    b = Bootstrap(type="analytical", method="cl", n_replicates=300, seed=42).fit(tri)
+    c = Bootstrap(type="analytical", method="cl", n_replicates=300, seed=43).fit(tri)
 
     sa, sb, sc = a.summary, b.summary, c.summary
     # Same seed -> bit-identical total_se.
@@ -282,7 +282,7 @@ def test_bootstrap_se_ordering():
     ``total_se >= param_se`` and ``0 <= proc_se <= total_se``, all finite
     where defined."""
     tri = _tri()
-    bt = Bootstrap(type="analytical", method="cl", B=500, seed=7).fit(tri)
+    bt = Bootstrap(type="analytical", method="cl", n_replicates=500, seed=7).fit(tri)
     s = bt.summary
     for row in s.iter_rows(named=True):
         ts, ps, prs = row["total_se"], row["param_se"], row["proc_se"]
@@ -302,7 +302,7 @@ def test_bootstrap_converges_to_mack_analytical():
     r = _load("cl_mack_analytical_se").sort(["cohort", "dev"])
     tri = _tri()
     bt = Bootstrap(
-        type="analytical", method="cl", B=4000, seed=20260522
+        type="analytical", method="cl", n_replicates=4000, seed=20260522
     ).fit(tri)
     py = bt.summary.sort(["cohort", "dev"])
 
@@ -320,7 +320,7 @@ def test_bootstrap_converges_to_mack_analytical():
 
 
 def test_bootstrap_summary_statistically_close_to_r():
-    """Python ``Bootstrap`` summary vs the R B=4000 fixture.
+    """Python ``Bootstrap`` summary vs the R n_replicates=4000 fixture.
 
     R and Python use different RNGs -- the Monte-Carlo draws are *not*
     the same numbers, so bit-equality is impossible. Both summaries are
@@ -332,7 +332,7 @@ def test_bootstrap_summary_statistically_close_to_r():
     r = _load("boot_cl_analytical_summary").sort(["cohort", "dev"])
     tri = _tri()
     bt = Bootstrap(
-        type="analytical", method="cl", B=4000, seed=20260522
+        type="analytical", method="cl", n_replicates=4000, seed=20260522
     ).fit(tri)
     py = bt.summary.sort(["cohort", "dev"])
 
@@ -344,7 +344,7 @@ def test_bootstrap_summary_statistically_close_to_r():
         py_c["total_se"].to_list(), r_c["total_se"].to_list()
     )
     assert mrd < 0.05, (
-        f"Python vs R B=4000 total_se median rel diff = {mrd:.4f} "
+        f"Python vs R n_replicates=4000 total_se median rel diff = {mrd:.4f} "
         f"(expected < 0.05; statistical, not bit-equal -- RNGs differ)"
     )
 
@@ -358,7 +358,7 @@ def test_bootstrap_B_convergence():
 
     def _mrd_for_B(B: int, seed: int) -> float:
         bt = Bootstrap(
-            type="analytical", method="cl", B=B, seed=seed
+            type="analytical", method="cl", n_replicates=B, seed=seed
         ).fit(tri)
         py = bt.summary.sort(["cohort", "dev"])
         py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
@@ -370,8 +370,8 @@ def test_bootstrap_B_convergence():
     small = _mrd_for_B(100, seed=101)
     large = _mrd_for_B(2000, seed=101)
     assert large < small, (
-        f"B=2000 (mrd={large:.4f}) should track the Mack reference more "
-        f"closely than B=100 (mrd={small:.4f})"
+        f"n_replicates=2000 (mrd={large:.4f}) should track the Mack reference more "
+        f"closely than n_replicates=100 (mrd={small:.4f})"
     )
 
 
@@ -448,9 +448,9 @@ def test_cl_no_bootstrap_unchanged():
 def test_bootstrap_bad_args_raise():
     """Construction-time validation of ``B``, ``alpha``, ``process``."""
     with pytest.raises(ValueError):
-        Bootstrap(B=0)
+        Bootstrap(n_replicates=0)
     with pytest.raises(ValueError):
-        Bootstrap(B=-5)
+        Bootstrap(n_replicates=-5)
     with pytest.raises(ValueError):
         Bootstrap(alpha=float("nan"))
     with pytest.raises(ValueError):
@@ -460,14 +460,14 @@ def test_bootstrap_bad_args_raise():
 
 def test_bootstrap_fit_bad_target_raises():
     with pytest.raises(ValueError):
-        Bootstrap(B=8, seed=1).fit(_tri(), target="frequency")
+        Bootstrap(n_replicates=8, seed=1).fit(_tri(), target="frequency")
 
 
 def test_resolve_bootstrap_target_mismatch_raises():
     """A pre-built ``BootstrapTriangle`` whose ``meta['target']`` does not
     match the requested target is rejected."""
     tri = _tri()
-    loss_boot = Bootstrap(B=8, seed=1).fit(tri, target="loss")
+    loss_boot = Bootstrap(n_replicates=8, seed=1).fit(tri, target="loss")
     # asking for it as a 'premium' bootstrap must fail.
     with pytest.raises(ValueError):
         _resolve_bootstrap(loss_boot, tri, target="premium")
@@ -485,19 +485,19 @@ def test_resolve_bootstrap_bad_type_raises():
 
 
 def test_bootstrap_triangle_repr():
-    bt = Bootstrap(type="analytical", method="cl", B=16, seed=1).fit(_tri())
+    bt = Bootstrap(type="analytical", method="cl", n_replicates=16, seed=1).fit(_tri())
     text = repr(bt)
     assert "BootstrapTriangle" in text
     assert "type=analytical" in text
     assert "method=cl" in text
-    assert "B=16" in text
+    assert "n_replicates=16" in text
     assert "groups" in text   # grouped input -> group count reported
 
 
 def test_bootstrap_triangle_conversion():
     """``to_polars`` / ``to_pandas`` return the summary slot."""
     pd = pytest.importorskip("pandas")
-    bt = Bootstrap(B=16, seed=1).fit(_tri())
+    bt = Bootstrap(n_replicates=16, seed=1).fit(_tri())
     pol = bt.to_polars()
     pan = bt.to_pandas()
     assert isinstance(pol, pl.DataFrame)
@@ -515,7 +515,7 @@ def test_bootstrap_pandas_input_mirror():
     pd = pytest.importorskip("pandas")
     exp = _exp_sur().to_pandas()
     tri = lr.Triangle(exp, groups="coverage")
-    bt = Bootstrap(B=16, seed=1).fit(tri)
+    bt = Bootstrap(n_replicates=16, seed=1).fit(tri)
     assert isinstance(bt.summary, pd.DataFrame)
     assert isinstance(bt.f_anchor, pd.DataFrame)
     assert isinstance(bt.sigma2_anchor, pd.DataFrame)
@@ -523,7 +523,7 @@ def test_bootstrap_pandas_input_mirror():
 
 def test_bootstrap_polars_input_mirror():
     """polars in -> polars out."""
-    bt = Bootstrap(B=16, seed=1).fit(_tri())
+    bt = Bootstrap(n_replicates=16, seed=1).fit(_tri())
     assert isinstance(bt.summary, pl.DataFrame)
     assert isinstance(bt.f_anchor, pl.DataFrame)
     assert isinstance(bt.sigma2_anchor, pl.DataFrame)
@@ -532,7 +532,7 @@ def test_bootstrap_polars_input_mirror():
 def test_bootstrap_ungrouped_input():
     """An ungrouped Triangle bootstraps with no ``groups`` column and the
     repr omits the group count."""
-    bt = Bootstrap(type="analytical", method="cl", B=32, seed=3).fit(
+    bt = Bootstrap(type="analytical", method="cl", n_replicates=32, seed=3).fit(
         _tri(grouped=False)
     )
     s = bt.summary
@@ -545,7 +545,7 @@ def test_bootstrap_quantile_ci_columns():
     """``quantile_ci=True`` emits ``ci_lo`` / ``ci_hi`` percentile columns
     that bracket ``mean_proj`` on projected cells."""
     bt = Bootstrap(
-        type="analytical", method="cl", B=500, seed=5, quantile_ci=True
+        type="analytical", method="cl", n_replicates=500, seed=5, quantile_ci=True
     ).fit(_tri())
     s = bt.summary
     assert "ci_lo" in s.columns and "ci_hi" in s.columns
@@ -562,13 +562,13 @@ def test_bootstrap_keep_pseudo():
     """``keep_pseudo=True`` materialises the per-replicate trajectories;
     ``False`` leaves the slot ``None``."""
     tri = _tri()
-    no_keep = Bootstrap(B=10, seed=1, keep_pseudo=False).fit(tri)
+    no_keep = Bootstrap(n_replicates=10, seed=1, keep_pseudo=False).fit(tri)
     assert no_keep.pseudo_triangles is None
 
-    keep = Bootstrap(B=10, seed=1, keep_pseudo=True).fit(tri)
+    keep = Bootstrap(n_replicates=10, seed=1, keep_pseudo=True).fit(tri)
     ps = keep.pseudo_triangles
     assert ps is not None
-    # 36 cohorts x 36 devs x B=10 replicates for the single surgery group.
+    # 36 cohorts x 36 devs x n_replicates=10 replicates for the single surgery group.
     n_cells = keep.summary.height
     assert ps.height == n_cells * 10
 
@@ -588,7 +588,7 @@ def test_bootstrap_keep_pseudo():
 #              functions of the triangle and must bit-match R (~1e-7 rel).
 #   Layer 3 -- the Monte-Carlo summary is statistical; R and Python use
 #              different RNGs, so only the *median* relative difference of
-#              `total_se` against the R B=4000 fixture is asserted.
+#              `total_se` against the R n_replicates=4000 fixture is asserted.
 
 
 # ---------------------------------------------------------------------------
@@ -866,10 +866,10 @@ def test_phase2_injected_resample_deterministic():
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 / Layer 3 -- statistical closeness to the R B=4000 fixtures
+# Phase 2 / Layer 3 -- statistical closeness to the R n_replicates=4000 fixtures
 # ---------------------------------------------------------------------------
 #
-# Each of the five Phase-2 paradigms is run at B=4000 / seed=20260522 and
+# Each of the five Phase-2 paradigms is run at n_replicates=4000 / seed=20260522 and
 # its projected-cell `total_se` is compared to the matching R fixture via
 # the MEDIAN relative difference. R and Python use different RNGs, so the
 # Monte-Carlo draws are not the same numbers -- this is a statistical
@@ -905,7 +905,7 @@ _PHASE2_PARADIGMS = [
 
 @pytest.mark.parametrize("fixture,config", _PHASE2_PARADIGMS)
 def test_phase2_summary_statistically_close_to_r(fixture, config):
-    """Python ``Bootstrap`` summary vs the R B=4000 fixture for each
+    """Python ``Bootstrap`` summary vs the R n_replicates=4000 fixture for each
     Phase-2 paradigm.
 
     Statistical, NOT bit-equal -- R and Python use different RNGs, so the
@@ -915,7 +915,7 @@ def test_phase2_summary_statistically_close_to_r(fixture, config):
     """
     r = _load(fixture).sort(["cohort", "dev"])
     tri = _tri()
-    bt = Bootstrap(B=4000, seed=20260522, **config).fit(tri)
+    bt = Bootstrap(n_replicates=4000, seed=20260522, **config).fit(tri)
     py = bt.summary.sort(["cohort", "dev"])
 
     keys = ["cohort", "dev"]
@@ -951,7 +951,7 @@ def test_phase2_se_decomposition_invariants(config):
     kernel clamps the variance difference at zero before the sqrt.
     """
     tri = _tri()
-    bt = Bootstrap(B=800, seed=31, **config).fit(tri)
+    bt = Bootstrap(n_replicates=800, seed=31, **config).fit(tri)
     for row in bt.summary.iter_rows(named=True):
         ts, ps, prs = row["total_se"], row["param_se"], row["proc_se"]
         if ts is None or (isinstance(ts, float) and np.isnan(ts)):
@@ -977,9 +977,9 @@ def test_phase2_seed_reproducible(config):
     """Same seed -> identical summary; a different seed changes the
     Monte-Carlo SE -- for every Phase-2 paradigm."""
     tri = _tri()
-    a = Bootstrap(B=300, seed=42, **config).fit(tri)
-    b = Bootstrap(B=300, seed=42, **config).fit(tri)
-    c = Bootstrap(B=300, seed=43, **config).fit(tri)
+    a = Bootstrap(n_replicates=300, seed=42, **config).fit(tri)
+    b = Bootstrap(n_replicates=300, seed=42, **config).fit(tri)
+    c = Bootstrap(n_replicates=300, seed=43, **config).fit(tri)
 
     for x, y in zip(
         a.summary["total_se"].to_list(), b.summary["total_se"].to_list()
@@ -1099,7 +1099,7 @@ def test_phase2_parametric_ed_normal_rejected():
 #              premium_proj`) is exact arithmetic.
 #   Layer 3 -- the Monte-Carlo `ratio_se` is statistical; R and Python use
 #              different RNGs, so only the *median* relative difference vs
-#              the R B=4000 fixture is asserted, never bit-equality.
+#              the R n_replicates=4000 fixture is asserted, never bit-equality.
 
 
 @pytest.mark.parametrize("method", ["sa", "ed"])
@@ -1190,7 +1190,7 @@ def test_phase3_ratio_no_bootstrap_unchanged():
 
 @pytest.mark.parametrize("method", ["sa", "ed"])
 def test_phase3_ratio_summary_statistically_close_to_r(method):
-    """Python ``Ratio(bootstrap='auto')`` summary vs the R B=4000 fixture.
+    """Python ``Ratio(bootstrap='auto')`` summary vs the R n_replicates=4000 fixture.
 
     R and Python use different RNGs -- the Monte-Carlo draws are not the
     same numbers, so bit-equality is impossible. Both ``ratio_se`` /
@@ -1206,7 +1206,7 @@ def test_phase3_ratio_summary_statistically_close_to_r(method):
     r = _load(f"ratio_{method}_boot_summary").sort(["coverage", "cohort"])
     tri = _tri()
     fit = lr.Ratio(
-        method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=4000, seed=20260522),
+        method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=4000, seed=20260522),
         se_method="fixed",
     ).fit(tri)
     py = fit.summary().sort(["coverage", "cohort"])
@@ -1241,7 +1241,7 @@ def test_phase3_ratio_se_consistency():
     arithmetic."""
     tri = _tri()
     fit = lr.Ratio(
-        method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=200, seed=11), se_method="fixed"
+        method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=200, seed=11), se_method="fixed"
     ).fit(tri)
     assert fit.ci_type == "bootstrap"
 
@@ -1267,9 +1267,9 @@ def test_phase3_ratio_seed_reproducible():
     """Same seed -> identical Ratio bootstrap summary; a different seed
     changes the Monte-Carlo ``ratio_se``."""
     tri = _tri()
-    a = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
-    b = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=42)).fit(tri)
-    c = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=300, seed=43)).fit(tri)
+    a = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=300, seed=42)).fit(tri)
+    b = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=300, seed=42)).fit(tri)
+    c = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=300, seed=43)).fit(tri)
 
     sa, sb, sc = a.summary(), b.summary(), c.summary()
     # same seed -> bit-identical ratio_se.
@@ -1311,7 +1311,7 @@ def test_phase5_backtest_bootstrap_runs_without_error():
     table."""
     tri = _tri()
     bt = lr.Backtest(
-        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
+        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1334,7 +1334,7 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
         target="ratio",
     ).fit(tri)
     booted = lr.Backtest(
-        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=1)),
+        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1367,7 +1367,7 @@ def test_phase5_backtest_bootstrap_config_form_safe():
         estimator=lr.Ratio(
             method="sa",
             uncertainty=lr.MonteCarlo(
-                draw="parameter", process="normal", B=80, seed=2
+                draw="parameter", process="normal", n_replicates=80, seed=2
             ),
         ),
         holdout=6,
@@ -1393,7 +1393,7 @@ def test_phase5_backtest_bootstrap_callable_form_safe():
         # `loss` cells than the original.
         n_obs = masked_tri._df["loss"].len() - masked_tri._df["loss"].null_count()
         seen.append(n_obs)
-        return lr.MonteCarlo(draw="parameter", process="normal", B=80, seed=3)
+        return lr.MonteCarlo(draw="parameter", process="normal", n_replicates=80, seed=3)
 
     bt = lr.Backtest(
         estimator=lr.Ratio(method="sa", uncertainty=make_unc),
@@ -1417,7 +1417,7 @@ def test_phase5_backtest_prebuilt_bootstrap_triangle_rejected_loss():
     that carries a ``bootstrap`` slot -- here the internal Loss engine."""
     tri = _tri()
     prebuilt = Bootstrap(
-        type="analytical", method="cl", B=80, seed=5
+        type="analytical", method="cl", n_replicates=80, seed=5
     ).fit(tri, target="loss")
 
     est = Loss(method="cl", bootstrap=prebuilt)

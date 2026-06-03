@@ -140,7 +140,7 @@ def test_analytical_default_equivalent() -> None:
 
 def test_monte_carlo_overlays_bootstrap() -> None:
     tri = _triangle()
-    fit = lr.ChainLadder(uncertainty=lr.MonteCarlo(seed=42, B=50)).fit(tri)
+    fit = lr.ChainLadder(uncertainty=lr.MonteCarlo(seed=42, n_replicates=50)).fit(tri)
     assert fit.ci_type == "bootstrap"
     # The point projection is unchanged by the SE overlay.
     base = lr.ChainLadder().fit(tri).to_polars()
