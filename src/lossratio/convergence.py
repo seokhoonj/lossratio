@@ -396,25 +396,9 @@ class Convergence:
     """
 
     def __init__(self) -> None:
-        self._output_type: str
-        self.point: int | None
-        self.method: str
-        self.maturity_point: int
-        self.dev_max: int
-        self.dev_cand: list[int]
-        self.lr: np.ndarray
-        self.revision: np.ndarray
-        self.drift_window: np.ndarray
-        self.drift_tail: np.ndarray
-        self.slope: np.ndarray
-        self.dispersion: np.ndarray
-        self.pass_window: np.ndarray
-        self.pass_tail: np.ndarray
-        self.pass_slope: np.ndarray
-        self.pass_: np.ndarray
-        self.max_drift: float
-        self.max_slope: float
-        self.max_dispersion: float
+        raise TypeError(
+            "Convergence is the result of `ratio_fit.convergence()`, not a direct constructor."
+        )
         self.window: int
         self.holdout_max: int
         self.min_n_cohorts: int

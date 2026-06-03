@@ -505,19 +505,9 @@ class Regime:
     """
 
     def __init__(self) -> None:
-        self._labels_df: pl.DataFrame
-        self._changes_df: pl.DataFrame
-        self._output_type: str
-        self.method: str
-        self.target: str
-        self.window: int
-        self.cohort: str
-        self.dev: str
-        self.groups: str | list[str] | None
-        self.breakpoints: list[Any]
-        self.n_regimes: int
-        self.dropped: list[Any]
-        self.treatment: str
+        raise TypeError(
+            "Regime is produced by `triangle.regime()` / `Regime.at()` / `.detect()`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(

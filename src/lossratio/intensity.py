@@ -196,12 +196,9 @@ class Intensity:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._link: "Link"
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
+        raise TypeError(
+            "Intensity is produced by `link.intensity()`, not a direct constructor."
+        )
 
     @classmethod
     def _from_link(

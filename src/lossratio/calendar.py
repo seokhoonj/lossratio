@@ -21,11 +21,9 @@ class Calendar:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._calendar: str | None
-        self._grain: str
+        raise TypeError(
+            "Calendar is produced by `triangle.calendar_agg()`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(cls, triangle: "Triangle") -> "Calendar":

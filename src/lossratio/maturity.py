@@ -445,15 +445,9 @@ class Maturity:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._mat_k_df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
-        self.max_cv: float
-        self.max_rse: float
-        self.min_run: int
+        raise TypeError(
+            "Maturity is produced by `triangle.maturity()` / `Maturity.at()` / `.detect()`, not a direct constructor."
+        )
 
     @classmethod
     def _from_ata(

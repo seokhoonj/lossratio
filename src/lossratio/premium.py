@@ -441,15 +441,9 @@ class PremiumFit:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
-        self.method: str
-        self.alpha: float
-        self.sigma_method: str
-        self.conf_level: float
+        raise TypeError(
+            "PremiumFit is the result of `Premium().fit(triangle)`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(

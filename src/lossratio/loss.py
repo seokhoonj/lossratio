@@ -763,20 +763,10 @@ class LossFit:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._mat_k_df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
-        self.method: str
-        self.alpha: float
-        self.sigma_method: str
-        self.conf_level: float
-        self.premium_fit: PremiumFit
-        # Bootstrap slots -- ci_type is "analytical" unless a bootstrap ran.
-        self.boots: Any = None
-        self.ci_type: str = "analytical"
+        raise TypeError(
+            "LossFit is the result of a loss model's `.fit(triangle)` "
+            "(e.g. `ChainLadder().fit(tri)`), not a direct constructor."
+        )
 
     @property
     def model(self) -> str:

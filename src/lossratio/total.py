@@ -20,9 +20,9 @@ class Total:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
+        raise TypeError(
+            "Total is produced by `triangle.total_agg()`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(cls, triangle: "Triangle") -> "Total":

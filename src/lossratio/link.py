@@ -178,15 +178,9 @@ class Link:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._tri_df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
-        self._target: str
-        self._premium: str | None
-        self._weight: str | None
+        raise TypeError(
+            "Link is produced by `triangle.link(...)`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(

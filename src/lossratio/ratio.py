@@ -297,22 +297,9 @@ class RatioFit:
     """
 
     def __init__(self) -> None:
-        self._df: pl.DataFrame
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
-        self.method: str
-        self.loss_alpha: float
-        self.premium_alpha: float
-        self.se_method: str
-        self.rho: float
-        self.conf_level: float
-        self.loss_fit: LossFit
-        self.premium_fit: PremiumFit
-        # Bootstrap slots -- ci_type is "analytical" unless a bootstrap ran.
-        self.boots: Any = None
-        self.ci_type: str = "analytical"
+        raise TypeError(
+            "RatioFit is the result of `Ratio().fit(triangle)`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(

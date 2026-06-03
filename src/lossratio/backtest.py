@@ -296,17 +296,9 @@ class BacktestFit:
     """
 
     def __init__(self) -> None:
-        self._ae_err: pl.DataFrame
-        self._col_summary: pl.DataFrame
-        self._diag_summary: pl.DataFrame
-        self._refit: Any
-        self._output_type: str
-        self._groups: str | list[str] | None
-        self._cohort: str
-        self._dev: str
-        self._triangle: "Triangle"
-        self.holdout: int
-        self.estimator: Any
+        raise TypeError(
+            "BacktestFit is the result of `Backtest(...).fit(triangle)`, not a direct constructor."
+        )
 
     @classmethod
     def _from_triangle(cls, triangle: "Triangle", bt: "Backtest") -> "BacktestFit":
