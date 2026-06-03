@@ -657,11 +657,10 @@ class Maturity:
         def _coerce(v: Any) -> int | None:
             if v is None:
                 return None
-            try:
-                if np.isnan(v):
-                    return None
-            except (TypeError, ValueError):
-                pass
+            # `change` is always a Float64 column -> v is float | None;
+            # `v != v` is the NaN test (no numpy dispatch needed).
+            if isinstance(v, float) and v != v:
+                return None
             return int(v)
 
         if self._groups is None:

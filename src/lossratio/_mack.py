@@ -209,9 +209,11 @@ def _build_value_matrix(
     return mat, cohorts, max_dev
 
 
-# Backward-compat alias (some internal callers still use the old name).
 def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Legacy alias: extract the ``loss`` column. Prefer ``_build_value_matrix``."""
+    """Build the loss value matrix for a single-group Triangle subset.
+
+    Role-specific helper over :func:`_build_value_matrix`.
+    """
     return _build_value_matrix(df, value_col="loss")
 
 
@@ -387,9 +389,9 @@ def _mack_g_var(result: _EDResult) -> np.ndarray:
 
 
 def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Legacy alias: extract the ``premium`` column.
+    """Build the premium value matrix for a single-group Triangle subset.
 
-    Prefer ``cl._build_value_matrix(df, value_col)`` for new code.
+    Role-specific helper over :func:`_build_value_matrix`.
     """
     return _build_value_matrix(df, value_col="premium")
 

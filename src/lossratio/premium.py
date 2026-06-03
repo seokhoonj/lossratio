@@ -141,7 +141,6 @@ def _borrowed_premium_group(
     reaches full development. Returns ``({segment_id: _PremiumResult},
     {segment_id: row_indices})``.
     """
-    from ._recent import recent_link_mask
     from ._segment import _augment_segment_factors
 
     n_cohorts, n_devs = premium_obs.shape
