@@ -1,4 +1,4 @@
-"""Smoke tests for ``BacktestFit.plot(view=...)`` and ``.plot_triangle()``.
+"""Smoke tests for ``BacktestFit.plot(kind=...)`` and ``.plot_triangle()``.
 
 Mirrors the R sibling's ``plot.Backtest`` 3-type dispatcher and
 ``plot_triangle.Backtest`` value-view heatmap.
@@ -44,7 +44,7 @@ def _close(fig):
 
 @pytest.mark.parametrize("type_", ["col", "diag", "cell"])
 def test_backtest_plot_types(bt_multi, type_):
-    fig = bt_multi.plot(view=type_)
+    fig = bt_multi.plot(kind=type_)
     try:
         assert isinstance(fig, plt.Figure)
         title = fig._suptitle.get_text()
@@ -56,7 +56,7 @@ def test_backtest_plot_types(bt_multi, type_):
 
 @pytest.mark.parametrize("type_", ["col", "diag", "cell"])
 def test_backtest_plot_incremental(bt_multi, type_):
-    fig = bt_multi.plot(view=type_, cell_type="incremental")
+    fig = bt_multi.plot(kind=type_, cell_type="incremental")
     try:
         assert isinstance(fig, plt.Figure)
         assert "incremental" in fig._suptitle.get_text()
@@ -73,8 +73,8 @@ def test_backtest_plot_single_group(bt_single):
 
 
 def test_backtest_plot_invalid_type(bt_single):
-    with pytest.raises(ValueError, match="view"):
-        bt_single.plot(view="bogus")
+    with pytest.raises(ValueError, match="kind"):
+        bt_single.plot(kind="bogus")
 
 
 def test_backtest_plot_invalid_cell_type(bt_single):
@@ -122,11 +122,11 @@ def test_backtest_plot_triangle_invalid_cell_type(bt_single):
         bt_single.plot_triangle(cell_type="bogus")
 
 
-# --- view='usage' ---------------------------------------------------------
+# --- kind='usage' ---------------------------------------------------------
 
 
 def test_backtest_plot_triangle_usage_multi(bt_multi):
-    fig = bt_multi.plot_triangle(view="usage")
+    fig = bt_multi.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -134,7 +134,7 @@ def test_backtest_plot_triangle_usage_multi(bt_multi):
 
 
 def test_backtest_plot_triangle_usage_single(bt_single):
-    fig = bt_single.plot_triangle(view="usage")
+    fig = bt_single.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -142,8 +142,8 @@ def test_backtest_plot_triangle_usage_single(bt_single):
 
 
 def test_backtest_plot_triangle_invalid_view(bt_single):
-    with pytest.raises(ValueError, match="view"):
-        bt_single.plot_triangle(view="bogus")
+    with pytest.raises(ValueError, match="kind"):
+        bt_single.plot_triangle(kind="bogus")
 
 
 def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single):
@@ -153,7 +153,7 @@ def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single)
         estimator=lr.ChainLadder(recent=12), holdout=4, target="loss"
     ).fit(tri_single)
     assert bt._infer_recent() == 12
-    fig = bt.plot_triangle(view="usage")
+    fig = bt.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -168,7 +168,7 @@ def test_backtest_plot_triangle_usage_inherits_regime_from_estimator(tri_multi):
     ).fit(tri_multi)
     inferred = bt._infer_regime()
     assert inferred is reg
-    fig = bt.plot_triangle(view="usage")
+    fig = bt.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -193,7 +193,7 @@ def test_backtest_plot_triangle_usage_auto_regime_resolved(tri_multi):
         holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_regime() == "auto"
-    fig = bt.plot_triangle(view="usage")
+    fig = bt.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -208,7 +208,7 @@ def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
         holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_maturity() == "auto"
-    fig = bt.plot_triangle(view="usage")
+    fig = bt.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -218,7 +218,7 @@ def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
 def test_backtest_plot_triangle_usage_explicit_maturity(bt_single):
     from lossratio import Maturity
     mat = Maturity.at(change=6)
-    fig = bt_single.plot_triangle(view="usage", maturity=mat)
+    fig = bt_single.plot_triangle(kind="usage", maturity=mat)
     try:
         assert isinstance(fig, plt.Figure)
     finally:

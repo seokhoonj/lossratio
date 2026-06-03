@@ -476,7 +476,7 @@ class BacktestFit:
 
     def plot(
         self,
-        view: str = "col",
+        kind: str = "col",
         cell_type: str = "cumulative",
         nrow: int | None = None,
         ncol: int | None = None,
@@ -486,7 +486,7 @@ class BacktestFit:
 
         Parameters
         ----------
-        view
+        kind
             The aggregation the error is viewed over: ``"col"`` (default;
             by development period), ``"diag"`` (by calendar diagonal), or
             ``"cell"`` (per-cell scatter / line, one line per cohort).
@@ -504,13 +504,13 @@ class BacktestFit:
         """
         from ._backtest_vis import plot_backtest
         return plot_backtest(
-            self, view=view, cell_type=cell_type,
+            self, kind=kind, cell_type=cell_type,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
     def plot_triangle(
         self,
-        view: str = "value",
+        kind: str = "value",
         cell_type: str = "cumulative",
         label_size: float = 7.0,
         nrow: int | None = None,
@@ -521,29 +521,29 @@ class BacktestFit:
         regime: Any = None,
         maturity: Any = None,
     ) -> Any:
-        """A/E error heatmap (``view='value'``) or cell-status
-        heatmap (``view='usage'``), backed by matplotlib.
+        """A/E error heatmap (``kind='value'``) or cell-status
+        heatmap (``kind='usage'``), backed by matplotlib.
 
         Parameters
         ----------
-        view
+        kind
             ``"value"`` (default; diverging A/E-error heatmap on the
             held-out wedge) or ``"usage"`` (categorical status
             heatmap of training / held-out / regime-excluded /
             future cells, driven by the masking + filter metadata
             inherited from this Backtest's estimator).
         cell_type
-            (``view='value'`` only) ``"cumulative"`` (default; uses
+            (``kind='value'`` only) ``"cumulative"`` (default; uses
             ``ae_err``) or ``"incremental"`` (uses ``incr_ae_err``).
         label_size
-            (``view='value'`` only) matplotlib font size for the
+            (``kind='value'`` only) matplotlib font size for the
             per-cell percent labels.
         nrow, ncol
             Facet layout.
         figsize
             Passed to ``plt.subplots``.
         recent, regime, maturity
-            (``view='usage'`` only) override values for the filter
+            (``kind='usage'`` only) override values for the filter
             overlays. By default the usage view reads ``recent`` and
             ``regime`` from the estimator that drove the backtest
             (``recent`` from the loss model / ``Ratio``; ``regime``
@@ -559,11 +559,11 @@ class BacktestFit:
         -------
         matplotlib.figure.Figure
         """
-        if view not in ("value", "usage"):
+        if kind not in ("value", "usage"):
             raise ValueError(
-                f"`view` must be 'value' or 'usage'; got {view!r}."
+                f"`kind` must be 'value' or 'usage'; got {kind!r}."
             )
-        if view == "value":
+        if kind == "value":
             from ._backtest_vis import plot_triangle_backtest
             return plot_triangle_backtest(
                 self,
@@ -571,7 +571,7 @@ class BacktestFit:
                 label_size=label_size,
                 nrow=nrow, ncol=ncol, figsize=figsize,
             )
-        # view == "usage": forward to the Triangle-side usage
+        # kind == "usage": forward to the Triangle-side usage
         # renderer with `holdout=self.holdout` and filter args
         # inherited from `self.estimator` (overridable via kwargs).
         # The Triangle renderer resolves `"auto"` for both regime and

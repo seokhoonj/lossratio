@@ -691,7 +691,7 @@ class Triangle:
 
     def plot_triangle(
         self,
-        view: str = "value",
+        kind: str = "value",
         metric: str = "ratio",
         label_style: str = "value",
         label_size: float | None = None,
@@ -710,7 +710,7 @@ class Triangle:
 
         Parameters
         ----------
-        view
+        kind
             ``"value"`` (default; cell-value heatmap of one metric) or
             ``"usage"`` (status heatmap showing which cells the fit
             would use vs. drop under the given ``recent`` / ``regime`` /
@@ -776,7 +776,7 @@ class Triangle:
         from ._triangle_vis import plot_triangle as _impl
         return _impl(
             self,
-            view=view,
+            kind=kind,
             metric=metric,
             label_style=label_style,
             label_size=label_size,

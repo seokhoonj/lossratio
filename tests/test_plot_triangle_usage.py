@@ -1,4 +1,4 @@
-"""Smoke tests for ``Triangle.plot_triangle(view='usage')``.
+"""Smoke tests for ``Triangle.plot_triangle(kind='usage')``.
 
 ggplot <-> matplotlib bit-parity is intentionally out of scope. These
 tests assert that the categorical-status figure renders for the
@@ -41,7 +41,7 @@ def _close(fig):
 
 
 def test_renders_no_overlays(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(view="usage")
+    fig = tri_with_groups.plot_triangle(kind="usage")
     try:
         assert fig.get_axes()
         assert "Data usage" in fig._suptitle.get_text()
@@ -51,7 +51,7 @@ def test_renders_no_overlays(tri_with_groups):
 
 
 def test_renders_recent_only(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(view="usage", recent=12)
+    fig = tri_with_groups.plot_triangle(kind="usage", recent=12)
     try:
         assert "recent=12" in fig._suptitle.get_text()
     finally:
@@ -59,7 +59,7 @@ def test_renders_recent_only(tri_with_groups):
 
 
 def test_renders_holdout_only(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(view="usage", holdout=6)
+    fig = tri_with_groups.plot_triangle(kind="usage", holdout=6)
     try:
         assert "holdout=6" in fig._suptitle.get_text()
     finally:
@@ -68,7 +68,7 @@ def test_renders_holdout_only(tri_with_groups):
 
 def test_renders_regime_only(tri_with_groups):
     r = tri_with_groups.detect_regime()
-    fig = tri_with_groups.plot_triangle(view="usage", regime=r)
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=r)
     try:
         assert "regime=" in fig._suptitle.get_text()
     finally:
@@ -77,7 +77,7 @@ def test_renders_regime_only(tri_with_groups):
 
 def test_renders_maturity_scalar(tri_with_groups):
     r = tri_with_groups.detect_regime()
-    fig = tri_with_groups.plot_triangle(view="usage", regime=r, maturity=6)
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, maturity=6)
     try:
         # subtitle text added as fig.text(...) -- search all texts
         texts = [t.get_text() for t in fig.texts]
@@ -89,7 +89,7 @@ def test_renders_maturity_scalar(tri_with_groups):
 def test_renders_full_hybrid(tri_with_groups):
     r = tri_with_groups.detect_regime()
     fig = tri_with_groups.plot_triangle(
-        view="usage", recent=18, regime=r, holdout=6, maturity=6
+        kind="usage", recent=18, regime=r, holdout=6, maturity=6
     )
     try:
         title = fig._suptitle.get_text()
@@ -101,7 +101,7 @@ def test_renders_full_hybrid(tri_with_groups):
 
 
 def test_renders_single_group(tri_single):
-    fig = tri_single.plot_triangle(view="usage", recent=10, holdout=3)
+    fig = tri_single.plot_triangle(kind="usage", recent=10, holdout=3)
     try:
         visible = [ax for ax in fig.get_axes() if ax.get_visible()]
         assert len(visible) == 1
@@ -110,7 +110,7 @@ def test_renders_single_group(tri_single):
 
 
 def test_legend_present_with_four_states(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(view="usage", recent=12, holdout=6)
+    fig = tri_with_groups.plot_triangle(kind="usage", recent=12, holdout=6)
     try:
         legends = fig.legends
         assert legends, "expected a figure-level legend"
@@ -127,7 +127,7 @@ def test_maturity_auto_renders(tri_with_groups):
     # `maturity='auto'` runs detect_maturity inline and renders without
     # raising. The exact k* depends on the synthetic experience fixture,
     # but the figure must render and surface a maturity vline overlay.
-    fig = tri_with_groups.plot_triangle(view="usage", maturity="auto")
+    fig = tri_with_groups.plot_triangle(kind="usage", maturity="auto")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -138,7 +138,7 @@ def test_regime_auto_renders(tri_with_groups):
     # `regime='auto'` runs detect_regime inline. If detection raises
     # internally (degenerate triangle), the resolver returns None and the
     # view still renders without a regime overlay.
-    fig = tri_with_groups.plot_triangle(view="usage", regime="auto")
+    fig = tri_with_groups.plot_triangle(kind="usage", regime="auto")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -147,7 +147,7 @@ def test_regime_auto_renders(tri_with_groups):
 
 def test_maturity_callable_renders(tri_with_groups):
     fig = tri_with_groups.plot_triangle(
-        view="usage", maturity=lambda t: 6
+        kind="usage", maturity=lambda t: 6
     )
     try:
         assert isinstance(fig, plt.Figure)
@@ -157,7 +157,7 @@ def test_maturity_callable_renders(tri_with_groups):
 
 def test_regime_callable_renders(tri_with_groups):
     fig = tri_with_groups.plot_triangle(
-        view="usage",
+        kind="usage",
         regime=lambda t: t.detect_regime(window=12),
     )
     try:
@@ -168,23 +168,23 @@ def test_regime_callable_renders(tri_with_groups):
 
 def test_negative_recent_rejected(tri_with_groups):
     with pytest.raises(ValueError, match="recent"):
-        tri_with_groups.plot_triangle(view="usage", recent=0)
+        tri_with_groups.plot_triangle(kind="usage", recent=0)
 
 
 def test_negative_holdout_rejected(tri_with_groups):
     with pytest.raises(ValueError, match="holdout"):
-        tri_with_groups.plot_triangle(view="usage", holdout=0)
+        tri_with_groups.plot_triangle(kind="usage", holdout=0)
 
 
 def test_invalid_maturity_rejected(tri_with_groups):
     with pytest.raises(ValueError, match="maturity"):
-        tri_with_groups.plot_triangle(view="usage", maturity=-1)
+        tri_with_groups.plot_triangle(kind="usage", maturity=-1)
 
 
 def test_maturity_from_maturity_instance(tri_with_groups):
     mat = tri_with_groups.detect_maturity(min_run=2)
     r = tri_with_groups.detect_regime()
-    fig = tri_with_groups.plot_triangle(view="usage", regime=r, maturity=mat)
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, maturity=mat)
     try:
         # Maturity vline drawn -> at least one dashed line per axis.
         ax = [a for a in fig.get_axes() if a.get_visible()][0]
@@ -258,7 +258,7 @@ def test_segment_bridged_filter_affects_only_changed_groups(tri_with_groups):
 
 def test_segment_bridged_render_with_changes(tri_with_groups):
     reg = tri_with_groups.detect_regime(window=12, treatment="segment_bridged")
-    fig = tri_with_groups.plot_triangle(view="usage", regime=reg)
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -270,7 +270,7 @@ def test_segment_bridged_borrowed_render_with_changes(tri_with_groups):
     reg = tri_with_groups.detect_regime(
         window=12, treatment="segment_bridged_borrowed"
     )
-    fig = tri_with_groups.plot_triangle(view="usage", regime=reg)
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -283,7 +283,7 @@ def test_segment_bridged_pooled_render(tri_single):
     # Skip if no changes detected -- depends on the synthetic data.
     if reg.changes.height == 0:
         pytest.skip("no change points detected for this fixture")
-    fig = tri_single.plot_triangle(view="usage", regime=reg)
+    fig = tri_single.plot_triangle(kind="usage", regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
         usage = _compute_triangle_usage(tri_single, regime=reg)

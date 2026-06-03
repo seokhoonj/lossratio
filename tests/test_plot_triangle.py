@@ -1,4 +1,4 @@
-"""Smoke tests for ``Triangle.plot_triangle(view='value')``.
+"""Smoke tests for ``Triangle.plot_triangle(kind='value')``.
 
 ggplot <-> matplotlib bit-parity is intentionally out of scope; these
 tests assert that figures render, expected metadata lands on the axes,
@@ -82,8 +82,8 @@ def test_invalid_metric_raises(tri_with_groups):
 
 
 def test_invalid_view_raises(tri_with_groups):
-    with pytest.raises(ValueError, match="view"):
-        tri_with_groups.plot_triangle(view="bogus")
+    with pytest.raises(ValueError, match="kind"):
+        tri_with_groups.plot_triangle(kind="bogus")
 
 
 def test_invalid_label_style_raises(tri_with_groups):
@@ -190,7 +190,7 @@ def test_x_axis_calendar_usage(tri_single):
     # Usage view honours the calendar axis too, with the calendar-diagonal
     # recent / holdout masks and the maturity boundary overlaid.
     fig = tri_single.plot_triangle(
-        view="usage", x_axis="calendar", recent=12, holdout=6, maturity="auto"
+        kind="usage", x_axis="calendar", recent=12, holdout=6, maturity="auto"
     )
     try:
         assert fig.get_axes()
@@ -203,7 +203,7 @@ def test_invalid_x_axis_raises(tri_with_groups):
     with pytest.raises(ValueError, match="x_axis"):
         tri_with_groups.plot_triangle(x_axis="cy")
     with pytest.raises(ValueError, match="x_axis"):
-        tri_with_groups.plot_triangle(view="usage", x_axis="cy")
+        tri_with_groups.plot_triangle(kind="usage", x_axis="cy")
 
 
 def test_x_axis_calendar_periods_match(tri_single):
@@ -230,8 +230,8 @@ def test_x_axis_calendar_periods_match(tri_single):
 
 def test_x_axis_calendar_multigroup_facets(tri_with_groups):
     # The calendar layout faces out per group like the dev layout.
-    for view in ("value", "usage"):
-        fig = tri_with_groups.plot_triangle(view=view, x_axis="calendar")
+    for kind in ("value", "usage"):
+        fig = tri_with_groups.plot_triangle(kind=kind, x_axis="calendar")
         try:
             visible = [a for a in fig.get_axes() if a.get_visible()]
             assert len(visible) == 4
@@ -248,9 +248,9 @@ def test_usage_calendar_maturity_is_a_staircase(tri_single):
             1 for ln in ax.lines if ln.get_linestyle() in ("--", "dashed")
         )
 
-    fig_dev = tri_single.plot_triangle(view="usage", maturity=3, x_axis="dev")
+    fig_dev = tri_single.plot_triangle(kind="usage", maturity=3, x_axis="dev")
     fig_cal = tri_single.plot_triangle(
-        view="usage", maturity=3, x_axis="calendar"
+        kind="usage", maturity=3, x_axis="calendar"
     )
     try:
         assert _n_dashed(fig_dev) == 1

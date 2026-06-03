@@ -1,6 +1,6 @@
 """Triangle visualisation -- matplotlib backend.
 
-Implements ``Triangle.plot_triangle(view="value" | "usage")``. Mirrors
+Implements ``Triangle.plot_triangle(kind="value" | "usage")``. Mirrors
 R's ``plot_triangle.Triangle`` (``R/triangle-vis.R``).
 """
 
@@ -66,7 +66,7 @@ _USAGE_STATES: tuple[str, ...] = ("unused", "used", "holdout", "future")
 
 def plot_triangle(
     triangle: Triangle,
-    view: str = "value",
+    kind: str = "value",
     metric: str = "ratio",
     label_style: str = "value",
     label_size: float | None = None,
@@ -86,14 +86,14 @@ def plot_triangle(
     """
     import matplotlib.pyplot as plt
 
-    if view not in ("value", "usage"):
-        raise ValueError(f"`view` must be 'value' or 'usage', got {view!r}.")
+    if kind not in ("value", "usage"):
+        raise ValueError(f"`kind` must be 'value' or 'usage', got {kind!r}.")
     if x_axis not in ("dev", "calendar"):
         raise ValueError(
             f"`x_axis` must be 'dev' or 'calendar', got {x_axis!r}."
         )
 
-    if view == "usage":
+    if kind == "usage":
         return _plot_triangle_usage(
             triangle,
             recent=recent,
@@ -848,7 +848,7 @@ def _plot_triangle_usage(
     figsize: tuple[float, float] | None,
     x_axis: str = "dev",
 ) -> Any:
-    """Categorical status heatmap; see ``plot_triangle.Triangle(view="usage")``."""
+    """Categorical status heatmap; see ``plot_triangle.Triangle(kind="usage")``."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
