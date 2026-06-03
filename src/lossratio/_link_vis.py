@@ -71,7 +71,7 @@ def plot_link(
 
 def _plot_link_ata(
     link: Link,
-    type: str = "cv",
+    kind: str = "cv",
     alpha: float = 1.0,
     show_maturity: bool = True,
     max_cv: float = 0.15,
@@ -81,10 +81,10 @@ def _plot_link_ata(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """ATA-mode link diagnostic plot -- 5 type variants."""
-    if type not in _VALID_ATA_TYPES:
+    """ATA-mode link diagnostic plot -- 5 kind variants."""
+    if kind not in _VALID_ATA_TYPES:
         raise ValueError(
-            f"`type` must be one of {_VALID_ATA_TYPES!r}; got {type!r}."
+            f"`kind` must be one of {_VALID_ATA_TYPES!r}; got {kind!r}."
         )
 
     groups = link._groups
@@ -97,7 +97,7 @@ def _plot_link_ata(
         summary, groups, max_cv=max_cv, max_rse=max_rse, min_run=min_run
     ) if show_maturity else None
 
-    if type == "cv":
+    if kind == "cv":
         return _plot_per_link_scalar(
             summary,
             groups=groups,
@@ -108,7 +108,7 @@ def _plot_link_ata(
             maturity=maturity,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if type == "rse":
+    if kind == "rse":
         return _plot_per_link_scalar(
             summary,
             groups=groups,
@@ -119,7 +119,7 @@ def _plot_link_ata(
             maturity=maturity,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if type == "summary":
+    if kind == "summary":
         return _plot_summary_lines(
             summary,
             groups=groups,
@@ -130,7 +130,7 @@ def _plot_link_ata(
             maturity=maturity,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if type == "box":
+    if kind == "box":
         return _plot_per_link_distribution(
             cells,
             groups=groups,
@@ -158,16 +158,16 @@ def _plot_link_ata(
 
 def _plot_link_ed(
     link: Link,
-    type: str = "summary",
+    kind: str = "summary",
     alpha: float = 1.0,
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """ED-mode link diagnostic plot -- 3 type variants."""
-    if type not in _VALID_ED_TYPES:
+    """ED-mode link diagnostic plot -- 3 kind variants."""
+    if kind not in _VALID_ED_TYPES:
         raise ValueError(
-            f"`type` must be one of {_VALID_ED_TYPES!r}; got {type!r}."
+            f"`kind` must be one of {_VALID_ED_TYPES!r}; got {kind!r}."
         )
     if link._premium is None:
         raise ValueError(
@@ -178,7 +178,7 @@ def _plot_link_ed(
     cells = link._df
     summary = _ed_summary(cells, groups)
 
-    if type == "summary":
+    if kind == "summary":
         return _plot_summary_lines(
             summary,
             groups=groups,
@@ -189,7 +189,7 @@ def _plot_link_ed(
             maturity=None,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if type == "box":
+    if kind == "box":
         return _plot_per_link_distribution(
             cells,
             groups=groups,
@@ -334,7 +334,7 @@ def _detect_maturity_overlay(
 
 
 # ---------------------------------------------------------------------------
-# Per-type renderers
+# Per-kind renderers
 # ---------------------------------------------------------------------------
 
 

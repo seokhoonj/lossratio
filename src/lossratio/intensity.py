@@ -276,7 +276,7 @@ class Intensity:
         """ED intensity diagnostic plot (matplotlib).
 
         Delegates to :meth:`Link.plot` with ``model='ed'`` on the
-        underlying :class:`Link`. Accepts ``type`` (``"summary"`` /
+        underlying :class:`Link`. Accepts ``kind`` (``"summary"`` /
         ``"box"`` / ``"point"``), ``alpha``, ``nrow``, ``ncol``,
         ``figsize``.
         """

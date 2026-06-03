@@ -79,7 +79,7 @@ def test_link_plot_ed_on_ata_only_raises(tri_multi):
 @pytest.mark.parametrize("type_", ["cv", "rse", "summary", "box", "point"])
 def test_link_ata_modes(tri_multi, type_):
     link = tri_multi.link()
-    fig = link.plot(model="ata", type=type_)
+    fig = link.plot(model="ata", kind=type_)
     try:
         assert isinstance(fig, plt.Figure)
         n_groups = link._df["coverage"].n_unique()
@@ -91,13 +91,13 @@ def test_link_ata_modes(tri_multi, type_):
 
 def test_link_ata_invalid_type(tri_multi):
     link = tri_multi.link()
-    with pytest.raises(ValueError, match="type"):
-        link.plot(model="ata", type="bad")
+    with pytest.raises(ValueError, match="kind"):
+        link.plot(model="ata", kind="bad")
 
 
 def test_link_ata_cv_has_threshold_line(tri_multi):
     link = tri_multi.link()
-    fig = link.plot(model="ata", type="cv", max_cv=0.20)
+    fig = link.plot(model="ata", kind="cv", max_cv=0.20)
     try:
         # at least one red dashed hline at y=0.20 across axes
         any_hline = any(
@@ -114,7 +114,7 @@ def test_link_ata_cv_has_threshold_line(tri_multi):
 
 def test_link_ata_show_maturity_false(tri_multi):
     link = tri_multi.link()
-    fig = link.plot(model="ata", type="cv", show_maturity=False)
+    fig = link.plot(model="ata", kind="cv", show_maturity=False)
     try:
         # no axvspan / axvline overlays (only the axhline)
         for ax in fig.axes:
@@ -134,7 +134,7 @@ def test_link_ata_show_maturity_false(tri_multi):
 @pytest.mark.parametrize("type_", ["summary", "box", "point"])
 def test_link_ed_modes(tri_multi, type_):
     link = tri_multi.link()
-    fig = link.plot(model="ed", type=type_)
+    fig = link.plot(model="ed", kind=type_)
     try:
         assert isinstance(fig, plt.Figure)
         assert "Intensity" in fig._suptitle.get_text()
@@ -144,8 +144,8 @@ def test_link_ed_modes(tri_multi, type_):
 
 def test_link_ed_invalid_type(tri_multi):
     link = tri_multi.link()
-    with pytest.raises(ValueError, match="type"):
-        link.plot(model="ed", type="cv")  # cv not valid in ed mode
+    with pytest.raises(ValueError, match="kind"):
+        link.plot(model="ed", kind="cv")  # cv not valid in ed mode
 
 
 # --- ATA / Intensity convenience wrappers --------------------------------
@@ -162,7 +162,7 @@ def test_ata_plot_delegates(tri_multi):
 
 def test_ata_plot_box(tri_single):
     ata = tri_single.link().ata()
-    fig = ata.plot(type="box")
+    fig = ata.plot(kind="box")
     try:
         assert isinstance(fig, plt.Figure)
         assert "Box Plot" in fig._suptitle.get_text()
@@ -181,8 +181,8 @@ def test_intensity_plot_delegates(tri_multi):
 
 def test_intensity_plot_invalid_type(tri_single):
     intf = tri_single.link().intensity()
-    with pytest.raises(ValueError, match="type"):
-        intf.plot(type="cv")  # cv is ATA-only
+    with pytest.raises(ValueError, match="kind"):
+        intf.plot(kind="cv")  # cv is ATA-only
 
 
 # --- EDFit ----------------------------------------------------------------

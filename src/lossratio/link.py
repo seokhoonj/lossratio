@@ -343,18 +343,18 @@ class Link:
         """Link-factor diagnostic plot, backed by matplotlib.
 
         Dispatches on ``model``: ``"ata"`` (multiplicative ATA factor
-        diagnostic, 5 type variants) or ``"ed"`` (additive exposure-
-        driven intensity diagnostic, 3 type variants). Default
+        diagnostic, 5 kind variants) or ``"ed"`` (additive exposure-
+        driven intensity diagnostic, 3 kind variants). Default
         ``model`` is ``"ed"`` when the Link was built with
         ``exposure``, otherwise ``"ata"``.
 
         For ``model="ata"`` accepts:
-        ``type ∈ {"cv","rse","summary","box","point"}``,
+        ``kind in {"cv","rse","summary","box","point"}``,
         ``alpha``, ``show_maturity``, ``max_cv``, ``max_rse``,
         ``min_run``, ``nrow``, ``ncol``, ``figsize``.
 
         For ``model="ed"`` accepts:
-        ``type ∈ {"summary","box","point"}``, ``alpha``, ``nrow``,
+        ``kind in {"summary","box","point"}``, ``alpha``, ``nrow``,
         ``ncol``, ``figsize``.
 
         Returns
