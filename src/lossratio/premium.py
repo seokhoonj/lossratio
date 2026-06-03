@@ -510,6 +510,10 @@ class PremiumFit:
 
         parts: list[pl.DataFrame] = []
         keys: list[Any] = []
+        # Retain the per-group premium development factors so the ED loss
+        # tail (loss.py) can develop premium in step with the loss intensity
+        # instead of freezing it (a coupled forward walk).
+        f_k_map: dict[Any, np.ndarray] = {}
         for g, sub in _iter_group_frames(tri_df, groups):
             keys.append(g)
             premium_obs, cohorts, _ = _build_premium_matrix(sub)
@@ -517,6 +521,7 @@ class PremiumFit:
                 premium_obs, estimator.method, estimator.sigma_method,
                 link_mask=recent_link_mask(premium_obs, recent),
             )
+            f_k_map[g] = result.f_k
             df_g = _premium_long_df(
                 result, cohorts, groups, g, estimator.conf_level
             )
@@ -531,6 +536,8 @@ class PremiumFit:
                         df_g, res.factor, groups, role="premium"
                     )
             parts.append(df_g)
+
+        self._premium_f_k = f_k_map
 
         # Diverged groups carry no `_tail` columns -> diagonal union (only
         # when a tail is requested; the default path stays byte-identical).

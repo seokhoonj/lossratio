@@ -917,10 +917,12 @@ class LossFit:
         from .tail import (
             apply_ed_tail_to_long_df,
             apply_tail_to_long_df,
+            compute_ed_tail_increment_coupled,
             compute_tail_factor,
-            compute_tail_increment,
             maybe_warn_tail,
         )
+
+        pf_fk_map = getattr(self.premium_fit, "_premium_f_k", {})
 
         self.tail = estimator.tail
         grain = original_tri.grain
@@ -944,7 +946,12 @@ class LossFit:
         def _apply_ed_tail(
             g_sel: np.ndarray, grp_long: pl.DataFrame, g: Any
         ) -> tuple[float, bool, pl.DataFrame]:
-            res = compute_tail_increment(g_sel, tail, grain)
+            # Develop premium in step with the loss intensity (coupled walk)
+            # so the additive increment Sum g_k * P_k uses the GROWING
+            # cumulative premium, not a frozen last value.
+            res = compute_ed_tail_increment_coupled(
+                g_sel, pf_fk_map.get(g), tail, grain
+            )
             maybe_warn_tail(res, group=g)
             if res.factor > 0.0 and np.isfinite(res.factor):
                 grp_long = apply_ed_tail_to_long_df(

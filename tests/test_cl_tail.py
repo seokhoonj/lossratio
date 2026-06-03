@@ -17,6 +17,7 @@ import pytest
 import lossratio as lr
 from lossratio.tail import (
     Tail,
+    compute_ed_tail_increment_coupled,
     compute_tail_factor,
     compute_tail_increment,
     validate_tail,
@@ -335,6 +336,26 @@ def test_compute_tail_increment_divergence_refuse():
     assert res.diverged
 
 
+def test_coupled_flat_premium_reduces_to_plain():
+    # With no premium growth (factors at 1) the coupled S equals the plain
+    # Sum g.
+    g = np.array([0.5, 0.3, 0.2, 0.12, 0.07, 0.04])
+    flat = np.ones_like(g)
+    plain = compute_tail_increment(g, True, grain="M").factor
+    coupled = compute_ed_tail_increment_coupled(g, flat, True, grain="M").factor
+    assert coupled == pytest.approx(plain)
+
+
+def test_coupled_growing_premium_exceeds_frozen():
+    # A developing premium (factors > 1) makes the additive increment larger
+    # than freezing the premium at its last value.
+    g = np.array([0.5, 0.3, 0.2, 0.12, 0.07, 0.04])
+    premium_f = np.array([1.5, 1.3, 1.2, 1.12, 1.07, 1.04])
+    plain = compute_tail_increment(g, True, grain="M").factor
+    coupled = compute_ed_tail_increment_coupled(g, premium_f, True, grain="M").factor
+    assert coupled > plain
+
+
 def test_ed_default_no_tail_columns(tri):
     ef = lr.ExposureDriven().fit(tri)
     assert all("tail" not in c for c in ef._df.columns)
@@ -354,10 +375,14 @@ def test_ed_tail_true_adds_companion_columns(tri):
 
 
 def test_ed_tail_additive_increment(tri):
-    # loss_tail = loss_proj + premium_proj * Sum_g on the last-dev row.
+    # loss_tail = loss_proj + premium_proj * S on the last-dev row, where S
+    # is the coupled sum (premium develops in step with the loss intensity).
     ef = lr.ExposureDriven(tail=True).fit(tri)
-    sum_g = compute_tail_increment(
-        ef._internals["CAN"].g_sel, True, grain=tri.grain
+    sum_g = compute_ed_tail_increment_coupled(
+        ef._internals["CAN"].g_sel,
+        ef.premium_fit._premium_f_k["CAN"],
+        True,
+        grain=tri.grain,
     ).factor
     last = (
         ef._df.with_columns(
@@ -437,8 +462,11 @@ def test_sa_tail_all_ed_is_additive(tri):
     # With maturity=None the SA fit is ED throughout -> the additive tail.
     sa = lr.StageAdaptive(maturity=None, tail=True).fit(tri)
     assert all(v.mat_k is None for v in sa._internals.values())
-    sum_g = compute_tail_increment(
-        sa._internals["CAN"].g_sel, True, grain=tri.grain
+    sum_g = compute_ed_tail_increment_coupled(
+        sa._internals["CAN"].g_sel,
+        sa.premium_fit._premium_f_k["CAN"],
+        True,
+        grain=tri.grain,
     ).factor
     last = (
         sa._df.with_columns(

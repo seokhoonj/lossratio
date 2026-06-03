@@ -278,6 +278,85 @@ def compute_tail_increment(
     return _TailResult(increment_sum, cfg.curve, b, steps, False, converged, reason)
 
 
+def compute_ed_tail_increment_coupled(
+    g_sel: np.ndarray,
+    premium_f_k: np.ndarray | None,
+    tail: bool | Tail,
+    grain: str | None = None,
+) -> _TailResult:
+    """Additive ED tail with a developing premium (coupled forward walk).
+
+    The exposure-driven loss increment beyond the observed window is
+    ``Sum_k g_k * P_k`` where the cumulative premium ``P_k`` itself keeps
+    developing -- ``P_k = P_last * prod_{j<=k} fP_j``. This walks the loss
+    intensity ``g_k -> 0`` and the premium factor ``fP_k -> 1`` forward
+    together and returns ``S = Sum_k g_k * prod fP`` so that
+    ``loss_tail = loss_proj + premium_proj * S`` (``premium_proj`` is
+    ``P_last``). When ``premium_f_k`` gives no usable decay fit the premium
+    is treated as flat and this reduces to
+    :func:`compute_tail_increment`.
+    """
+    if isinstance(tail, bool):
+        if not tail:
+            return _TailResult(0.0, None, None, 0, False, True, "no_tail")
+        cfg = Tail()
+    elif isinstance(tail, Tail):
+        cfg = tail
+    else:
+        raise TypeError("compute_ed_tail_increment_coupled expects bool or Tail")
+
+    pos = np.flatnonzero(np.isfinite(g_sel) & (g_sel > 0.0))
+    if pos.size < 3:
+        return _TailResult(0.0, cfg.curve, None, 0, False, False, "insufficient_factors")
+    g_idx = (pos + 1).astype(float)
+    a_g, b_g = _fit_decay(g_sel[pos], g_idx, cfg.curve)
+    if b_g >= _DIVERGENCE_SLOPE[cfg.curve]:
+        reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
+        return _TailResult(0.0, cfg.curve, b_g, 0, True, False, reason)
+
+    # Premium factor decay (on fP - 1); flat premium when no usable fit.
+    a_p = b_p = None
+    if premium_f_k is not None:
+        ppos = np.flatnonzero(np.isfinite(premium_f_k) & (premium_f_k > 1.0))
+        if ppos.size >= 2:
+            a_p, b_p = _fit_decay(
+                premium_f_k[ppos] - 1.0, (ppos + 1).astype(float), cfg.curve
+            )
+
+    def _term(a: float, b: float, i: int) -> float:
+        return math.exp(a + b * i) if cfg.curve == "exponential" else math.exp(a) * i ** b
+
+    ppy = _PERIODS_PER_YEAR.get(grain or "M", 12)
+    max_h = cfg.max_horizon if cfg.max_horizon is not None else _DEFAULT_HORIZON_YEARS * ppy
+    i = int(g_idx.max()) + 1
+    cum_p = 1.0
+    total = 0.0
+    steps = 0
+    converged = False
+    while steps < max_h:
+        g_i = _term(a_g, b_g, i)
+        if not math.isfinite(g_i):
+            break
+        if a_p is not None:
+            fp_excess = _term(a_p, b_p, i)
+            if math.isfinite(fp_excess) and fp_excess > 0.0:
+                cum_p *= 1.0 + fp_excess
+        term = g_i * cum_p
+        if not math.isfinite(term):
+            break
+        if term < cfg.tol:  # the loss increment has vanished
+            converged = True
+            break
+        total += term
+        steps += 1
+        i += 1
+
+    if not math.isfinite(total):
+        return _TailResult(0.0, cfg.curve, b_g, steps, False, False, "overflow")
+    reason = "converged" if converged else "horizon_capped"
+    return _TailResult(total, cfg.curve, b_g, steps, False, converged, reason)
+
+
 def apply_tail_to_long_df(
     long_df: pl.DataFrame,
     tail_factor: float,
