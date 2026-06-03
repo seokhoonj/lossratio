@@ -264,7 +264,13 @@ def detect_convergence(
                 estimator=estimator, holdout=h, target="ratio"
             ).fit(triangle)
             val = _extract_portfolio_ratio(bt_fit)
-        except Exception:
+        except (
+            ValueError, KeyError, RuntimeError,
+            pl.exceptions.ColumnNotFoundError, pl.exceptions.ComputeError,
+        ):
+            # A legitimately-unprojectable fold already returns nan from
+            # _extract_portfolio_ratio; this only fires on a degenerate
+            # refit. Genuine structural bugs propagate.
             val = float("nan")
         cache[h] = val
         return val
@@ -379,10 +385,10 @@ class Convergence:
 
     Attributes
     ----------
-    convergence_point : int | None
+    point : int | None
         First dev at which the chosen ``method``'s pass test fires.
     method : str
-        Which criterion selected ``convergence_point``.
+        Which criterion selected ``point``.
     maturity_point : int
         Maturity point used as the lower bound of the candidate window.
     dev_max : int
@@ -391,7 +397,7 @@ class Convergence:
         Candidate dev sequence ``[maturity_point, dev_max - 2]``.
     lr, revision, drift_window, drift_tail, slope, dispersion : ndarray
         Diagnostic series, one entry per ``dev_cand``.
-    pass_window, pass_tail, pass_slope, pass : ndarray[bool]
+    pass_window, pass_tail, pass_slope, pass_ : ndarray[bool]
         Per-criterion pass vectors plus the chosen criterion.
     """
 
@@ -399,9 +405,6 @@ class Convergence:
         raise TypeError(
             "Convergence is the result of `ratio_fit.convergence()`, not a direct constructor."
         )
-        self.window: int
-        self.holdout_max: int
-        self.min_n_cohorts: int
 
     @classmethod
     def _from_arrays(

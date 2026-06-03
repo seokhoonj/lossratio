@@ -1,21 +1,21 @@
-"""Triangle-level bootstrap -- Phase 1: analytical CL (Mack closed-form).
+"""Triangle-level bootstrap -- predictive-variance estimation.
 
-This module mirrors the bootstrap worker of the R package. Phase 1
-implements only the ``type="analytical"`` / ``method="cl"`` paradigm --
-the Mack (1993) closed-form propagation -- together with the
-paradigm-agnostic summary kernel that decomposes per-cell predictive
-variance into parameter and process components.
+Three paradigms are implemented, each over ``method`` in
+``{"cl", "ed", "sa"}``:
 
-The analytical CL paradigm draws new link factors from
-``N(f_hat, sqrt(Var(f_hat)))`` per replicate, leaves observed
-(upper-triangle) cells unchanged, forward-projects the lower triangle,
-and adds Stage 2 chain-Markov process noise from ``sigma2_k``. The
-parameter / process split then follows from the law of total variance.
+- ``type="analytical"`` -- Mack (1993) closed-form propagation
+  (``method="cl"`` + ``process="normal"`` only): draws new link factors
+  from ``N(f_hat, sqrt(Var(f_hat)))`` per replicate, leaves observed
+  (upper-triangle) cells unchanged, forward-projects the lower triangle,
+  and adds Stage 2 chain-Markov process noise from ``sigma2_k``.
+- ``type="nonparametric"`` -- England-Verrall residual resampling.
+- ``type="parametric"`` -- process-distribution cell simulation.
 
-Other paradigms -- ``nonparametric`` (England-Verrall residual
-resampling) and ``parametric`` (textbook cell-distribution sampling),
-and the ED / SA methods -- are deferred to later phases and currently
-raise :class:`NotImplementedError`.
+A paradigm-agnostic summary kernel then decomposes per-cell predictive
+variance into parameter and process components via the law of total
+variance. The only standing restriction is that ``type="analytical"``
+requires ``process="normal"`` (other values raise
+:class:`NotImplementedError`).
 
 References
 ----------
@@ -2573,14 +2573,10 @@ class BootstrapTriangle:
     """
 
     def __init__(self) -> None:
-        # Populated via the _build classmethod.
-        self._summary:          pl.DataFrame
-        self._f_anchor:         pl.DataFrame
-        self._sigma2_anchor:    pl.DataFrame
-        self._pseudo_triangles: pl.DataFrame | None
-        self._meta:             dict[str, Any]
-        self._output_type:      str
-        self._groups:           str | list[str] | None
+        raise TypeError(
+            "BootstrapTriangle is the result of a bootstrap run, not a "
+            "direct constructor."
+        )
 
     # -- properties ---------------------------------------------------------
 
@@ -2888,7 +2884,7 @@ class Bootstrap:
                     self._pseudo_to_df(stage1, groups, g, target)
                 )
 
-        out = BootstrapTriangle()
+        out = BootstrapTriangle.__new__(BootstrapTriangle)
         out._output_type   = triangle._output_type
         out._groups        = groups
         out._summary       = (
@@ -2958,7 +2954,12 @@ class Bootstrap:
             # Auto-detect through the link -> ata -> maturity chain.
             try:
                 mat = triangle.link(target="loss").ata().maturity()
-            except Exception:
+            except (
+                ValueError, KeyError, RuntimeError,
+                pl.exceptions.ColumnNotFoundError, pl.exceptions.ComputeError,
+            ):
+                # Degenerate input (no valid links, single-cohort, ...)
+                # -> all-ED bootstrap. Genuine pipeline bugs propagate.
                 mat = None
 
         if isinstance(mat, Maturity):
