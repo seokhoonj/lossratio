@@ -359,6 +359,7 @@ class RatioFit:
             conf_level=estimator.conf_level,
             regime=estimator.premium_regime,
             recent=estimator.recent,
+            tail=estimator.tail,
         ).fit(triangle)
         self.premium_fit = premium_fit
 
@@ -415,6 +416,22 @@ class RatioFit:
             .otherwise(None)
             .alias("incr_ratio_proj"),
         )
+
+        # 3b) Ratio tail = the tailed ultimate loss / tailed ultimate premium.
+        # Both sides are developed with the same tail (loss runoff and the
+        # cumulative-premium runoff), so ratio_tail = loss_ult / premium_ult
+        # on the last-dev row -- consistent rather than freezing premium.
+        if "loss_tail" in full.columns and "premium_tail" in full.columns:
+            full = full.with_columns(
+                pl.when(
+                    pl.col("loss_tail").is_not_null()
+                    & pl.col("premium_tail").is_not_null()
+                    & (pl.col("premium_tail") != 0.0)
+                )
+                .then(pl.col("loss_tail") / pl.col("premium_tail"))
+                .otherwise(None)
+                .alias("ratio_tail")
+            )
 
         # 4) ratio_se / ratio_cv / analytical CI ------------------------------
         full = _compose_ratio_stats(

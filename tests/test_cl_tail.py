@@ -495,6 +495,32 @@ def test_premium_tail_numeric_is_multiplicative(tri):
     assert np.allclose(r[np.isfinite(r)], 1.1)
 
 
+def test_lossratio_tail_composes_consistent_ratio_tail(tri):
+    # The ratio tail develops BOTH sides: ratio_tail = loss_ult / premium_ult
+    # (loss_tail / premium_tail), not loss tailed over a frozen premium.
+    rf = lr.LossRatio(method="cl", tail=True).fit(tri)
+    df = rf._df
+    assert "loss_tail" in df.columns
+    assert "premium_tail" in df.columns
+    assert "ratio_tail" in df.columns
+    last = df.with_columns(
+        pl.col("dev").rank(method="dense", descending=True)
+        .over(["coverage", "cohort"]).alias("_dev_rank")
+    ).filter(pl.col("_dev_rank") == 1)
+    lt = last["loss_tail"].to_numpy()
+    pt = last["premium_tail"].to_numpy()
+    rt = last["ratio_tail"].to_numpy()
+    mask = np.isfinite(lt) & np.isfinite(pt) & (pt != 0)
+    assert np.allclose(rt[mask], lt[mask] / pt[mask])
+    # The embedded premium fit is tailed too (not frozen).
+    assert any(v > 1.0 for v in rf.premium_fit.premium_tail_factor.values())
+
+
+def test_lossratio_default_no_ratio_tail(tri):
+    rf = lr.LossRatio(method="cl").fit(tri)
+    assert "ratio_tail" not in rf._df.columns
+
+
 def test_premium_tail_method_invariant(tri):
     # The premium point projection (and thus the tail factor) is the CL
     # recursion regardless of `method` (which only changes the SE).

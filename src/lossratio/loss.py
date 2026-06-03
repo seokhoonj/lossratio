@@ -847,6 +847,7 @@ class LossFit:
                 alpha=estimator.premium_alpha,
                 sigma_method=estimator.sigma_method,
                 recent=estimator.recent,
+                tail=estimator.tail,
                 conf_level=estimator.conf_level,
             ).fit(original_tri)
         self.premium_fit = pf
@@ -1002,6 +1003,20 @@ class LossFit:
             else:
                 self.tail_factor = {g: no_tail for g in self._internals.keys()}
                 self.tail_diverged = {g: False for g in self._internals.keys()}
+
+        # ----- Join the premium tail (for the ratio's tailed ultimate) -----
+        # The embedded PremiumFit was fit with the same `tail`, so it carries
+        # `premium_tail` companion columns; pull them onto the loss frame so
+        # RatioFit can compose ratio_tail = loss_ult / premium_ult.
+        if tail_active:
+            ptail_cols = [c for c in pf_df.columns if c.endswith("_tail")]
+            if ptail_cols:
+                join_keys = [*normalize_groups(groups), "cohort", "dev"]
+                long_df = long_df.join(
+                    pf_df.select([*join_keys, *ptail_cols]),
+                    on=join_keys,
+                    how="left",
+                )
 
         # ----- Optional bootstrap SE overlay (strictly opt-in) -------------
         # With no bootstrap, `long_df` is the pure analytical SA / ED / CL
