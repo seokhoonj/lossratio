@@ -118,9 +118,15 @@ fit.summary().select(["cohort", "ratio_ult", "ratio_cv", "ratio_ci_lo", "ratio_c
 반복해 예측치의 *경험적 분포*를 직접 그립니다.
 
 ```python
-boots = lr.Loss(method="cl", bootstrap=True).fit(tri).boots
-boots.summary.select(["cohort", "dev", "total_cv", "ci_lo", "ci_hi"])
+boot = lr.ChainLadder(
+    uncertainty=lr.ResidualBootstrap(n_replicates=1000, seed=42, quantile_ci=True)
+).fit(tri)
+boot.boots.summary.select(["cohort", "dev", "total_cv", "ci_lo", "ci_hi"])
 ```
+
+불확실성은 모형에 `uncertainty=`로 끼워 넣습니다 — 잔차 재표집은
+`lr.ResidualBootstrap`, 모수에서 직접 뽑는 모수 부트스트랩은
+`lr.MonteCarlo`, 공식 기반(기본값)은 `lr.Analytical`입니다.
 
 부트스트랩은 분포가 비대칭이거나(꼬리가 한쪽으로 길거나) 정규 가정이
 의심스러울 때 진가를 발휘합니다. 그렇지 않은 경우엔 분석적 공식과 거의
@@ -134,4 +140,5 @@ boots.summary.select(["cohort", "dev", "total_cv", "ci_lo", "ci_hi"])
   예측치와 CV·CI는 항상 함께 읽습니다.
 - {doc}`7장 — 예측 검증 <07-backtest>`: 과거 시점에서 예측을 돌려 실제와
   맞춰 보는 백테스트로, 불확실성 추정이 실전에서 맞는지 확인합니다.
-- {doc}`API 레퍼런스 <../api>`의 `Ratio`, `Loss`, `Bootstrap`, `BootstrapTriangle`
+- {doc}`API 레퍼런스 <../api>`의 `Ratio`, `ChainLadder`, `Analytical`,
+  `ResidualBootstrap`, `MonteCarlo`

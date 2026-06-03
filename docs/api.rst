@@ -42,8 +42,6 @@ API 레퍼런스
 .. autoclass:: lossratio.Convergence
    :members:
 
-.. autofunction:: lossratio.detect_convergence
-
 구조 변화 탐지
 --------------
 

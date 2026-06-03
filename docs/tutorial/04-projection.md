@@ -1,4 +1,4 @@
-# 4장. 손해율 예측 — CL · ED · SA · BF · CC
+# 4장. 손해율 예측 — CL · ED · SA
 
 1장의 직각삼각형은 오른쪽 아래가 비어 있었습니다. 2장은 그 빈 칸을 채울
 한 가지 재료를 줬습니다 — 누적 손해를 몇 배로 키우는 **ATA 인자**(곱셈).
@@ -17,8 +17,7 @@
   외삽합니다. 코호트가 지금까지 쌓은 손해에 ATA 인자를 곱해 나가는 **chain
   ladder**(CL)가 대표입니다.
 - **노출 앵커**(exposure-anchored) — 미래 손해를 *보험료라는 바깥 기준*에
-  닻 내립니다. 강도를 보험료에 곱하는 **노출 기반**(ED), 그리고 외부·내부
-  정보를 섞는 **BF**·**CC**가 여기 속합니다.
+  닻 내립니다. 강도를 보험료에 곱하는 **노출 기반**(ED)이 여기 속합니다.
 
 그리고 이 둘을 경과에 따라 **갈아타는** 절충이 단계 적응형(SA)입니다.
 
@@ -38,16 +37,10 @@
 * - SA
   - 합성
   - 성숙점 전 ED + 성숙점 후 CL
-* - BF
-  - 노출 앵커
-  - 미발현분을 외부 prior ELR x 보험료로 채움
-* - CC
-  - 노출 앵커
-  - BF의 prior를 데이터 풀링으로 추정
 ```
 
-method 이름은 `"ed"`(기본), `"cl"`, `"sa"`, `"bf"`, `"cc"` 순서로, **단순 ->
-고전 -> 합성**의 학습 순서를 따릅니다.
+method 이름은 `"ed"`(기본), `"cl"`, `"sa"` 순서로, **단순 -> 고전 -> 합성**의
+학습 순서를 따릅니다.
 
 ## 4.2 발전 기반 — chain ladder
 
@@ -96,7 +89,7 @@ toy = pl.DataFrame({
 tri = lr.Triangle(toy, cohort="uy_m", calendar="cy_m",
                   loss="loss", premium="premium", cell_type="cumulative")
 
-lr.Loss(method="cl").fit(tri).df.select(["cohort", "dev", "loss_proj"]).sort(
+lr.ChainLadder().fit(tri).df.select(["cohort", "dev", "loss_proj"]).sort(
     ["cohort", "dev"])
 #> ┌────────────┬─────┬───────────┐
 #> │ cohort     ┆ dev ┆ loss_proj │
@@ -107,8 +100,8 @@ lr.Loss(method="cl").fit(tri).df.select(["cohort", "dev", "loss_proj"]).sort(
 #> └────────────┴─────┴───────────┘
 ```
 
-`fit` 진입점은 sklearn 스타일입니다 — `lr.Loss(method="cl")`로 방법을
-설정하고 `.fit(tri)`로 적합합니다.
+`fit` 진입점은 sklearn 스타일입니다 — `lr.ChainLadder()`로 모형을 만들고
+`.fit(tri)`로 적합합니다.
 
 ## 4.3 노출 앵커 — exposure-driven
 
@@ -197,8 +190,10 @@ CL과 나란히 두면 흥미로운 일이 보입니다.
    tri = lr.Triangle(df, groups="coverage")
    COH = pl.lit("2025-08-01").str.to_date()
 
+   _MODELS = {"ed": lr.ExposureDriven, "cl": lr.ChainLadder}
+
    def _traj(method):
-       return (lr.Loss(method=method).fit(tri).df
+       return (_MODELS[method]().fit(tri).df
                .filter(pl.col("cohort") == COH).sort("dev")
                .with_columns(
                    (pl.col("loss_obs") / pl.col("premium_obs")).alias("r_obs"),
@@ -239,7 +234,7 @@ CL은 성숙한 구간에서 손해의 진전을 직접 따라가 좋고, ED는 
 3장의 성숙점을 경계로, **성숙점 이전은 ED, 이후는 CL**로 예측합니다.
 
 ```python
-lr.Ratio(method="sa").fit(tri)   # 성숙점 전 ED + 후 CL
+lr.StageAdaptive().fit(tri)   # 성숙점 전 ED + 후 CL
 ```
 
 성숙점은 SA가 내부에서 자동으로 찾습니다(3장의 CV·RSE 기준). 다만 주의할
@@ -247,34 +242,29 @@ lr.Ratio(method="sa").fit(tri)   # 성숙점 전 ED + 후 CL
 좁아 SA가 사실상 CL에 가깝게 동작합니다. SA의 진가는 **성숙점이 늦어 ED로
 안전하게 메울 초기 구간이 넓을 때** 드러납니다.
 
-## 4.6 외부 정보로 닻 내리기 — BF · CC
+## 4.6 발전을 얼마나 믿을 것인가 — 신뢰의 스펙트럼
 
-CL은 데이터만 믿고(어리면 출렁), ED는 노출만 믿습니다. 그 사이에서 **이미
-발현된 부분은 관측을 쓰고, 아직 안 나온 부분만 외부 기준으로 채우는** 절충이
-BF·CC입니다.
+CL과 ED는 대립하는 두 방법이 아니라 **하나의 축 위 양 끝**입니다 — *관측된
+발전 패턴을 얼마나 믿느냐*의 스펙트럼입니다.
 
-**Bornhuetter-Ferguson(BF)** — 분석자가 **외부 prior 손해율(ELR)**을 줍니다.
-코호트가 경과상 `q`만큼 발현됐다면(누적 ATA 인자 곱으로 계산), 최종 손해는
+- **CL** — 발전을 전적으로 믿습니다. 코호트가 쌓은 누적 손해에 ATA 인자를
+  곱해, 관측된 진전을 그대로 미래로 연장합니다. 성숙한 코호트엔 정확하지만,
+  얇은 초기 관측에 곱셈을 거듭하면 출렁입니다(반응성이 높은 대신 분산이 큼).
+- **ED** — 발전 대신 **노출(보험료)에 닻**을 내립니다. 게다가 강도 `g_k`를
+  *코호트 전체에서 풀링*해 추정하므로, 한 어린 코호트의 들쭉날쭉한 관측이
+  아니라 포트폴리오 평균 노출 패턴이 예측을 끕니다(안정적인 대신 노출 패턴
+  유지를 가정).
 
-$$
-\text{ult} = \underbrace{L_{\text{관측}}}_{\text{발현분}} + \underbrace{(1 - q)\,\times\,\text{ELR}\,\times\,\text{보험료}}_{\text{미발현분}}
-$$
+이 "노출 앵커 + 코호트 풀링"이 핵심입니다. 손해보험 reserving에서는 외부
+prior 손해율을 손수 넣거나(Bornhuetter-Ferguson), 데이터에서 풀링해(Cape Cod)
+어린 코호트를 안정시킵니다. 장기 건강보험에서는 **ED가 이미 그 역할을
+합니다** — 보험료라는 외부 기준에 닻을 내리고 강도를 코호트 간 풀링하므로,
+별도의 prior 층을 얹지 않아도 어린 코호트가 노출 수준에 머뭅니다. 그래서 이
+패키지는 CL · ED · SA 세 방법으로 이 스펙트럼을 덮습니다.
 
-로 둡니다. 어린 코호트는 `q`가 작아 prior가 지배하고, 성숙한 코호트는 `q`가
-1에 가까워 관측이 지배합니다 — 자동으로 데이터가 쌓일수록 prior에서
-관측으로 무게가 옮겨갑니다.
-
-```python
-lr.Ratio(method="bf", prior=1.5).fit(tri)   # ELR prior = 1.5
-```
-
-**Cape Cod(CC)** — BF와 똑같은 구조이되, prior ELR을 외부에서 받지 않고
-**데이터 전체에서 풀링해 추정**합니다(`ELR = Σ관측손해 / Σ(보험료 x q)`).
-prior를 손수 정하기 어려울 때, 포트폴리오 스스로 말하게 하는 방법입니다.
-
-두 방법 모두 **노출 앵커 hybrid**입니다 — 발전 패턴(`q`, 몇 % 나왔나)은
-CL에서 빌리고, 미발현분의 *크기*는 보험료 x ELR로 닻을 내립니다. 그래서
-어린 코호트에서 CL처럼 무너지지 않고 ED처럼 노출 수준에 머뭅니다.
+성숙점은 이 스펙트럼 위에서 **갈아타는 지점**입니다(3장). 발전을 아직 못
+믿을 초기엔 ED로 안전하게, 발전이 코호트 간 일관되게 안정된 뒤엔 CL로
+정확하게 — SA가 성숙점을 경계로 둘을 잇습니다.
 
 ## 4.7 어느 방법을 언제
 
@@ -290,10 +280,6 @@ CL에서 빌리고, 미발현분의 *크기*는 보험료 x ELR로 닻을 내립
   - 초기 구간이 많거나 ATA 인자가 불안정할 때의 안전한 기본값
 * - SA
   - 성숙점이 뚜렷하고 미성숙 구간이 넓을 때 — ED 안정 + CL 진전을 한 번에
-* - BF
-  - 신뢰할 외부 손해율 기준(요율 가정 등)이 있을 때
-* - CC
-  - 외부 기준이 없어 포트폴리오에서 ELR을 끌어내고 싶을 때
 ```
 
 기본값 `"ed"`로 시작해 데이터의 성숙도와 가진 정보에 따라 갈아타는 것이
@@ -305,4 +291,5 @@ CL에서 빌리고, 미발현분의 *크기*는 보험료 x ELR로 닻을 내립
   <03-intensity>`: 이 장이 빈 칸을 채우는 데 쓴 ATA 인자와 강도·성숙점.
 - {doc}`5장 — 예측의 불확실성 <05-uncertainty>`: 이 장의 점 예측에 표준오차와
   신뢰구간을 입혀 "얼마나 믿을 수 있나"를 정량화합니다.
-- {doc}`API 레퍼런스 <../api>`의 `Loss`, `Ratio`, `CL`, `ED`, `BF`, `CC`
+- {doc}`API 레퍼런스 <../api>`의 `ChainLadder`, `ExposureDriven`,
+  `StageAdaptive`, `Ratio`

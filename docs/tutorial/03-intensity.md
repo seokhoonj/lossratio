@@ -190,14 +190,35 @@ ED는 성숙점을 따로 찾지 않아도 쓸 수 있는 **무조건 안전한 
    :context: close-figs
    :caption: SUR 담보의 경과별 강도. 초기에 보험료 대비 손해가 가장 많이 나고, 경과가 쌓일수록 한 기간이 더하는 손해가 0에 가까워진다.
 
-   link.plot(model="ed", type="summary")
+   link.plot(model="ed", kind="summary")
 ```
 
 경과 1의 강도는 1.25로 가장 큽니다 — 보장 초기에 손해가 몰리는 장기
 건강보험의 특성이 그대로 드러납니다. 경과가 쌓일수록 강도는 0.63, 0.42,
-0.33처럼 점점 작아집니다. **강도가 0에 가깝다는 것은 그 기간에 새로
-더해지는 손해가 거의 없다**는 뜻 — 손해가 다 떠올라 안정되어 간다는, ATA
-인자가 1에 가까워지는 것과 같은 신호를 노출의 언어로 말한 것입니다.
+0.33처럼 점점 작아집니다. **강도가 0에 가깝다는 것은 겉보기에 그 기간에
+새로 더해지는 손해가 거의 없다**는 뜻처럼 보입니다 — 손해가 다 떠올라
+안정되어 간다는, ATA 인자가 1에 가까워지는 것과 같은 신호를 노출의 언어로
+말한 듯합니다. 그런데 여기에는 함정이 하나 있습니다.
+
+```{admonition} 강도 0은 "손해 끝"과 "분모가 자랐다"를 섞는다
+:class: caution
+
+강도가 0으로 잦아드는 것을 곧장 "손해가 안정됐다"로 읽으면 절반만
+맞습니다. 강도를 분해해 보면
+
+$$
+g_k = \underbrace{\frac{\Delta L}{\Delta P}}_{\text{기간 손해율}}\,\times\,\underbrace{\frac{\Delta P}{C^P}}_{\text{보험료 비중}}
+$$
+
+입니다($C^P$ = 그 시점까지 누적된 위험보험료). 장기 health는 보험료가
+매 기간 들어와 $C^P$가 계속 자라므로, 보험료 비중 $\Delta P / C^P$는
+경과가 쌓일수록 0으로 수렴합니다. 그래서 **기간 손해율 $\Delta L/\Delta P$가
+일정해도 강도는 0으로 떨어집니다**. 즉 강도의 감쇠에는 (1) 진짜 손해가
+잦아드는 부분과 (2) 분모가 자라 생기는 *기계적* 부분이 섞여 있습니다 —
+누적 손해율의 신호를 무디게 하는 **관성**(inertia)의 한 얼굴입니다.
+"기간 손해율 자체가 안정됐는가"를 정직하게 보려면 강도가 아니라
+**증분 손해율**(`incr_ratio`, $\Delta L/\Delta P$)을 봐야 합니다.
+```
 
 ## 3.6 손해는 언제 믿을 만해지나 — 성숙점
 
@@ -228,7 +249,7 @@ link.ata().maturity().df.select(["ata_link", "f", "cv", "rse", "stable"]).head(4
 #> │ 4-5      ┆ 1.314488 ┆ 0.02377  ┆ 0.004265 ┆ true   │
 #> └──────────┴──────────┴──────────┴──────────┴────────┘
 
-link.ata().maturity().maturity_point
+link.ata().maturity().point
 #> {'SUR': 2}
 ```
 
@@ -253,9 +274,9 @@ link.ata().maturity().maturity_point
 믿겠는가"를 분석자가 정하는 것입니다.
 
 ```python
-link.ata().maturity(max_cv=0.05, max_rse=0.02).maturity_point
+link.ata().maturity(max_cv=0.05, max_rse=0.02).point
 #> {'SUR': 3}
-link.ata().maturity(max_cv=0.03, max_rse=0.01).maturity_point
+link.ata().maturity(max_cv=0.03, max_rse=0.01).point
 #> {'SUR': 4}
 ```
 

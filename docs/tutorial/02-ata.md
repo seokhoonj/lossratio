@@ -148,7 +148,7 @@ tri.link(target="loss").ata().df.select(["dev", "f", "n_cohorts"])
    :context: close-figs
    :caption: SUR 담보의 경과별 ATA 인자. 초기에는 손해가 빠르게 자라다 경과가 쌓일수록 1에 가까워진다.
 
-   link.plot(model="ata", type="summary")
+   link.plot(model="ata", kind="summary")
 ```
 
 초기 경과의 인자는 6 가까이로 매우 큽니다. 갓 인수된 계약은 누적
