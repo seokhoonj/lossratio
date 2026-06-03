@@ -281,25 +281,6 @@ def test_segment_bridged_borrowed_filter_annotates_segment_id():
     assert df.height < tri.to_polars().height
 
 
-def test_segment_bridged_borrowed_split_into_mini_triangles():
-    from lossratio.regime import _split_into_segment_triangles
-
-    tri = _sur_triangle()
-    # Two change points -> three segments under per-segment estimation.
-    r = lr.Regime.at(
-        change=["2024-01-01", "2024-07-01"],
-        treatment="segment_bridged_borrowed",
-    )
-    segs = _split_into_segment_triangles(tri, r)
-    # Multiple segments for a 2-change SUR regime.
-    assert len(segs) > 1
-    assert set(segs.keys()) == {1, 2, 3}
-    # Each segment is a stand-alone Triangle (no segment_id column).
-    for seg_id, seg_tri in segs.items():
-        assert isinstance(seg_tri, lr.Triangle)
-        assert "segment_id" not in seg_tri.to_polars().columns
-
-
 def test_segment_bridged_borrowed_fit_emits_segment_id_column():
     tri = _sur_triangle()
     r = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")

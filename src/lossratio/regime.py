@@ -1355,11 +1355,11 @@ def _apply_regime_filter(
       triangle directly.
 
     - ``"segment_bridged_borrowed"``: keeps ``segment_id`` so the fit
-      dispatcher routes to per-segment estimation + late-dev borrow (it
-      does not reach this function; the dispatcher calls
-      :func:`_split_into_segment_triangles` instead). When it does reach
-      here (e.g. premium-side fits without a borrow path), the masked
-      triangle carries ``segment_id``.
+      dispatcher routes to per-segment estimation with a late-dev borrow,
+      operating on this full-range masked triangle (it does not split
+      into per-segment mini-triangles). Premium-side fits without a
+      borrow path likewise receive the masked triangle carrying
+      ``segment_id``.
 
     When ``regime`` is ``None`` or has no change points, the input
     triangle is returned unchanged.
@@ -1376,42 +1376,3 @@ def _apply_regime_filter(
     df = df.with_columns(seg_expr.alias("segment_id"))
     df = _apply_mini_triangle_filter(df, regime)
     return Triangle._from_masked(triangle, df)
-
-
-def _split_into_segment_triangles(
-    triangle: "Triangle",
-    regime: "Regime",
-) -> dict[int, "Triangle"]:
-    """Split a Triangle into per-segment mini-Triangles.
-
-    Used by fit consumers for ``treatment="segment_bridged_borrowed"``:
-    each segment is fit independently. Returns a mapping
-    ``{segment_id: mini_triangle}`` ordered by segment_id ascending.
-    The mini-triangle filter is applied first so each segment's cells
-    obey the equal-trapezoid window.
-
-    Each returned Triangle is built by ``Triangle._from_masked`` and
-    shares metadata (groups / cohort / grain / dev) with the source.
-    The ``segment_id`` column is dropped before the mini-Triangle
-    leaves this helper -- the standard Triangle schema has no such
-    column, so downstream fits treat each piece as a normal Triangle.
-    """
-    from .triangle import Triangle
-
-    if not regime.breakpoints:
-        return {1: triangle}
-
-    df = triangle.to_polars()
-    seg_expr = _segment_id_expr(regime)
-    if seg_expr is None:
-        return {1: triangle}
-    df = df.with_columns(seg_expr.alias("segment_id"))
-    df = _apply_mini_triangle_filter(df, regime)
-
-    out: dict[int, Triangle] = {}
-    for seg_id in sorted(df["segment_id"].unique().to_list()):
-        sub = df.filter(pl.col("segment_id") == seg_id).drop("segment_id")
-        if sub.height == 0:
-            continue
-        out[int(seg_id)] = Triangle._from_masked(triangle, sub)
-    return out
