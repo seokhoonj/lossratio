@@ -45,6 +45,12 @@ def _hide_unused(axes: Any, n_used: int, nrow: int, ncol: int) -> None:
         r, c = divmod(idx, ncol)
         axes[r][c].set_visible(False)
 
+
+def _percent_formatter():
+    """A matplotlib tick formatter rendering a 0-1 fraction as ``NN%``."""
+    from matplotlib.ticker import FuncFormatter
+    return FuncFormatter(lambda v, _pos: f"{round(v * 100)}%")
+
 # Valid metric names that can be passed to plot_triangle().
 _VALID_METRICS: tuple[str, ...] = (
     "ratio", "incr_ratio",

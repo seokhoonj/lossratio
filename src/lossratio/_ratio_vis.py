@@ -28,6 +28,7 @@ from ._plot import (
     _format_period_series,
     _get_period_type,
     _hide_unused,
+    _percent_formatter,
     _pretty_var_label,
     _resolve_grid,
 )
@@ -509,8 +510,3 @@ def _draw_panel(
         )
 
     ax.grid(True, linewidth=0.3, alpha=0.5)
-
-
-def _percent_formatter():
-    from matplotlib.ticker import FuncFormatter
-    return FuncFormatter(lambda v, _pos: f"{round(v * 100)}%")

@@ -20,6 +20,7 @@ from ._plot import (
     _format_period_series,
     _get_period_type,
     _hide_unused,
+    _percent_formatter,
     _pretty_var_label,
     _resolve_grid,
 )
@@ -376,8 +377,3 @@ def _plot_cell_curves(
     fig.supxlabel(x_label, fontsize=10)
     fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
     return fig
-
-
-def _percent_formatter():
-    from matplotlib.ticker import FuncFormatter
-    return FuncFormatter(lambda v, _pos: f"{round(v * 100)}%")
