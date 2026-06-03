@@ -9,7 +9,6 @@ Mirrors R's ``plot.Backtest`` and
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -20,7 +19,9 @@ from ._plot import (
     _cohort_label,
     _format_period_series,
     _get_period_type,
+    _hide_unused,
     _pretty_var_label,
+    _resolve_grid,
 )
 
 if TYPE_CHECKING:
@@ -162,13 +163,7 @@ def plot_triangle_backtest(
     facets = list(_iter_group_frames(work, groups))
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n, 3)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol)
 
     if figsize is None:
         cell_w = 0.5
@@ -220,9 +215,7 @@ def plot_triangle_backtest(
             ax.set_title(format_group_value(group_value), fontsize=9)
         last_drawn = ax
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     cum_word = "incremental" if is_incr else "cumulative"
     fig.suptitle(
@@ -267,13 +260,7 @@ def _plot_aggregated_lines(
     facets = list(_iter_group_frames(summary, groups))
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n, 3)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol)
 
     if figsize is None:
         figsize = (max(5.0, 3.3 * ncol), max(3.0, 2.6 * nrow))
@@ -311,9 +298,7 @@ def _plot_aggregated_lines(
         ax.legend(loc="best", fontsize=8, frameon=False)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     fig.suptitle(title, fontsize=12, fontweight="bold")
     fig.supxlabel(x_label, fontsize=10)
@@ -345,13 +330,7 @@ def _plot_cell_curves(
     facets = list(_iter_group_frames(ae_err, groups))
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n, 3)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol)
     if figsize is None:
         figsize = (max(5.0, 3.3 * ncol), max(3.0, 2.6 * nrow))
 
@@ -391,9 +370,7 @@ def _plot_cell_curves(
             ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     fig.suptitle(title, fontsize=12, fontweight="bold")
     fig.supxlabel(x_label, fontsize=10)

@@ -7,10 +7,43 @@ to `plot_triangle.*` and `plot.*`. The matplotlib backend is intentional
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import polars as pl
+
+
+def _resolve_grid(
+    n: int,
+    nrow: int | None,
+    ncol: int | None,
+    *,
+    default_ncol: int = 3,
+) -> tuple[int, int]:
+    """Resolve a facet ``(nrow, ncol)`` from ``n`` facets and optional hints.
+
+    Both ``None`` -> ``ncol = min(n, default_ncol)`` and enough rows; one
+    given -> the other is sized to fit. Shared by every faceted vis
+    module (``default_ncol`` is the only per-module difference: 3 for the
+    grid plots, 2 for validation, 1 for the stacked regime ribbons).
+    """
+    if nrow is None and ncol is None:
+        ncol = min(n, default_ncol)
+        nrow = math.ceil(n / ncol)
+    elif ncol is None:
+        ncol = math.ceil(n / max(nrow, 1))
+    elif nrow is None:
+        nrow = math.ceil(n / max(ncol, 1))
+    return nrow, ncol
+
+
+def _hide_unused(axes: Any, n_used: int, nrow: int, ncol: int) -> None:
+    """Hide the trailing axes of a ``squeeze=False`` grid past ``n_used``."""
+    for idx in range(n_used, nrow * ncol):
+        r, c = divmod(idx, ncol)
+        axes[r][c].set_visible(False)
 
 # Valid metric names that can be passed to plot_triangle().
 _VALID_METRICS: tuple[str, ...] = (

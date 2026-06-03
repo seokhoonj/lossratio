@@ -7,7 +7,6 @@ R's ``plot_triangle.Triangle`` (``R/triangle-vis.R``).
 from __future__ import annotations
 
 import bisect
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -28,7 +27,9 @@ from ._plot import (
     _cohort_label,
     _format_period_series,
     _get_period_type,
+    _hide_unused,
     _pretty_var_label,
+    _resolve_grid,
     _resolve_plot_meta,
 )
 
@@ -192,13 +193,7 @@ def plot_triangle(
     facets = list(_iter_group_frames(df, grp))
 
     n_facets = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n_facets, 3)
-        nrow = math.ceil(n_facets / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n_facets / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n_facets / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
 
     cell_w = 0.45 + (0.18 if label_style == "detail" else 0.0)
     cell_h = 0.30 + (0.18 if label_style == "detail" else 0.0)
@@ -249,9 +244,7 @@ def plot_triangle(
             )
 
     # Hide unused axes.
-    for idx in range(n_facets, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n_facets, nrow, ncol)
 
     # ggplot2 `plot.title`: left-aligned, plain weight, ~1.2x base size.
     fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
@@ -429,7 +422,9 @@ def _resolve_maturity_k(
                 return None
             try:
                 mat = triangle.detect_maturity()
-            except Exception:
+            except (ValueError, KeyError, RuntimeError):
+                # Failed auto-detect -> render the usage view without the
+                # maturity overlay rather than crash the plot.
                 return None
             return _resolve_maturity_k(mat, triangle=triangle)
         raise ValueError(
@@ -481,7 +476,8 @@ def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
         if regime == "auto":
             try:
                 return triangle.detect_regime()
-            except Exception:
+            except (ValueError, KeyError, RuntimeError):
+                # Failed auto-detect -> render without the regime overlay.
                 return None
         raise ValueError(
             f"`regime` must be None, a Regime instance, 'auto', or a "
@@ -913,13 +909,7 @@ def _plot_triangle_usage(
     facets = list(_iter_group_frames(usage_df, grp))
 
     n_facets = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n_facets, 3)
-        nrow = math.ceil(n_facets / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n_facets / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n_facets / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
 
     if figsize is None:
         fig_w = max(4.0, 0.4 * len(x_levels) * ncol + 1.5)
@@ -1043,9 +1033,7 @@ def _plot_triangle_usage(
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=10)
 
-    for idx in range(n_facets, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n_facets, nrow, ncol)
 
     # Title with active filters.
     parts: list[str] = []
@@ -1147,7 +1135,6 @@ def x_idx_get(x_idx: dict, key: int) -> int:
     return key
 
 
-# Silence unused-import warnings for re-exports.
 def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
                        hline):
     """Per-cohort trajectories (+ optional summary overlay) on one facet."""
@@ -1259,13 +1246,7 @@ def plot(
     )
     n_facets = len(facets)
 
-    if nrow is None and ncol is None:
-        ncol = min(n_facets, 3)
-        nrow = math.ceil(n_facets / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n_facets / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n_facets / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
 
     if figsize is None:
         figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
@@ -1314,9 +1295,7 @@ def plot(
                     transform=ax.transAxes, ha="center", va="center",
                     fontsize=8.5, color=_STRIP_TEXT, clip_on=False, zorder=4)
 
-    for idx in range(n_facets, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n_facets, nrow, ncol)
 
     fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
                  ha="left")
@@ -1357,4 +1336,3 @@ def plot(
 
 
 __all__ = ["plot_triangle", "plot"]
-_unused = (_PROP_METRICS,)

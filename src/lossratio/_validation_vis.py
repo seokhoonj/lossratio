@@ -8,7 +8,6 @@ observed vs expected dev counts) and ``TriangleValidation.plot_triangle(x_axis="
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -19,6 +18,8 @@ from ._period import add_periods, infer_grain, resolve_grain
 from ._plot import (
     _format_period_series,
     _get_period_type,
+    _hide_unused,
+    _resolve_grid,
 )
 
 if TYPE_CHECKING:
@@ -53,13 +54,7 @@ def plot_validation(
     facets = list(_iter_group_frames(gaps, groups))
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n, 2)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol, default_ncol=2)
     if figsize is None:
         figsize = (max(5.5, 4.0 * ncol), max(3.0, 2.5 * nrow))
 
@@ -91,9 +86,7 @@ def plot_validation(
         ax.legend(loc="best", fontsize=7, frameon=False)
         ax.grid(True, axis="y", linewidth=0.3, alpha=0.5)
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     fig.suptitle("Cohort dev-sequence gaps", fontsize=11, fontweight="bold")
     fig.supylabel("dev count", fontsize=10)
@@ -164,13 +157,7 @@ def plot_triangle_validation(
     facets = list(_iter_group_frames(gaps, groups))
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n, 2)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol, default_ncol=2)
     if figsize is None:
         figsize = (max(6.0, 4.5 * ncol), max(3.0, 2.8 * nrow))
 
@@ -218,9 +205,7 @@ def plot_triangle_validation(
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     title = (
         "Gap positions (blue = observed, red = missing)"

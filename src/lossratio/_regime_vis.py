@@ -15,7 +15,6 @@ inflate the object footprint substantially and require a refactor of
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -31,6 +30,8 @@ from ._plot import (
     _cohort_label,
     _format_period_series,
     _get_period_type,
+    _hide_unused,
+    _resolve_grid,
 )
 
 if TYPE_CHECKING:
@@ -77,13 +78,7 @@ def plot_regime(
         ]
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = 1
-        nrow = n
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol, default_ncol=1)
 
     if figsize is None:
         figsize = (max(6.0, 3.5 * ncol), max(2.0, 1.5 * nrow))
@@ -156,9 +151,7 @@ def plot_regime(
         ax.set_title(" | ".join(title_parts), fontsize=9)
         ax.legend(loc="upper right", fontsize=7, frameon=False, ncol=4)
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     fig.suptitle(
         f"Cohort regime detection (method: {regime.method}, "

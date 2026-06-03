@@ -12,7 +12,6 @@ panel per ``(group, cohort)`` pair (or one figure per group when
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -28,7 +27,9 @@ from ._plot import (
     _auto_divisor,
     _format_period_series,
     _get_period_type,
+    _hide_unused,
     _pretty_var_label,
+    _resolve_grid,
 )
 
 if TYPE_CHECKING:
@@ -389,13 +390,7 @@ def _render_facets(
         fig.suptitle(title, fontsize=12, fontweight="bold")
         return fig
 
-    if nrow is None and ncol is None:
-        ncol = min(n_facets, 3)
-        nrow = math.ceil(n_facets / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n_facets / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n_facets / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
 
     if figsize is None:
         fig_w = max(5.0, 3.2 * ncol)
@@ -423,9 +418,7 @@ def _render_facets(
         )
         ax.set_title(" | ".join(str(v) for v in key), fontsize=9)
 
-    for idx in range(n_facets, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n_facets, nrow, ncol)
 
     fig.suptitle(title, fontsize=12, fontweight="bold")
     fig.supxlabel(x_label, fontsize=10)

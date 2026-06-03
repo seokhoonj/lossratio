@@ -12,7 +12,6 @@ it works for any loss fit carrying ``reserve`` / ``loss_total_se``.
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -26,6 +25,8 @@ from ._plot import (
     _format_period_series,
     _get_amount_unit,
     _get_period_type,
+    _hide_unused,
+    _resolve_grid,
 )
 
 if TYPE_CHECKING:
@@ -44,7 +45,7 @@ def plot_cl_reserve(
     """Per-cohort reserve bar chart, faceted by group when present."""
     import matplotlib.pyplot as plt
 
-    summary = fit._to_polars(fit.summary()) if False else fit.summary()
+    summary = fit.summary()
     # `summary` may be polars or pandas depending on mirror_output;
     # normalise to polars for indexing.
     if not isinstance(summary, pl.DataFrame):
@@ -77,13 +78,7 @@ def plot_cl_reserve(
     facets = list(_iter_group_frames(summary, groups))
 
     n = len(facets)
-    if nrow is None and ncol is None:
-        ncol = min(n, 3)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
+    nrow, ncol = _resolve_grid(n, nrow, ncol)
 
     if figsize is None:
         figsize = (max(5.0, 3.5 * ncol), max(3.5, 2.6 * nrow))
@@ -138,9 +133,7 @@ def plot_cl_reserve(
             ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, axis="x", linewidth=0.3, alpha=0.5)
 
-    for idx in range(n, nrow * ncol):
-        r, c = divmod(idx, ncol)
-        axes[r][c].set_visible(False)
+    _hide_unused(axes, n, nrow, ncol)
 
     unit = _get_amount_unit(amount_divisor)
     title = "Mack Chain Ladder Reserve"
