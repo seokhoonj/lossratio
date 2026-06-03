@@ -12,6 +12,7 @@ all-CL configuration of that engine.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
+@dataclass(kw_only=True)
 class ChainLadder:
     """Mack chain ladder loss projection.
 
@@ -54,24 +56,13 @@ class ChainLadder:
         :class:`~lossratio.MonteCarlo` to override.
     """
 
-    def __init__(
-        self,
-        *,
-        alpha:        float          = 1.0,
-        sigma_method: str            = "locf",
-        recent:       int | None     = None,
-        regime:       RegimeArg      = None,
-        tail:         TailArg        = False,
-        conf_level:   float          = 0.95,
-        uncertainty:  UncertaintyArg = None,
-    ) -> None:
-        self.alpha       = alpha
-        self.sigma_method = sigma_method
-        self.recent      = recent
-        self.regime      = regime
-        self.tail        = tail
-        self.conf_level  = conf_level
-        self.uncertainty = uncertainty
+    alpha:        float          = 1.0
+    sigma_method: str            = "locf"
+    recent:       int | None     = None
+    regime:       RegimeArg      = None
+    tail:         TailArg        = False
+    conf_level:   float          = 0.95
+    uncertainty:  UncertaintyArg = None
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the chain ladder loss projection on a Triangle."""

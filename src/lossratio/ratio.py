@@ -8,6 +8,7 @@ point + variance via the delta method.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -121,6 +122,7 @@ def _compose_ratio_stats(
     return full
 
 
+@dataclass(kw_only=True)
 class Ratio:
     """Loss-ratio estimator (composition over :class:`Loss` + :class:`Premium`).
 
@@ -192,84 +194,64 @@ class Ratio:
         of the loss ``method``, matching the loss models.
     """
 
-    def __init__(
-        self,
-        method: str = "ed",
-        loss_alpha: float = 1.0,
-        loss_regime: RegimeArg = None,
-        premium_method: str = "ed",
-        premium_alpha: float = 1.0,
-        premium_regime: RegimeArg = None,
-        sigma_method: str = "locf",
-        recent: int | None = None,
-        maturity: MaturityArg = "auto",
-        max_cv: float = 0.15,
-        max_rse: float = 0.05,
-        min_run: int = 2,
-        se_method: str = "fixed",
-        rho: float = 0.95,
-        conf_level: float = 0.95,
-        tail: TailArg = False,
-        uncertainty: UncertaintyArg = None,
-    ) -> None:
-        if method not in _VALID_METHODS:
+    method: str = "ed"
+    loss_alpha: float = 1.0
+    loss_regime: RegimeArg = None
+    premium_method: str = "ed"
+    premium_alpha: float = 1.0
+    premium_regime: RegimeArg = None
+    sigma_method: str = "locf"
+    recent: int | None = None
+    maturity: MaturityArg = "auto"
+    max_cv: float = 0.15
+    max_rse: float = 0.05
+    min_run: int = 2
+    se_method: str = "fixed"
+    rho: float = 0.95
+    conf_level: float = 0.95
+    tail: TailArg = False
+    uncertainty: UncertaintyArg = None
+
+    def __post_init__(self) -> None:
+        from .tail import validate_tail
+
+        if self.method not in _VALID_METHODS:
             raise ValueError(
-                f"method must be one of {_VALID_METHODS}, got {method!r}"
+                f"method must be one of {_VALID_METHODS}, got {self.method!r}"
             )
-        if premium_method not in _VALID_PREMIUM_METHODS:
+        if self.premium_method not in _VALID_PREMIUM_METHODS:
             raise ValueError(
                 f"premium_method must be one of {_VALID_PREMIUM_METHODS}, "
-                f"got {premium_method!r}"
+                f"got {self.premium_method!r}"
             )
-        if se_method not in _VALID_SE_METHODS:
+        if self.se_method not in _VALID_SE_METHODS:
             raise ValueError(
                 f"se_method must be one of {_VALID_SE_METHODS}, "
-                f"got {se_method!r}"
+                f"got {self.se_method!r}"
             )
-        if sigma_method not in VALID_SIGMA_METHODS:
+        if self.sigma_method not in VALID_SIGMA_METHODS:
             raise ValueError(
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
-                f"got {sigma_method!r}"
+                f"got {self.sigma_method!r}"
             )
-        if loss_alpha != 1.0:
+        if self.loss_alpha != 1.0:
             raise NotImplementedError(
-                f"loss_alpha={loss_alpha} not yet implemented; "
+                f"loss_alpha={self.loss_alpha} not yet implemented; "
                 f"only alpha=1 is supported"
             )
-        if premium_alpha != 1.0:
+        if self.premium_alpha != 1.0:
             raise NotImplementedError(
-                f"premium_alpha={premium_alpha} not yet implemented; "
+                f"premium_alpha={self.premium_alpha} not yet implemented; "
                 f"only alpha=1 is supported"
             )
-        if not (-1 < rho < 1):
-            raise ValueError(f"rho must be in (-1, 1), got {rho!r}")
-        if not (0.0 < conf_level < 1.0):
+        if not (-1 < self.rho < 1):
+            raise ValueError(f"rho must be in (-1, 1), got {self.rho!r}")
+        if not (0.0 < self.conf_level < 1.0):
             raise ValueError(
-                f"conf_level must be in (0, 1), got {conf_level!r}"
+                f"conf_level must be in (0, 1), got {self.conf_level!r}"
             )
-        _validate_recent(recent)
-        from .tail import validate_tail
-        validate_tail(tail)
-        # The tail is effective for every loss method (cl / ed / sa); it is
-        # forwarded to the loss-side Loss engine below.
-
-        self.method = method
-        self.loss_alpha = loss_alpha
-        self.loss_regime = loss_regime
-        self.premium_method = premium_method
-        self.premium_alpha = premium_alpha
-        self.premium_regime = premium_regime
-        self.sigma_method = sigma_method
-        self.recent = recent
-        self.maturity = maturity
-        self.max_cv = max_cv
-        self.max_rse = max_rse
-        self.min_run = min_run
-        self.se_method = se_method
-        self.rho = rho
-        self.conf_level = conf_level
-        self.tail = tail
-        self.uncertainty = uncertainty
+        _validate_recent(self.recent)
+        validate_tail(self.tail)
 
     def fit(self, triangle: "Triangle") -> "RatioFit":
         """Fit the Ratio estimator on a Triangle."""

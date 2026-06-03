@@ -13,6 +13,7 @@ argument (auto-detected per group by default).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
+@dataclass(kw_only=True)
 class StageAdaptive:
     """Stage-adaptive (ED-before-maturity, CL-after) loss projection.
 
@@ -67,40 +69,27 @@ class StageAdaptive:
         (:class:`~lossratio.MonteCarlo`) or the analytical SA SE.
     """
 
-    def __init__(
-        self,
-        *,
-        alpha:        float          = 1.0,
-        sigma_method: str            = "locf",
-        maturity:     MaturityArg    = "auto",
-        max_cv:       float          = 0.15,
-        max_rse:      float          = 0.05,
-        min_run:      int            = 2,
-        recent:       int | None     = None,
-        regime:       RegimeArg      = None,
-        tail:         TailArg        = False,
-        conf_level:   float          = 0.95,
-        uncertainty:  UncertaintyArg = None,
-    ) -> None:
+    alpha:        float          = 1.0
+    sigma_method: str            = "locf"
+    maturity:     MaturityArg    = "auto"
+    max_cv:       float          = 0.15
+    max_rse:      float          = 0.05
+    min_run:      int            = 2
+    recent:       int | None     = None
+    regime:       RegimeArg      = None
+    tail:         TailArg        = False
+    conf_level:   float          = 0.95
+    uncertainty:  UncertaintyArg = None
+
+    def __post_init__(self) -> None:
         from .uncertainty import ResidualBootstrap
 
-        if isinstance(uncertainty, ResidualBootstrap):
+        if isinstance(self.uncertainty, ResidualBootstrap):
             raise ValueError(
                 "StageAdaptive does not support ResidualBootstrap: the "
                 "ED+CL two-phase fit has no coherent single residual pool. "
                 "Use MonteCarlo() or the default analytical SE."
             )
-        self.alpha       = alpha
-        self.sigma_method = sigma_method
-        self.maturity    = maturity
-        self.max_cv      = max_cv
-        self.max_rse     = max_rse
-        self.min_run     = min_run
-        self.recent      = recent
-        self.regime      = regime
-        self.tail        = tail
-        self.conf_level  = conf_level
-        self.uncertainty = uncertainty
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the stage-adaptive loss projection on a Triangle."""

@@ -330,6 +330,7 @@ def _premium_long_df(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(kw_only=True)
 class Premium:
     """Premium (exposure) projection dispatcher.
 
@@ -382,43 +383,36 @@ class Premium:
     >>> pf.df.columns
     """
 
-    def __init__(
-        self,
-        method: str = "ed",
-        alpha: float = 1.0,
-        sigma_method: str = "locf",
-        regime: RegimeArg = None,
-        recent: int | None = None,
-        tail: TailArg = False,
-        conf_level: float = 0.95,
-    ) -> None:
-        if method not in _VALID_METHODS:
+    method: str = "ed"
+    alpha: float = 1.0
+    sigma_method: str = "locf"
+    regime: RegimeArg = None
+    recent: int | None = None
+    tail: TailArg = False
+    conf_level: float = 0.95
+
+    def __post_init__(self) -> None:
+        from .tail import validate_tail
+
+        if self.method not in _VALID_METHODS:
             raise ValueError(
-                f"method must be one of {_VALID_METHODS}, got {method!r}"
+                f"method must be one of {_VALID_METHODS}, got {self.method!r}"
             )
-        if alpha != 1.0:
+        if self.alpha != 1.0:
             raise NotImplementedError(
-                f"alpha={alpha} not yet implemented; only alpha=1 is supported"
+                f"alpha={self.alpha} not yet implemented; only alpha=1 is supported"
             )
-        if sigma_method not in VALID_SIGMA_METHODS:
+        if self.sigma_method not in VALID_SIGMA_METHODS:
             raise ValueError(
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
-                f"got {sigma_method!r}"
+                f"got {self.sigma_method!r}"
             )
-        from .tail import validate_tail
-        validate_tail(tail)
-        if not (0.0 < conf_level < 1.0):
+        validate_tail(self.tail)
+        if not (0.0 < self.conf_level < 1.0):
             raise ValueError(
-                f"conf_level must be in (0, 1), got {conf_level!r}"
+                f"conf_level must be in (0, 1), got {self.conf_level!r}"
             )
-        _validate_recent(recent)
-        self.method = method
-        self.alpha = alpha
-        self.sigma_method = sigma_method
-        self.regime = regime
-        self.recent = recent
-        self.tail = tail
-        self.conf_level = conf_level
+        _validate_recent(self.recent)
 
     def fit(self, triangle: "Triangle") -> "PremiumFit":
         """Fit the premium projection on a Triangle."""
