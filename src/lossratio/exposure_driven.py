@@ -8,8 +8,9 @@ projected onto the developing cumulative premium) and returns a role-based
 
 ExposureDriven is the unconditional safe baseline -- no maturity dependency,
 robust to early-development age-to-age volatility. It is the all-ED
-configuration of the shared loss-projection engine. There is no ``tail``
-argument: the additive intensity ``g_k -> 0`` carries its own tail.
+configuration of the shared loss-projection engine. The optional ``tail``
+extends the projection beyond the observed window via the additive
+intensity ``g_k -> 0`` (tail increment = ``Sum future g_k * premium``).
 """
 
 from __future__ import annotations
@@ -39,6 +40,13 @@ class ExposureDriven:
     regime
         Loss-side regime filter (cohort-axis cut). See
         :class:`~lossratio.Regime`. ``None`` (default) applies no filter.
+    tail
+        Tail extension beyond the observed window. ``False`` (default)
+        applies no tail; a positive number is used directly as a
+        multiplicative tail factor; ``True`` requests the default
+        convergence-gated additive tail (``Sum future g_k * premium``);
+        a :class:`~lossratio.Tail` spec configures the curve family,
+        divergence policy, and horizon.
     conf_level
         Confidence level for the analytical CI on ``loss_proj``. Default
         ``0.95``.
@@ -56,6 +64,7 @@ class ExposureDriven:
         sigma_method: str       = "locf",
         recent:      int | None = None,
         regime:      Any        = None,
+        tail:        Any        = False,
         conf_level:  float      = 0.95,
         uncertainty: Any        = None,
     ) -> None:
@@ -63,6 +72,7 @@ class ExposureDriven:
         self.sigma_method = sigma_method
         self.recent      = recent
         self.regime      = regime
+        self.tail        = tail
         self.conf_level  = conf_level
         self.uncertainty = uncertainty
 
@@ -82,6 +92,7 @@ class ExposureDriven:
             sigma_method = self.sigma_method,
             recent      = self.recent,
             regime      = self.regime,
+            tail        = self.tail,
             conf_level  = self.conf_level,
             bootstrap   = boots,
         ).fit(triangle)

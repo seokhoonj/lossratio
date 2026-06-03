@@ -15,7 +15,12 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.tail import Tail, compute_tail_factor, validate_tail
+from lossratio.tail import (
+    Tail,
+    compute_tail_factor,
+    compute_tail_increment,
+    validate_tail,
+)
 
 
 # --- compute_tail_factor helper -----------------------------------------
@@ -269,14 +274,113 @@ def test_ratio_cl_tail_propagates_through_loss_fit(tri):
     assert "loss_tail" in rf._df.columns
 
 
-def test_ratio_non_cl_tail_warns(tri):
+def test_ratio_ed_tail_propagates(tri):
+    # ED tail is active (additive g->0); it surfaces on the RatioFit.
+    rf = lr.LossRatio(method="ed", tail=True).fit(tri)
+    assert "loss_tail" in rf._df.columns
+    assert all(s > 0.0 for s in rf.loss_fit.tail_factor.values())
+
+
+def test_ratio_sa_tail_warns(tri):
+    # SA carries no tail yet -> the dispatcher warns and drops it.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        rf = lr.LossRatio(method="ed", tail=True).fit(tri)
-    assert any("tail" in str(w.message).lower() for w in caught)
+        rf = lr.LossRatio(method="sa", tail=True).fit(tri)
+    assert any("has no effect" in str(w.message) for w in caught)
     assert "loss_tail" not in rf._df.columns
 
 
 def test_ratio_tail_attr_round_trip(tri):
     rf = lr.LossRatio(method="cl", tail=1.05).fit(tri)
     assert rf.tail == 1.05
+
+
+# --- ExposureDriven(tail=...) : additive g->0 tail ----------------------
+
+
+def test_compute_tail_increment_false_zero():
+    g = np.array([0.5, 0.3, 0.2, 0.1, 0.05])
+    res = compute_tail_increment(g, False)
+    assert res.factor == 0.0
+    assert res.reason == "no_tail"
+
+
+def test_compute_tail_increment_decaying_positive():
+    # Decaying intensities -> a positive additive Sum g with negative slope.
+    g = np.array([0.5, 0.3, 0.2, 0.12, 0.07, 0.04])
+    res = compute_tail_increment(g, True, grain="M")
+    assert res.factor > 0.0 and np.isfinite(res.factor)
+    assert res.slope < 0.0
+
+
+def test_compute_tail_increment_divergence_refuse():
+    g = np.array([0.01, 0.02, 0.03, 0.04, 0.05])
+    res = compute_tail_increment(g, Tail(on_diverge="refuse"), grain="M")
+    assert res.factor == 0.0
+    assert res.diverged
+
+
+def test_ed_default_no_tail_columns(tri):
+    ef = lr.ExposureDriven().fit(tri)
+    assert all("tail" not in c for c in ef._df.columns)
+    assert all(s == 0.0 for s in ef.tail_factor.values())
+
+
+def test_ed_tail_true_adds_companion_columns(tri):
+    ef = lr.ExposureDriven(tail=True).fit(tri)
+    tail_cols = {c for c in ef._df.columns if c.endswith("_tail")}
+    assert "loss_tail" in tail_cols
+    assert "loss_total_se_tail" in tail_cols
+    assert "loss_total_cv_tail" in tail_cols
+    assert all(s > 0.0 for s in ef.tail_factor.values())
+
+
+def test_ed_tail_additive_increment(tri):
+    # loss_tail = loss_proj + premium_proj * Sum_g on the last-dev row.
+    ef = lr.ExposureDriven(tail=True).fit(tri)
+    sum_g = compute_tail_increment(
+        ef._internals["CAN"].g_sel, True, grain=tri.grain
+    ).factor
+    last = (
+        ef._df.with_columns(
+            pl.col("dev").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_dev_rank")
+        )
+        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .with_columns(
+            (pl.col("loss_proj") + pl.col("premium_proj") * sum_g).alias("_expect")
+        )
+    )
+    lt = last["loss_tail"].drop_nulls().to_numpy()
+    ex = last["_expect"].drop_nulls().to_numpy()
+    assert np.allclose(lt, ex)
+
+
+def test_ed_tail_numeric_is_multiplicative(tri):
+    # A numeric tail is an explicit multiplicative factor for ED too.
+    ef = lr.ExposureDriven(tail=1.1).fit(tri)
+    assert all(s == pytest.approx(1.1) for s in ef.tail_factor.values())
+    last = (
+        ef._df.with_columns(
+            pl.col("dev").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_dev_rank")
+        )
+        .filter(pl.col("_dev_rank") == 1)
+        .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
+    )
+    r = last["_ratio"].drop_nulls().to_numpy()
+    assert np.allclose(r[np.isfinite(r)], 1.1)
+
+
+def test_ed_tail_se_scaling(tri):
+    # tail-row SE scales by the per-cohort effective factor loss_tail/loss_proj.
+    ef = lr.ExposureDriven(tail=True).fit(tri)
+    last = ef._df.with_columns(
+        pl.col("dev").rank(method="dense", descending=True)
+        .over(["coverage", "cohort"]).alias("_dev_rank")
+    ).filter(pl.col("_dev_rank") == 1)
+    se = last["loss_total_se"].to_numpy()
+    se_t = last["loss_total_se_tail"].to_numpy()
+    ef_factor = (last["loss_tail"] / last["loss_proj"]).to_numpy()
+    mask = np.isfinite(se) & np.isfinite(se_t) & np.isfinite(ef_factor)
+    assert np.allclose(se_t[mask], ef_factor[mask] * se[mask])

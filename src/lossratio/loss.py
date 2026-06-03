@@ -720,14 +720,15 @@ class Loss:
         _validate_recent(recent)
         from .tail import validate_tail
         validate_tail(tail)
-        # R parity: `tail` is effective only when method='cl'. For other
-        # methods the arg is accepted but no-op (matches R fit_sa, which
-        # declares tail but never uses it; ed doesn't declare it).
-        if tail is not False and method != "cl":
+        # The tail is effective for the cl (multiplicative f->1) and ed
+        # (additive g->0) methods. sa carries no tail yet (its late-dev
+        # stage is CL, but the maturity split makes the extrapolation
+        # non-trivial); the arg is accepted but no-op there.
+        if tail is not False and method not in ("cl", "ed"):
             import warnings as _warnings
             _warnings.warn(
                 f"`tail` has no effect when method={method!r} (effective "
-                f"only for method='cl'); ignoring.",
+                f"only for method='cl' / 'ed'); ignoring.",
                 stacklevel=3,
             )
         self.method = method
@@ -912,55 +913,75 @@ class LossFit:
         long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
         mat_k_df = pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
 
-        # ----- Tail factor (method='cl' only; R parity) --------------------
-        # Apply per-group `_tail`-suffixed companion columns to the last-dev
-        # row when `tail` is truthy AND method='cl'. For other methods the
-        # constructor already warned + dropped the user's tail; here we keep
-        # the no-op silent. Always populate `self.tail_factor` for
-        # introspection (1.0 / per-group dict).
+        # ----- Tail (cl multiplicative f->1 / ed additive g->0) ------------
+        # Append per-group `_tail`-suffixed companion columns to the
+        # last-dev row of each cohort. A numeric `tail` is an explicit
+        # multiplicative factor for either method; `True`/`Tail` computes
+        # the convergence-gated tail (CL: product of f; ED: loss_proj +
+        # premium*Sum g). `self.tail_factor` carries the per-group headline
+        # quantity (CL factor / ED Sum g; 1.0 / 0.0 when no tail).
         from .tail import (
+            apply_ed_tail_to_long_df,
             apply_tail_to_long_df,
             compute_tail_factor,
+            compute_tail_increment,
             maybe_warn_tail,
         )
 
         self.tail = estimator.tail
         grain = original_tri.grain
-        if estimator.method == "cl" and estimator.tail is not False:
-            if groups is None:
-                result = self._internals[None]
-                res = compute_tail_factor(result.f_sel, estimator.tail, grain)
-                maybe_warn_tail(res)
-                self.tail_factor = res.factor
-                self.tail_diverged = res.diverged
-                if res.factor > 1.0 and np.isfinite(res.factor):
-                    long_df = apply_tail_to_long_df(
-                        long_df, res.factor, groups=None, role="loss",
-                    )
-            else:
-                tail_factor_map: dict[Any, float] = {}
-                diverged_map: dict[Any, bool] = {}
-                parts: list[pl.DataFrame] = []
-                for g, sub_result in self._internals.items():
-                    res = compute_tail_factor(sub_result.f_sel, estimator.tail, grain)
+        method = estimator.method
+        tail = estimator.tail
+        is_numeric = isinstance(tail, (int, float)) and not isinstance(tail, bool)
+        tail_active = tail is not False and method in ("cl", "ed")
+
+        def _apply_group_tail(
+            sub_result: _LossResult, grp_long: pl.DataFrame, g: Any
+        ) -> tuple[float, bool, pl.DataFrame]:
+            if is_numeric or method == "cl":
+                # Numeric = explicit multiplicative factor (either method);
+                # cl True/Tail = computed multiplicative factor.
+                res = compute_tail_factor(sub_result.f_sel, tail, grain)
+                if not is_numeric:
                     maybe_warn_tail(res, group=g)
-                    tail_factor_map[g] = res.factor
-                    diverged_map[g] = res.diverged
-                    grp_long = long_df.filter(group_eq(groups, g))
-                    if res.factor > 1.0 and np.isfinite(res.factor):
-                        grp_long = apply_tail_to_long_df(
-                            grp_long, res.factor, groups=groups, role="loss",
-                        )
-                    parts.append(grp_long)
-                long_df = pl.concat(parts) if parts else long_df
-                self.tail_factor = tail_factor_map
+                if res.factor > 1.0 and np.isfinite(res.factor):
+                    grp_long = apply_tail_to_long_df(
+                        grp_long, res.factor, groups=groups, role="loss",
+                    )
+                return res.factor, res.diverged, grp_long
+            # method == "ed", True/Tail -> additive g->0 tail.
+            res = compute_tail_increment(sub_result.g_sel, tail, grain)
+            maybe_warn_tail(res, group=g)
+            if res.factor > 0.0 and np.isfinite(res.factor):
+                grp_long = apply_ed_tail_to_long_df(
+                    grp_long, res.factor, groups=groups, role="loss",
+                )
+            return res.factor, res.diverged, grp_long
+
+        if tail_active:
+            factor_map: dict[Any, float] = {}
+            diverged_map: dict[Any, bool] = {}
+            parts: list[pl.DataFrame] = []
+            for g, sub_result in self._internals.items():
+                grp_long = long_df if g is None else long_df.filter(group_eq(groups, g))
+                val, div, grp_long = _apply_group_tail(sub_result, grp_long, g)
+                factor_map[g] = val
+                diverged_map[g] = div
+                parts.append(grp_long)
+            long_df = parts[0] if groups is None else pl.concat(parts)
+            if groups is None:
+                self.tail_factor = factor_map[None]
+                self.tail_diverged = diverged_map[None]
+            else:
+                self.tail_factor = factor_map
                 self.tail_diverged = diverged_map
         else:
+            no_tail = 0.0 if method == "ed" else 1.0
             if groups is None:
-                self.tail_factor = 1.0
+                self.tail_factor = no_tail
                 self.tail_diverged = False
             else:
-                self.tail_factor = {g: 1.0 for g in self._internals.keys()}
+                self.tail_factor = {g: no_tail for g in self._internals.keys()}
                 self.tail_diverged = {g: False for g in self._internals.keys()}
 
         # ----- Optional bootstrap SE overlay (strictly opt-in) -------------

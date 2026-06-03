@@ -256,13 +256,13 @@ class LossRatio:
         _validate_recent(recent)
         from .tail import validate_tail
         validate_tail(tail)
-        # R parity: tail is meaningful only when method='cl'. Warn on
-        # other methods (same as Loss).
-        if tail is not False and method != "cl":
+        # The tail is effective for the cl (multiplicative) and ed
+        # (additive) loss methods. Warn on sa (no tail yet), same as Loss.
+        if tail is not False and method not in ("cl", "ed"):
             import warnings as _warnings
             _warnings.warn(
                 f"`tail` has no effect when method={method!r} (effective "
-                f"only for method='cl'); ignoring.",
+                f"only for method='cl' / 'ed'); ignoring.",
                 stacklevel=3,
             )
 
@@ -386,9 +386,9 @@ class RatioFit:
             max_rse=estimator.max_rse,
             min_run=estimator.min_run,
         )
-        # Forward tail factor to the loss-side Loss; the Loss constructor
-        # itself warns + drops when method != 'cl'.
-        if estimator.method == "cl":
+        # Forward the tail to the loss-side Loss for the cl / ed methods;
+        # the Loss constructor itself warns + drops for any other method.
+        if estimator.method in ("cl", "ed"):
             loss_kwargs["tail"] = estimator.tail
         loss_fit = Loss(**loss_kwargs).fit(triangle)
         self.loss_fit = loss_fit

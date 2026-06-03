@@ -101,7 +101,7 @@ class Tail:
 class _TailResult:
     """Internal result of :func:`compute_tail_factor`."""
 
-    factor:    float          # the multiplicative tail factor (>= 1.0)
+    factor:    float          # CL: multiplicative tail factor (>=1.0); ED: Sum g_k
     curve:     str | None     # fitted curve family (None for no-op / user factor)
     slope:     float | None   # fitted decay slope `b` (None when not fitted)
     n_steps:   int            # extrapolation steps taken
@@ -123,6 +123,44 @@ def validate_tail(tail: Any) -> None:
     raise TypeError(
         f"`tail` must be bool, numeric, or Tail; got {type(tail).__name__}."
     )
+
+
+def _fit_decay(values: np.ndarray, idx: np.ndarray, curve: str) -> tuple[float, float]:
+    """OLS fit of ``log(values) = a + b*X`` over the decaying positions.
+
+    ``X = idx`` (exponential) or ``log(idx)`` (inverse_power); ``b < 0``
+    means the values decay toward 0 in both forms.
+    """
+    X = idx if curve == "exponential" else np.log(idx)
+    A = np.column_stack([np.ones_like(X), X])
+    coef, *_ = np.linalg.lstsq(A, np.log(values), rcond=None)
+    return float(coef[0]), float(coef[1])
+
+
+def _extrapolate_terms(
+    a: float, b: float, cfg: "Tail", grain: str | None, start: int
+) -> tuple[list[float], int, bool]:
+    """Project the fitted decay curve forward from index ``start``.
+
+    Stops once a projected term drops below ``cfg.tol`` (converged) or the
+    grain-aware horizon is reached. Returns ``(terms, n_steps, converged)``;
+    the caller compounds (CL) or sums (ED) the terms.
+    """
+    ppy = _PERIODS_PER_YEAR.get(grain or "M", 12)
+    max_h = cfg.max_horizon if cfg.max_horizon is not None else _DEFAULT_HORIZON_YEARS * ppy
+    terms: list[float] = []
+    i = start
+    converged = False
+    while len(terms) < max_h:
+        v = math.exp(a + b * i) if cfg.curve == "exponential" else math.exp(a) * i ** b
+        if not math.isfinite(v):
+            break
+        if v < cfg.tol:
+            converged = True
+            break
+        terms.append(v)
+        i += 1
+    return terms, len(terms), converged
 
 
 def compute_tail_factor(
@@ -164,42 +202,64 @@ def compute_tail_factor(
     idx = (pos + 1).astype(float)  # 1-indexed positions (R `which` parity)
     excess = f_vals[pos] - 1.0     # > 0 on the f > 1 subset
 
-    # OLS: log(excess) = a + b * X. X is the index (exponential) or its
-    # log (inverse_power), so b < 0 means the excess decays in both forms.
-    X = idx if cfg.curve == "exponential" else np.log(idx)
-    A = np.column_stack([np.ones_like(X), X])
-    coef, *_ = np.linalg.lstsq(A, np.log(excess), rcond=None)
-    a, b = float(coef[0]), float(coef[1])
-
+    a, b = _fit_decay(excess, idx, cfg.curve)
     if b >= 0.0:
         # Non-decaying excess: there is no finite evidence-based tail.
         # Do not fabricate a convergent extrapolation from divergent data.
         reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
         return _TailResult(1.0, cfg.curve, b, 0, True, False, reason)
 
-    # Convergent extrapolation, accumulated in log-space to avoid overflow.
-    ppy = _PERIODS_PER_YEAR.get(grain or "M", 12)
-    max_h = cfg.max_horizon if cfg.max_horizon is not None else _DEFAULT_HORIZON_YEARS * ppy
-    i = int(idx.max()) + 1
-    log_sum = 0.0
-    steps = 0
-    converged = False
-    while steps < max_h:
-        ex = math.exp(a + b * i) if cfg.curve == "exponential" else math.exp(a) * i ** b
-        if not math.isfinite(ex):
-            break
-        if ex < cfg.tol:
-            converged = True
-            break
-        log_sum += math.log1p(ex)
-        steps += 1
-        i += 1
-
-    factor = math.exp(log_sum)
+    terms, steps, converged = _extrapolate_terms(a, b, cfg, grain, int(idx.max()) + 1)
+    # Multiplicative tail factor = product of (1 + excess), via log-space.
+    factor = math.exp(sum(math.log1p(v) for v in terms))
     if not math.isfinite(factor):
         return _TailResult(1.0, cfg.curve, b, steps, False, False, "overflow")
     reason = "converged" if converged else "horizon_capped"
     return _TailResult(factor, cfg.curve, b, steps, False, converged, reason)
+
+
+def compute_tail_increment(
+    g_sel: np.ndarray,
+    tail: bool | Tail,
+    grain: str | None = None,
+) -> _TailResult:
+    """Additive ED tail: the projected sum of future intensities ``Sum g_k``.
+
+    The exposure-driven loss increment beyond the observed window is
+    ``Sum_{future k} g_k * premium``; this returns the group-level
+    ``Sum g_k`` (the per-cohort premium scaling is applied in
+    :func:`apply_ed_tail_to_long_df`). ``g_sel`` decays toward 0, so the
+    same decay fit / divergence guard / convergence horizon as the CL tail
+    apply, but the projected terms are SUMMED additively rather than
+    compounded. ``_TailResult.factor`` carries ``Sum g_k`` (``0.0`` when
+    there is no tail).
+    """
+    if isinstance(tail, bool):
+        if not tail:
+            return _TailResult(0.0, None, None, 0, False, True, "no_tail")
+        cfg = Tail()
+    elif isinstance(tail, Tail):
+        cfg = tail
+    else:  # numeric is applied multiplicatively upstream, never reaches here
+        raise TypeError("compute_tail_increment expects bool or Tail")
+
+    pos = np.flatnonzero(np.isfinite(g_sel) & (g_sel > 0.0))
+    if pos.size < 3:
+        return _TailResult(0.0, cfg.curve, None, 0, False, False, "insufficient_factors")
+    idx = (pos + 1).astype(float)
+    g_vals = g_sel[pos]
+
+    a, b = _fit_decay(g_vals, idx, cfg.curve)
+    if b >= 0.0:
+        reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
+        return _TailResult(0.0, cfg.curve, b, 0, True, False, reason)
+
+    terms, steps, converged = _extrapolate_terms(a, b, cfg, grain, int(idx.max()) + 1)
+    increment_sum = float(sum(terms))
+    if not math.isfinite(increment_sum):
+        return _TailResult(0.0, cfg.curve, b, steps, False, False, "overflow")
+    reason = "converged" if converged else "horizon_capped"
+    return _TailResult(increment_sum, cfg.curve, b, steps, False, converged, reason)
 
 
 def apply_tail_to_long_df(
@@ -299,6 +359,79 @@ def apply_tail_to_long_df(
     return out.drop("_dev_rank")
 
 
+def apply_ed_tail_to_long_df(
+    long_df: pl.DataFrame,
+    increment_sum: float,
+    groups: str | list[str] | None,
+    role: str = "loss",
+) -> pl.DataFrame:
+    """Additive ED tail companion columns on the last-dev row of each cohort.
+
+    ``<role>_tail = <role>_proj + premium_proj * Sum_g`` -- the premium is
+    held at its last projected value (the matured exposure). The tail-row
+    SE columns scale by the per-cohort effective factor
+    ``<role>_tail / <role>_proj`` so the CI widens additively with the
+    tail; the non-tail columns are left untouched.
+    """
+    if increment_sum <= 0.0 or not np.isfinite(increment_sum):
+        return long_df
+
+    proj_col = f"{role}_proj"
+    proc_se2 = f"{role}_proc_se2"
+    param_se2 = f"{role}_param_se2"
+    total_se2 = f"{role}_total_se2"
+    proc_se = f"{role}_proc_se"
+    param_se = f"{role}_param_se"
+    total_se = f"{role}_total_se"
+    tail_col = f"{role}_tail"
+
+    keys = [*normalize_groups(groups), "cohort"]
+    marked = long_df.with_columns(
+        pl.col("dev").rank(method="dense", descending=True).over(keys).alias("_dev_rank")
+    )
+    is_last = pl.col("_dev_rank") == 1
+
+    # loss_tail = loss_proj + premium_proj * Sum_g on the last-dev row.
+    out = marked.with_columns(
+        pl.when(is_last)
+        .then(pl.col(proj_col) + pl.col("premium_proj") * increment_sum)
+        .otherwise(None)
+        .alias(tail_col)
+    )
+
+    # Per-cohort effective multiplicative factor for SE scaling.
+    has_se2 = proc_se2 in long_df.columns
+    ef = pl.col(tail_col) / pl.col(proj_col)
+
+    def _se2_expr(col_name: str, se_col: str) -> pl.Expr:
+        base = pl.col(col_name) if has_se2 else pl.col(se_col) ** 2
+        return base * (ef ** 2)
+
+    out = out.with_columns(
+        pl.when(is_last).then(_se2_expr(proc_se2, proc_se)).otherwise(None).alias(f"{role}_proc_se2_tail"),
+        pl.when(is_last).then(_se2_expr(param_se2, param_se)).otherwise(None).alias(f"{role}_param_se2_tail"),
+        pl.when(is_last).then(_se2_expr(total_se2, total_se)).otherwise(None).alias(f"{role}_total_se2_tail"),
+    )
+    out = out.with_columns(
+        pl.col(f"{role}_proc_se2_tail").sqrt().alias(f"{role}_proc_se_tail"),
+        pl.col(f"{role}_param_se2_tail").sqrt().alias(f"{role}_param_se_tail"),
+        pl.col(f"{role}_total_se2_tail").sqrt().alias(f"{role}_total_se_tail"),
+    )
+
+    valid_tail = (
+        pl.col(tail_col).is_not_null()
+        & pl.col(tail_col).is_finite()
+        & (pl.col(tail_col) != 0.0)
+    )
+    out = out.with_columns(
+        pl.when(valid_tail).then(pl.col(f"{role}_proc_se_tail") / pl.col(tail_col).abs()).otherwise(None).alias(f"{role}_proc_cv_tail"),
+        pl.when(valid_tail).then(pl.col(f"{role}_param_se_tail") / pl.col(tail_col).abs()).otherwise(None).alias(f"{role}_param_cv_tail"),
+        pl.when(valid_tail).then(pl.col(f"{role}_total_se_tail") / pl.col(tail_col).abs()).otherwise(None).alias(f"{role}_total_cv_tail"),
+    )
+
+    return out.drop("_dev_rank")
+
+
 def maybe_warn_tail(result: _TailResult, group: Any = None) -> None:
     """Emit a warning when the tail is not evidence-converged.
 
@@ -322,8 +455,8 @@ def maybe_warn_tail(result: _TailResult, group: Any = None) -> None:
         )
     elif result.reason == "horizon_capped":
         warnings.warn(
-            f"Tail did not converge within the horizon{where}: the excess "
-            f"f-1 is still above `tol` at the horizon cap, so the tail factor "
+            f"Tail did not converge within the horizon{where}: the projected "
+            f"term is still above `tol` at the horizon cap, so the tail "
             f"({result.factor:.3g}) is horizon-sensitive. Treat the tail with "
             f"wide uncertainty, or set a heavier-decay curve / shorter horizon.",
             stacklevel=3,
