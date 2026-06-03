@@ -461,7 +461,7 @@ def test_validation_clean_input():
     assert v.gaps.height == 0
     assert v.invalid_rows.height == 0
     # Summary always carries the two-row schema.
-    assert v.summary["n"].to_list() == [0, 0]
+    assert v.summary()["n"].to_list() == [0, 0]
 
 
 def test_validation_detects_gap():
@@ -518,7 +518,7 @@ def test_validation_pandas_mirror():
     )
     v = TriangleValidation(df)
     assert isinstance(v.gaps, pd.DataFrame)
-    assert isinstance(v.summary, pd.DataFrame)
+    assert isinstance(v.summary(), pd.DataFrame)
     assert isinstance(v.invalid_rows, pd.DataFrame)
 
 

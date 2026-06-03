@@ -1058,9 +1058,12 @@ class TriangleValidation:
         """DataFrame of rows where ``calendar < cohort``."""
         return mirror_output(self._invalid_rows, self._output_type)
 
-    @property
     def summary(self):
-        """Two-row count summary of findings."""
+        """Two-row count summary of findings.
+
+        A zero-arg method (not a property) to match every other result
+        class's ``summary()`` -- call ``validation.summary()``.
+        """
         return mirror_output(self._summary, self._output_type)
 
     @property

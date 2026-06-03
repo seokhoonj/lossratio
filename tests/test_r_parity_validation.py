@@ -104,7 +104,7 @@ def test_validation_summary_matches_r():
     """The two-row count summary -- invalid-row count and gap-cohort count."""
     r = _load("validation_summary")
     v = _build_validation()
-    py = v.summary
+    py = v.summary()
 
     # Both languages emit two rows in the same order.
     assert py.height == 2 and r.height == 2
