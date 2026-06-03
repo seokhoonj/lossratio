@@ -97,6 +97,54 @@ def _energy_statistic(D: np.ndarray, left: np.ndarray, right: np.ndarray) -> flo
     return float(q_hat)
 
 
+def _grid_for_segment(
+    n: int, min_size: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Permutation-invariant (tau, kappa) grid pieces for a length-``n`` segment.
+
+    ``tau_vals``, the ``T``/``K`` meshgrid, the side sizes ``n_x``/``n_y``
+    and the ``valid`` mask are functions of ``(n, min_size)`` only -- not
+    of the segment's distance values -- so a permutation test builds them
+    once and reuses them across every permutation (the per-permutation
+    work is then just the prefix-sum table in :func:`_q_grid`).
+    """
+    tau_vals = np.arange(min_size, n - min_size + 1)
+    kappa_vals = np.arange(2 * min_size, n + 1)
+    T, K = np.meshgrid(tau_vals, kappa_vals, indexing="ij")
+    n_x = T.astype(np.float64)
+    n_y = (K - T).astype(np.float64)
+    valid = K >= T + min_size
+    return tau_vals, T, K, n_x, n_y, valid
+
+
+def _q_grid(
+    D_seg: np.ndarray,
+    T: np.ndarray,
+    K: np.ndarray,
+    n_x: np.ndarray,
+    n_y: np.ndarray,
+    valid: np.ndarray,
+) -> np.ndarray:
+    """Q-hat over the full (tau, kappa) grid for one segment's distance submatrix.
+
+    The 2D prefix-sum table ``S`` is the only per-segment work; the grid
+    arrays are precomputed by :func:`_grid_for_segment`. Invalid cells
+    (``kappa < tau + min_size``) are set to ``-inf``.
+    """
+    n = D_seg.shape[0]
+    S = np.zeros((n + 1, n + 1), dtype=np.float64)
+    S[1:, 1:] = D_seg.cumsum(axis=0).cumsum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        wx = S[T, T] / (n_x * (n_x - 1))
+        cross_sum = S[T, K] - S[T, T]
+        within_y_sum = S[K, K] - S[K, T] - S[T, K] + S[T, T]
+        cross_mean = (2.0 * cross_sum) / (n_x * n_y)
+        wy = within_y_sum / (n_y * (n_y - 1))
+        e_arr = cross_mean - wx - wy
+        q_arr = (n_x * n_y) / (n_x + n_y) * e_arr
+    return np.where(valid, q_arr, -np.inf)
+
+
 def _best_split(
     D: np.ndarray,
     seg: np.ndarray,
@@ -146,33 +194,8 @@ def _best_split(
     seg_idx = np.asarray(seg, dtype=np.int64)
     D_seg = D[np.ix_(seg_idx, seg_idx)]
 
-    # 2D prefix sum, padded so S[a, b] = sum over [0, a) x [0, b).
-    S = np.zeros((n + 1, n + 1), dtype=np.float64)
-    S[1:, 1:] = D_seg.cumsum(axis=0).cumsum(axis=1)
-
-    # Build the full (tau, kappa) grid. Q-hat for each cell is computed
-    # by inclusion-exclusion on S; invalid cells (kappa < tau + min_size)
-    # are masked out at the argmax step.
-    tau_vals = np.arange(min_size, n - min_size + 1)
-    kappa_vals = np.arange(2 * min_size, n + 1)
-    T, K = np.meshgrid(tau_vals, kappa_vals, indexing="ij")
-
-    n_x = T.astype(np.float64)
-    n_y = (K - T).astype(np.float64)
-    valid = K >= T + min_size
-
-    # Compute Q on every cell; invalid cells produce NaN/inf via
-    # zero-size denominators and are masked out at the end.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        wx = S[T, T] / (n_x * (n_x - 1))
-        cross_sum = S[T, K] - S[T, T]
-        within_y_sum = S[K, K] - S[K, T] - S[T, K] + S[T, T]
-        cross_mean = (2.0 * cross_sum) / (n_x * n_y)
-        wy = within_y_sum / (n_y * (n_y - 1))
-        e_arr = cross_mean - wx - wy
-        q_arr = (n_x * n_y) / (n_x + n_y) * e_arr
-
-    q_arr = np.where(valid, q_arr, -np.inf)
+    tau_vals, T, K, n_x, n_y, valid = _grid_for_segment(n, min_size)
+    q_arr = _q_grid(D_seg, T, K, n_x, n_y, valid)
 
     flat = int(np.argmax(q_arr))
     if not np.isfinite(q_arr.flat[flat]):
@@ -192,12 +215,25 @@ def _permutation_p_value(
     """Permutation test: probability of seeing Q >= observed under null.
 
     Returns the unbiased p-value ``(count + 1) / (n_permutations + 1)``.
+
+    The segment's distance submatrix and the permutation-invariant
+    (tau, kappa) grid are built once and reused across all permutations;
+    only the prefix-sum table inside :func:`_q_grid` is rebuilt per draw.
+    ``rng.permutation(n)`` consumes the RNG identically to permuting the
+    global ``seg`` array (same Fisher-Yates draws), and reindexing the
+    once-gathered ``D_base`` reproduces the original permuted submatrix
+    exactly -- so the statistic and the draw sequence are unchanged.
     """
+    seg_idx = np.asarray(seg, dtype=np.int64)
+    n = len(seg_idx)
+    D_base = D[np.ix_(seg_idx, seg_idx)]
+    _, T, K, n_x, n_y, valid = _grid_for_segment(n, min_size)
+
     count = 0
     for _ in range(n_permutations):
-        perm = rng.permutation(seg)
-        _, q_perm = _best_split(D, perm, min_size)
-        if q_perm >= observed_q:
+        perm = rng.permutation(n)
+        q_arr = _q_grid(D_base[np.ix_(perm, perm)], T, K, n_x, n_y, valid)
+        if float(q_arr.max()) >= observed_q:
             count += 1
     return (count + 1) / (n_permutations + 1)
 
