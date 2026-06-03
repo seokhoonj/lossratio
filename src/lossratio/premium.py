@@ -507,6 +507,7 @@ class PremiumFit:
         self.tail = tail
         factor_map: dict[Any, float] = {}
         diverged_map: dict[Any, bool] = {}
+        self._tail_results: dict[Any, Any] = {}
 
         parts: list[pl.DataFrame] = []
         keys: list[Any] = []
@@ -531,6 +532,7 @@ class PremiumFit:
                     maybe_warn_tail(res, group=g)
                 factor_map[g] = res.factor
                 diverged_map[g] = res.diverged
+                self._tail_results[g] = res
                 if res.factor > 1.0 and np.isfinite(res.factor):
                     df_g = apply_tail_to_long_df(
                         df_g, res.factor, groups, role="premium"
@@ -627,6 +629,24 @@ class PremiumFit:
     @property
     def df(self):
         return mirror_output(self._df, self._output_type)
+
+    @property
+    def tail_report(self):
+        """Provenance table for the premium tail (one row per group).
+
+        Same disclosure as :attr:`LossFit.tail_report`: curve family, fitted
+        decay parameters, fit residual, convergence/divergence status, and
+        the other curve family's factor as a model-choice band.
+        """
+        from .tail import tail_report_frame
+        return mirror_output(
+            tail_report_frame(
+                getattr(self, "_tail_results", {}),
+                getattr(self, "tail", False),
+                role="premium",
+            ),
+            self._output_type,
+        )
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

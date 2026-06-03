@@ -33,8 +33,8 @@ from __future__ import annotations
 
 import math
 import warnings
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, Callable
 
 import numpy as np
 import polars as pl
@@ -55,6 +55,10 @@ _ON_DIVERGE = ("flag", "refuse")
 #   - inverse_power, term = k^b:   Sum converges iff b < -1 (a p-series).
 # So `b >= threshold` is a divergent (horizon-dependent) tail and is gated.
 _DIVERGENCE_SLOPE = {"exponential": 0.0, "inverse_power": -1.0}
+
+# The other curve family -- the tail is recomputed under it to disclose the
+# model-choice band (e.g. inverse_power 6x vs exponential 1.2x).
+_OTHER_CURVE = {"inverse_power": "exponential", "exponential": "inverse_power"}
 
 
 @dataclass
@@ -112,15 +116,22 @@ class Tail:
 
 @dataclass
 class _TailResult:
-    """Internal result of :func:`compute_tail_factor`."""
+    """Internal result of the tail computations -- the full provenance of
+    a tail number, surfaced to the user via ``fit.tail_report`` so an
+    auditor can see exactly how it was produced (it is an extrapolation,
+    not an estimate with a sampling distribution)."""
 
     factor:    float          # CL: multiplicative tail factor (>=1.0); ED: Sum g_k
     curve:     str | None     # fitted curve family (None for no-op / user factor)
     slope:     float | None   # fitted decay slope `b` (None when not fitted)
     n_steps:   int            # extrapolation steps taken
-    diverged:  bool           # the decay slope was non-negative
+    diverged:  bool           # the decay slope was past the convergence boundary
     converged: bool           # the extrapolation reached `tol` within the horizon
     reason:    str            # short status tag
+    intercept: float | None = None    # fitted decay intercept `a`
+    fit_resid_std: float | None = None  # residual std of the log-decay OLS fit
+    alt_factor: float | None = None   # the OTHER curve family's factor (model band)
+    alt_curve:  str | None = None     # the OTHER curve family's name
 
 
 def validate_tail(tail: Any) -> None:
@@ -138,16 +149,26 @@ def validate_tail(tail: Any) -> None:
     )
 
 
-def _fit_decay(values: np.ndarray, idx: np.ndarray, curve: str) -> tuple[float, float]:
+def _fit_decay(
+    values: np.ndarray, idx: np.ndarray, curve: str
+) -> tuple[float, float, float]:
     """OLS fit of ``log(values) = a + b*X`` over the decaying positions.
 
     ``X = idx`` (exponential) or ``log(idx)`` (inverse_power); ``b < 0``
-    means the values decay toward 0 in both forms.
+    means the values decay toward 0 in both forms. Returns
+    ``(a, b, resid_std)`` -- the residual std of the log-scale fit measures
+    how well the curve family describes the observed factors (a poor fit =
+    a less trustworthy extrapolation).
     """
     X = idx if curve == "exponential" else np.log(idx)
     A = np.column_stack([np.ones_like(X), X])
-    coef, *_ = np.linalg.lstsq(A, np.log(values), rcond=None)
-    return float(coef[0]), float(coef[1])
+    y = np.log(values)
+    coef, *_ = np.linalg.lstsq(A, y, rcond=None)
+    a, b = float(coef[0]), float(coef[1])
+    resid = y - (a + b * X)
+    dof = max(int(X.size) - 2, 1)
+    resid_std = float(np.sqrt(np.sum(resid ** 2) / dof))
+    return a, b, resid_std
 
 
 def _extrapolate_terms(
@@ -176,7 +197,39 @@ def _extrapolate_terms(
     return terms, len(terms), converged
 
 
+def _attach_alt(
+    res: _TailResult,
+    tail: Any,
+    recompute: "Callable[[Tail], _TailResult]",
+) -> _TailResult:
+    """Disclose the model-choice band: recompute the tail under the OTHER
+    curve family and record its factor on ``res``. Skipped for a numeric /
+    no-tail result (``res.curve is None``), which has no fitted curve."""
+    if res.curve is None or tail is False:
+        return res
+    other = _OTHER_CURVE[res.curve]
+    cfg_other = replace(tail, curve=other) if isinstance(tail, Tail) else Tail(curve=other)
+    alt = recompute(cfg_other)
+    res.alt_factor = alt.factor
+    res.alt_curve = other
+    return res
+
+
 def compute_tail_factor(
+    f_sel: np.ndarray,
+    tail: bool | float | Tail,
+    grain: str | None = None,
+) -> _TailResult:
+    """Multiplicative CL tail factor with the model-choice band attached.
+
+    Thin wrapper over :func:`_compute_tail_factor_one`; also records the
+    other curve family's factor (``alt_factor``) for transparency.
+    """
+    res = _compute_tail_factor_one(f_sel, tail, grain)
+    return _attach_alt(res, tail, lambda cfg: _compute_tail_factor_one(f_sel, cfg, grain))
+
+
+def _compute_tail_factor_one(
     f_sel: np.ndarray,
     tail: bool | float | Tail,
     grain: str | None = None,
@@ -215,24 +268,34 @@ def compute_tail_factor(
     idx = (pos + 1).astype(float)  # 1-indexed positions (R `which` parity)
     excess = f_vals[pos] - 1.0     # > 0 on the f > 1 subset
 
-    a, b = _fit_decay(excess, idx, cfg.curve)
+    a, b, rstd = _fit_decay(excess, idx, cfg.curve)
     if b >= _DIVERGENCE_SLOPE[cfg.curve]:
         # The excess decays too slowly to give a finite tail (b >= 0 for
         # exponential, b >= -1 for inverse_power -- the p-series boundary).
         # Do not fabricate a convergent extrapolation from divergent data.
         reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
-        return _TailResult(1.0, cfg.curve, b, 0, True, False, reason)
+        return _TailResult(1.0, cfg.curve, b, 0, True, False, reason, a, rstd)
 
     terms, steps, converged = _extrapolate_terms(a, b, cfg, grain, int(idx.max()) + 1)
     # Multiplicative tail factor = product of (1 + excess), via log-space.
     factor = math.exp(sum(math.log1p(v) for v in terms))
     if not math.isfinite(factor):
-        return _TailResult(1.0, cfg.curve, b, steps, False, False, "overflow")
+        return _TailResult(1.0, cfg.curve, b, steps, False, False, "overflow", a, rstd)
     reason = "converged" if converged else "horizon_capped"
-    return _TailResult(factor, cfg.curve, b, steps, False, converged, reason)
+    return _TailResult(factor, cfg.curve, b, steps, False, converged, reason, a, rstd)
 
 
 def compute_tail_increment(
+    g_sel: np.ndarray,
+    tail: bool | Tail,
+    grain: str | None = None,
+) -> _TailResult:
+    """Additive ED tail ``Sum g_k`` with the model-choice band attached."""
+    res = _compute_tail_increment_one(g_sel, tail, grain)
+    return _attach_alt(res, tail, lambda cfg: _compute_tail_increment_one(g_sel, cfg, grain))
+
+
+def _compute_tail_increment_one(
     g_sel: np.ndarray,
     tail: bool | Tail,
     grain: str | None = None,
@@ -263,22 +326,36 @@ def compute_tail_increment(
     idx = (pos + 1).astype(float)
     g_vals = g_sel[pos]
 
-    a, b = _fit_decay(g_vals, idx, cfg.curve)
+    a, b, rstd = _fit_decay(g_vals, idx, cfg.curve)
     if b >= _DIVERGENCE_SLOPE[cfg.curve]:
         # Intensity decays too slowly to give a finite Sum g (b >= 0 for
         # exponential, b >= -1 for inverse_power -- the p-series boundary).
         reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
-        return _TailResult(0.0, cfg.curve, b, 0, True, False, reason)
+        return _TailResult(0.0, cfg.curve, b, 0, True, False, reason, a, rstd)
 
     terms, steps, converged = _extrapolate_terms(a, b, cfg, grain, int(idx.max()) + 1)
     increment_sum = float(sum(terms))
     if not math.isfinite(increment_sum):
-        return _TailResult(0.0, cfg.curve, b, steps, False, False, "overflow")
+        return _TailResult(0.0, cfg.curve, b, steps, False, False, "overflow", a, rstd)
     reason = "converged" if converged else "horizon_capped"
-    return _TailResult(increment_sum, cfg.curve, b, steps, False, converged, reason)
+    return _TailResult(increment_sum, cfg.curve, b, steps, False, converged, reason, a, rstd)
 
 
 def compute_ed_tail_increment_coupled(
+    g_sel: np.ndarray,
+    premium_f_k: np.ndarray | None,
+    tail: bool | Tail,
+    grain: str | None = None,
+) -> _TailResult:
+    """Coupled ED tail ``S`` with the model-choice band attached."""
+    res = _compute_ed_tail_increment_coupled_one(g_sel, premium_f_k, tail, grain)
+    return _attach_alt(
+        res, tail,
+        lambda cfg: _compute_ed_tail_increment_coupled_one(g_sel, premium_f_k, cfg, grain),
+    )
+
+
+def _compute_ed_tail_increment_coupled_one(
     g_sel: np.ndarray,
     premium_f_k: np.ndarray | None,
     tail: bool | Tail,
@@ -309,17 +386,17 @@ def compute_ed_tail_increment_coupled(
     if pos.size < 3:
         return _TailResult(0.0, cfg.curve, None, 0, False, False, "insufficient_factors")
     g_idx = (pos + 1).astype(float)
-    a_g, b_g = _fit_decay(g_sel[pos], g_idx, cfg.curve)
+    a_g, b_g, rstd_g = _fit_decay(g_sel[pos], g_idx, cfg.curve)
     if b_g >= _DIVERGENCE_SLOPE[cfg.curve]:
         reason = "diverged_refused" if cfg.on_diverge == "refuse" else "diverged_flagged"
-        return _TailResult(0.0, cfg.curve, b_g, 0, True, False, reason)
+        return _TailResult(0.0, cfg.curve, b_g, 0, True, False, reason, a_g, rstd_g)
 
     # Premium factor decay (on fP - 1); flat premium when no usable fit.
     a_p = b_p = None
     if premium_f_k is not None:
         ppos = np.flatnonzero(np.isfinite(premium_f_k) & (premium_f_k > 1.0))
         if ppos.size >= 2:
-            a_p, b_p = _fit_decay(
+            a_p, b_p, _ = _fit_decay(
                 premium_f_k[ppos] - 1.0, (ppos + 1).astype(float), cfg.curve
             )
 
@@ -352,9 +429,9 @@ def compute_ed_tail_increment_coupled(
         i += 1
 
     if not math.isfinite(total):
-        return _TailResult(0.0, cfg.curve, b_g, steps, False, False, "overflow")
+        return _TailResult(0.0, cfg.curve, b_g, steps, False, False, "overflow", a_g, rstd_g)
     reason = "converged" if converged else "horizon_capped"
-    return _TailResult(total, cfg.curve, b_g, steps, False, converged, reason)
+    return _TailResult(total, cfg.curve, b_g, steps, False, converged, reason, a_g, rstd_g)
 
 
 def apply_tail_to_long_df(
@@ -525,6 +602,55 @@ def apply_ed_tail_to_long_df(
     )
 
     return out.drop("_dev_rank")
+
+
+def _fmt_group(g: Any) -> str | None:
+    """Human-readable group label for the report frame."""
+    if g is None:
+        return None
+    if isinstance(g, (list, tuple)):
+        return " | ".join(str(x) for x in g)
+    return str(g)
+
+
+def tail_report_frame(
+    results: dict[Any, _TailResult],
+    tail: Any,
+    role: str = "loss",
+) -> pl.DataFrame:
+    """Build a one-row-per-group provenance table for a tail.
+
+    Discloses every input and intermediate behind each tail number so it
+    can be audited and reproduced: the curve family and its fitted
+    parameters, how well the curve fit the observed factors, whether the
+    divergence guard / horizon cap fired, and the OTHER curve family's
+    result as a model-choice band. The tail is an extrapolation, not an
+    estimate with a sampling distribution -- this table is the honest
+    statement of how it was produced.
+    """
+    cfg = tail if isinstance(tail, Tail) else (Tail() if tail is True else None)
+    tol = cfg.tol if cfg is not None else None
+    max_horizon = cfg.max_horizon if cfg is not None else None
+    rows: list[dict[str, Any]] = []
+    for g, r in results.items():
+        rows.append({
+            "role": role,
+            "group": _fmt_group(g),
+            "curve": r.curve,
+            "intercept": r.intercept,
+            "slope": r.slope,
+            "fit_resid_std": r.fit_resid_std,
+            "n_steps": r.n_steps,
+            "converged": r.converged,
+            "diverged": r.diverged,
+            "reason": r.reason,
+            "factor": r.factor,
+            "alt_curve": r.alt_curve,
+            "alt_factor": r.alt_factor,
+            "tol": tol,
+            "max_horizon": max_horizon,
+        })
+    return pl.DataFrame(rows)
 
 
 def maybe_warn_tail(result: _TailResult, group: Any = None) -> None:

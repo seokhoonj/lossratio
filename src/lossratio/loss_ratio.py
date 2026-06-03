@@ -506,6 +506,32 @@ class RatioFit:
         return mirror_output(self._df, self._output_type)
 
     @property
+    def tail_report(self):
+        """Combined provenance for the loss-ratio tail (both sides).
+
+        Stacks the loss and premium tail provenance (``role`` column
+        distinguishes them) so an auditor sees exactly how both the tailed
+        ultimate loss and the tailed ultimate premium -- and hence
+        ``ratio_tail`` -- were produced. Empty when no tail was requested.
+        """
+        import polars as _pl
+
+        from .tail import tail_report_frame
+
+        loss_r = tail_report_frame(
+            getattr(self.loss_fit, "_tail_results", {}),
+            getattr(self.loss_fit, "tail", False),
+            role="loss",
+        )
+        prem_r = tail_report_frame(
+            getattr(self.premium_fit, "_tail_results", {}),
+            getattr(self.premium_fit, "tail", False),
+            role="premium",
+        )
+        combined = _pl.concat([loss_r, prem_r]) if (loss_r.height or prem_r.height) else loss_r
+        return mirror_output(combined, self._output_type)
+
+    @property
     def maturity_point(self):
         """Detected maturity (delegated to LossFit)."""
         return self.loss_fit.maturity_point

@@ -933,7 +933,7 @@ class LossFit:
 
         def _apply_cl_tail(
             f_sel: np.ndarray, grp_long: pl.DataFrame, g: Any, warn: bool
-        ) -> tuple[float, bool, pl.DataFrame]:
+        ) -> tuple[Any, pl.DataFrame]:
             res = compute_tail_factor(f_sel, tail, grain)
             if warn:
                 maybe_warn_tail(res, group=g)
@@ -941,11 +941,11 @@ class LossFit:
                 grp_long = apply_tail_to_long_df(
                     grp_long, res.factor, groups=groups, role="loss",
                 )
-            return res.factor, res.diverged, grp_long
+            return res, grp_long
 
         def _apply_ed_tail(
             g_sel: np.ndarray, grp_long: pl.DataFrame, g: Any
-        ) -> tuple[float, bool, pl.DataFrame]:
+        ) -> tuple[Any, pl.DataFrame]:
             # Develop premium in step with the loss intensity (coupled walk)
             # so the additive increment Sum g_k * P_k uses the GROWING
             # cumulative premium, not a frozen last value.
@@ -957,11 +957,11 @@ class LossFit:
                 grp_long = apply_ed_tail_to_long_df(
                     grp_long, res.factor, groups=groups, role="loss",
                 )
-            return res.factor, res.diverged, grp_long
+            return res, grp_long
 
         def _apply_group_tail(
             sub_result: _LossResult, grp_long: pl.DataFrame, g: Any
-        ) -> tuple[float, bool, pl.DataFrame]:
+        ) -> tuple[Any, pl.DataFrame]:
             # A numeric tail is an explicit multiplicative factor for every
             # method (the f_sel is ignored -- the factor is used directly).
             if is_numeric:
@@ -985,12 +985,14 @@ class LossFit:
         if tail_active:
             factor_map: dict[Any, float] = {}
             diverged_map: dict[Any, bool] = {}
+            self._tail_results = {}
             parts: list[pl.DataFrame] = []
             for g, sub_result in self._internals.items():
                 grp_long = long_df if g is None else long_df.filter(group_eq(groups, g))
-                val, div, grp_long = _apply_group_tail(sub_result, grp_long, g)
-                factor_map[g] = val
-                diverged_map[g] = div
+                res, grp_long = _apply_group_tail(sub_result, grp_long, g)
+                factor_map[g] = res.factor
+                diverged_map[g] = res.diverged
+                self._tail_results[g] = res
                 parts.append(grp_long)
             # Groups can converge or diverge independently, so a diverged
             # group carries no `_tail` columns while a convergent one does;
@@ -1004,6 +1006,7 @@ class LossFit:
                 self.tail_diverged = diverged_map
         else:
             no_tail = 0.0 if method == "ed" else 1.0
+            self._tail_results = {}
             if groups is None:
                 self.tail_factor = no_tail
                 self.tail_diverged = False
@@ -1224,6 +1227,24 @@ class LossFit:
     @property
     def df(self):
         return mirror_output(self._df, self._output_type)
+
+    @property
+    def tail_report(self):
+        """Provenance table for the loss tail (one row per group).
+
+        Discloses how each tail number was produced -- curve family, fitted
+        decay parameters (``intercept`` / ``slope``), how well the curve fit
+        the observed factors (``fit_resid_std``), whether the divergence
+        guard or horizon cap fired, and the OTHER curve family's factor
+        (``alt_curve`` / ``alt_factor``) as a model-choice band. Empty when
+        no tail was requested. The tail is an extrapolation, not an estimate
+        with a sampling distribution; read this table to judge it.
+        """
+        from .tail import tail_report_frame
+        return mirror_output(
+            tail_report_frame(getattr(self, "_tail_results", {}), self.tail, role="loss"),
+            self._output_type,
+        )
 
     @property
     def maturity_point(self):

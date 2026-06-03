@@ -549,6 +549,36 @@ def test_lossratio_default_no_ratio_tail(tri):
     assert "ratio_tail" not in rf._df.columns
 
 
+def test_tail_report_discloses_provenance_and_band(tri):
+    cf = lr.ChainLadder(tail=True).fit(tri)
+    rep = cf.tail_report
+    for col in (
+        "group", "curve", "intercept", "slope", "fit_resid_std",
+        "n_steps", "converged", "diverged", "reason", "factor",
+        "alt_curve", "alt_factor", "tol", "max_horizon",
+    ):
+        assert col in rep.columns
+    # Every group has a fitted curve, the other curve as a band, and a
+    # finite fit residual.
+    assert rep.height == 4
+    assert (rep["curve"] == "inverse_power").all()
+    assert (rep["alt_curve"] == "exponential").all()
+    assert rep["fit_resid_std"].is_finite().all()
+    # The model-choice band is real (the two curves disagree).
+    assert not np.allclose(rep["factor"].to_numpy(), rep["alt_factor"].to_numpy())
+
+
+def test_tail_report_empty_without_tail(tri):
+    assert lr.ChainLadder().fit(tri).tail_report.height == 0
+
+
+def test_lossratio_tail_report_covers_both_sides(tri):
+    rf = lr.LossRatio(method="cl", tail=True).fit(tri)
+    rep = rf.tail_report
+    roles = set(rep["role"].to_list())
+    assert roles == {"loss", "premium"}
+
+
 def test_premium_tail_method_invariant(tri):
     # The premium point projection (and thus the tail factor) is the CL
     # recursion regardless of `method` (which only changes the SE).
