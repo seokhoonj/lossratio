@@ -211,22 +211,22 @@ def test_boot_kernel_injected_fstar_deterministic():
         [120.0, 168.0, np.nan],
     ])
     anchor = _boot_anchor_cl(loss_obs)
-    B = 5
+    n_replicates = 5
     n_links = loss_obs.shape[1] - 1
     # Deterministic per-link factors, distinct per replicate.
     f_star = np.array([
         [1.10, 1.20, 1.30, 1.40, 1.50],   # link 0 (dev 1 -> dev 2)
         [1.05, 1.15, 1.25, 1.35, 1.45],   # link 1 (dev 2 -> dev 3)
     ])
-    assert f_star.shape == (n_links, B)
+    assert f_star.shape == (n_links, n_replicates)
 
     rng = np.random.default_rng(0)
     r1 = _boot_kernel_cl_analytical(
-        loss_obs, anchor, B=B, rng=rng, _injected_fstar=f_star
+        loss_obs, anchor, n_replicates=n_replicates, rng=rng, _injected_fstar=f_star
     )
     rng2 = np.random.default_rng(999)   # different seed, must not matter
     r2 = _boot_kernel_cl_analytical(
-        loss_obs, anchor, B=B, rng=rng2, _injected_fstar=f_star
+        loss_obs, anchor, n_replicates=n_replicates, rng=rng2, _injected_fstar=f_star
     )
 
     # Byte-identical -- no RNG path was taken for cum_mean (Stage 1).
@@ -238,12 +238,12 @@ def test_boot_kernel_injected_fstar_deterministic():
     # Cohort 1, dev index 2 (last_obs = 1). link index k = 1.
     # cum_mean[1, 2, b] = f_star[1, b] * cum_mean[1, 1, b]
     #                   = f_star[1, b] * 168.0  (observed cell unchanged)
-    for b in range(B):
+    for b in range(n_replicates):
         expect = f_star[1, b] * 168.0
         assert r1.cum_mean[1, 2, b] == pytest.approx(expect, rel=1e-12)
 
     # Observed cells equal the observed cumulative across all replicates.
-    for b in range(B):
+    for b in range(n_replicates):
         assert r1.cum_mean[0, 0, b] == pytest.approx(100.0)
         assert r1.cum_mean[0, 2, b] == pytest.approx(210.0)
         assert r1.cum_mean[1, 1, b] == pytest.approx(168.0)
@@ -356,9 +356,9 @@ def test_bootstrap_B_convergence():
     tri = _tri()
     keys = ["cohort", "dev"]
 
-    def _mrd_for_B(B: int, seed: int) -> float:
+    def _mrd_for_B(n_replicates: int, seed: int) -> float:
         bt = Bootstrap(
-            type="analytical", method="cl", n_replicates=B, seed=seed
+            type="analytical", method="cl", n_replicates=n_replicates, seed=seed
         ).fit(tri)
         py = bt.summary.sort(["cohort", "dev"])
         py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
@@ -446,7 +446,7 @@ def test_cl_no_bootstrap_unchanged():
 
 
 def test_bootstrap_bad_args_raise():
-    """Construction-time validation of ``B``, ``alpha``, ``process``."""
+    """Construction-time validation of ``n_replicates``, ``alpha``, ``process``."""
     with pytest.raises(ValueError):
         Bootstrap(n_replicates=0)
     with pytest.raises(ValueError):
@@ -827,17 +827,17 @@ def test_phase2_injected_resample_deterministic():
 
     coh_idx, dev_idx, lin = _active_upper_cells(gi.last_obs, mu_grid)
     n_active = lin.size
-    B = 12
+    n_replicates = 12
     # Inject a fixed index array -- always pull pool element 0.
-    injected = np.zeros((n_active, B), dtype=np.int64)
+    injected = np.zeros((n_active, n_replicates), dtype=np.int64)
 
     r1 = _boot_kernel_cl_cell(
-        gi, anchor, mu_grid, pool, cell.phi, B,
+        gi, anchor, mu_grid, pool, cell.phi, n_replicates,
         np.random.default_rng(1), 1.0, "gamma",
         _injected_resample=injected,
     )
     r2 = _boot_kernel_cl_cell(
-        gi, anchor, mu_grid, pool, cell.phi, B,
+        gi, anchor, mu_grid, pool, cell.phi, n_replicates,
         np.random.default_rng(987654),     # different seed must not matter
         1.0, "gamma",
         _injected_resample=injected,
@@ -859,7 +859,7 @@ def test_phase2_injected_resample_deterministic():
     expect_inc = mu_active[0] + r_star * np.sqrt(abs(mu_active[0]))
     if dev_idx[0] == 0:
         coh0 = coh_idx[0]
-        for b in range(B):
+        for b in range(n_replicates):
             assert r1.cum_mean[coh0, 0, b] == pytest.approx(
                 expect_inc, rel=1e-12
             )

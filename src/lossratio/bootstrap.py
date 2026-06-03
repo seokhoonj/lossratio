@@ -185,10 +185,10 @@ class _Stage1Result:
     Attributes
     ----------
     cum_mean
-        ``(n_cohorts, n_devs, B)`` Stage 1 array -- forward projection
+        ``(n_cohorts, n_devs, n_replicates)`` Stage 1 array -- forward projection
         means; observed cells equal the observed cumulative.
     cum_sampled
-        ``(n_cohorts, n_devs, B)`` Stage 1 + Stage 2 array -- chain-Markov
+        ``(n_cohorts, n_devs, n_replicates)`` Stage 1 + Stage 2 array -- chain-Markov
         noisy simulation; observed cells equal the observed cumulative.
     cohorts
         Cohort identifiers (length ``n_cohorts``).
@@ -212,7 +212,7 @@ _NO_MATURITY = np.iinfo(np.int64).max
 def _boot_kernel_cl_analytical(
     loss_obs:      np.ndarray,
     anchor:        _Anchor,
-    B:             int,
+    n_replicates:             int,
     rng:           np.random.Generator,
     alpha:         float       = 1.0,
     process:       str         = "normal",
@@ -247,7 +247,7 @@ def _boot_kernel_cl_analytical(
         ``(n_cohorts, n_devs)`` observed cumulative loss matrix.
     anchor
         Per-link Mack anchor from :func:`_boot_anchor_cl`.
-    B
+    n_replicates
         Number of bootstrap replicates.
     rng
         ``numpy`` random generator (created from the user seed).
@@ -257,7 +257,7 @@ def _boot_kernel_cl_analytical(
         Stage 2 process distribution. Phase 1 implements only
         ``"normal"``; other values raise :class:`NotImplementedError`.
     _injected_fstar
-        Test-only hook. When supplied (shape ``(n_links, B)``), it is
+        Test-only hook. When supplied (shape ``(n_links, n_replicates)``), it is
         used instead of drawing ``f_star`` -- making the kernel
         deterministically testable.
 
@@ -288,18 +288,18 @@ def _boot_kernel_cl_analytical(
     # ----- Draw f_star[k, b] ------------------------------------------------
     if _injected_fstar is not None:
         f_star = np.asarray(_injected_fstar, dtype=np.float64)
-        if f_star.shape != (n_links, B):
+        if f_star.shape != (n_links, n_replicates):
             raise ValueError(
-                f"_injected_fstar must have shape {(n_links, B)}, "
+                f"_injected_fstar must have shape {(n_links, n_replicates)}, "
                 f"got {f_star.shape}"
             )
     else:
-        f_star = np.empty((n_links, B), dtype=np.float64)
+        f_star = np.empty((n_links, n_replicates), dtype=np.float64)
         for k in range(n_links):
             f_hat = anchor.f_hat[k]
             f_var = anchor.f_var[k]
             if np.isfinite(f_var) and f_var > 0.0:
-                draws = rng.normal(0.0, 1.0, size=B)
+                draws = rng.normal(0.0, 1.0, size=n_replicates)
                 f_star[k, :] = (
                     f_hat + np.sqrt(f_var) * draws
                     if np.isfinite(f_hat)
@@ -309,8 +309,8 @@ def _boot_kernel_cl_analytical(
                 f_star[k, :] = f_hat
 
     # ----- Stage 1 -- cum_mean: observed cells fixed, lower triangle proj ---
-    # Layout (n_cohorts, n_devs, B); observed cells broadcast across B.
-    cum_mean = np.full((n_cohorts, n_devs, B), np.nan, dtype=np.float64)
+    # Layout (n_cohorts, n_devs, n_replicates); observed cells broadcast across n_replicates.
+    cum_mean = np.full((n_cohorts, n_devs, n_replicates), np.nan, dtype=np.float64)
     for j in range(n_devs):
         col = loss_obs[:, j]
         # A cell is observed when last_obs[i] >= j.
@@ -408,7 +408,7 @@ def _boot_summary_decompose(
     Parameters
     ----------
     cum_mean, cum_sampled
-        ``(n_cohorts, n_devs, B)`` array pair from the Stage 1 kernel.
+        ``(n_cohorts, n_devs, n_replicates)`` array pair from the Stage 1 kernel.
     quantile_ci
         Whether to also compute empirical percentile CI columns.
 
@@ -419,7 +419,7 @@ def _boot_summary_decompose(
         Cohort is the fastest-varying axis (column-major over the
         ``(cohort, dev)`` grid).
     """
-    n_cohorts, n_devs, B = cum_mean.shape
+    n_cohorts, n_devs, n_replicates = cum_mean.shape
 
     both_finite = np.isfinite(cum_mean) & np.isfinite(cum_sampled)
     n_valid = both_finite.sum(axis=2)               # (n_cohorts, n_devs)
@@ -1289,7 +1289,7 @@ def _build_pool_link(
 #
 # These mirror the R native kernels in src/bootstrap_cl.c /
 # src/bootstrap_ed.c / src/bootstrap_sa.c. They are vectorised over the
-# B axis with numpy; the per-dev chain recursion runs a sequential loop.
+# n_replicates axis with numpy; the per-dev chain recursion runs a sequential loop.
 #
 # References:
 #   Mack (1993, ASTIN Bull 23/2)        -- sigma_k^2 chain-Markov noise.
@@ -1316,7 +1316,7 @@ def _refit_fstar(
     Parameters
     ----------
     cum
-        ``(n_coh, n_dev, B)`` masked pseudo cumulative array.
+        ``(n_coh, n_dev, n_replicates)`` masked pseudo cumulative array.
     link_to_idx
         ``(n_links,)`` 1-indexed destination dev column of each link.
     f_hat
@@ -1325,11 +1325,11 @@ def _refit_fstar(
     Returns
     -------
     np.ndarray
-        ``(n_links, B)`` per-replicate refit factors.
+        ``(n_links, n_replicates)`` per-replicate refit factors.
     """
-    n_coh, n_dev, B = cum.shape
+    n_coh, n_dev, n_replicates = cum.shape
     n_links = link_to_idx.shape[0]
-    f_star = np.empty((n_links, B), dtype=np.float64)
+    f_star = np.empty((n_links, n_replicates), dtype=np.float64)
     for k in range(n_links):
         to_col_1 = int(link_to_idx[k])
         if to_col_1 < 2:
@@ -1366,7 +1366,7 @@ def _refit_gstar(
     Parameters
     ----------
     cum
-        ``(n_coh, n_dev, B)`` masked pseudo cumulative array.
+        ``(n_coh, n_dev, n_replicates)`` masked pseudo cumulative array.
     premium_proj
         ``(n_coh, n_dev)`` fixed projected premium matrix.
     link_to_idx
@@ -1377,11 +1377,11 @@ def _refit_gstar(
     Returns
     -------
     np.ndarray
-        ``(n_links, B)`` per-replicate refit intensities.
+        ``(n_links, n_replicates)`` per-replicate refit intensities.
     """
-    n_coh, n_dev, B = cum.shape
+    n_coh, n_dev, n_replicates = cum.shape
     n_links = link_to_idx.shape[0]
-    g_star = np.empty((n_links, B), dtype=np.float64)
+    g_star = np.empty((n_links, n_replicates), dtype=np.float64)
     for k in range(n_links):
         to_col_1 = int(link_to_idx[k])
         if to_col_1 < 2:
@@ -1418,7 +1418,7 @@ def _fwd_proj_cl(
     cum[i, j-1]`` where ``k = k_idx_by_j[j] - 1`` (``-1`` -> carry the
     previous dev forward unchanged). Finite negatives are clipped to 0.
     """
-    n_coh, n_dev, B = cum.shape
+    n_coh, n_dev, n_replicates = cum.shape
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
@@ -1449,7 +1449,7 @@ def _fwd_proj_ed(
     cohorts with ``last_obs[i] < j`` get ``cum[i, j] = cum[i, j-1] +
     g_star[k] * premium_proj[i, j-1]``. Finite negatives clipped to 0.
     """
-    n_coh, n_dev, B = cum.shape
+    n_coh, n_dev, n_replicates = cum.shape
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
@@ -1485,7 +1485,7 @@ def _fwd_proj_sa(
     for to-dev ``j``, the link is CL when ``j >= mat_k[i]`` (and
     ``mat_k[i]`` is finite). CL step multiplies; ED step adds.
     """
-    n_coh, n_dev, B = cum.shape
+    n_coh, n_dev, n_replicates = cum.shape
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
@@ -1518,10 +1518,10 @@ def _cum_diff_inc_mean3(cum_mean: np.ndarray) -> np.ndarray:
 
     ``inc_mean3[:, j] = cum_mean[:, j] - cum_mean[:, j-1]`` where both
     devs are finite, NaN otherwise (and NaN at dev 0). 3-D
-    ``(n_coh, n_dev, B)``. Shared by the CL and SA cell forward-sim.
+    ``(n_coh, n_dev, n_replicates)``. Shared by the CL and SA cell forward-sim.
     """
-    n_coh, n_dev, B = cum_mean.shape
-    inc_mean3 = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
+    n_coh, n_dev, n_replicates = cum_mean.shape
+    inc_mean3 = np.full((n_coh, n_dev, n_replicates), np.nan, dtype=np.float64)
     both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
     inc_mean3[:, 1:, :] = np.where(
         both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
@@ -1541,7 +1541,7 @@ def _fwd_sim_cell_bulk(
 ) -> np.ndarray:
     """Vectorised cell-independent Stage-2 accumulation (shared cl/ed/sa).
 
-    Arrays suffixed ``3`` are 3-D ``(n_coh, n_dev, B)``; ``2`` are 2-D
+    Arrays suffixed ``3`` are 3-D ``(n_coh, n_dev, n_replicates)``; ``2`` are 2-D
     ``(n_coh, n_dev)``. ``inc_mean3`` is the per-cell mean increment, NaN
     where a draw must propagate NaN and 0 where the cell carries the
     previous level with no contribution. ``phi`` is a scalar or a
@@ -1549,12 +1549,12 @@ def _fwd_sim_cell_bulk(
     CL/SA ``both`` semantics (``cum_sampled`` is NaN where the
     ``cum_mean`` dev-pair is not both finite); ``masked=False`` is the
     ED rule (the running sum is written across the whole projected
-    region). The active-draw subset is drawn in (cohort, dev, B) C-order
+    region). The active-draw subset is drawn in (cohort, dev, n_replicates) C-order
     via one ``rng`` call -- the same order the per-cell loop it replaced
     consumed the stream -- and accumulation is a base-seeded cumsum so
     the float addition order matches the recursion exactly.
     """
-    n_coh, n_dev, B = cum_mean.shape
+    n_coh, n_dev, n_replicates = cum_mean.shape
     cum_sampled = cum_mean.copy()
     lj = last_obs.astype(np.int64)
 
@@ -1564,13 +1564,13 @@ def _fwd_sim_cell_bulk(
     seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_dev - 1), :]
     cohort_ok = valid & np.isfinite(seed).any(axis=1)
     processed2 = cohort_ok[:, None] & (np.arange(n_dev)[None, :] > lj[:, None])
-    processed3 = np.broadcast_to(processed2[:, :, None], (n_coh, n_dev, B))
+    processed3 = np.broadcast_to(processed2[:, :, None], (n_coh, n_dev, n_replicates))
 
     if np.ndim(phi) == 0:
-        phi3 = np.full((n_coh, n_dev, B), float(phi), dtype=np.float64)
+        phi3 = np.full((n_coh, n_dev, n_replicates), float(phi), dtype=np.float64)
     else:
         phi3 = np.broadcast_to(
-            np.asarray(phi, dtype=np.float64)[:, :, None], (n_coh, n_dev, B)
+            np.asarray(phi, dtype=np.float64)[:, :, None], (n_coh, n_dev, n_replicates)
         )
 
     # Active cell-paradigm draws: finite positive mean, positive phi.
@@ -1580,7 +1580,7 @@ def _fwd_sim_cell_bulk(
     )
     inc_sampled3 = inc_mean3.copy()
     if active3.any():
-        idx = np.where(active3)        # C-order == (cohort, dev, B) loop order
+        idx = np.where(active3)        # C-order == (cohort, dev, n_replicates) loop order
         if process_code in (1, 2):     # gamma / od_pois
             inc_sampled3[idx] = rng.gamma(
                 shape=inc_mean3[idx] / phi3[idx], scale=phi3[idx]
@@ -1593,11 +1593,11 @@ def _fwd_sim_cell_bulk(
 
     # Accumulation: seed the base at each cohort's lj, add increments, and
     # cumsum along dev (left-to-right, matching the recursion's add order).
-    contrib = np.zeros((n_coh, n_dev, B), dtype=np.float64)
+    contrib = np.zeros((n_coh, n_dev, n_replicates), dtype=np.float64)
     rows = np.where(cohort_ok)[0]
     contrib[rows, lj[rows], :] = cum_mean[rows, lj[rows], :]
     if masked:
-        both3 = np.zeros((n_coh, n_dev, B), dtype=bool)
+        both3 = np.zeros((n_coh, n_dev, n_replicates), dtype=bool)
         both3[:, 1:, :] = (
             np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
         )
@@ -1655,20 +1655,20 @@ def _fwd_sim_ed_cell(
     additive ED increment ``inc_mean = g_star[k] * premium_proj[j-1]``;
     a fresh process draw is added and ``cum_sampled`` accumulates.
     """
-    n_coh, n_dev, B = cum_mean.shape
+    n_coh, n_dev, n_replicates = cum_mean.shape
     n_links = g_star.shape[0]
     if not (np.isfinite(phi) and phi > 0.0):
         return cum_mean.copy()
     # Additive ED increment g_star[k] * premium_proj[j-1]; a missing link
     # (k_1 == -1) or non-finite premium carries the level forward (0
     # contribution), an unfittable g propagates NaN.
-    inc_mean3 = np.zeros((n_coh, n_dev, B), dtype=np.float64)
+    inc_mean3 = np.zeros((n_coh, n_dev, n_replicates), dtype=np.float64)
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         if k_1 == -1:
             continue
         k = k_1 - 1
-        g_b = g_star[k, :] if 0 <= k < n_links else np.full(B, np.nan)
+        g_b = g_star[k, :] if 0 <= k < n_links else np.full(n_replicates, np.nan)
         p_prev = premium_proj[:, j - 1]                       # (n_coh,)
         val = np.where(
             np.isfinite(g_b)[None, :], g_b[None, :] * p_prev[:, None], np.nan
@@ -1736,7 +1736,7 @@ def _fwd_sim_cl_link(
     from ``cum_mean`` (untouched here) and the SE shift is Monte-Carlo
     noise within the statistical R-parity tolerance.
     """
-    n_coh, n_dev, B = cum_mean.shape
+    n_coh, n_dev, n_replicates = cum_mean.shape
     cum_sampled = cum_mean.copy()
     lj = last_obs.astype(np.int64)
     valid = (lj >= 0) & (lj <= n_dev - 2)
@@ -1747,7 +1747,7 @@ def _fwd_sim_cl_link(
     if not cohort_ok.any():
         return cum_sampled
 
-    prev = seed.copy()                       # (n_coh, B); only cohort_ok rows used
+    prev = seed.copy()                       # (n_coh, n_replicates); only cohort_ok rows used
     for j in range(1, n_dev):
         active = cohort_ok & (lj < j)        # cohorts past their last obs at dev j
         if not active.any():
@@ -1757,9 +1757,9 @@ def _fwd_sim_cl_link(
             cum_sampled[active, j, :] = prev[active]   # carry, no draw
             continue
         k = k_1 - 1
-        f_b = np.where(np.isfinite(f_star[k, :]), f_star[k, :], 1.0)   # (B,)
+        f_b = np.where(np.isfinite(f_star[k, :]), f_star[k, :], 1.0)   # (n_replicates,)
         s2_k = sigma2[k] if 0 <= k < sigma2.shape[0] else np.nan
-        prev_a = prev[active]                # (n_active, B)
+        prev_a = prev[active]                # (n_active, n_replicates)
         mu_step = f_b[None, :] * prev_a
 
         new = mu_step.copy()
@@ -1791,7 +1791,7 @@ def _draw_parametric_cells(
     phi:          "float | np.ndarray",
     alpha:        float,
     process_code: int,
-    B:            int,
+    n_replicates:            int,
 ) -> np.ndarray:
     """Vectorised parametric Stage-1 draw for many cells at once.
 
@@ -1800,12 +1800,12 @@ def _draw_parametric_cells(
     dispersion. Gamma: ``Gamma(shape=mu/phi, scale=phi)``; Normal:
     ``mu + N(0, sqrt(phi*|mu|^alpha))`` clipped to ``>= 0``; a
     non-positive ``mu`` / ``phi`` keeps the deterministic ``mu``.
-    Returns ``(n_cells, B)``. The active-draw subset (same per-process
+    Returns ``(n_cells, n_replicates)``. The active-draw subset (same per-process
     guards) is drawn in cell-major row order via a single ``rng`` call,
     so the stream is consumed exactly as a per-cell loop would.
     """
     n = mu.shape[0]
-    out = np.repeat(mu[:, None], B, axis=1)
+    out = np.repeat(mu[:, None], n_replicates, axis=1)
     phi_arr = np.broadcast_to(
         np.asarray(phi, dtype=np.float64), (n,)
     )
@@ -1821,13 +1821,13 @@ def _draw_parametric_cells(
     if m:
         if process_code in (1, 2):
             shape = np.broadcast_to(
-                (mu[draw] / phi_arr[draw])[:, None], (m, B)
+                (mu[draw] / phi_arr[draw])[:, None], (m, n_replicates)
             )
-            scale = np.broadcast_to(phi_arr[draw][:, None], (m, B))
+            scale = np.broadcast_to(phi_arr[draw][:, None], (m, n_replicates))
             out[draw, :] = rng.gamma(shape=shape, scale=scale)
         else:                        # normal: mu + N(0, sqrt(phi|mu|^a))
             sd = np.sqrt(phi_arr[draw] * np.power(np.abs(mu[draw]), alpha))
-            eps = rng.normal(0.0, 1.0, size=(m, B))
+            eps = rng.normal(0.0, 1.0, size=(m, n_replicates))
             x = mu[draw][:, None] + eps * sd[:, None]
             out[draw, :] = np.where(x < 0.0, 0.0, x)
     return out
@@ -1865,7 +1865,7 @@ def _resample_increment(
     sqrt_term:     np.ndarray,
     pool:          "_ResidualPool | None",
     dev:           np.ndarray,
-    B:             int,
+    n_replicates:             int,
     _injected:     np.ndarray | None = None,
 ) -> np.ndarray:
     """Resample a Pearson residual per active cell, per replicate.
@@ -1887,19 +1887,19 @@ def _resample_increment(
         The :class:`_ResidualPool`; ``None`` -> no resampling.
     dev
         ``(n_active,)`` per-cell *dev value* (not index).
-    B
+    n_replicates
         Replicate count.
     _injected
-        Test-only hook -- ``(n_active, B)`` integer indices into each
+        Test-only hook -- ``(n_active, n_replicates)`` integer indices into each
         cell's pool, used instead of drawing.
 
     Returns
     -------
     np.ndarray
-        ``(n_active, B)`` perturbed pseudo increments.
+        ``(n_active, n_replicates)`` perturbed pseudo increments.
     """
     n_active = mu.shape[0]
-    inc = np.zeros((n_active, B), dtype=np.float64)
+    inc = np.zeros((n_active, n_replicates), dtype=np.float64)
     subpools = _pool_dev_subpools(pool)
 
     for a in range(n_active):
@@ -1914,7 +1914,7 @@ def _resample_increment(
         if _injected is not None:
             idx = np.clip(_injected[a, :], 0, sub.size - 1)
         else:
-            idx = (rng.random(B) * sub.size).astype(np.int64)
+            idx = (rng.random(n_replicates) * sub.size).astype(np.int64)
             idx = np.clip(idx, 0, sub.size - 1)
         inc[a, :] = mu_a + sub[idx] * sqrt_term[a]
     return inc
@@ -2116,14 +2116,14 @@ def _place_increments(
     lin:     np.ndarray,
     n_coh:   int,
     n_dev:   int,
-    B:       int,
+    n_replicates:       int,
 ) -> np.ndarray:
-    """Scatter per-cell increments into a ``(n_coh, n_dev, B)`` grid.
+    """Scatter per-cell increments into a ``(n_coh, n_dev, n_replicates)`` grid.
 
     Inactive cells are 0 (so the cumsum carries the active increments);
     NaN increments propagate as NaN.
     """
-    cum = np.zeros((n_coh, n_dev, B), dtype=np.float64)
+    cum = np.zeros((n_coh, n_dev, n_replicates), dtype=np.float64)
     if lin.size:
         coh = lin % n_coh
         dev = lin // n_coh
@@ -2140,7 +2140,7 @@ def _cumsum_mask(
     In place. Mirrors phases (b) + (c) of the R cell kernels. A cohort
     with no observation (``last_obs == -1``) is masked from dev 0.
     """
-    n_coh, n_dev, B = cum.shape
+    n_coh, n_dev, n_replicates = cum.shape
     np.cumsum(cum, axis=1, out=cum)
     for i in range(n_coh):
         L = int(last_obs[i])
@@ -2161,7 +2161,7 @@ def _boot_kernel_cl_cell(
     mu_grid:      np.ndarray,
     pool:         "_ResidualPool | None",
     phi:          float,
-    B:            int,
+    n_replicates:            int,
     rng:          np.random.Generator,
     alpha:        float,
     process:      str,
@@ -2181,10 +2181,10 @@ def _boot_kernel_cl_cell(
 
     dev_vals = np.array([int(d) for d in gi.devs], dtype=np.int64)[dev_idx]
     inc = _resample_increment(
-        rng, mu_active, sqrt_active, pool, dev_vals, B,
+        rng, mu_active, sqrt_active, pool, dev_vals, n_replicates,
         _injected=_injected_resample,
     )
-    cum = _place_increments(inc, lin, n_coh, n_dev, B)
+    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2200,7 +2200,7 @@ def _boot_kernel_cl_link(
     gi:           _GroupKernelInputs,
     anchor:       _Anchor,
     pool:         "_ResidualPool | None",
-    B:            int,
+    n_replicates:            int,
     rng:          np.random.Generator,
     alpha:        float,
     process:      str,
@@ -2217,7 +2217,7 @@ def _boot_kernel_cl_link(
     n_coh, n_dev = loss_obs.shape
     n_links = len(anchor.ata_to)
 
-    cum = np.full((n_coh, n_dev, B), np.nan, dtype=np.float64)
+    cum = np.full((n_coh, n_dev, n_replicates), np.nan, dtype=np.float64)
     cum[:, 0, :] = loss_obs[:, 0][:, None]
 
     # Per-link residual sub-pools, keyed by ata_to.
@@ -2247,13 +2247,13 @@ def _boot_kernel_cl_link(
             ok = np.isfinite(prev) & (prev > 0.0)
             if not ok.any():
                 continue
-            r_star = np.zeros(B, dtype=np.float64)
+            r_star = np.zeros(n_replicates, dtype=np.float64)
             if sub is not None and sub.size:
                 if _injected_resample is not None:
                     idx = np.clip(_injected_resample[k, :], 0, sub.size - 1)
                 else:
                     idx = np.clip(
-                        (rng.random(B) * sub.size).astype(np.int64),
+                        (rng.random(n_replicates) * sub.size).astype(np.int64),
                         0, sub.size - 1,
                     )
                 r_star = sub[idx]
@@ -2284,7 +2284,7 @@ def _boot_kernel_ed_cell(
     premium_proj:  np.ndarray,
     pool:          "_ResidualPool | None",
     phi:           float,
-    B:             int,
+    n_replicates:             int,
     rng:           np.random.Generator,
     alpha:         float,
     process:       str,
@@ -2304,10 +2304,10 @@ def _boot_kernel_ed_cell(
 
     dev_vals = np.array([int(d) for d in gi.devs], dtype=np.int64)[dev_idx]
     inc = _resample_increment(
-        rng, mu_active, sqrt_active, pool, dev_vals, B,
+        rng, mu_active, sqrt_active, pool, dev_vals, n_replicates,
         _injected=_injected_resample,
     )
-    cum = _place_increments(inc, lin, n_coh, n_dev, B)
+    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
@@ -2332,7 +2332,7 @@ def _boot_kernel_sa_cell(
     pool_cl:       "_ResidualPool | None",
     phi_ed:        float,
     phi_cl:        float,
-    B:             int,
+    n_replicates:             int,
     rng:           np.random.Generator,
     alpha:         float,
     process:       str,
@@ -2376,7 +2376,7 @@ def _boot_kernel_sa_cell(
 
     # Per-cell residual draw -- ED cells from pool_ed, CL cells from
     # pool_cl. The two pools stay disjoint (paradigm-tagged).
-    inc = np.zeros((mu_active.shape[0], B), dtype=np.float64)
+    inc = np.zeros((mu_active.shape[0], n_replicates), dtype=np.float64)
     ed_sub = _pool_dev_subpools(pool_ed)
     cl_sub = _pool_dev_subpools(pool_cl)
 
@@ -2394,12 +2394,12 @@ def _boot_kernel_sa_cell(
             idx = np.clip(_injected_resample[a, :], 0, sub.size - 1)
         else:
             idx = np.clip(
-                (rng.random(B) * sub.size).astype(np.int64),
+                (rng.random(n_replicates) * sub.size).astype(np.int64),
                 0, sub.size - 1,
             )
         inc[a, :] = mu_a + sub[idx] * sqrt_active[a]
 
-    cum = _place_increments(inc, lin_all, n_coh, n_dev, B)
+    cum = _place_increments(inc, lin_all, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2419,7 +2419,7 @@ def _boot_kernel_cl_parametric(
     anchor:       _Anchor,
     mu_grid:      np.ndarray,
     phi:          float,
-    B:            int,
+    n_replicates:            int,
     rng:          np.random.Generator,
     alpha:        float,
     process:      str,
@@ -2437,8 +2437,8 @@ def _boot_kernel_cl_parametric(
     mu_active = mu_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
-    inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, B)
-    cum = _place_increments(inc, lin, n_coh, n_dev, B)
+    inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, n_replicates)
+    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2455,7 +2455,7 @@ def _boot_kernel_ed_parametric(
     g_hat:         np.ndarray,
     premium_proj:  np.ndarray,
     phi:           float,
-    B:             int,
+    n_replicates:             int,
     rng:           np.random.Generator,
     alpha:         float,
     process:       str,
@@ -2467,8 +2467,8 @@ def _boot_kernel_ed_parametric(
     mu_active = mu_ed_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
-    inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, B)
-    cum = _place_increments(inc, lin, n_coh, n_dev, B)
+    inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, n_replicates)
+    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
@@ -2491,7 +2491,7 @@ def _boot_kernel_sa_parametric(
     mat_k:         np.ndarray,
     phi_ed:        float,
     phi_cl:        float,
-    B:             int,
+    n_replicates:             int,
     rng:           np.random.Generator,
     alpha:         float,
     process:       str,
@@ -2525,8 +2525,8 @@ def _boot_kernel_sa_parametric(
     mu_active = np.where(is_cl, mu_cl_flat[lin_all], mu_ed_flat[lin_all])
 
     phi_active = np.where(is_cl, phi_cl, phi_ed)
-    inc = _draw_parametric_cells(rng, mu_active, phi_active, alpha, pc, B)
-    cum = _place_increments(inc, lin_all, n_coh, n_dev, B)
+    inc = _draw_parametric_cells(rng, mu_active, phi_active, alpha, pc, n_replicates)
+    cum = _place_increments(inc, lin_all, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2674,9 +2674,9 @@ class Bootstrap:
     process
         Stage 2 process distribution. ``type="analytical"`` requires
         ``"normal"`` (Mack closed-form propagation).
-    B
+    n_replicates
         Number of bootstrap replicates. Default ``499`` -- the Davison &
-        Hinkley (1997) convention so that ``(B + 1) p`` is integer for
+        Hinkley (1997) convention so that ``(n_replicates + 1) p`` is integer for
         common reporting quantiles.
     seed
         Optional integer seed for reproducibility.
@@ -2699,7 +2699,7 @@ class Bootstrap:
     >>> from lossratio.bootstrap import Bootstrap
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> bt = Bootstrap(type="analytical", method="cl",
-    ...                B=999, seed=1).fit(tri, target="loss")
+    ...                n_replicates=999, seed=1).fit(tri, target="loss")
     >>> bt.summary
     """
 
@@ -2991,8 +2991,7 @@ class Bootstrap:
         Stage-2 kernel, building the per-group residual pools / ED
         intensity anchor / projected premium as each paradigm requires.
         """
-        # `n_replicates` is the public name; `B` is the local numpy axis dim.
-        B     = int(self.n_replicates)
+        n_replicates = int(self.n_replicates)
         alpha = float(self.alpha)
         gi    = _build_group_inputs(loss_obs, anchor, cohorts, devs)
         n_coh, n_dev = loss_obs.shape
@@ -3002,7 +3001,7 @@ class Bootstrap:
             return _boot_kernel_cl_analytical(
                 loss_obs = loss_obs,
                 anchor   = anchor,
-                B        = B,
+                n_replicates        = n_replicates,
                 rng      = rng,
                 alpha    = alpha,
                 process  = self.process,
@@ -3017,7 +3016,7 @@ class Bootstrap:
                     sub, anchor, target=target, hat_adj=self.hat_adj
                 )
                 return _boot_kernel_cl_parametric(
-                    gi, anchor, mu_grid, cell.phi, B, rng, alpha,
+                    gi, anchor, mu_grid, cell.phi, n_replicates, rng, alpha,
                     self.process,
                 )
             # ED / SA parametric need the dual-variable Link.
@@ -3034,7 +3033,7 @@ class Bootstrap:
                 cell = _cell_residuals_ed(link_df)
                 return _boot_kernel_ed_parametric(
                     gi, anchor, mu_ed_grid, g_hat, premium_proj,
-                    cell.phi, B, rng, alpha, self.process,
+                    cell.phi, n_replicates, rng, alpha, self.process,
                 )
             # SA parametric.
             mu_cl_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor,
@@ -3046,7 +3045,7 @@ class Bootstrap:
             mat_vec = self._mat_k_vec(mat_k, n_coh)
             return _boot_kernel_sa_parametric(
                 gi, anchor, mu_cl_grid, mu_ed_grid, g_hat, premium_proj,
-                mat_vec, cell_ed.phi, cell_cl.phi, B, rng, alpha,
+                mat_vec, cell_ed.phi, cell_cl.phi, n_replicates, rng, alpha,
                 self.process,
             )
 
@@ -3061,7 +3060,7 @@ class Bootstrap:
                 min_pool=self.min_pool,
             )
             return _boot_kernel_cl_link(
-                gi, anchor, pool, B, rng, alpha, self.process,
+                gi, anchor, pool, n_replicates, rng, alpha, self.process,
             )
 
         # residual == "cell"
@@ -3075,7 +3074,7 @@ class Bootstrap:
                 min_pool=self.min_pool, demean=self.demean,
             )
             return _boot_kernel_cl_cell(
-                gi, anchor, mu_grid, pool, cell.phi, B, rng, alpha,
+                gi, anchor, mu_grid, pool, cell.phi, n_replicates, rng, alpha,
                 self.process,
             )
 
@@ -3098,7 +3097,7 @@ class Bootstrap:
             )
             return _boot_kernel_ed_cell(
                 gi, anchor, mu_ed_grid, g_hat, premium_proj, pool,
-                cell.phi, B, rng, alpha, self.process,
+                cell.phi, n_replicates, rng, alpha, self.process,
             )
 
         # SA cell -- dual residual pool (ED + CL, never merged).
@@ -3119,7 +3118,7 @@ class Bootstrap:
         return _boot_kernel_sa_cell(
             gi, anchor, mu_cl_grid, mu_ed_grid, g_hat, premium_proj,
             mat_vec, pool_ed, pool_cl, cell_ed.phi, cell_cl.phi,
-            B, rng, alpha, self.process,
+            n_replicates, rng, alpha, self.process,
         )
 
     @staticmethod
@@ -3269,7 +3268,7 @@ class Bootstrap:
         """Long-format per-replicate trajectories (Stage-1 mean + sampled).
 
         Columns: ``[groups?, cohort, dev, rep, {target}_mean,
-        {target}_sampled]`` -- ``rep`` ranges over ``1..B``. The
+        {target}_sampled]`` -- ``rep`` ranges over ``1..n_replicates``. The
         ``{target}_mean`` column is the Stage-1 deterministic projection
         (parameter uncertainty only); ``{target}_sampled`` adds the
         Stage-2 process noise. Built only when ``keep_pseudo=True``.
@@ -3278,23 +3277,23 @@ class Bootstrap:
         ``loss_mean`` / ``premium_mean``) -- mirrors R's
         ``.boot_build_pseudo_long`` (``R/bootstrap.R``).
         """
-        cum_mean    = stage1.cum_mean        # (n_cohorts, n_devs, B)
+        cum_mean    = stage1.cum_mean        # (n_cohorts, n_devs, n_replicates)
         cum_sampled = stage1.cum_sampled
-        n_cohorts, n_devs, B = cum_sampled.shape
+        n_cohorts, n_devs, n_replicates = cum_sampled.shape
         cohorts = stage1.cohorts
         devs    = stage1.devs
 
         # column-major flatten (cohort fastest, then dev, then rep).
-        cohort_col = cohorts * (n_devs * B)
+        cohort_col = cohorts * (n_devs * n_replicates)
         dev_col = np.tile(
-            np.repeat(devs, n_cohorts), B
+            np.repeat(devs, n_cohorts), n_replicates
         ).tolist()
         rep_col = np.repeat(
-            np.arange(1, B + 1), n_cohorts * n_devs
+            np.arange(1, n_replicates + 1), n_cohorts * n_devs
         ).tolist()
 
         data: dict[str, Any] = {}
-        fill_group_columns(data, groups, group_value, n_cohorts * n_devs * B)
+        fill_group_columns(data, groups, group_value, n_cohorts * n_devs * n_replicates)
         data["cohort"]            = cohort_col
         data["dev"]               = dev_col
         data["rep"]               = rep_col
