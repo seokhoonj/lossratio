@@ -103,3 +103,10 @@ CLAUDE.md
 
 # Local-only dev scripts and data
 dev/
+
+# AI coding agents
+AGENTS.md
+AGENT.md
+.codex/
+GEMINI.md
+.gemini/
