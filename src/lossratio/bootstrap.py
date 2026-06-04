@@ -2570,6 +2570,12 @@ class BootstrapTriangle:
         ``[groups?, cohort, dev, rep, {target}_mean, {target}_sampled]``
         (the Stage-1 deterministic projection and the Stage-1 + Stage-2
         process-noisy simulation).
+    ultimate_samples
+        Per-replicate portfolio ultimate of the bootstrapped target, a
+        long-format DataFrame ``[groups?, rep, {target}_ult_sampled]``.
+        Always retained for a sampling run (a cheap aggregate, unlike the
+        opt-in :attr:`pseudo_triangles`); ``None`` only when no draws
+        exist. Drives an ultimate-aggregate predictive histogram.
     """
 
     def __init__(self) -> None:
@@ -2601,6 +2607,23 @@ class BootstrapTriangle:
         if self._pseudo_triangles is None:
             return None
         return mirror_output(self._pseudo_triangles, self._output_type)
+
+    @property
+    def ultimate_samples(self):
+        """Per-replicate portfolio ultimate of the bootstrapped target.
+
+        Long-format DataFrame ``[groups?, rep, {target}_ult_sampled]``:
+        for each replicate, the sum across cohorts of the ultimate
+        cumulative (final dev column). Use for an ultimate-aggregate
+        predictive histogram. ``None`` when no draws exist.
+
+        Pre-tail -- the bootstrap develops to the triangle's last dev,
+        not through a deterministic tail factor.
+        """
+        samples = getattr(self, "_ultimate_samples", None)
+        if samples is None:
+            return None
+        return mirror_output(samples, self._output_type)
 
     @property
     def meta(self) -> dict[str, Any]:
@@ -2649,7 +2672,7 @@ class Bootstrap:
     :meth:`fit` on a :class:`Triangle` to obtain a
     :class:`BootstrapTriangle`. This is the resampling / simulation engine
     that sits BEHIND the public uncertainty strategies
-    (:class:`~lossratio.ResidualBootstrap` / :class:`~lossratio.MonteCarlo`
+    (:class:`~lossratio.ResidualBootstrap` / :class:`~lossratio.ParametricBootstrap`
     in :mod:`lossratio.uncertainty`); prefer those on a model's
     ``uncertainty=`` argument over constructing this directly.
 
@@ -2688,7 +2711,7 @@ class Bootstrap:
 
     Internal engine -- not part of the public API. End users reach it via
     the uncertainty strategies (:class:`~lossratio.ResidualBootstrap` /
-    :class:`~lossratio.MonteCarlo`) on a model.
+    :class:`~lossratio.ParametricBootstrap`) on a model.
 
     Examples
     --------
@@ -2824,6 +2847,7 @@ class Bootstrap:
         f_anchor_parts:   list[pl.DataFrame] = []
         sigma2_anchor_parts: list[pl.DataFrame] = []
         pseudo_parts: list[pl.DataFrame] = []
+        ultimate_parts: list[pl.DataFrame] = []
 
         # Resolve a per-group maturity map for the SA paradigm.
         mat_k_map = self._resolve_maturity_map(triangle)
@@ -2869,6 +2893,13 @@ class Bootstrap:
                 pseudo_parts.append(
                     self._pseudo_to_df(stage1, groups, g, target)
                 )
+            # Per-group portfolio ultimate per replicate -- a cheap
+            # (n_replicates,) aggregate retained unconditionally (the full
+            # per-cell `pseudo_triangles` stays opt-in). Drives an
+            # ultimate-aggregate predictive histogram.
+            ultimate_parts.append(
+                self._ultimate_to_df(stage1, groups, g, target)
+            )
 
         out = BootstrapTriangle.__new__(BootstrapTriangle)
         out._output_type   = triangle._output_type
@@ -2888,6 +2919,9 @@ class Bootstrap:
             pl.concat(pseudo_parts)
             if (self.keep_pseudo and pseudo_parts)
             else None
+        )
+        out._ultimate_samples = (
+            pl.concat(ultimate_parts) if ultimate_parts else None
         )
         out._meta = {
             "type":        self.type,
@@ -3285,6 +3319,36 @@ class Bootstrap:
         data["rep"]               = rep_col
         data[f"{target}_mean"]    = cum_mean.flatten(order="F")
         data[f"{target}_sampled"] = cum_sampled.flatten(order="F")
+        return pl.DataFrame(data)
+
+    @staticmethod
+    def _ultimate_to_df(
+        stage1:      _Stage1Result,
+        groups:      str | None,
+        group_value: Any | None,
+        target:      str = "loss",
+    ) -> pl.DataFrame:
+        """Per-replicate portfolio ultimate of the bootstrapped target.
+
+        Sums each cohort's ultimate cumulative (the final dev column of
+        the Stage-1 + Stage-2 sampled array) across cohorts, per
+        replicate -- a length-``n_replicates`` vector. Columns:
+        ``[groups?, rep, {target}_ult_sampled]`` with ``rep`` in
+        ``1..n_replicates``.
+
+        The aggregate is *pre-tail*: the bootstrap develops to the
+        triangle's last dev, not through a deterministic tail factor.
+        """
+        cum_sampled = stage1.cum_sampled     # (n_cohorts, n_devs, n_replicates)
+        n_replicates = cum_sampled.shape[2]
+        # final dev column == each cohort's ultimate cumulative; sum over
+        # cohorts -> portfolio ultimate per replicate.
+        ult = np.nansum(cum_sampled[:, -1, :], axis=0)   # (n_replicates,)
+
+        data: dict[str, Any] = {}
+        fill_group_columns(data, groups, group_value, n_replicates)
+        data["rep"]                   = np.arange(1, n_replicates + 1).tolist()
+        data[f"{target}_ult_sampled"] = ult
         return pl.DataFrame(data)
 
 

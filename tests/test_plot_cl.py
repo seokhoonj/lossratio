@@ -80,7 +80,7 @@ def test_cl_projection_show_interval_true_has_caption(tri_single):
 
 
 def test_cl_projection_bootstrap_caption(tri_single):
-    cf = lr.ChainLadder(uncertainty=lr.MonteCarlo(seed=0, n_replicates=50)).fit(tri_single)
+    cf = lr.ChainLadder(uncertainty=lr.ParametricBootstrap(seed=0, n_replicates=50)).fit(tri_single)
     fig = cf.plot(kind="projection")
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]

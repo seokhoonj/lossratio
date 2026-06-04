@@ -4,14 +4,14 @@ Three strategy classes -- passed on a model's ``uncertainty=`` constructor
 argument -- name the uncertainty paradigm by WHAT IT IS:
 
 * :class:`Analytical` -- Mack / ED closed-form propagation (NO resampling).
-  The default: the fit reports its built-in closed-form analytical SE and
-  no bootstrap overlay is applied.
+  The default: the fit reports its built-in closed-form analytical SE.
+  ``Analytical(simulate=True)`` returns the simulated Mack factor draw
+  (CL only) for a predictive histogram.
 * :class:`ResidualBootstrap` -- nonparametric residual resampling
   (England-Verrall). Coherent for single-model chain ladder.
-* :class:`MonteCarlo` -- parametric simulation: draw either the per-cell
-  increments from the process distribution (``draw="process"``, the
-  default) or the development parameters from their asymptotic normal
-  (``draw="parameter"`` -- the Mack closed-form propagation simulated).
+* :class:`ParametricBootstrap` -- parametric bootstrap: per-cell process
+  simulation (gamma / ODP) with refit. The parametric sibling of
+  :class:`ResidualBootstrap`; the default uncertainty for stage-adaptive.
 
 A strategy is MODEL-AGNOSTIC: the model supplies its own fit paradigm
 (``method`` in ``{"cl", "ed", "sa"}``); the strategy supplies the
@@ -39,25 +39,60 @@ if TYPE_CHECKING:
 class Analytical:
     """Closed-form Mack / ED analytical SE (no resampling). The default.
 
-    Carries no engine configuration: ``_resolve`` returns ``None``, which
-    signals the fit to keep its built-in closed-form analytical SE (the
-    proc / param / total decomposition computed directly in the fit). This
-    is the cheapest and most stable option and the default for CL / ED.
+    ``simulate=False`` (default) keeps the fit's built-in closed-form
+    analytical SE (the proc / param / total decomposition computed
+    directly in the fit) -- the cheapest, most stable option, the default
+    for CL / ED, and the only one that needs no engine run (``_resolve``
+    returns ``None``).
+
+    ``simulate=True`` returns the *simulated* counterpart -- draws the
+    development factors from their asymptotic normal and propagates (the
+    Mack closed-form, Monte Carlo'd). Same mean and variance as the closed
+    form; the only thing it adds is the (skewed) predictive *shape*,
+    exposed as per-replicate samples for a histogram. Chain-ladder only --
+    there is no factor recursion for the additive ED / composite SA, and
+    an ED fit's closed form is already exactly Gaussian (a simulation
+    would add nothing) -- so ``simulate=True`` always produces a CL band
+    regardless of the headline method.
 
     Parameters
     ----------
     alpha
         Mack variance exponent ``Var(C_{k+1}|C_k) = sigma^2 C_k^alpha``.
         Default ``1`` (the only value currently supported by the workers).
+    simulate
+        ``False`` (default) -- closed-form SE. ``True`` -- the simulated
+        Mack factor draw (CL only); yields per-replicate samples.
+    n_replicates, seed, quantile_ci
+        Consulted only when ``simulate=True``.
     """
 
-    alpha: float = 1.0
+    alpha:        float      = 1.0
+    simulate:     bool       = False
+    n_replicates: int        = 499
+    seed:         int | None = None
+    quantile_ci:  bool       = False
 
     def _resolve(
         self, triangle: "Triangle", *, target: str, method: str
     ) -> "BootstrapTriangle | None":
-        # No overlay: the fit's built-in closed-form SE is the answer.
-        return None
+        if not self.simulate:
+            # Closed-form: the fit's built-in analytical SE is the answer.
+            return None
+        from .bootstrap import Bootstrap
+
+        # Simulated Mack factor draw. The analytical paradigm is CL-only
+        # (no factor recursion for additive ED / composite SA), so it is
+        # always a CL band regardless of the headline `method`.
+        return Bootstrap(
+            type         = "analytical",
+            method       = "cl",
+            process      = "normal",
+            n_replicates = self.n_replicates,
+            seed         = self.seed,
+            alpha        = self.alpha,
+            quantile_ci  = self.quantile_ci,
+        ).fit(triangle, target=target)
 
 
 @dataclass
@@ -123,18 +158,16 @@ class ResidualBootstrap:
 
 
 @dataclass
-class MonteCarlo:
-    """Parametric simulation bootstrap.
+class ParametricBootstrap:
+    """Parametric bootstrap -- per-cell process simulation.
 
-    Two flavours, selected by ``draw``:
-
-    * ``"process"`` (default) -- draw the per-cell incremental losses from
-      the process distribution (parametric / textbook cell simulation;
-      engine ``type="parametric"``).
-    * ``"parameter"`` -- draw the development factors from their asymptotic
-      normal and propagate (the Mack closed-form, simulated; engine
-      ``type="analytical"``, chain-ladder + normal process only). This is
-      the simulated counterpart of :class:`Analytical`.
+    Regenerates the triangle by drawing the per-cell incremental losses
+    from a parametric process distribution (gamma / ODP), refits on the
+    pseudo-triangle (parameter uncertainty), and adds process noise on the
+    future cells (process uncertainty). The parametric sibling of
+    :class:`ResidualBootstrap` -- the same refit-on-pseudo-triangle
+    machinery, with the past perturbation drawn from an assumed
+    distribution rather than resampled from empirical residuals.
 
     The default and only coherent uncertainty for stage-adaptive (SA),
     whose two-phase ED+CL structure has no single residual pool.
@@ -142,13 +175,10 @@ class MonteCarlo:
     Parameters
     ----------
     process
-        Stage-2 process distribution: ``"gamma"`` (default), ``"od_pois"``,
-        or ``"normal"``. Forced to ``"normal"`` is required when
-        ``draw="parameter"``.
-    draw
-        ``"process"`` (default) or ``"parameter"`` -- see above.
+        Process distribution: ``"gamma"`` (default), ``"od_pois"``, or
+        ``"normal"``.
     hat_adj
-        Hat-matrix bias correction (cell path).
+        Hat-matrix bias correction.
     n_replicates, seed
         Replicate count and reproducibility seed.
     quantile_ci
@@ -156,32 +186,21 @@ class MonteCarlo:
     """
 
     process:      str        = "gamma"
-    draw:         str        = "process"
     hat_adj:      bool       = True
     n_replicates: int        = 499
     seed:         int | None = None
     quantile_ci:  bool       = False
-
-    def __post_init__(self) -> None:
-        if self.draw not in ("process", "parameter"):
-            raise ValueError(
-                f"draw must be 'process' or 'parameter', got {self.draw!r}"
-            )
-        if self.draw == "parameter" and self.process != "normal":
-            raise ValueError(
-                "draw='parameter' (Mack closed-form simulated -- draws the "
-                "development factors from their asymptotic normal) requires "
-                f"process='normal', got {self.process!r}."
-            )
 
     def _resolve(
         self, triangle: "Triangle", *, target: str, method: str
     ) -> "BootstrapTriangle":
         from .bootstrap import Bootstrap
 
-        engine_type = "analytical" if self.draw == "parameter" else "parametric"
+        # Follows the headline `method` (ED -> ED, CL -> CL, SA -> SA): the
+        # predictive dispersion is centred on the same projection that
+        # drives the point estimate.
         return Bootstrap(
-            type         = engine_type,
+            type         = "parametric",
             method       = method,
             process      = self.process,
             hat_adj      = self.hat_adj,
@@ -205,7 +224,7 @@ def resolve_uncertainty(
     * ``None`` -> ``None`` (the fit keeps its closed-form analytical SE;
       equivalent to :class:`Analytical`).
     * an :class:`Analytical` / :class:`ResidualBootstrap` /
-      :class:`MonteCarlo` strategy instance -> delegated to its
+      :class:`ParametricBootstrap` strategy instance -> delegated to its
       ``_resolve``.
     * a callable ``f(triangle) -> strategy`` -> invoked, then re-resolved.
 
@@ -214,7 +233,7 @@ def resolve_uncertainty(
     """
     if uncertainty is None:
         return None
-    if isinstance(uncertainty, (Analytical, ResidualBootstrap, MonteCarlo)):
+    if isinstance(uncertainty, (Analytical, ResidualBootstrap, ParametricBootstrap)):
         return uncertainty._resolve(triangle, target=target, method=method)
     if callable(uncertainty):
         return resolve_uncertainty(
@@ -222,6 +241,6 @@ def resolve_uncertainty(
         )
     raise TypeError(
         "`uncertainty` must be None, an Analytical / ResidualBootstrap / "
-        "MonteCarlo strategy, or a callable returning one; got "
+        "ParametricBootstrap strategy, or a callable returning one; got "
         f"{type(uncertainty).__name__}."
     )

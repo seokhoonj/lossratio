@@ -118,7 +118,7 @@ def test_ratio_fit_plot_show_interval_true_has_caption(tri_single):
 
 
 def test_ratio_fit_plot_bootstrap_caption_marks_bootstrap(tri_single):
-    rf = lr.Ratio(method="cl", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=20, seed=1)).fit(tri_single)
+    rf = lr.Ratio(method="cl", uncertainty=lr.Analytical(simulate=True, n_replicates=20, seed=1)).fit(tri_single)
     fig = rf.plot()
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]

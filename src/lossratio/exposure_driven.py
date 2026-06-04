@@ -57,7 +57,7 @@ class ExposureDriven:
         Uncertainty strategy. ``None`` (default) keeps the closed-form
         analytical SE. Pass :class:`~lossratio.Analytical`,
         :class:`~lossratio.ResidualBootstrap`, or
-        :class:`~lossratio.MonteCarlo` to override.
+        :class:`~lossratio.ParametricBootstrap` to override.
     """
 
     alpha:        float          = 1.0

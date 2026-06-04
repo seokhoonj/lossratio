@@ -1,7 +1,7 @@
 """Tests for the public uncertainty strategy surface (Phase 4 P4.1).
 
-The three strategy classes (Analytical / ResidualBootstrap / MonteCarlo)
-are the public uncertainty config; the resampling/simulation engine stays
+The three strategy classes (Analytical / ResidualBootstrap /
+ParametricBootstrap) are the public uncertainty config; the engine stays
 in ``bootstrap.py`` behind them. These tests pin that each strategy
 delegates to the equivalent engine configuration byte-for-byte (same seed
 -> identical summary), that Analytical means "no overlay" (closed-form),
@@ -17,7 +17,7 @@ import lossratio as lr
 from lossratio.bootstrap import Bootstrap
 from lossratio.uncertainty import (
     Analytical,
-    MonteCarlo,
+    ParametricBootstrap,
     ResidualBootstrap,
     resolve_uncertainty,
 )
@@ -71,13 +71,13 @@ def test_residual_bootstrap_matches_engine():
 
 
 # ---------------------------------------------------------------------------
-# MonteCarlo(draw="process") == engine type="parametric"
+# ParametricBootstrap == engine type="parametric"
 # ---------------------------------------------------------------------------
 
 
-def test_montecarlo_process_matches_engine():
+def test_parametric_bootstrap_matches_engine():
     tri = _tri()
-    strat = MonteCarlo(process="gamma", n_replicates=B, seed=SEED)._resolve(
+    strat = ParametricBootstrap(process="gamma", n_replicates=B, seed=SEED)._resolve(
         tri, target="loss", method="cl"
     )
     engine = Bootstrap(
@@ -87,14 +87,14 @@ def test_montecarlo_process_matches_engine():
 
 
 # ---------------------------------------------------------------------------
-# MonteCarlo(draw="parameter") == engine type="analytical" (Mack sim)
+# Analytical(simulate=True) == engine type="analytical" (Mack factor draw)
 # ---------------------------------------------------------------------------
 
 
-def test_montecarlo_parameter_matches_analytical_engine():
+def test_analytical_simulate_matches_analytical_engine():
     tri = _tri()
-    strat = MonteCarlo(
-        draw="parameter", process="normal", n_replicates=B, seed=SEED
+    strat = Analytical(
+        simulate=True, n_replicates=B, seed=SEED
     )._resolve(tri, target="loss", method="cl")
     engine = Bootstrap(
         type="analytical", method="cl", process="normal", n_replicates=B, seed=SEED
@@ -102,14 +102,9 @@ def test_montecarlo_parameter_matches_analytical_engine():
     assert strat.summary.equals(engine.summary)
 
 
-def test_montecarlo_parameter_requires_normal():
-    with pytest.raises(ValueError, match="process='normal'"):
-        MonteCarlo(draw="parameter", process="gamma")
-
-
-def test_montecarlo_bad_draw_rejected():
-    with pytest.raises(ValueError, match="draw must be"):
-        MonteCarlo(draw="bogus")
+def test_analytical_default_no_overlay():
+    tri = _tri()
+    assert Analytical()._resolve(tri, target="loss", method="cl") is None
 
 
 # ---------------------------------------------------------------------------
@@ -119,11 +114,11 @@ def test_montecarlo_bad_draw_rejected():
 
 def test_resolve_callable_form():
     tri = _tri()
-    direct = MonteCarlo(process="gamma", n_replicates=B, seed=SEED)._resolve(
+    direct = ParametricBootstrap(process="gamma", n_replicates=B, seed=SEED)._resolve(
         tri, target="loss", method="cl"
     )
     via_callable = resolve_uncertainty(
-        lambda t: MonteCarlo(process="gamma", n_replicates=B, seed=SEED),
+        lambda t: ParametricBootstrap(process="gamma", n_replicates=B, seed=SEED),
         tri,
         target="loss",
         method="cl",

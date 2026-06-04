@@ -28,7 +28,7 @@ from .stage_adaptive import StageAdaptive
 from .tail import Tail
 from .total import Total
 from .triangle import Triangle, TriangleValidation
-from .uncertainty import Analytical, MonteCarlo, ResidualBootstrap
+from .uncertainty import Analytical, ParametricBootstrap, ResidualBootstrap
 
 __version__ = "0.0.1.dev10"
 
@@ -45,7 +45,7 @@ __all__ = [
     "Link",
     "LossFit",
     "Maturity",
-    "MonteCarlo",
+    "ParametricBootstrap",
     "Premium",
     "PremiumFit",
     "Ratio",

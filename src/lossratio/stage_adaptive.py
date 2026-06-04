@@ -66,7 +66,7 @@ class StageAdaptive:
         rejected: the ED(additive)+CL(multiplicative) two-phase fit with
         an estimated switch point has no coherent single residual pool, so
         stage-adaptive uncertainty must be distribution-based
-        (:class:`~lossratio.MonteCarlo`) or the analytical SA SE.
+        (:class:`~lossratio.ParametricBootstrap`) or the analytical SA SE.
     """
 
     alpha:        float          = 1.0
@@ -88,7 +88,7 @@ class StageAdaptive:
             raise ValueError(
                 "StageAdaptive does not support ResidualBootstrap: the "
                 "ED+CL two-phase fit has no coherent single residual pool. "
-                "Use MonteCarlo() or the default analytical SE."
+                "Use ParametricBootstrap() or the default analytical SE."
             )
 
     def fit(self, triangle: "Triangle") -> "LossFit":

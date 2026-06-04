@@ -24,14 +24,14 @@ if TYPE_CHECKING:
     from .regime import Regime
     from .tail import Tail
     from .triangle import Triangle
-    from .uncertainty import Analytical, MonteCarlo, ResidualBootstrap
+    from .uncertainty import Analytical, ParametricBootstrap, ResidualBootstrap
 
     # Uncertainty strategy: a strategy instance, a callable producing one,
     # or None (the fit keeps its closed-form analytical SE).
     UncertaintyArg = (
         Analytical
         | ResidualBootstrap
-        | MonteCarlo
+        | ParametricBootstrap
         | Callable[[Triangle], object]
         | None
     )

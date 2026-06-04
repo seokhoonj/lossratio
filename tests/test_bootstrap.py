@@ -1118,7 +1118,7 @@ def test_phase3_ratio_bootstrap_overlay(method):
     """
     tri = _tri()
     plain = lr.Ratio(method=method).fit(tri)
-    boot = lr.Ratio(method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal")).fit(tri)
+    boot = lr.Ratio(method=method, uncertainty=lr.Analytical(simulate=True)).fit(tri)
 
     assert plain.ci_type == "analytical"
     assert plain.boots is None
@@ -1206,7 +1206,7 @@ def test_phase3_ratio_summary_statistically_close_to_r(method):
     r = _load(f"ratio_{method}_boot_summary").sort(["coverage", "cohort"])
     tri = _tri()
     fit = lr.Ratio(
-        method=method, uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=4000, seed=20260522),
+        method=method, uncertainty=lr.Analytical(simulate=True, n_replicates=4000, seed=20260522),
         se_method="fixed",
     ).fit(tri)
     py = fit.summary().sort(["coverage", "cohort"])
@@ -1241,7 +1241,7 @@ def test_phase3_ratio_se_consistency():
     arithmetic."""
     tri = _tri()
     fit = lr.Ratio(
-        method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=200, seed=11), se_method="fixed"
+        method="sa", uncertainty=lr.Analytical(simulate=True, n_replicates=200, seed=11), se_method="fixed"
     ).fit(tri)
     assert fit.ci_type == "bootstrap"
 
@@ -1267,9 +1267,9 @@ def test_phase3_ratio_seed_reproducible():
     """Same seed -> identical Ratio bootstrap summary; a different seed
     changes the Monte-Carlo ``ratio_se``."""
     tri = _tri()
-    a = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=300, seed=42)).fit(tri)
-    b = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=300, seed=42)).fit(tri)
-    c = lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=300, seed=43)).fit(tri)
+    a = lr.Ratio(method="sa", uncertainty=lr.Analytical(simulate=True, n_replicates=300, seed=42)).fit(tri)
+    b = lr.Ratio(method="sa", uncertainty=lr.Analytical(simulate=True, n_replicates=300, seed=42)).fit(tri)
+    c = lr.Ratio(method="sa", uncertainty=lr.Analytical(simulate=True, n_replicates=300, seed=43)).fit(tri)
 
     sa, sb, sc = a.summary(), b.summary(), c.summary()
     # same seed -> bit-identical ratio_se.
@@ -1311,7 +1311,7 @@ def test_phase5_backtest_bootstrap_runs_without_error():
     table."""
     tri = _tri()
     bt = lr.Backtest(
-        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=80, seed=1)),
+        estimator=lr.Ratio(method="sa", uncertainty=lr.Analytical(simulate=True, n_replicates=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1334,7 +1334,7 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
         target="ratio",
     ).fit(tri)
     booted = lr.Backtest(
-        estimator=lr.Ratio(method="sa", uncertainty=lr.MonteCarlo(draw="parameter", process="normal", n_replicates=80, seed=1)),
+        estimator=lr.Ratio(method="sa", uncertainty=lr.Analytical(simulate=True, n_replicates=80, seed=1)),
         holdout=6,
         target="ratio",
     ).fit(tri)
@@ -1366,8 +1366,8 @@ def test_phase5_backtest_bootstrap_config_form_safe():
     bt = lr.Backtest(
         estimator=lr.Ratio(
             method="sa",
-            uncertainty=lr.MonteCarlo(
-                draw="parameter", process="normal", n_replicates=80, seed=2
+            uncertainty=lr.Analytical(
+                simulate=True, n_replicates=80, seed=2
             ),
         ),
         holdout=6,
@@ -1393,7 +1393,7 @@ def test_phase5_backtest_bootstrap_callable_form_safe():
         # `loss` cells than the original.
         n_obs = masked_tri._df["loss"].len() - masked_tri._df["loss"].null_count()
         seen.append(n_obs)
-        return lr.MonteCarlo(draw="parameter", process="normal", n_replicates=80, seed=3)
+        return lr.Analytical(simulate=True, n_replicates=80, seed=3)
 
     bt = lr.Backtest(
         estimator=lr.Ratio(method="sa", uncertainty=make_unc),

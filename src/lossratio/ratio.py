@@ -186,12 +186,13 @@ class Ratio:
         Uncertainty strategy governing the ratio SE. ``None`` (default) /
         :class:`~lossratio.Analytical` keeps the closed-form analytical
         ratio SE. :class:`~lossratio.ResidualBootstrap` /
-        :class:`~lossratio.MonteCarlo` overlay a loss-side bootstrap SE
-        onto the *projected* cells of ``$full`` (premium is *not*
-        bootstrapped) and recompute ``ratio_se`` / ``ratio_cv`` /
+        :class:`~lossratio.ParametricBootstrap` overlay a loss-side
+        bootstrap SE onto the *projected* cells of ``$full`` (premium is
+        *not* bootstrapped) and recompute ``ratio_se`` / ``ratio_cv`` /
         ``ratio_ci_*`` from the bootstrap-derived ``loss_total_se``. The
-        overlay always uses the analytical-CL (Mack) paradigm regardless
-        of the loss ``method``, matching the loss models.
+        overlay follows the loss ``method`` (an ED headline gets an ED
+        bootstrap), so the band is centred on the same projection that
+        drives the point estimate.
     """
 
     method: str = "ed"
@@ -427,14 +428,20 @@ class RatioFit:
         from .bootstrap import _apply_bootstrap_overlay
         from .uncertainty import resolve_uncertainty
 
-        # The composition layer overlays a loss-side bootstrap SE using the
-        # analytical-CL (Mack) paradigm regardless of the loss `method`
-        # (resolve against method="cl"), matching the loss models. The loss
-        # `method` still drives the *point* projection on `$full`; only the
-        # SE overlay is the bootstrap. None / Analytical -> no overlay (the
-        # closed-form analytical ratio SE stands).
+        # The bootstrap SE overlay follows the loss `method`: an ED
+        # headline gets an ED bootstrap, a CL headline a CL bootstrap, so
+        # the predictive dispersion is centred on the *same* projection
+        # that drives the point estimate on `$full` (no ED-point /
+        # CL-band mismatch). The bootstrap paradigms honour the method
+        # (ResidualBootstrap -> nonparametric; ParametricBootstrap ->
+        # parametric). The one exception is Analytical(simulate=True) --
+        # the simulated Mack factor draw, which is CL-only by nature and
+        # stays a CL band regardless of the headline method. None /
+        # Analytical -> no overlay (the closed-form analytical ratio SE,
+        # itself method-consistent, stands).
         boots = resolve_uncertainty(
-            estimator.uncertainty, triangle, target="loss", method="cl",
+            estimator.uncertainty, triangle, target="loss",
+            method=estimator.method,
         )
         if boots is None:
             return full
@@ -593,6 +600,93 @@ class RatioFit:
             ]
         ).sort(keys)
         return mirror_output(out, self._output_type)
+
+    def ultimate_ratio_samples(self, *, per_group: bool = False):
+        """Per-replicate portfolio ultimate loss ratio (predictive draws).
+
+        For each bootstrap replicate, ``(sum of cohort ultimate sampled
+        loss) / (sum of cohort ultimate premium)``. Premium is fixed
+        (loss-only bootstrap), so only the numerator varies across
+        replicates. Use for an ultimate loss-ratio predictive histogram
+        (e.g. p50 / p75 / p95).
+
+        Returns ``None`` when the fit carries no sampling bootstrap
+        (``uncertainty=None`` / :class:`~lossratio.Analytical` -- the
+        closed-form ratio CI band stands; there are no draws to bin).
+
+        Parameters
+        ----------
+        per_group
+            ``False`` (default) pools all groups into one portfolio ratio
+            per replicate and returns a ``(n_replicates,)`` numpy array.
+            ``True`` returns a long DataFrame
+            ``[groups?, rep, ratio_ult_sampled]`` (per-group ratio), in
+            the fit's input format.
+
+        Notes
+        -----
+        * The numerator is *pre-tail* -- the bootstrap develops to the
+          last observed dev, not through the deterministic tail factor;
+          and the loss-side overlay is the CL (Mack) bootstrap regardless
+          of the loss ``method``, so the distribution is CL-centred even
+          when the headline point estimate is ED / SA.
+        * In the pooled (``per_group=False``) case groups are summed by
+          replicate index; the per-group bootstrap streams are treated as
+          independent (no cross-group correlation), matching the
+          bootstrap's own assumption.
+        """
+        boots = self.boots
+        samples = (
+            None if boots is None
+            else getattr(boots, "_ultimate_samples", None)
+        )
+        if samples is None:
+            return None
+
+        gcols = normalize_groups(self._groups)
+
+        # Portfolio ultimate premium per group -- fixed across replicates
+        # (loss-only bootstrap). Last non-null projection per cohort,
+        # summed over cohorts (mirrors `summary`'s ultimate aggregation).
+        prem_coh = (
+            self._df.sort([*gcols, "cohort", "dev"])
+            .group_by([*gcols, "cohort"], maintain_order=True)
+            .agg(pl.col("premium_proj").drop_nulls().last().alias("_p"))
+        )
+
+        if per_group:
+            prem_grp = (
+                prem_coh.group_by(gcols).agg(pl.col("_p").sum().alias("premium_ult"))
+                if gcols
+                else prem_coh.select(pl.col("_p").sum().alias("premium_ult"))
+            )
+            joined = (
+                samples.join(prem_grp, on=gcols, how="inner")
+                if gcols
+                else samples.join(prem_grp, how="cross")
+            )
+            out = (
+                joined.with_columns(
+                    (pl.col("loss_ult_sampled") / pl.col("premium_ult"))
+                    .alias("ratio_ult_sampled")
+                )
+                .select([*gcols, "rep", "ratio_ult_sampled"])
+                .sort([*gcols, "rep"])
+            )
+            return mirror_output(out, self._output_type)
+
+        # Pooled portfolio: sum loss over groups per replicate, divide by
+        # the total ultimate premium.
+        total_prem = prem_coh.select(pl.col("_p").sum()).item()
+        loss_per_rep = (
+            samples.group_by("rep")
+            .agg(pl.col("loss_ult_sampled").sum().alias("loss_ult"))
+            .sort("rep")
+        )
+        ratio = loss_per_rep.with_columns(
+            (pl.col("loss_ult") / total_prem).alias("ratio_ult_sampled")
+        )
+        return ratio.get_column("ratio_ult_sampled").to_numpy()
 
     @property
     def n_rows(self) -> int:
