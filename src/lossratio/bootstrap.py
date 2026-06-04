@@ -2641,6 +2641,7 @@ class BootstrapTriangle:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(kw_only=True)
 class Bootstrap:
     """Triangle-level bootstrap engine (internal config object).
 
@@ -2698,104 +2699,89 @@ class Bootstrap:
     >>> bt.summary
     """
 
-    def __init__(
-        self,
-        type:        str          = "analytical",
-        method:      str          = "cl",
-        residual:    str          = "cell",
-        process:     str          = "normal",
-        pooling:     str          = "pooled",
-        hat_adj:     bool         = True,
-        demean:      bool         = True,
-        tail:        str          = "auto",
-        min_pool:    int          = 5,
-        maturity:    Any          = None,
-        n_replicates: int         = 499,
-        seed:        int | None   = None,
-        alpha:       float        = 1.0,
-        quantile_ci: bool         = False,
-        keep_pseudo: bool         = False,
-    ) -> None:
-        self.type        = type
-        self.method      = method
-        self.residual    = residual
-        self.process     = process
-        self.pooling     = pooling
-        self.hat_adj     = hat_adj
-        self.demean      = demean
-        self.tail        = tail
-        self.min_pool    = min_pool
-        self.maturity    = maturity
-        self.n_replicates = n_replicates
-        self.seed        = seed
-        self.alpha       = alpha
-        self.quantile_ci = quantile_ci
-        self.keep_pseudo = keep_pseudo
+    type:         str        = "analytical"
+    method:       str        = "cl"
+    residual:     str        = "cell"
+    process:      str        = "normal"
+    pooling:      str        = "pooled"
+    hat_adj:      bool       = True
+    demean:       bool       = True
+    tail:         str        = "auto"
+    min_pool:     int        = 5
+    maturity:     Any        = None
+    n_replicates: int        = 499
+    seed:         int | None = None
+    alpha:        float      = 1.0
+    quantile_ci:  bool       = False
+    keep_pseudo:  bool       = False
 
+    def __post_init__(self) -> None:
         # ----- Argument-combination validation ----------------------------
-        if type not in ("analytical", "nonparametric", "parametric"):
+        if self.type not in ("analytical", "nonparametric", "parametric"):
             raise ValueError(
                 f"type must be one of 'analytical', 'nonparametric', "
-                f"'parametric', got {type!r}"
+                f"'parametric', got {self.type!r}"
             )
-        if method not in ("cl", "ed", "sa"):
+        if self.method not in ("cl", "ed", "sa"):
             raise ValueError(
-                f"method must be one of 'cl', 'ed', 'sa', got {method!r}"
+                f"method must be one of 'cl', 'ed', 'sa', got {self.method!r}"
             )
-        if residual not in ("cell", "link"):
+        if self.residual not in ("cell", "link"):
             raise ValueError(
-                f"residual must be 'cell' or 'link', got {residual!r}"
+                f"residual must be 'cell' or 'link', got {self.residual!r}"
             )
-        if process not in ("gamma", "od_pois", "normal"):
+        if self.process not in ("gamma", "od_pois", "normal"):
             raise ValueError(
                 f"process must be one of 'gamma', 'od_pois', 'normal', "
-                f"got {process!r}"
+                f"got {self.process!r}"
             )
-        if pooling not in ("pooled", "separated", "tail_pooled"):
+        if self.pooling not in ("pooled", "separated", "tail_pooled"):
             raise ValueError(
                 f"pooling must be 'pooled', 'separated' or 'tail_pooled', "
-                f"got {pooling!r}"
+                f"got {self.pooling!r}"
             )
 
         # type='analytical' is the Mack closed-form -> CL + Normal only.
-        if type == "analytical":
-            if method != "cl":
+        if self.type == "analytical":
+            if self.method != "cl":
                 raise ValueError(
                     "type='analytical' (Mack 1993 closed-form propagation) "
-                    f"implements only method='cl', got {method!r}."
+                    f"implements only method='cl', got {self.method!r}."
                 )
-            if process != "normal":
+            if self.process != "normal":
                 raise ValueError(
                     "type='analytical' (Mack 1993 closed-form propagation) "
-                    f"requires process='normal', got {process!r}."
+                    f"requires process='normal', got {self.process!r}."
                 )
         # ODP cell path (England-Verrall 1999/2002) needs a positivity-
         # preserving process; normal violates the ODP assumption.
-        if type == "nonparametric" and residual == "cell" \
-                and process == "normal":
+        if self.type == "nonparametric" and self.residual == "cell" \
+                and self.process == "normal":
             raise ValueError(
                 "residual='cell' (ODP path, England-Verrall 1999/2002) "
                 "requires a positivity-preserving process distribution. "
                 "Use process='gamma' (default) or 'od_pois'."
             )
         # ED + link residuals is mathematically incoherent.
-        if type == "nonparametric" and method == "ed" and residual == "link":
+        if self.type == "nonparametric" and self.method == "ed" \
+                and self.residual == "link":
             raise ValueError(
                 "method='ed' (exposure-driven additive recursion) requires "
                 "residual='cell'. ED + link residuals is not implemented."
             )
         # Additive ED / composite SA need a positivity-preserving process.
-        if type == "parametric" and method in ("ed", "sa") \
-                and process == "normal":
+        if self.type == "parametric" and self.method in ("ed", "sa") \
+                and self.process == "normal":
             raise ValueError(
-                f"type='parametric' with method={method!r} requires a "
+                f"type='parametric' with method={self.method!r} requires a "
                 "positivity-preserving process distribution. Use "
                 "process='gamma' (default) or 'od_pois'."
             )
 
-        if not isinstance(n_replicates, (int, np.integer)) or n_replicates < 1:
+        if not isinstance(self.n_replicates, (int, np.integer)) \
+                or self.n_replicates < 1:
             raise ValueError("`n_replicates` must be a positive integer.")
-        if not np.isfinite(alpha):
+        if not np.isfinite(self.alpha):
             raise ValueError("`alpha` must be a finite numeric value.")
 
     def fit(

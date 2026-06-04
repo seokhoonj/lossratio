@@ -582,6 +582,7 @@ def _loss_long_df(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(kw_only=True)
 class Loss:
     """Loss projection dispatcher (``"sa"`` / ``"ed"`` / ``"cl"``).
 
@@ -667,77 +668,61 @@ class Loss:
         * a callable ``f(triangle) -> BootstrapTriangle``.
     """
 
-    def __init__(
-        self,
-        method: str = "ed",
-        alpha: float = 1.0,
-        sigma_method: str = "locf",
-        premium_fit: PremiumFit | None = None,
-        premium_method: str = "ed",
-        premium_alpha: float = 1.0,
-        maturity: MaturityArg = "auto",
-        max_cv: float = 0.15,
-        max_rse: float = 0.05,
-        min_run: int = 2,
-        conf_level: float = 0.95,
-        regime: RegimeArg = None,
-        recent: int | None = None,
-        tail: TailArg = False,
-        bootstrap: Any = None,
-    ) -> None:
-        if method not in _VALID_METHODS:
+    method:         str                = "ed"
+    alpha:          float              = 1.0
+    sigma_method:   str                = "locf"
+    premium_fit:    PremiumFit | None  = None
+    premium_method: str                = "ed"
+    premium_alpha:  float              = 1.0
+    maturity:       MaturityArg        = "auto"
+    max_cv:         float              = 0.15
+    max_rse:        float              = 0.05
+    min_run:        int                = 2
+    conf_level:     float              = 0.95
+    regime:         RegimeArg          = None
+    recent:         int | None         = None
+    tail:           TailArg            = False
+    bootstrap:      Any                = None
+
+    def __post_init__(self) -> None:
+        if self.method not in _VALID_METHODS:
             raise ValueError(
-                f"method must be one of {_VALID_METHODS}, got {method!r}"
+                f"method must be one of {_VALID_METHODS}, got {self.method!r}"
             )
-        if premium_method not in _VALID_PREMIUM_METHODS:
+        if self.premium_method not in _VALID_PREMIUM_METHODS:
             raise ValueError(
                 f"premium_method must be one of {_VALID_PREMIUM_METHODS}, "
-                f"got {premium_method!r}"
+                f"got {self.premium_method!r}"
             )
-        if alpha != 1.0:
+        if self.alpha != 1.0:
             raise NotImplementedError(
-                f"alpha={alpha} not yet implemented; only alpha=1 is supported"
+                f"alpha={self.alpha} not yet implemented; only alpha=1 is supported"
             )
-        if premium_alpha != 1.0:
+        if self.premium_alpha != 1.0:
             raise NotImplementedError(
-                f"premium_alpha={premium_alpha} not yet implemented; "
+                f"premium_alpha={self.premium_alpha} not yet implemented; "
                 f"only alpha=1 is supported"
             )
-        if sigma_method not in VALID_SIGMA_METHODS:
+        if self.sigma_method not in VALID_SIGMA_METHODS:
             raise ValueError(
                 f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
-                f"got {sigma_method!r}"
+                f"got {self.sigma_method!r}"
             )
-        if not (0.0 < conf_level < 1.0):
+        if not (0.0 < self.conf_level < 1.0):
             raise ValueError(
-                f"conf_level must be in (0, 1), got {conf_level!r}"
+                f"conf_level must be in (0, 1), got {self.conf_level!r}"
             )
-        if premium_fit is not None and not isinstance(premium_fit, PremiumFit):
+        if self.premium_fit is not None and not isinstance(self.premium_fit, PremiumFit):
             raise TypeError(
                 "premium_fit must be a PremiumFit instance or None"
             )
-        _validate_recent(recent)
-        from .tail import validate_tail
-        validate_tail(tail)
+        _validate_recent(self.recent)
         # The tail is effective for every loss method: cl (multiplicative
         # f->1), ed (additive g->0), and sa (the tail of whichever stage is
         # active at the last development column -- post-maturity CL when a
         # switch is found, else ED).
-        self.method = method
-        self.alpha = alpha
-        self.sigma_method = sigma_method
-        self.premium_fit = premium_fit
-        self.premium_method = premium_method
-        self.premium_alpha = premium_alpha
-        self.maturity = maturity
-        self.max_cv = max_cv
-        self.max_rse = max_rse
-        self.min_run = min_run
-        self.conf_level = conf_level
-        self.regime = regime
-        self.recent = recent
-        self.tail = tail
-        self.bootstrap = bootstrap
+        from .tail import validate_tail
+        validate_tail(self.tail)
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the loss projection on a Triangle."""
