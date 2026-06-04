@@ -10,13 +10,13 @@ def test_load_experience_shape():
     # 4 coverages x 6 age_bands x 4 channels = 96 segments, each a
     # triangular grid of 36+35+...+1 = 666 cells -> 96 * 666 = 63936.
     assert df.height == 63936
-    # 18-column schema: 3 segment keys + M/Q/H/Y grain + measures.
+    # 17-column schema: 3 segment keys + M/Q/H/Y grain + measures.
     assert df.columns == [
         "coverage", "age_band", "channel",
         "uy", "uy_h", "uy_q", "uy_m",
         "cy", "cy_h", "cy_q", "cy_m",
         "dev_y", "dev_h", "dev_q", "dev_m",
-        "incr_loss", "incr_premium", "exposure",
+        "incr_loss", "incr_premium",
     ]
     assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]
     assert sorted(df["age_band"].unique().to_list()) == [

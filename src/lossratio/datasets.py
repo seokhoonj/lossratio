@@ -81,12 +81,6 @@ _CHANNELS: tuple[str, ...] = ("FC", "GA", "TM", "ON")
 _CHAN_W: tuple[float, ...] = (0.40, 0.30, 0.20, 0.10)  # premium mix
 _CHAN_LR: tuple[float, ...] = (0.90, 1.15, 1.05, 0.95)  # GA least-curated -> higher LR
 
-# Average monthly risk premium per policy (won) per coverage, used to
-# derive an integer `exposure` (policy count) consistent with premium.
-_RATE: dict[str, float] = {
-    "CI": 25_000.0, "CAN": 20_000.0, "HOS": 5_000.0, "SUR": 30_000.0,
-}
-
 _DEFAULT_SEED = 20260501
 _N_COHORTS = 36
 _K = 36
@@ -144,14 +138,13 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        18 columns: the segment keys ``coverage`` / ``age_band`` /
+        17 columns: the segment keys ``coverage`` / ``age_band`` /
         ``channel`` (str); the underwriting axis ``uy`` / ``uy_h`` /
         ``uy_q`` / ``uy_m`` (Date); the calendar axis ``cy`` / ``cy_h``
         / ``cy_q`` / ``cy_m`` (Date); the development axis ``dev_y`` /
         ``dev_h`` / ``dev_q`` / ``dev_m`` (int); and ``incr_loss`` /
-        ``incr_premium`` / ``exposure``. Pass directly to
-        :class:`Triangle` with ``groups="coverage"`` (or ``"age_band"``
-        / ``"channel"``).
+        ``incr_premium``. Pass directly to :class:`Triangle` with
+        ``groups="coverage"`` (or ``"age_band"`` / ``"channel"``).
     """
     rng = np.random.default_rng(seed)
     weights = _make_weights()
@@ -162,7 +155,6 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
         shift = _SHIFTS.get(coverage)
         shift_at = shift[0] if shift else None
         shift_scale = shift[1] if shift else 1.0
-        rate = _RATE[coverage]
 
         for ci in range(_N_COHORTS):
             # One premium-volume draw per (coverage, cohort); segments
@@ -201,7 +193,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                         )
 
                         # Real-world premium / loss are recorded in won
-                        # (integer); exposure is a policy count.
+                        # (integer).
                         records.append(
                             {
                                 "coverage":     coverage,
@@ -212,7 +204,6 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                                 "dev_m":        k + 1,
                                 "incr_loss":    round(incr_loss),
                                 "incr_premium": round(incr_premium),
-                                "exposure":     round(incr_premium / rate),
                             }
                         )
 
@@ -228,7 +219,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
         "uy", "uy_h", "uy_q", "uy_m",
         "cy", "cy_h", "cy_q", "cy_m",
         "dev_y", "dev_h", "dev_q", "dev_m",
-        "incr_loss", "incr_premium", "exposure",
+        "incr_loss", "incr_premium",
     )
 
 
