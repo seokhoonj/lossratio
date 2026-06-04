@@ -27,10 +27,11 @@ Working components:
   inline. (`dev_m` is auto-derived from `uy_m` and `cy_m` if absent.) Cumulative is
   the unmarked default (`loss`, `premium`, `ratio`); per-period values
   carry an `incr_` prefix (`incr_loss`, `incr_premium`, `incr_ratio`).
-- `CL`, `ED`, `Ratio` — sklearn-style estimators for chain ladder,
-  exposure-driven, and stage-adaptive loss-ratio projection
-  (`fit(triangle)` → `CLFit` / `EDFit` / `RatioFit` with `summary()`,
-  `df` projection frame, and per-cohort SE / CV).
+- `ChainLadder`, `ExposureDriven`, `StageAdaptive`, `Ratio` —
+  sklearn-style estimators for chain-ladder, exposure-driven, and
+  stage-adaptive projection. The three loss models return a `LossFit`,
+  `Ratio` returns a `RatioFit`; each exposes `summary()`, a `df`
+  projection frame, and per-cohort SE / CV.
 - `Triangle.link()` — builds the long-format `Link` table (one row
   per cohort × adjacent dev pair). Method chain `tri.link().ata()` /
   `tri.link().intensity()` returns paired factor-level diagnostics
@@ -45,8 +46,10 @@ Working components:
   and by-diagonal A/E Error summaries — `ae_err = actual /
   predicted - 1`).
 
-Not yet implemented in Python: `Calendar` / `Total`
-aggregations and the `Convergence` diagnostic.
+- `Calendar` / `Total` — calendar-year and portfolio-total
+  aggregations of a Triangle. `RatioFit.convergence()` returns a
+  `Convergence` diagnostic (the development period at which the
+  projected loss ratio stabilises).
 
 ## Quick Start
 
