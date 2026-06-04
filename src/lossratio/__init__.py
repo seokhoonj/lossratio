@@ -1,9 +1,11 @@
 """lossratio -- loss ratio analytics for long-term health insurance.
 
-Sibling R package:
+Cohort development triangles, projection (CL / ED / SA), uncertainty
+quantification, regime detection, and backtesting.
 
-* Source:        https://github.com/seokhoonj/lossratio-r
-* Documentation: https://seokhoonj.github.io/lossratio-r/
+See also
+--------
+Sibling R package: https://github.com/seokhoonj/lossratio-r
 """
 
 from ._period import derive_grain_columns
