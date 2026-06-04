@@ -1268,16 +1268,19 @@ class LossFit:
             .agg(pl.col("loss_obs").last().alias("latest"))
         )
 
-        # Ultimate (max dev) per cohort + the matching SE columns.
+        # Ultimate per cohort = last *non-null* projection (matches the
+        # RatioFit policy). drop_nulls() is a no-op when every cohort
+        # projects to full development, and guards a fit that leaves
+        # trailing null cells past a cohort's reach.
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").last().alias("loss_ult"),
-                pl.col("loss_proc_se").last().alias("loss_proc_se"),
-                pl.col("loss_param_se").last().alias("loss_param_se"),
-                pl.col("loss_total_se").last().alias("loss_total_se"),
-                pl.col("loss_total_cv").last().alias("loss_total_cv"),
+                pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
+                pl.col("loss_proc_se").drop_nulls().last().alias("loss_proc_se"),
+                pl.col("loss_param_se").drop_nulls().last().alias("loss_param_se"),
+                pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
+                pl.col("loss_total_cv").drop_nulls().last().alias("loss_total_cv"),
             )
         )
 

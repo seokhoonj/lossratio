@@ -650,13 +650,16 @@ class PremiumFit:
         df = self._df
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]
 
+        # Ultimate per cohort = last *non-null* projection (matches the
+        # RatioFit policy; no-op when every cohort projects to full
+        # development).
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("premium_proj").last().alias("premium_ult"),
-                pl.col("premium_total_se").last().alias("premium_total_se"),
-                pl.col("premium_total_cv").last().alias("premium_total_cv"),
+                pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
+                pl.col("premium_total_se").drop_nulls().last().alias("premium_total_se"),
+                pl.col("premium_total_cv").drop_nulls().last().alias("premium_total_cv"),
             )
             .sort(keys)
         )

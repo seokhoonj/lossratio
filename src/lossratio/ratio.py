@@ -535,8 +535,8 @@ class RatioFit:
             )
         )
 
-        # segment_wise fits produce trailing null cells past each
-        # segment's reach (R parity), so "ultimate" must look at the
+        # A fit can leave trailing null cells past a cohort's reach
+        # (e.g. segment-bridged regimes), so "ultimate" must look at the
         # last non-null projection per cohort, not the last row.
         ultimate = (
             df.sort(keys + ["dev"])
