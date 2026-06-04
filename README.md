@@ -186,7 +186,8 @@ library(lossratio)
 
 Seokhoon Joo
 ([@seokhoonj](https://github.com/seokhoonj),
-<seokhoonj@gmail.com>) — also maintains the sibling R package.
+<seokhoonj@gmail.com>) — also maintains the
+[R package](https://github.com/seokhoonj/lossratio-r).
 
 ## License
 
