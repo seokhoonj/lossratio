@@ -438,11 +438,10 @@ def derive_grain_columns(df: Any) -> Any:
             "derive_grain_columns requires both 'uy_m' and 'cy_m' columns."
         )
 
-    # Coerce uy_m / cy_m to Date (no-op if already Date).
-    df_pl = df_pl.with_columns(
-        pl.col("uy_m").cast(pl.Date),
-        pl.col("cy_m").cast(pl.Date),
-    )
+    # Coerce uy_m / cy_m to Date -- parses Date / ISO string / integer
+    # yyyymm|yyyymmdd|yyyy and raises on anything else (no silent
+    # integer-as-days-since-epoch miscoercion).
+    df_pl = coerce_cols_to_date(df_pl, ["uy_m", "cy_m"])
 
     # Underwriting grain Dates: uy / uy_h / uy_q.
     df_pl = df_pl.with_columns(

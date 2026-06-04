@@ -27,6 +27,7 @@ from typing import Any
 import polars as pl
 
 from ._io import detect_input_type, mirror_output, to_polars
+from ._period import coerce_cols_to_date
 
 REQUIRED_COLS = ("uy_m", "cy_m", "incr_loss", "incr_premium")
 
@@ -73,9 +74,11 @@ def validate_experience(df: Any) -> Any:
             f"Required: {list(REQUIRED_COLS)}"
         )
 
+    # Parse Date / ISO string / integer yyyymm|yyyymmdd|yyyy and reject
+    # anything else (the same front-door coercion as Triangle) -- avoids
+    # a plain cast silently reading an integer as days-since-epoch.
+    df_pl = coerce_cols_to_date(df_pl, ["cy_m", "uy_m"])
     df_pl = df_pl.with_columns(
-        pl.col("cy_m").cast(pl.Date),
-        pl.col("uy_m").cast(pl.Date),
         pl.col("incr_loss").cast(pl.Float64),
         pl.col("incr_premium").cast(pl.Float64),
     )
