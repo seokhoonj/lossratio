@@ -63,40 +63,6 @@ class EDivisiveResult(NamedTuple):
     p_values: list[float]
 
 
-def _energy_statistic(D: np.ndarray, left: np.ndarray, right: np.ndarray) -> float:
-    """Compute the scaled energy statistic Q-hat for two segments.
-
-    Q-hat = (n_x * n_y) / (n_x + n_y) * E(X, Y)
-
-    where E is the U-statistic energy distance:
-
-        E(X, Y) = 2 * mean_{i,j} D[X_i, Y_j]
-                  - mean_{i!=j} D[X_i, X_j]
-                  - mean_{i!=j} D[Y_i, Y_j]
-
-    All three terms exclude the i=j diagonal (which is 0 anyway for
-    Euclidean distance).
-    """
-    n_x = len(left)
-    n_y = len(right)
-
-    if n_x < 2 or n_y < 2:
-        return -np.inf
-
-    # Cross-term — full matrix average (no diagonal exclusion needed
-    # because i and j index disjoint sets)
-    cross = 2.0 * D[np.ix_(left, right)].mean()
-
-    # Within-X term — sum of all entries divided by n_x*(n_x-1) excludes
-    # the (zero) diagonal automatically because diagonal contributes 0
-    within_x = D[np.ix_(left, left)].sum() / (n_x * (n_x - 1))
-    within_y = D[np.ix_(right, right)].sum() / (n_y * (n_y - 1))
-
-    e_stat = cross - within_x - within_y
-    q_hat = (n_x * n_y) / (n_x + n_y) * e_stat
-    return float(q_hat)
-
-
 def _grid_for_segment(
     n: int, min_size: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

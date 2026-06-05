@@ -268,11 +268,6 @@ class Link:
         """Optional WLS weight column name (or ``None``)."""
         return self._weight
 
-    @property
-    def _has_premium(self) -> bool:
-        """Backward-compat alias for dual-mode detection."""
-        return self._premium is not None
-
     def ata(
         self,
         sigma_method: str = "locf",
