@@ -515,7 +515,7 @@ class Triangle:
         n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "segment_bridged",
+        treatment: str = "segment_borrowed",
         window_floor: int | None = None,
         fdr: bool = False,
         edge_scan: bool = False,

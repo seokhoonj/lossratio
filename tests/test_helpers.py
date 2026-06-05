@@ -26,7 +26,7 @@ def test_regime_at_single_string_change():
     assert isinstance(r, lr.Regime)
     assert r.method == "manual"
     assert r.breakpoints == [date(2024, 7, 1)]
-    assert r.treatment == "segment_bridged"
+    assert r.treatment == "segment_borrowed"  # default treatment
 
 
 def test_regime_at_accepts_date_and_datetime():

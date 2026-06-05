@@ -1367,7 +1367,7 @@ class Regime:
         n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "segment_bridged",
+        treatment: str = "segment_borrowed",
         window_floor: int | None = None,
         fdr: bool = False,
         edge_scan: bool = False,
@@ -1759,7 +1759,7 @@ class Regime:
         change: Any,
         *,
         groups: Mapping[str, Sequence[Any]] | None = None,
-        treatment: str = "segment_bridged",
+        treatment: str = "segment_borrowed",
     ) -> "Regime":
         """Build a :class:`Regime` from explicit, user-supplied change points.
 
@@ -1780,18 +1780,18 @@ class Regime:
             aligned 1:1 with ``change``. Required when the Triangle is
             grouped and different groups carry different change points.
         treatment
-            Regime application mode. Both modes mask the triangle to a
-            *bridged* development band -- each segment's mini-triangle wall
-            (``dev >= max_cal - seg_last + 1``) widened by a
-            calendar-diagonal bridge to the next segment's first-cohort
-            midpoint dev, which closes the factor gaps at the segment
-            boundaries so every cohort projects to full development.
-            ``"segment_bridged"`` (default) pools the whole band into a
-            single factor set (the development pattern is shared across
-            regimes). ``"segment_bridged_borrowed"`` estimates factors per
-            segment (early-dev factors stay regime-specific) and borrows
-            the late-dev factors a segment cannot reach from a donor
-            segment that can.
+            Regime application mode.
+            ``"segment_borrowed"`` (default) masks each segment's RAW
+            mini-triangle wall (``dev >= max_cal - seg_last + 1``, no bridge
+            widening), estimates factors per segment, and borrows the
+            late-dev factors a young segment cannot reach from an older
+            donor -- so the seam carries no implicitly-pooled pre-change
+            cells. The two ``*_bridged*`` modes instead widen each wall with
+            a calendar-diagonal bridge to the next segment's first-cohort
+            midpoint dev: ``"segment_bridged"`` pools the whole bridged band
+            into a single factor set (development pattern shared across
+            regimes); ``"segment_bridged_borrowed"`` estimates per segment
+            and borrows over the bridged band.
 
         Returns
         -------
@@ -1864,7 +1864,7 @@ class Regime:
         n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "segment_bridged",
+        treatment: str = "segment_borrowed",
         window_floor: int | None = None,
         fdr: bool = False,
         edge_scan: bool = False,
@@ -2083,7 +2083,7 @@ class Regime:
         )
         return Regime._manual(
             changes_df=acc,
-            treatment=getattr(self, "treatment", "segment_bridged"),
+            treatment=getattr(self, "treatment", "segment_borrowed"),
             groups=self.groups,
         )
 
@@ -2566,7 +2566,12 @@ def _apply_regime_filter(
     segment boundaries so a continuous factor run covers every dev and
     every cohort projects to full development.
 
-    - ``"segment_bridged"`` (default): the masked band drops its
+    - ``"segment_borrowed"`` (default): masks each segment's RAW wall (no
+      bridge widening) and keeps ``segment_id``, so the fit dispatcher
+      routes to per-segment estimation + donor borrow over the narrower
+      band.
+
+    - ``"segment_bridged"``: the bridged masked band drops its
       ``segment_id`` tag so downstream estimation pools the band into a
       single factor set. This function returns the pooled masked
       triangle directly.

@@ -84,13 +84,13 @@ def test_apply_regime_filter_no_breakpoints_passthrough():
 
 
 def test_apply_regime_filter_band_masks_cells_keeps_cohorts():
-    """`segment_bridged` (default) masks the triangle to the bridged
-    development band: it keeps *all* cohorts but drops pre-regime
-    early-dev cells, so the result has fewer rows than the input and no
-    ``segment_id`` column (the pooled band carries no per-segment tag)."""
+    """`segment_bridged` masks the triangle to the bridged development
+    band: it keeps *all* cohorts but drops pre-regime early-dev cells, so
+    the result has fewer rows than the input and no ``segment_id`` column
+    (the pooled band carries no per-segment tag)."""
     tri = _sur_triangle()
     orig = tri.to_polars()
-    r = lr.Regime.at(change="2024-07-01")
+    r = lr.Regime.at(change="2024-07-01", treatment="segment_bridged")
     assert r.treatment == "segment_bridged"
     filtered = _apply_regime_filter(tri, r).to_polars()
     # All cohorts preserved -- the band masks cells, not whole cohorts.
@@ -294,7 +294,7 @@ def test_segment_bridged_pooled_fit_drops_segment_id():
     """The pooled `segment_bridged` treatment estimates one factor set
     over the masked band, so the fit output carries no segment_id."""
     tri = _sur_triangle()
-    r = lr.Regime.at(change="2024-07-01")  # default: segment_bridged
+    r = lr.Regime.at(change="2024-07-01", treatment="segment_bridged")
     fit = lr.Ratio(method="cl", loss_regime=r, premium_regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" not in df.columns
