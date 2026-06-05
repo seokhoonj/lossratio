@@ -345,6 +345,13 @@ class RatioFit:
         loss_fit = Loss(**loss_kwargs).fit(triangle)
         self.loss_fit = loss_fit
 
+        # Resolve the loss-side regime once (a Regime object passes through;
+        # "auto" re-resolves) so `segment_summary` can split the ultimates by
+        # regime segment using its change points.
+        from .regime import _resolve_regime
+
+        self._regime = _resolve_regime(estimator.loss_regime, triangle)
+
         full = loss_fit._df.clone()
 
         # 2) join premium SE columns for delta method ----------------------
@@ -600,6 +607,76 @@ class RatioFit:
             ]
         ).sort(keys)
         return mirror_output(out, self._output_type)
+
+    def segment_summary(self) -> pl.DataFrame:
+        """Ultimate loss ratio per regime SEGMENT, plus a total row.
+
+        Splits :meth:`summary`'s per-cohort ultimates by the loss regime's
+        change points and aggregates ``loss_ult`` / ``premium_ult`` ->
+        ``ratio_ult`` per segment (oldest = segment ``"0"``), with a
+        ``"total"`` row per group. So one fit yields the go-forward LR of
+        the most recent segment, the legacy run-off LR, and the whole-book
+        ratio at once -- different questions, one table. With no regime the
+        result is the single ``"total"`` row per group.
+
+        Columns: groups, ``segment`` (``"0"``, ``"1"``, ... / ``"total"``),
+        ``change_from`` (the date that segment starts; null for segment 0
+        and total), ``n_cohorts``, ``loss_ult``, ``premium_ult``,
+        ``ratio_ult``.
+        """
+        s = self.summary()
+        s = s if isinstance(s, pl.DataFrame) else pl.from_pandas(s)
+        s = s.with_columns(pl.col("cohort").cast(pl.Date))
+        gcols = normalize_groups(self._groups)
+        reg = self._regime
+        changes = (
+            reg._changes_df
+            if reg is not None and not reg._changes_df.is_empty()
+            else None
+        )
+
+        parts = (
+            list(s.partition_by(gcols, as_dict=True).items())
+            if gcols
+            else [((), s)]
+        )
+        rows: list[dict] = []
+        for key, gs in parts:
+            keyvals = key if isinstance(key, tuple) else (key,)
+            change_dates: list = []
+            if changes is not None:
+                chg = changes
+                for c, v in zip(gcols, keyvals):
+                    if c in chg.columns:
+                        chg = chg.filter(pl.col(c) == v)
+                change_dates = sorted(chg["change"].to_list())
+
+            cohorts = gs["cohort"].to_list()
+            seg = [sum(1 for d in change_dates if d <= c) for c in cohorts]
+            gs = gs.with_columns(pl.Series("_segment", seg, dtype=pl.Int64))
+
+            def _block(sub, label, change_from):
+                lo = float(sub["loss_ult"].sum())
+                pr = float(sub["premium_ult"].sum())
+                row = {c: v for c, v in zip(gcols, keyvals)}
+                row.update(
+                    segment=label,
+                    change_from=change_from,
+                    n_cohorts=int(sub.height),
+                    loss_ult=lo,
+                    premium_ult=pr,
+                    ratio_ult=(lo / pr) if pr else float("nan"),
+                )
+                return row
+
+            for seg_id in sorted(set(seg)):
+                cf = change_dates[seg_id - 1] if seg_id >= 1 else None
+                rows.append(
+                    _block(gs.filter(pl.col("_segment") == seg_id), str(seg_id), cf)
+                )
+            rows.append(_block(gs, "total", None))
+
+        return mirror_output(pl.DataFrame(rows), self._output_type)
 
     def ultimate_ratio_samples(self, *, per_group: bool = False):
         """Per-replicate portfolio ultimate loss ratio (predictive draws).

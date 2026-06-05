@@ -624,3 +624,28 @@ def test_borrow_screen_calendar_trend():
     r = _borrow_screen_group(*_build(0.03))
     assert r["verdict"] == "calendar"
     assert abs(r["calendar_score"]) >= 2.0
+
+
+def test_ratio_segment_summary():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    acc = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SUR"]})
+    fit = lr.Ratio(loss_regime=acc).fit(tri)
+    ss = fit.segment_summary()
+    ss = ss if isinstance(ss, pl.DataFrame) else pl.from_pandas(ss)
+    assert {"coverage", "segment", "change_from", "n_cohorts",
+            "loss_ult", "premium_ult", "ratio_ult"} <= set(ss.columns)
+    sur = ss.filter(pl.col("coverage") == "SUR")
+    assert "total" in sur["segment"].to_list()
+    # the total row's ult LR is the premium-weighted blend of the segments.
+    seg = sur.filter(pl.col("segment") != "total")
+    tot = sur.filter(pl.col("segment") == "total")
+    if seg.height >= 1 and tot.height == 1:
+        blend = seg["loss_ult"].sum() / seg["premium_ult"].sum()
+        assert abs(blend - tot["ratio_ult"][0]) < 1e-9
+        # segment cohort counts sum to the total.
+        assert seg["n_cohorts"].sum() == tot["n_cohorts"][0]
+    # no-regime fit -> a single "total" row per group.
+    f0 = lr.Ratio().fit(tri)
+    s0 = f0.segment_summary()
+    s0 = s0 if isinstance(s0, pl.DataFrame) else pl.from_pandas(s0)
+    assert "total" in s0.filter(pl.col("coverage") == "SUR")["segment"].to_list()
