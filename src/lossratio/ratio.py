@@ -22,6 +22,7 @@ from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
     from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
+    from .curve import Curve
     from .triangle import Triangle
 
 
@@ -651,8 +652,10 @@ class RatioFit:
                         chg = chg.filter(pl.col(c) == v)
                 change_dates = sorted(chg["change"].to_list())
 
+            from ._band import _assign_segments
+
             cohorts = gs["cohort"].to_list()
-            seg = [sum(1 for d in change_dates if d <= c) for c in cohorts]
+            seg = _assign_segments(cohorts, change_dates)
             gs = gs.with_columns(pl.Series("_segment", seg, dtype=pl.Int64))
 
             def _block(sub, label, change_from):
@@ -677,6 +680,57 @@ class RatioFit:
             rows.append(_block(gs, "total", None))
 
         return mirror_output(pl.DataFrame(rows), self._output_type)
+
+    def segment_band(
+        self, *, curve: "Curve | None" = None, tol: float = 1e-4
+    ) -> pl.DataFrame:
+        """Honest go-forward band for the recent regime segment's tail.
+
+        The recent segment's unobserved tail is projected two independent
+        ways. The *borrow leg* (read verbatim from
+        :meth:`segment_summary`) borrows the donor segment's development
+        shape; the *curve leg* extrapolates the recent segment's OWN
+        intensity ``g_k`` with a parametric :class:`~lossratio.Curve`. The
+        SPREAD between the two ultimate loss ratios is the band: narrow
+        when the legs agree (a mature recent segment, trustworthy), wide
+        when they diverge (a young segment, assumption territory).
+
+        One row per group that has a regime change, about the newest
+        segment only (latest-only treatment). Groups without a change
+        produce no row; with no regime at all the result is an empty,
+        correctly-typed frame (never a whole-book fabrication).
+
+        The method is fully additive: it reads :meth:`segment_summary`
+        and the fit frame, never writes back, and does not change any
+        existing output. A run that never calls it is byte-identical.
+
+        Parameters
+        ----------
+        curve
+            Curve spec for the curve leg. ``None`` (default) uses
+            ``Curve(target="intensity", law="inverse_power",
+            min_points=3)``. A spec with ``target != "intensity"`` raises
+            ``ValueError`` (the band formula is ``g_k``-based).
+        tol
+            Reserved for forward-compatibility with the curve contract.
+            Currently inert: the per-position evaluation never truncates
+            the premium-weighted tail sum.
+
+        Returns
+        -------
+        DataFrame
+            One row per regime group with the borrow / curve ultimate loss
+            ratios, the band (``band_lo`` / ``band_hi`` / ``band_width`` /
+            ``band_status``), and the curve fit's provenance
+            (``curve_n_points`` / ``curve_under_determined`` /
+            ``curve_reason`` / ``curve_diverged`` /
+            ``curve_alt_ratio_ult``). Curve-leg columns are null on a
+            degenerate fit (``band_status="degenerate"``), with the borrow
+            leg always preserved.
+        """
+        from ._band import _segment_band
+
+        return _segment_band(self, curve=curve, tol=tol)
 
     def ultimate_ratio_samples(self, *, per_group: bool = False):
         """Per-replicate portfolio ultimate loss ratio (predictive draws).
