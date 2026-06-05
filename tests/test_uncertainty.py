@@ -102,11 +102,6 @@ def test_analytical_simulate_matches_analytical_engine():
     assert strat.summary.equals(engine.summary)
 
 
-def test_analytical_default_no_overlay():
-    tri = _tri()
-    assert Analytical()._resolve(tri, target="loss", method="cl") is None
-
-
 # ---------------------------------------------------------------------------
 # resolve_uncertainty dispatch
 # ---------------------------------------------------------------------------

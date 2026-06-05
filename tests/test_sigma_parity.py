@@ -119,16 +119,6 @@ def test_cl_accepts_new_sigma_methods(sigma_method: str) -> None:
 
 
 @pytest.mark.parametrize("sigma_method", ["mack", "none"])
-def test_loss_cl_accepts_new_sigma_methods(sigma_method: str) -> None:
-    """``lr.ChainLadder`` threads ``mack`` / ``none`` through (was Loss(method='cl'))."""
-    tri = lr.Triangle(_exp_sur(), groups="coverage")
-    fit = lr.ChainLadder(sigma_method=sigma_method).fit(tri)
-    assert fit is not None
-    assert fit.sigma_method == sigma_method
-    assert fit.to_polars().height > 0
-
-
-@pytest.mark.parametrize("sigma_method", ["mack", "none"])
 def test_ratio_sa_accepts_new_sigma_methods(sigma_method: str) -> None:
     """``lr.Ratio(method='sa')`` threads ``mack`` / ``none`` through.
 

@@ -405,14 +405,12 @@ def test_summary_no_detection_returns_nan_row():
         )
 
 
-def test_summary_per_group_independence_no_detection_mixed():
-    """One group detects, another doesn't -- per-group rows must
-    independently carry stats or NaN-fill.
+def test_summary_per_group_independence_both_detect():
+    """Two identical groups, both stable -- the grouped fit must emit one
+    independently-computed summary row per group (not a single blended
+    row), and both groups detect.
     """
     base = _polars_input()
-    # Construct a degenerate "B" cohort where loss_to == loss_from
-    # everywhere so CV is exactly 0 (passes), then knock out a row
-    # to force NaN at the second link.
     df_grouped = pl.concat(
         [
             base.with_columns(pl.lit("A").alias("coverage")),

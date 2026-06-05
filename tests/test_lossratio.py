@@ -1,4 +1,4 @@
-"""Sanity tests for the placeholder package."""
+"""Sanity tests for the package import and version surface."""
 
 from pathlib import Path
 
@@ -9,7 +9,9 @@ import lossratio as lr
 
 
 def test_import():
-    assert lossratio is not None
+    # The headline public estimators must be importable from the top level.
+    assert hasattr(lossratio, "Triangle")
+    assert hasattr(lossratio, "Ratio")
 
 
 def test_version_attribute_present():
@@ -19,9 +21,9 @@ def test_version_attribute_present():
 
 
 # ---------------------------------------------------------------------------
-# Summary schema parity — R uses role-prefixed columns (loss_ult,
-# premium_ult), not generic `ultimate*`. Smoke test on the dispatcher
-# layer so any future drift is caught at the public API boundary.
+# Summary schema — role-prefixed columns (loss_ult, premium_ult), not
+# generic `ultimate*`. Smoke test on the dispatcher layer so any future
+# drift is caught at the public API boundary.
 # ---------------------------------------------------------------------------
 
 
