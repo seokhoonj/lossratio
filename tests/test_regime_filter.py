@@ -549,3 +549,27 @@ def test_segment_bridged_borrowed_dispatch_into_per_segment_fit():
 def test_regime_at_rejects_unknown_treatment():
     with pytest.raises(ValueError, match="treatment must be one of"):
         lr.Regime.at(change="2024-07-01", treatment="not_a_mode")
+
+
+def test_tail_with_segment_borrowed_raises():
+    """`tail` + a segment-borrowed treatment is rejected, not silently
+    ignored. Each segment is already projected to full development via the
+    donor borrow, and a per-segment tail beyond full development is not yet
+    wired -- so the combination raises rather than dropping the tail
+    silently (which would mislead the user into thinking a tail was applied).
+    """
+    tri = _sur_triangle()
+    r = lr.Regime.at(change="2024-07-01")  # default segment_borrowed
+    for est in (
+        lr.Ratio(loss_regime=r, tail=lr.Tail()),
+        lr.ChainLadder(regime=r, tail=lr.Tail()),
+        lr.Premium(regime=r, tail=lr.Tail()),
+    ):
+        with pytest.raises(NotImplementedError, match="tail.*not supported"):
+            est.fit(tri)
+    # segment_bridged_borrowed is rejected the same way.
+    rb = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
+    with pytest.raises(NotImplementedError):
+        lr.Ratio(loss_regime=rb, tail=lr.Tail()).fit(tri)
+    # No tail -> the segment fit runs normally.
+    assert lr.Ratio(loss_regime=r).fit(tri).to_polars().height > 0

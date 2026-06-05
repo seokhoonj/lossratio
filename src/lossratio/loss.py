@@ -815,6 +815,15 @@ class LossFit:
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
             and regime.breakpoints
         ):
+            if estimator.tail is not False:
+                raise NotImplementedError(
+                    f"`tail` is not supported with the {regime.treatment!r} "
+                    "regime treatment: each segment is already projected to "
+                    "full development via the donor borrow, and a per-segment "
+                    "convergence-gated tail beyond full development is not yet "
+                    "wired. Drop `tail`, or read the borrow-vs-curve tail "
+                    "uncertainty from RatioFit.segment_band()."
+                )
             return cls._segment_borrowed_fit(triangle, estimator, regime)
 
         triangle = _apply_regime_filter(triangle, regime)
