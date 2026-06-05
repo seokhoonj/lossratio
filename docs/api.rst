@@ -69,6 +69,12 @@ API 레퍼런스
 .. autoclass:: lossratio.Tail
    :members:
 
+.. autoclass:: lossratio.Curve
+   :members:
+
+.. autoclass:: lossratio.CurveResult
+   :members:
+
 .. autoclass:: lossratio.LossFit
    :members:
 

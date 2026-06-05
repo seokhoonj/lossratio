@@ -168,7 +168,7 @@ df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).he
 df_sur = df.filter(pl.col("coverage") == "SUR")
 tri = lr.Triangle(df_sur, groups="coverage")
 tri
-#> <Triangle: 1 groups, 36 cohorts, grain=M, 666 rows>
+#> <Triangle: 666 rows, 1 groups, 36 cohorts x 36 devs (M)>
 ```
 
 `groups` 인자에는 그룹을 나누는 열을 넘깁니다. 여러 담보를 한꺼번에
