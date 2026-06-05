@@ -530,7 +530,7 @@ class PremiumFit:
         # Diverged groups carry no `_tail` columns -> diagonal union (only
         # when a tail is requested; the default path stays byte-identical).
         if tail is not False:
-            self._df = pl.concat(parts, how="diagonal") if parts else pl.DataFrame()
+            self._df = pl.concat(parts, how="diagonal_relaxed") if parts else pl.DataFrame()
             if groups is None:
                 self.premium_tail_factor = factor_map.get(None, 1.0)
                 self.premium_tail_diverged = diverged_map.get(None, False)
@@ -605,7 +605,7 @@ class PremiumFit:
                 ).with_columns(pl.lit(s, dtype=pl.Int64).alias("segment_id"))
                 parts.append(df_s)
 
-        combined = pl.concat(parts, how="diagonal")
+        combined = pl.concat(parts, how="diagonal_relaxed")
         # Match R fit_premium $full shape: full cohort × dev grid.
         self._df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort

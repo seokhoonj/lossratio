@@ -971,7 +971,7 @@ class LossFit:
             # Groups can converge or diverge independently, so a diverged
             # group carries no `_tail` columns while a convergent one does;
             # `diagonal` unions the schemas (missing tail cells -> null).
-            long_df = parts[0] if groups is None else pl.concat(parts, how="diagonal")
+            long_df = parts[0] if groups is None else pl.concat(parts, how="diagonal_relaxed")
             if groups is None:
                 self.tail_factor = factor_map[None]
                 self.tail_diverged = diverged_map[None]
@@ -1186,7 +1186,7 @@ class LossFit:
         self.boots = None
         self.ci_type = "analytical"
 
-        combined = pl.concat(long_parts, how="diagonal")
+        combined = pl.concat(long_parts, how="diagonal_relaxed")
         full_df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort
         )

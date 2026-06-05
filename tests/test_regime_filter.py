@@ -367,6 +367,20 @@ def test_segment_borrowed_is_the_default_per_segment_treatment():
     )
 
 
+def test_sa_segment_borrowed_coarse_grain_no_crash():
+    """SA + segment_borrowed at a coarse grain must not crash on the
+    per-segment diagonal concat. A short segment can yield an all-null
+    maturity column (Null dtype) that plain diagonal concat rejected against
+    another segment's Int64 -- fixed via diagonal_relaxed supertyping."""
+    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    tri = lr.Triangle(exp, grain="H")
+    r = lr.Regime.at(change="2024-07-01")
+    fit = lr.Ratio(method="sa", loss_regime=r, premium_regime=r).fit(tri)
+    df = fit.to_polars()
+    assert df.height > 0
+    assert "segment_id" in df.columns
+
+
 def test_segment_bridged_borrowed_loss_only():
     """Loss-side segment_bridged_borrowed works standalone without Ratio
     composition (keeps segment_id)."""
