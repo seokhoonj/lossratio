@@ -270,15 +270,19 @@ def _compute_tail_factor_one(
     else:  # finite numeric -- explicit user factor, no extrapolation
         return _TailResult(float(tail), None, None, 0, False, True, "user_factor")
 
-    f_vals = f_sel[np.isfinite(f_sel)]
-    if f_vals.size < 3 or np.any(f_vals <= 0):
+    finite = np.isfinite(f_sel)
+    f_finite = f_sel[finite]
+    if f_finite.size < 3 or np.any(f_finite <= 0):
         return _TailResult(1.0, cfg.curve, None, 0, False, False, "insufficient_factors")
-    pos = np.flatnonzero(f_vals > 1.0)
+    # Index the ORIGINAL f_sel so an interior NaN link keeps every later
+    # dev at its true 1-indexed position -- compacting f_sel first would
+    # shift the decay fit. Mirrors the g-path in compute_tail_increment.
+    pos = np.flatnonzero(finite & (f_sel > 1.0))
     if pos.size < 2:
         return _TailResult(1.0, cfg.curve, None, 0, False, False, "no_decaying_excess")
 
-    idx = (pos + 1).astype(float)  # 1-indexed positions (R `which` parity)
-    excess = f_vals[pos] - 1.0     # > 0 on the f > 1 subset
+    idx = (pos + 1).astype(float)  # 1-indexed dev positions in the original array
+    excess = f_sel[pos] - 1.0      # > 0 on the f > 1 subset
 
     a, b, rstd = _fit_decay(excess, idx, cfg.curve)
     if b >= _DIVERGENCE_SLOPE[cfg.curve]:

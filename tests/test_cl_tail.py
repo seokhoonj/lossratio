@@ -587,3 +587,22 @@ def test_premium_tail_method_invariant(tri):
     cl = lr.Premium(method="cl", tail=True).fit(tri)
     for g in ed.premium_tail_factor:
         assert ed.premium_tail_factor[g] == pytest.approx(cl.premium_tail_factor[g])
+
+
+def test_cl_tail_nan_gap_preserves_dev_positions():
+    """An interior NaN link keeps every later f at its true dev position.
+
+    Compacting f_sel before fitting would collapse the gap and shift the
+    decay fit left, so a gapped factor series (the same finite values, but
+    one of them pushed to a later dev by an interior NaN) must give a
+    DIFFERENT -- strictly heavier -- tail than the gapless series. A
+    position-collapse regression would make the two equal.
+    """
+    f_nogap = np.array([6.0, 2.0, 1.5, 1.3, 1.2, 1.15])
+    f_gap = np.array([6.0, np.nan, 2.0, 1.5, 1.3, 1.2, 1.15])
+    a = compute_tail_factor(f_nogap, Tail(), grain="M").factor
+    b = compute_tail_factor(f_gap, Tail(), grain="M").factor
+    assert a > 1.0 and b > 1.0
+    # Same excess spread over later dev -> slower decay -> heavier tail.
+    assert b > a
+    assert abs(b - a) > 1e-6

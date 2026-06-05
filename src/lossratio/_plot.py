@@ -29,6 +29,8 @@ def _resolve_grid(
     module (``default_ncol`` is the only per-module difference: 3 for the
     grid plots, 2 for validation, 1 for the stacked regime ribbons).
     """
+    if n <= 0:
+        return 1, 1
     if nrow is None and ncol is None:
         ncol = min(n, default_ncol)
         nrow = math.ceil(n / ncol)

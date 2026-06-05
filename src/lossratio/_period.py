@@ -26,6 +26,8 @@ Three concerns, all expressed in domain-neutral terms (no `cohort` /
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import polars as pl
 
