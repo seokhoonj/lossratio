@@ -596,3 +596,31 @@ def test_borrow_screen_method():
     scr = reg.borrow_screen(tri)
     assert {"coverage", "verdict", "shape_score", "calendar_score"} <= set(scr.columns)
     assert set(scr["verdict"].unique().to_list()) <= {"level", "shape", "insufficient"}
+
+
+def test_borrow_screen_calendar_trend():
+    from lossratio.regime import _borrow_screen_group
+
+    ata = np.array([1.8, 1.45, 1.25, 1.15, 1.08, 1.04, 1.02])
+    nd = 8
+
+    def _build(rate):
+        # same ATA both segments (no shape change), increments inflated
+        # proportionally to the calendar diagonal -> a calendar TREND.
+        rows, seg = [], []
+        for i in range(12):
+            r = [100.0]
+            for k in range(nd - 1):
+                cal = i + (k + 1)
+                r.append(r[-1] + (ata[k] - 1) * r[-1] * (1 + rate * cal))
+            row = np.array(r)
+            row[max(12 - i, 0):] = np.nan
+            rows.append(row)
+            seg.append(0 if i < 6 else 1)
+        return np.vstack(rows), np.arange(12), np.array(seg)
+
+    # no trend -> level; a calendar trend -> "calendar" (noise-aware t-stat).
+    assert _borrow_screen_group(*_build(0.0))["verdict"] == "level"
+    r = _borrow_screen_group(*_build(0.03))
+    assert r["verdict"] == "calendar"
+    assert abs(r["calendar_score"]) >= 2.0

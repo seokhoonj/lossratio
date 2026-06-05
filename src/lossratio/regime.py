@@ -997,7 +997,7 @@ def _assess_change(scalar: np.ndarray, change_idx: int) -> dict:
 # Borrow-safety / calendar-effect screen thresholds.
 _SCREEN_SHAPE = 0.10      # shape_score >= -> "shape" (borrow unsafe)
 _SCREEN_TREND = 0.05      # |shape_trend| >= -> strong shape trend
-_SCREEN_CAL = 0.10        # |calendar_score| >= -> "calendar" flag
+_SCREEN_CAL = 2.0         # |calendar_score| (t-stat) >= -> "calendar" flag
 _SCREEN_F_MEANINGFUL = 1.02  # only compare links where development f >= this
 _SCREEN_MIN_OVERLAP = 2
 
@@ -1022,19 +1022,22 @@ def _borrow_screen_group(
       and links are weighted by the min contributing cohort count.
     - Axis 2 (CALENDAR): residuals of cell increments vs the pooled ATA,
       regressed along the calendar diagonal after DEV-detrending (so a dev
-      mis-specification cannot masquerade as a calendar trend). A non-trivial
-      slope flags a calendar-year effect.
+      mis-specification cannot masquerade as a calendar trend).
+      ``calendar_score`` is the t-statistic of that slope (slope / SE) --
+      noise-aware, so a noisy coverage's spurious slope (large SE) deflates
+      while a real diagonal trend stands out. A calendar effect inflates the
+      donor's late-dev factors (measured on the shocked diagonal) that the
+      young segment borrows but will not itself experience.
 
     ``loss_cum`` is the (n_cohorts, n_dev) CUMULATIVE loss matrix (NaN where
     undeveloped, column k = dev index k); ``cohort_ranks`` the calendar
     order; ``seg_ids`` the per-cohort segment id (0=oldest). Returns native
-    scalars: ``shape_score``, ``shape_trend``, ``calendar_score``,
-    ``n_overlap``, ``verdict`` in {insufficient, shape, level}.
+    scalars: ``shape_score``, ``shape_trend``, ``calendar_score`` (t-stat),
+    ``n_overlap``, ``verdict`` in {insufficient, shape, calendar, level}.
 
-    The verdict is driven by the SHAPE axis (scale-invariant, calibrates
-    cleanly). ``calendar_score`` is REPORTED but EXPERIMENTAL -- its
-    slope-x-span scale is not yet calibrated across grains and over-fires on
-    real monthly triangles, so it does not gate the verdict.
+    Caveat: the calendar t-stat treats cells as independent, but triangle
+    residuals are autocorrelated along cohorts / diagonals, so it overstates
+    significance somewhat -- hence the conservative threshold (|t| >= 2).
     """
     loss_cum = np.asarray(loss_cum, dtype=float)
     cohort_ranks = np.asarray(cohort_ranks)
@@ -1141,21 +1144,38 @@ def _borrow_screen_group(
                 r_perp = r - x @ beta_r
                 cal_perp = cal - x @ beta_c
                 vc = float(np.sum(cal_perp ** 2))
-                if vc > 0:
+                n_cells = r.size
+                if vc > 0 and n_cells > 3:
                     slope = float(np.sum(cal_perp * r_perp) / vc)
-                    calendar_score = slope * float(cal.max() - cal.min())
+                    # calendar_score = the t-statistic of the (dev-detrended)
+                    # calendar slope: slope / SE, NOT slope x span. Using the
+                    # standard error makes it noise-aware -- a noisy coverage's
+                    # spurious slope has a large SE and deflates, while a real
+                    # diagonal trend stands out. (Same SE-vs-raw-magnitude fix
+                    # as the change kernel's t-test; slope x span over-fired
+                    # and even ranked noisy coverages above real ones.)
+                    resid = r_perp - slope * cal_perp
+                    sse = float(np.sum(resid ** 2))
+                    dof = n_cells - 3  # intercept + dev + calendar
+                    if sse > 0 and dof > 0:
+                        se = float(np.sqrt((sse / dof) / vc))
+                        if se > 0:
+                            calendar_score = slope / se
 
-    # Verdict is driven by the SHAPE axis (borrow safety), which is
-    # scale-invariant and calibrates cleanly. `calendar_score` is REPORTED
-    # as an experimental advisory only -- its absolute scale (slope x span)
-    # is not yet calibrated across grains, so it does not hard-gate the
-    # verdict (it over-fires on real monthly triangles).
+    # SHAPE axis (scale-invariant) gates first; then the CALENDAR axis as a
+    # noise-aware t-statistic (slope / SE) -- a calendar effect contaminates
+    # the donor's late-dev factors (measured on the shocked diagonal) that
+    # the young segment borrows but will not itself experience, a risk the
+    # shape axis structurally cannot see (the young segment has no late-dev
+    # to compare).
     if n_seg < 2 or not np.isfinite(shape_score) or n_overlap_total < _SCREEN_MIN_OVERLAP:
         verdict = "insufficient"
     elif shape_score >= _SCREEN_SHAPE or (
         np.isfinite(shape_trend) and abs(shape_trend) >= _SCREEN_TREND
     ):
         verdict = "shape"
+    elif np.isfinite(calendar_score) and abs(calendar_score) >= _SCREEN_CAL:
+        verdict = "calendar"
     else:
         verdict = "level"
 
@@ -2094,17 +2114,19 @@ class Regime:
         segments at this regime's change points and runs
         :func:`_borrow_screen_group`, returning one row per group with:
 
-        - ``verdict``: ``"level"`` (development shape unchanged -> borrowing
-          the donor's late-dev tail is SAFE), ``"shape"`` (the development
-          pattern changed -> borrowing is UNSAFE, widen the band instead),
-          or ``"insufficient"`` (too few segments / overlap to judge).
+        - ``verdict``: ``"level"`` (development shape unchanged AND no
+          calendar trend -> borrowing the donor's late-dev tail is SAFE),
+          ``"shape"`` (the development pattern changed -> borrowing UNSAFE,
+          widen the band), ``"calendar"`` (a calendar-year effect
+          contaminates the donor's late-dev factors -> borrowing risky), or
+          ``"insufficient"`` (too few segments / overlap to judge).
         - ``shape_score`` / ``shape_trend`` (Axis 1, segment-to-segment ATA
-          discrepancy -- the calibrated borrow-safety signal), and
-          ``calendar_score`` (Axis 2, dev-detrended diagonal residual trend
-          -- EXPERIMENTAL, reported but not yet calibrated to gate).
+          discrepancy) and ``calendar_score`` (Axis 2, the t-statistic of the
+          dev-detrended calendar-diagonal residual slope).
 
         A transparent guard for the borrow treatments: borrow where the
-        verdict is ``"level"``; treat ``"shape"`` with caution.
+        verdict is ``"level"``; treat ``"shape"`` / ``"calendar"`` with
+        caution.
         """
         tri_df = triangle.to_polars()
         if target not in tri_df.columns:
