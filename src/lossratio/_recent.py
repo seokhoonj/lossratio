@@ -11,15 +11,12 @@ development cells of older cohorts still leak into the wedge (that is
 intentional — strict cohort-axis cuts are the separate ``regime``
 argument).
 
-Python counterpart of R ``.apply_recent_filter`` (``R/utils.R``). R operates
-on the long-format ``Link`` table, one row per ``(cohort, link)`` pair,
-filtering rows by the calendar index of the link's *source* dev
-(``ata_from``). The numpy kernels here work on the
-``(n_cohorts, n_devs)`` value matrix, so the Python helper produces a
-boolean *link-level fit mask* of shape ``(n_cohorts, n_devs - 1)``:
-entry ``[i, k]`` is the link from dev ``k + 1`` to dev ``k + 2`` of
-cohort ``i``. The filter keys on the link's source cell ``(i, k)``,
-exactly as R keys on ``ata_from``.
+The numpy kernels here work on the ``(n_cohorts, n_devs)`` value matrix,
+so this helper produces a boolean *link-level fit mask* of shape
+``(n_cohorts, n_devs - 1)``: entry ``[i, k]`` is the link from dev
+``k + 1`` to dev ``k + 2`` of cohort ``i``. The filter keys on the
+link's *source* cell ``(i, k)`` -- i.e. the calendar diagonal of the
+dev the link starts from.
 """
 
 from __future__ import annotations
@@ -53,18 +50,16 @@ def recent_link_mask(
 
     A *link* ``k`` of cohort ``i`` runs from dev ``k + 1`` to dev
     ``k + 2``; it exists when both endpoint cells ``(i, k)`` and
-    ``(i, k + 1)`` are observed. R's ``.apply_recent_filter`` keys the
-    recent filter on the link's *source* dev (``ata_from``); the
-    calendar index of that source cell mirrors R's ``.cal_idx``::
+    ``(i, k + 1)`` are observed. The recent filter keys on the link's
+    *source* dev; the calendar index of that source cell is::
 
-        cal_idx = coh_rank + ata_from - 1 = (i + 1) + (k + 1) - 1
+        cal_idx = coh_rank + dev_from - 1 = (i + 1) + (k + 1) - 1
                 = i + k + 1
 
     A link is kept (``True``) when ``cal_idx > max_cal - recent``,
     where ``max_cal`` is the largest source calendar index over every
-    *existing* link — the latest calendar diagonal of the ``Link``
-    table, matching R (which derives ``max_cal`` from the ``Link`` rows,
-    not the full triangle).
+    *existing* link — the latest calendar diagonal among the links
+    themselves (not the full triangle).
 
     Parameters
     ----------
@@ -96,7 +91,7 @@ def recent_link_mask(
 
     i = np.arange(n_cohorts).reshape(-1, 1)
     k = np.arange(n_links).reshape(1, -1)
-    # Calendar index of the link's source cell (R's `ata_from`).
+    # Calendar index of the link's source cell.
     cal_idx = i + k + 1
 
     if not link_exists.any():

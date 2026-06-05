@@ -1,7 +1,6 @@
 """Triangle visualisation -- matplotlib backend.
 
-Implements ``Triangle.plot_triangle(kind="value" | "usage")``. Mirrors
-R's ``plot_triangle.Triangle`` (``R/triangle-vis.R``).
+Implements ``Triangle.plot_triangle(kind="value" | "usage")``.
 """
 
 from __future__ import annotations
@@ -37,16 +36,16 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-# Value-view palette mirrors R `.cell_grid` defaults:
-# threshold-flagged cells use "mistyrose", others "white".
+# Value-view palette: threshold-flagged cells use "mistyrose", others
+# "white".
 _HIGH_COLOR = "mistyrose"
 _LOW_COLOR = "white"
 _NA_COLOR = "white"
 _BORDER_COLOR = "black"
 _BORDER_WIDTH = 0.3
-# ggplot2 theme_grey parity for the cell-grid chrome (R `.switch_theme`):
-# thin interior cell gridlines + a heavier black panel border, grey85
-# facet strips, left-aligned plain title, grey30 right caption.
+# theme_grey-style chrome for the cell grid: thin interior cell
+# gridlines + a heavier black panel border, grey85 facet strips,
+# left-aligned plain title, grey30 right caption.
 _GRID_WIDTH = 0.5            # interior cell separators (thin)
 _PANEL_BORDER_WIDTH = 1.0    # outer panel frame (heavier)
 _STRIP_FILL = "#d9d9d9"      # grey85 facet-strip background
@@ -55,7 +54,7 @@ _STRIP_TEXT = "#1a1a1a"      # grey10 strip label
 _CAPTION_COLOR = "#4d4d4d"   # grey30 caption
 _STRIP_HEIGHT_IN = 0.20      # facet-strip height (inches, constant per panel)
 
-# Usage-view categorical palette (R `.plot_triangle_usage:1395`).
+# Usage-view categorical palette.
 _USAGE_COLORS: dict[str, str] = {
     "unused":  "#dcdcdc",
     "used":    "#1f77b4",
@@ -341,7 +340,7 @@ def _draw_cell_grid(
     # Cohort axis: oldest at top. `y_levels` runs oldest -> newest
     # (index 0 = oldest), so invert the y-limits to place index 0 at
     # the top -- the run-off triangle's fully-developed (oldest) row
-    # sits on top. Mirrors R's `.cell_grid` `scale_y_reverse()`.
+    # sits on top (reversed y-axis).
     ax.set_ylim(ny - 0.5, -0.5)
 
     ax.set_xticks(range(nx))
@@ -402,12 +401,12 @@ def _resolve_maturity_k(
 
     ``None``: no maturity, no overlay, no hybrid threshold.
     ``int``: scalar ``k*``, used directly.
-    :class:`Maturity` instance: read its ``change`` column (R parity:
-    the maturity link's to-index).
+    :class:`Maturity` instance: read its ``change`` column (the
+    maturity link's to-index).
     ``"auto"``: when ``triangle`` is supplied, runs
     :meth:`Triangle.detect_maturity` and collapses the per-group result
-    to a single scalar via ``max(k*)`` (matches R's per-group fallback
-    used by the SA fitter); when ``triangle`` is ``None``, returns
+    to a single scalar via ``max(k*)`` (the per-group fallback used by
+    the SA fitter); when ``triangle`` is ``None``, returns
     ``None`` silently so the caller can detect upstream.
     Callable: invoked with ``triangle`` (when supplied) and the result
     is re-resolved.
@@ -500,8 +499,8 @@ def _seg_dev_min(
     """Compute per-cell ``dev_min`` for the segment_wise mini-triangle.
 
     For each cell in ``grp_rows``, classify its cohort into a segment
-    via ``np.searchsorted(cd_vec, cohort, side='right')`` (i.e. the
-    R ``findInterval`` semantic + 1) and delegate the bounds math to
+    via ``np.searchsorted(cd_vec, cohort, side='right') + 1`` (mapping
+    each cohort to a 1-indexed segment) and delegate the bounds math to
     :func:`lossratio.regime._compute_segment_mini_tri_bounds`. When
     ``bridge`` is ``True`` the older segments' walls are widened by
     the calendar-diagonal bridge (segment_wise_bridged treatment);
@@ -516,8 +515,8 @@ def _seg_dev_min(
     cohorts = grp_rows["cohort"].to_numpy()
     cd_arr = np.array(cd_vec, dtype="datetime64[D]")
     coh_arr = np.array(cohorts, dtype="datetime64[D]")
-    # `findInterval(coh, cd) + 1` in R == np.searchsorted(cd, coh,
-    # side='right') + 1, mapping each cohort to a 1-indexed segment.
+    # np.searchsorted(cd, coh, side='right') + 1 maps each cohort to a
+    # 1-indexed segment.
     seg_id = np.searchsorted(cd_arr, coh_arr, side="right") + 1
 
     coh_ranks = grp_rows["_coh_rank"].to_numpy()
@@ -544,7 +543,6 @@ def _compute_triangle_usage(
 ) -> pl.DataFrame:
     """Build the per-cell status grid driving the usage heatmap.
 
-    Mirrors R's ``.compute_triangle_usage`` (``R/triangle-vis.R:964``).
     Returns a polars DataFrame with columns ``groups`` (when present),
     ``cohort``, ``dev``, ``status`` (one of ``"unused" | "used" |
     "holdout" | "future"``).
@@ -553,8 +551,7 @@ def _compute_triangle_usage(
     anchored on the latest calendar diagonal -- cells in an affected
     group but outside their segment's mini-triangle drop from
     ``used`` to ``unused``. Maturity (``m_k``) does not shrink the
-    mini-triangle (R parity: it's a separate dashed-vline reference
-    only).
+    mini-triangle (it's a separate dashed-vline reference only).
     """
     if recent is not None and (recent < 1 or not isinstance(recent, (int, np.integer))):
         raise ValueError(f"`recent` must be a positive integer; got {recent!r}.")
@@ -739,8 +736,7 @@ def _compute_triangle_usage(
     #
     # Cells in an affected group but outside their segment's
     # mini-triangle drop from `used` to `unused`. Maturity (`m_k`) does
-    # not shrink the mini-triangle here (R parity: it's a separate
-    # vline only).
+    # not shrink the mini-triangle here (it's a separate vline only).
     if is_segment_wise and regime is not None:
         bp = (
             regime._changes_df
@@ -827,8 +823,7 @@ def _first_post_change_idx(
     the change.
 
     The hline is drawn at ``returned_idx + 0.5`` (just above the row
-    toward older cohorts), mirroring R's ``geom_hline(yintercept = idx
-    + 0.5)``.
+    toward older cohorts).
     """
     ascending = list(reversed(cohort_values_desc))
     for i, c in enumerate(ascending):
@@ -1197,7 +1192,7 @@ def plot(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """Cohort-trajectory line plot -- mirrors R's ``plot.Triangle``.
+    """Cohort-trajectory line plot.
 
     One line per cohort (x = development index, y = ``metric``), faceted by
     ``groups``. ``summary=True`` (ratio metrics only) fades cohort lines to
@@ -1262,7 +1257,7 @@ def plot(
     )
 
     # Cohort -> colour: YlGnBu gradient over the global cohort ordering, so
-    # the same cohort keeps its colour across facets (R uses a date gradient).
+    # the same cohort keeps its colour across facets (a date gradient).
     cohorts = sorted({c for c in df["cohort"].to_list()})
     n_coh = len(cohorts)
     cmap = mpl.colormaps["YlGnBu"]

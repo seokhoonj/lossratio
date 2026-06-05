@@ -249,7 +249,7 @@ def _fit_premium_single(
             np.maximum(proc_var[sp] + param_var[sp], 0)
         )
 
-    # mask SE on observed cells (R parity: observed = no projection uncertainty)
+    # mask SE on observed cells (observed = no projection uncertainty)
     obs = obs_mask
     proc_se[obs] = np.nan
     param_se[obs] = np.nan
@@ -614,7 +614,7 @@ class PremiumFit:
                 parts.append(df_s)
 
         combined = pl.concat(parts, how="diagonal_relaxed")
-        # Match R fit_premium $full shape: full cohort × dev grid.
+        # Expand to the full cohort × dev grid for the `$full` shape.
         self._df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort
         )
@@ -651,9 +651,8 @@ class PremiumFit:
     def summary(self) -> pl.DataFrame:
         """Per-cohort ultimate premium, SE, and CV.
 
-        R parity (``summary.PremiumFit``): columns are ``[groups?,
-        cohort, premium_ult, premium_total_se, premium_total_cv]`` --
-        the last projected-dev row per cohort.
+        Columns are ``[groups?, cohort, premium_ult, premium_total_se,
+        premium_total_cv]`` -- the last projected-dev row per cohort.
         """
         df = self._df
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]

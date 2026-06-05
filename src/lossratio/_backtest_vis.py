@@ -3,8 +3,6 @@
 Implements ``BacktestFit.plot(kind=...)`` (per-dev / per-diagonal /
 per-cell A/E error aggregates) and ``BacktestFit.plot_triangle()``
 (diverging red/blue heatmap of A/E error on the held-out wedge).
-Mirrors R's ``plot.Backtest`` and
-``plot_triangle.Backtest`` (``R/backtest-vis.R``).
 """
 
 from __future__ import annotations

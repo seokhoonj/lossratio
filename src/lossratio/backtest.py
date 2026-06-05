@@ -18,14 +18,14 @@ if TYPE_CHECKING:
 
 
 def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.DataFrame:
-    """Add a 1-based calendar index per cell (R parity).
+    """Add a 1-based calendar index per cell.
 
     Calendar index counts the antidiagonal:
     ``cohort_idx + dev - 1`` with ``cohort_idx`` the 1-based dense
-    rank of cohort within its group (R's ``frank(..., ties.method =
-    "dense")`` convention). So the oldest cohort at dev = 1 lands on
-    cal_idx = 1, and the maximum cal_idx equals the number
-    of cohorts (or, for square-ish triangles, the number of devs).
+    rank of cohort within its group (ties share the same rank). So the
+    oldest cohort at dev = 1 lands on cal_idx = 1, and the maximum
+    cal_idx equals the number of cohorts (or, for square-ish triangles,
+    the number of devs).
     """
     gcols = normalize_groups(groups)
     if gcols:
@@ -106,9 +106,7 @@ def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
     straight through every fold would seed the residual pool with the
     held-out cells -- look-ahead leakage. There is no way to rebuild it
     per fold, so the only safe move is to reject it and direct the user
-    to the callable form.
-
-    Mirrors the guidance in R's ``backtest()`` documentation: prefer a
+    to the callable form. The guidance is to prefer a
     ``function(tri) -> BootstrapTriangle`` over a pre-built object.
     """
     bootstrap = getattr(estimator, "bootstrap", None)
@@ -378,9 +376,9 @@ class BacktestFit:
         )
 
         # Incremental view — emitted only when both `incr_actual` and
-        # `incr_expected` survived the join. R parity: NA on edge cells
-        # is acceptable on the incremental view (`incr_aeg` /
-        # `incr_ae_err` may be NA when the projection has no upstream
+        # `incr_expected` survived the join. Null on edge cells is
+        # acceptable on the incremental view (`incr_aeg` /
+        # `incr_ae_err` may be null when the projection has no upstream
         # cumulative anchor at dev = 1).
         has_incr = ("incr_actual" in ae_err.columns) and (
             "incr_expected" in ae_err.columns
@@ -397,7 +395,7 @@ class BacktestFit:
                 .alias("incr_ae_err"),
             )
 
-        # Final column order mirrors R's `setcolorder()` in `backtest()`.
+        # Fixed final column order for the per-cell table.
         col_order = keys + ["actual", "expected", "aeg", "ae_err"]
         if has_incr:
             col_order += [
@@ -430,9 +428,8 @@ class BacktestFit:
     ) -> pl.DataFrame:
         """Aggregate cell-level A/E Error to a per-key summary.
 
-        Mirrors R's :func:`.backtest_aggregate`. Always emits the
-        cumulative ``(n, aeg_*, ae_err_*)`` block; emits the
-        ``incr_*`` block iff the refit exposed an incremental
+        Always emits the cumulative ``(n, aeg_*, ae_err_*)`` block;
+        emits the ``incr_*`` block iff the refit exposed an incremental
         projection column.
         """
         aggs: list[pl.Expr] = [
@@ -551,10 +548,8 @@ class BacktestFit:
             from the loss-side of ``Ratio``, or ``regime`` of the
             loss model); ``maturity`` defaults to ``None`` -- callers
             who want a maturity hline overlay must pass an explicit
-            :class:`Maturity` instance or scalar (R parity:
-            R's ``backtest()`` runs a 2-pass ATA fit to detect
-            maturity automatically; Python defers that to the
-            caller).
+            :class:`Maturity` instance or scalar (maturity is not
+            auto-detected here; supply it explicitly).
 
         Returns
         -------

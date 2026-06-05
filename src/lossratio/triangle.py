@@ -59,7 +59,7 @@ class Triangle:
     - Requested grain must be at least as coarse as input (no
       decomposition: yearly input cannot be viewed monthly).
 
-    Three-mode dispatch on ``calendar`` / ``dev`` (mirrors R's ``as_triangle``):
+    Three-mode dispatch on ``calendar`` / ``dev``:
 
     - mode 1 (cohort + calendar): ``dev`` is derived from the two.
     - mode 2 (cohort + dev, no calendar): the supplied ``dev`` column
@@ -207,7 +207,7 @@ class Triangle:
 
         # n_cohorts: distinct cohorts observed per (group, dev). Computed
         # on the pre-fill aggregate so zero-filled gap cells do not
-        # inflate the count (R parity: `dn` is built before gap-filling).
+        # inflate the count (the count is built before gap-filling).
         ndev_keys: list[str] = normalize_groups(groups)
         ndev_keys.append("_dev_temp")
         ncoh = (
@@ -216,7 +216,7 @@ class Triangle:
         )
 
         # Check for non-consecutive dev sequences within each cohort.
-        # R parity: as_triangle(fill_gaps = FALSE) raises; TRUE zero-fills.
+        # fill_gaps=False raises on a gap; fill_gaps=True zero-fills.
         gap_keys = agg_keys[:-1]  # groups + cohort (or cohort alone)
         gap_summary = (
             agg.group_by(gap_keys)
@@ -301,7 +301,7 @@ class Triangle:
                 .alias("incr_premium_share"),
         )
 
-        # Reorder columns: cum-first paired (matches R as_triangle).
+        # Reorder columns: cum-first paired.
         ordered = normalize_groups(groups)
         ordered.extend([
             "n_cohorts", "cohort", "dev",
@@ -396,7 +396,7 @@ class Triangle:
     def grain(self) -> str:
         """Triangle grain code: ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``.
 
-        Mirrors the standard column suffix (``"M"`` ↔ ``dev_m``, etc.).
+        Matches the standard column suffix (``"M"`` <-> ``dev_m``, etc.).
         """
         return self._grain
 
@@ -525,8 +525,7 @@ class Triangle:
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
-        Mirrors R's ``detect_regime(triangle, ...)``. The
-        default ``window="auto"`` resolves each group's trajectory
+        The default ``window="auto"`` resolves each group's trajectory
         window via :meth:`detect_maturity`, falling back to the elbow
         heuristic and finally to a fixed default (``6``) when neither
         signal is available.
@@ -679,8 +678,6 @@ class Triangle:
         :class:`Backtest`. ``holdout=0`` returns a shallow copy with the
         same underlying frame (no rows removed).
 
-        Mirrors R's ``mask_triangle(x, holdout)``.
-
         Parameters
         ----------
         holdout
@@ -713,7 +710,7 @@ class Triangle:
 
         # Compute per-group calendar index = cohort_rank + dev - 1, where
         # cohort_rank is the dense rank of distinct cohort values (oldest
-        # = 1). Mirrors R: data.table::frank(cohort, ties.method = "dense").
+        # = 1).
         partition = normalize_groups(self._groups)
         coh_rank_expr = (
             pl.col("cohort").rank(method="dense").over(partition)
@@ -853,7 +850,7 @@ class Triangle:
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> Any:
-        """Cohort-trajectory line plot (mirrors R's ``plot.Triangle``).
+        """Cohort-trajectory line plot.
 
         One line per cohort -- x is the development index, y the selected
         ``metric`` (default cumulative loss ``"ratio"``) -- faceted by
@@ -911,11 +908,8 @@ class TriangleValidation:
        observed integer dev sequence is checked for non-consecutive
        values in ``[dev_min, dev_max]``. When ``dev`` is supplied it is
        used directly; otherwise it is derived from
-       ``cohort + calendar + grain`` (mirrors the
+       ``cohort + calendar + grain`` (the same
        :class:`Triangle` 3-mode dispatch).
-
-    Mirrors R's ``validate_triangle(...)`` which returns a
-    ``TriangleValidation`` object.
 
     Parameters
     ----------
@@ -1018,7 +1012,7 @@ class TriangleValidation:
         self._invalid_rows = invalid
 
         # --- 2. dev-sequence gaps on the cleaned data --------------------
-        # Derive dev when only calendar is supplied (mirrors Triangle's
+        # Derive dev when only calendar is supplied (the same Triangle
         # 3-mode dispatch).
         if dev is None:
             input_grain = infer_grain(df_for_gaps[cohort])
@@ -1094,7 +1088,7 @@ class TriangleValidation:
         )
 
     # ------------------------------------------------------------------
-    # Public accessors -- mirror Triangle's input-type machinery
+    # Public accessors -- same input-type machinery as Triangle
     # ------------------------------------------------------------------
 
     @property
@@ -1154,9 +1148,8 @@ class TriangleValidation:
     ) -> Any:
         """Bar chart of observed vs expected dev counts per cohort.
 
-        Mirrors R's ``plot.TriangleValidation`` -- one panel per
-        group, with two bars per cohort (``n_dev`` blue, ``n_expected``
-        grey). When the validation found no gaps, returns a
+        One panel per group, with two bars per cohort (``n_dev`` blue,
+        ``n_expected`` grey). When the validation found no gaps, returns a
         figure containing only a "nothing to visualise" placeholder.
 
         Returns
@@ -1177,12 +1170,9 @@ class TriangleValidation:
         """Cohort x dev / cohort x calendar heatmap of observed /
         missing cells.
 
-        Mirrors R's ``plot_triangle.TriangleValidation``. For each
-        cohort with gaps, the cell grid is coloured blue (observed)
-        or red (missing); clean cohorts are omitted (R divergence:
-        R uses a stored ``observed_pairs`` slot to paint every
-        cohort -- Python carries only the gaps frame, so non-gappy
-        cohorts don't appear).
+        For each cohort with gaps, the cell grid is coloured blue
+        (observed) or red (missing); clean cohorts are omitted (only the
+        gaps frame is carried, so non-gappy cohorts don't appear).
 
         Parameters
         ----------

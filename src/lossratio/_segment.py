@@ -28,19 +28,19 @@ def _expand_to_full_grid(
     cohort_col: str,
 ) -> pl.DataFrame:
     """Expand a segment_wise fit output onto the parent triangle's full
-    ``(groups?, cohort, dev)`` projection grid (R parity).
+    ``(groups?, cohort, dev)`` projection grid.
 
     Three concerns the join handles:
 
     1. **Grid shape**: the Cartesian product of every cohort and every
-       dev seen in the parent triangle (R's ``CJ(cohort, dev)``).
-       Cells outside any segment's reach stay null on projection
-       columns -- same as R's "segment cannot project here" outcome.
+       dev seen in the parent triangle. Cells outside any segment's
+       reach stay null on projection columns -- the "segment cannot
+       project here" outcome.
 
     2. **Observed values**: pre-mini-triangle cells (which the
        per-segment fit dropped) are repopulated from the parent
-       triangle's ``loss`` / ``premium`` / ``ratio`` columns. R's
-       ``$full`` shows ``loss_obs == loss_proj`` on observed cells
+       triangle's ``loss`` / ``premium`` / ``ratio`` columns. The full
+       output should show ``loss_obs == loss_proj`` on observed cells
        regardless of which segment they live in; matching that
        requires re-attaching the originals after the split fit.
 
@@ -158,8 +158,8 @@ def _augment_segment_factors(
 
     For each link the donor is the segment with the LARGEST id whose
     ``primary`` factor is finite there -- the most recent regime that
-    reached that development (matches R ``.borrow_segment_factors``). A
-    segment missing the primary at link ``k`` copies ALL its factor
+    reached that development. A segment missing the primary at link
+    ``k`` copies ALL its factor
     arrays at ``k`` from that one donor, so the borrowed factor and its
     sigma2 / Mack-variance companions stay mutually consistent. Returns
     the augmented arrays (own where present, borrowed otherwise).

@@ -2,8 +2,7 @@
 
 Built via :meth:`Triangle.link`. Carries per-cell age-to-age
 factors and (when an ``exposure`` column is supplied) the
-per-cell exposure-driven intensity. Mirrors R's ``Link`` data
-class.
+per-cell exposure-driven intensity.
 
 Diagnostic methods :meth:`ata` and :meth:`intensity` aggregate
 across cohorts to per-link summaries that pair with each other:

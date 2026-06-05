@@ -635,7 +635,7 @@ class Loss:
         Variance-structure exponent for the premium fit. Default ``1``.
     maturity
         Maturity specification for the ``"sa"`` (stage-adaptive)
-        switch. Four-type dispatch (R parity):
+        switch. Four-type dispatch:
 
         * ``"auto"`` (default): auto-detect the maturity point per
           group from the loss triangle, tuned by ``max_cv`` /
@@ -1062,9 +1062,8 @@ class LossFit:
         The dispatcher bootstrap SE overlay always uses the analytical
         CL (Mack closed-form) paradigm -- ``type="analytical"``,
         ``process="normal"``, ``method="cl"`` -- regardless of the
-        dispatcher's loss ``method``. This mirrors R ``fit_loss()`` /
-        ``fit_sa()`` (``.lossfit_bootstrap`` in ``R/loss.R``), whose
-        bootstrap path is hard-wired to the analytical-CL bootstrap.
+        dispatcher's loss ``method``. The dispatcher bootstrap path is
+        hard-wired to the analytical-CL bootstrap regardless of method.
         The loss ``method`` still drives the *point* projection on
         ``long_df``; only the SE overlay is the analytical-CL bootstrap
         (``type="analytical"`` is CL-only, so an ED fit's bootstrap SE
@@ -1137,9 +1136,9 @@ class LossFit:
 
         # Premium side: develop premium under the SAME regime so the ED
         # loss recursion (loss += g * premium_proj) anchors on a premium
-        # projection consistent with the band-masked g factors (R parity:
-        # R's loss-ED uses the loss-regime premium, not an unfiltered
-        # one). For the CL loss method premium is not consumed by the
+        # projection consistent with the band-masked g factors: the
+        # loss-ED path uses the loss-regime premium, not an unfiltered
+        # one. For the CL loss method premium is not consumed by the
         # projection, so this is a no-op there.
         if estimator.premium_fit is not None:
             pf = estimator.premium_fit

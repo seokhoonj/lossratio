@@ -97,9 +97,9 @@ def plot_cl_reserve(
             labels = _format_period_series(coh_vals, coh_type)
         else:
             labels = [str(v) for v in coh_vals.to_list()]
-        # Sort by raw cohort value (oldest at top is conventional in R
-        # `coord_flip()` of geom_col: matplotlib barh stacks bottom->up,
-        # so flip ordering to keep oldest at top).
+        # Sort by raw cohort value (oldest at top is conventional;
+        # matplotlib barh stacks bottom->up, so flip ordering to keep
+        # oldest at top).
         order = np.argsort(coh_vals.to_numpy())[::-1]
         y_positions = np.arange(len(order))
         reserve = sub["reserve"].to_numpy()[order] / amount_divisor

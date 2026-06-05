@@ -4,9 +4,9 @@ Three concerns, all expressed in domain-neutral terms (no `cohort` /
 `dev` / `loss` baked into helper names):
 
 1. **Date coercion** -- accept Date / Datetime / integer / ISO string and
-   produce a ``pl.Date`` column. Mirrors the spirit of R
-   ``instead::as_date_safe`` (strict, explicit, informative errors)
-   plus integer handling for actuarial inputs (yyyy / yyyymm / yyyymmdd).
+   produce a ``pl.Date`` column. Strict, explicit, with informative
+   errors, plus integer handling for actuarial inputs (yyyy / yyyymm /
+   yyyymmdd).
 
 2. **Grain** -- detect / validate the granularity of a Date column.
    Grain values are single-letter codes mirroring the standard column
@@ -81,8 +81,8 @@ def _int_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
 def _str_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
     """Coerce string column to Date by trying ISO-first format list.
 
-    Mirrors the spirit of R `instead::as_date_safe`: strict, explicit, with
-    informative error on unparseable values. Supported formats (in order):
+    Strict, explicit, with an informative error on unparseable values.
+    Supported formats (in order):
 
     - YYYY-MM-DD            (ISO)
     - YYYY/MM/DD            (slash)
@@ -156,7 +156,7 @@ def coerce_cols_to_date(df: pl.DataFrame, col_names: list[str]) -> pl.DataFrame:
     - ``pl.Date`` / ``pl.Datetime`` -> passthrough (datetime drops time)
     - integer (yyyy / yyyymm / yyyymmdd) -> auto-detect by digit count
     - ``pl.String`` -> ISO-first format list with optimised
-      unique-then-join (mirrors R ``instead::as_date_safe`` semantics)
+      unique-then-join
 
     Raises ``TypeError`` / ``ValueError`` for unsupported types or
     unparseable values, with a sample of bad inputs in the error message.
@@ -393,8 +393,7 @@ def derive_grain_columns(df: Any) -> Any:
 
     Letter-suffix family: ``_m`` / ``_q`` / ``_h`` / ``_y`` = monthly /
     quarterly / half-yearly / yearly. The yearly underwriting and
-    calendar columns are bare (``uy`` / ``cy``, no suffix), matching
-    R's column scheme.
+    calendar columns are bare (``uy`` / ``cy``, no suffix).
 
     The 12 grain columns (4 grains × 3 axes) are:
 

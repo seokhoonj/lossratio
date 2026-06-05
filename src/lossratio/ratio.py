@@ -148,7 +148,7 @@ class Ratio:
         Variance-structure exponent for the premium fit. Default ``1``.
     maturity
         Maturity specification for the ``method="sa"`` switch.
-        Four-type dispatch (R parity): ``"auto"`` (default,
+        Four-type dispatch: ``"auto"`` (default,
         auto-detect tuned by ``max_cv`` / ``max_rse`` / ``min_run``),
         a :class:`~lossratio.Maturity` object (explicit override), a
         callable ``f(triangle) -> Maturity`` (lazy spec — e.g.

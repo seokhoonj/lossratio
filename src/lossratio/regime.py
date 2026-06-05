@@ -48,9 +48,9 @@ _VALID_TREATMENTS = (
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
-# trajectory window. Matches R's ``WINDOW_AUTO_FALLBACK``.
+# trajectory window.
 _WINDOW_AUTO_FALLBACK = 6
-_WINDOW_AUTO_SEQ = tuple(range(2, 25))  # 2..24, mirrors R default
+_WINDOW_AUTO_SEQ = tuple(range(2, 25))  # 2..24, the default sweep range
 
 # Step-vs-drift gate for `_assess_change`. A change is a discrete regime
 # (kind="step") when a level step at the change cohort, added over a linear
@@ -70,8 +70,8 @@ def _derive_regime_target(
 ) -> tuple[pl.DataFrame, str]:
     """Compute a diagnostic derived metric column on ``df``.
 
-    Mirrors R's ``.derive_regime_target``. The first dev row per (group,
-    cohort) is NA (no predecessor), so it is dropped and ``dev`` is
+    The first dev row per (group, cohort) is NA (no predecessor), so it
+    is dropped and ``dev`` is
     re-indexed so the first surviving observation becomes ``dev = 1``.
     This lets the downstream eligibility filter (``n >= window``) and the
     feature-matrix pivot use the same code path as the native columns.
@@ -121,15 +121,13 @@ def _kneedle_elbow(
 ) -> int | None:
     """Kneedle elbow on a (decreasing) ``change_count`` vs ``window`` curve.
 
-    Mirrors R's ``.kneedle_elbow`` in
-    ``R/regime-optimal-window.R``. Both axes are normalised to ``[0, 1]``
-    and the elbow is the index with the maximum vertical *deficit*
-    below the diagonal line ``y = 1 - x``. Returns ``None`` when the
-    curve is flat (zero range on y) or has fewer than 3 points; the
-    caller then falls back to ``_WINDOW_AUTO_FALLBACK``.
+    Both axes are normalised to ``[0, 1]`` and the elbow is the index with
+    the maximum vertical *deficit* below the diagonal line ``y = 1 - x``.
+    Returns ``None`` when the curve is flat (zero range on y) or has fewer
+    than 3 points; the caller then falls back to ``_WINDOW_AUTO_FALLBACK``.
 
-    Tie-breaking deviates from R only in that numpy's ``argmax``
-    returns the first maximum, matching R's ``which.max`` semantics.
+    Ties are broken toward the first maximum (``argmax`` returns the
+    earliest index).
     """
     window = np.asarray(window, dtype=float)
     change_count = np.asarray(change_count, dtype=float)
@@ -158,8 +156,6 @@ def _resolve_by(
 ) -> "str | list[str] | None":
     """Normalise the ``by`` argument to a group spec or ``None``.
 
-    Mirrors R's resolution:
-
     - ``None``: defer to ``triangle.groups`` (per-group when set, pooled
       otherwise) -- returns whatever the Triangle stores (a multi-column
       list once the Triangle carries multi-column groups).
@@ -169,8 +165,8 @@ def _resolve_by(
     - length-1 sequence: the single column name (``str``).
     - non-empty multi-element sequence: an EXPLICIT multi-column ``by`` --
       returned as a ``list[str]`` (the per-combination detection machinery
-      handles it). Same scalar-vs-list collapse the Triangle uses for stored
-      ``groups``.
+      handles it). Uses the same scalar-vs-list collapse the Triangle
+      applies to stored ``groups``.
     """
     if by is None:
         return triangle.groups
@@ -609,8 +605,8 @@ def _combine_combo_results(
     For pooled detection (``grp is None``) the schemas match the
     single-group case and ``dropped`` is a flat list. For per-combo
     detection the group column is *prepended* to both frames, and
-    ``dropped`` becomes ``{combo_value: [cohort, ...]}`` -- mirrors
-    R's named-list shape for multi-group.
+    ``dropped`` becomes ``{combo_value: [cohort, ...]}`` -- a per-group
+    mapping for multi-group input.
     """
     label_frames: list[pl.DataFrame] = []
     change_frames: list[pl.DataFrame] = []
@@ -700,11 +696,11 @@ def _detect_regime_optimal_window(
 ) -> int | None:
     """Pick a trajectory window via Kneedle elbow on the change-count curve.
 
-    Internal helper, intentionally not exported. Mirrors R's
-    ``detect_regime_optimal_window`` + ``.kneedle_elbow`` pair from
-    ``R/regime-optimal-window.R``. Returns the elbow window or ``None``
-    when no sweep value produced a usable detection (the caller falls
-    back to ``_WINDOW_AUTO_FALLBACK``).
+    Internal helper, intentionally not exported. Sweeps the candidate
+    windows, then applies :func:`_kneedle_elbow` to the change-count
+    curve. Returns the elbow window or ``None`` when no sweep value
+    produced a usable detection (the caller falls back to
+    ``_WINDOW_AUTO_FALLBACK``).
 
     Errors at individual sweep values (too few cohorts for that window,
     feature matrix containing NaN, etc.) are swallowed -- the window is
@@ -783,8 +779,8 @@ def _build_feature_matrix(
     # Pivot to wide form: rows = cohort, cols = dev 1..K. Use mean as
     # aggregator so pooled detection on a multi-group triangle (where
     # each (cohort, dev) cell has one row per group) collapses to a
-    # single value per (cohort, dev). Matches R's
-    # ``fun.aggregate = mean(..., na.rm=TRUE)``.
+    # single value per (cohort, dev), averaging over the groups while
+    # ignoring missing cells.
     wide = (
         df.filter(pl.col("cohort").is_in(eligible))
         .pivot(on="dev", index="cohort", values=target, aggregate_function="mean")
@@ -1355,7 +1351,7 @@ class Regime:
         Trajectory variable name used.
     window : int
         Development-period window length (number of dev cells per cohort
-        used as the feature vector). Mirrors R's ``window`` arg.
+        used as the feature vector).
     cohort : str
         Original cohort variable name (e.g. ``"uy_m"``).
     change_points : list
@@ -1407,7 +1403,7 @@ class Regime:
 
         # `premium_ed` is an alias of `premium_ata` (constant offset of 1
         # absorbed by PCA standardisation -- detection produces identical
-        # changes). Resolve before validation. Mirrors R behaviour.
+        # changes). Resolve before validation.
         if target == "premium_ed":
             target = "premium_ata"
 
@@ -1486,9 +1482,7 @@ class Regime:
         # detection, NA maturity, or `by` mismatching the Triangle's
         # stored groups) it falls back to the Kneedle elbow on the
         # change-count sweep; if the elbow is also undefined, falls
-        # back to ``_WINDOW_AUTO_FALLBACK``. Mirrors R's
-        # ``detect_regime(window="auto")`` fallback chain in
-        # ``R/regime.R``.
+        # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
             # Map the regime target -> a valid cumulative target for
             # detect_maturity (which supports cumulative metrics only).
@@ -1719,8 +1713,8 @@ class Regime:
         self._output_type = triangle._output_type
         self.method = method
         self.target = target
-        # ``window`` is scalar for single-combo, list[int] for multi-combo.
-        # Matches R's single-vs-vector unwrap.
+        # ``window`` is scalar for single-combo, list[int] for multi-combo
+        # (a single resolved window is unwrapped from the list).
         self.window = (
             window_per_combo[0]
             if len(per_combo_results) == 1 and grp is None
@@ -1857,9 +1851,9 @@ class Regime:
                     f"`change`={n} but `groups[{col!r}]`={len(vals)}"
                 )
 
-        # `regime_id = 2` per row mirrors R's `regime_at()`: each change row
-        # marks "transition into the next regime". The id is not a segment
-        # counter -- segment_wise consumers index off `change`, not the id.
+        # `regime_id = 2` per row marks "transition into the next regime"
+        # for each change row. The id is not a segment counter --
+        # segment_wise consumers index off `change`, not the id.
         columns: dict[str, Any] = dict(groups)
         columns["change"] = parsed
         columns["regime_id"] = [2] * n
@@ -2199,14 +2193,10 @@ class Regime:
         their detected ``regime_id`` with vertical dashed lines at
         change points.
 
-        **R divergence:** R's ``plot.Regime`` draws a PCA
-        scatter of cohort trajectories with loading arrows and 90%
-        ellipses, sourced from the Regime object's ``trajectory`` /
-        ``pca`` / ``labels`` slots. Python ``Regime`` carries only
-        the per-cohort labels + change points; the trajectory + PCA
-        would require a heavier-state refactor of ``_from_triangle``.
-        The cohort-timeline plot answers the same "what regimes / where
-        do they switch" question without that cost.
+        The ``Regime`` object carries only the per-cohort labels and
+        change points, so the timeline view answers the "what regimes /
+        where do they switch" question directly without retaining the
+        per-cohort trajectory or PCA state a scatter view would need.
 
         Parameters
         ----------
@@ -2353,10 +2343,10 @@ def _segment_id_expr(
     """Build a polars expression that assigns 1-based segment ids to
     rows based on ``cohort`` and ``regime._changes_df``.
 
-    Implements R's ``findInterval(cohort, sorted_changes) + 1L``: a row
-    earlier than the first change is segment 1, between the k-th and
-    (k+1)-th change is segment k+1, on or after the K-th change is
-    segment K+1.
+    Buckets each cohort into the interval defined by the sorted change
+    points: a row earlier than the first change is segment 1, between the
+    k-th and (k+1)-th change is segment k+1, on or after the K-th change
+    is segment K+1.
 
     For multi-group regimes the expression is built per-group via
     nested ``when`` chains. Returns ``None`` when the regime has no
@@ -2438,8 +2428,6 @@ def _compute_segment_mini_tri_bounds(
     Bridges do not cascade: segment ``s`` is bridged only from segment
     ``s+1``, not from ``s+2``. The bridge only ever *widens* a
     segment's mini-triangle.
-
-    Mirrors R's ``.compute_segment_mini_tri_bounds`` in ``R/utils.R``.
 
     Parameters
     ----------
@@ -2573,7 +2561,7 @@ def _apply_mini_triangle_filter(
 
     # Bridge requires cross-segment access (next-segment anchor) that
     # is awkward in pure polars `over`; compute per-group via numpy. The
-    # natural wall flows through the same helper for parity with R.
+    # natural wall flows through the same helper.
     if grouped:
         parts: list[pl.DataFrame] = []
         for _, sub in df.group_by(gcols, maintain_order=True):

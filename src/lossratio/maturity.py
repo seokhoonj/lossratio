@@ -98,9 +98,9 @@ def _compute_cv_rse(
         #   n_k <  2               -> insufficient samples, leave NaN
         #
         # The denominator must match the cohorts that actually contributed
-        # to f_k: those with both c_k > 0 and c_{k+1} finite (R's lm fit
-        # uses the same subset). Summing all finite c_k would understate
-        # SE and bias rse downward.
+        # to f_k: those with both c_k > 0 and c_{k+1} finite (the pooled
+        # factor fit uses the same subset). Summing all finite c_k would
+        # understate SE and bias rse downward.
         fit_mask = mask & (col_k > 0)
         sum_col = float(col_k[fit_mask].sum())
         if n_k >= 2 and sum_col > 0 and f_k[k] > 0:
@@ -116,8 +116,8 @@ def _compute_cv_rse(
 def _detect_mat_k(stable_k: np.ndarray, min_run: int) -> int | None:
     """First link index k where stable_k[k : k + min_run] are all True.
 
-    Returns the *target* dev value of that link (1-indexed; equivalent
-    to ``ata_to`` in R). With this convention the development
+    Returns the *target* dev value of that link (1-indexed; the
+    ``ata_to`` index). With this convention the development
     region splits as ED = ``dev < mat_k`` and CL = ``dev >= mat_k``.
 
     Returns ``None`` if no such window exists.
@@ -137,9 +137,9 @@ def _detect_first_stable_index(
 ) -> int | None:
     """First link *array index* k where stable_k[k : k + min_run] holds.
 
-    Sibling to :func:`_detect_mat_k` -- same scan but returns the
-    0-indexed position into the per-link diagnostic frame (so callers
-    can slice the matched row), not the ``ata_to`` dev value.
+    Same scan as :func:`_detect_mat_k`, but returns the 0-indexed
+    position into the per-link diagnostic frame (so callers can slice
+    the matched row), not the ``ata_to`` dev value.
     """
     n_links = len(stable_k)
     if min_run < 1 or n_links < min_run:
@@ -164,9 +164,9 @@ def _compute_maturity(
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
     (see :mod:`lossratio._recent`): when supplied, the factor stats and
-    stability detection run on the recent wedge (R parity — ``fit_ata``
-    applies the recent filter before resolving maturity). ``None``
-    (default) is the byte-identical no-filter path.
+    stability detection run on the recent wedge (the recent filter is
+    applied before resolving maturity). ``None`` (default) is the
+    byte-identical no-filter path.
     """
     mack = _fit_mack(loss_obs, link_mask=link_mask)
     cv_k, rse_k = _compute_cv_rse(
@@ -189,12 +189,11 @@ def _compute_maturity(
 
 
 # ---------------------------------------------------------------------------
-# Per-link descriptive stats from Link (R `.summarize_link_ata` parity)
+# Per-link descriptive stats from Link
 # ---------------------------------------------------------------------------
 
 
-# R-parity column order for the Maturity output (matches
-# .first_mature_row + .resolve_groups grouping in R/maturity.R).
+# Column order for the Maturity output.
 _R_STAT_COLS: tuple[str, ...] = (
     "ata_from",
     "change",
@@ -220,8 +219,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
 
     Computed directly off the long-format ``Link`` DataFrame (one row
     per ``(cohort, ata_from)`` pair, with cell-level ``ata`` and
-    ``loss_from`` / ``loss_to``). Mirrors R's ``.summarize_link_ata()``
-    ``ds`` block (R/ata.R lines 134-152):
+    ``loss_from`` / ``loss_to``):
 
     * ``mean``   -- mean of finite per-cohort ``ata`` factors
     * ``median`` -- median of finite per-cohort ``ata`` factors
@@ -273,8 +271,8 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
     out = out.with_columns(
         (pl.col("n_valid") / pl.col("n_cohorts")).alias("valid_ratio")
     )
-    # Cast to int64 so they round-trip cleanly with R's numeric-coerced
-    # output (downstream selects cast back to float).
+    # Cast to int64 so they round-trip cleanly (downstream selects cast
+    # back to float).
     out = out.with_columns(
         [
             pl.col("n_cohorts").cast(pl.Int64),
@@ -291,7 +289,7 @@ def _enriched_ata_diagnostic(
     link_df: pl.DataFrame,
     groups: str | list[str] | None,
 ) -> pl.DataFrame:
-    """Per-link diagnostic with the full R ``ATASummary`` column set.
+    """Per-link diagnostic with the full ``ATASummary`` column set.
 
     Joins three sources keyed on (``groups?``, ``ata_from``):
 
@@ -302,15 +300,15 @@ def _enriched_ata_diagnostic(
       ``mean / median / wt / n_valid / n_inf / n_nan / valid_ratio``
       via :func:`_link_descriptive_stats`.
 
-    Adds derived R columns:
+    Adds derived columns:
 
     * ``ata_to``   = ``ata_from + 1``
     * ``ata_link`` = ``"<from>-<to>"``
     * ``sigma``    = ``sqrt(sigma2)``
     * ``f_se``     = ``rse * f``  (since ``rse = f_se / f``)
 
-    Returns one row per (group, link) with columns ordered to mirror
-    R's ``ATASummary``. Used by :meth:`Maturity._from_ata` -- the
+    Returns one row per (group, link) with columns ordered to match
+    ``ATASummary``. Used by :meth:`Maturity._from_ata` -- the
     per-group "first mature row" pick then slices straight off this.
     """
     if ata_df.is_empty():
@@ -325,7 +323,7 @@ def _enriched_ata_diagnostic(
 
     join_keys = [*normalize_groups(groups), "ata_from"]
     # Drop overlapping cols from stats (n_cohorts is on both -- keep
-    # stats' which matches R's ``.N`` over the link table).
+    # stats' which is the row count over the link table).
     a = a.drop("n_cohorts")
 
     merged = a.join(stats, on=join_keys, how="left")
@@ -355,10 +353,9 @@ def _enriched_ata_diagnostic(
 def _na_row(groups: str | list[str] | None, group_value: Any | None) -> dict[str, Any]:
     """All-NaN row for a group where no stable ATA run was found.
 
-    Matches the no-match branch of R's ``.first_mature_row()``
-    (``R/maturity.R`` lines 174-191): every numeric column is
-    ``NA_real_``, ``ata_link`` is ``NA_character_``. Float dtype keeps
-    polars concat/dtype-stable across groups.
+    The no-match branch: every numeric column is null/NaN and
+    ``ata_link`` is null. Float dtype keeps polars concat/dtype-stable
+    across groups.
     """
     row: dict[str, Any] = {}
     set_group_values(row, groups, group_value)
@@ -375,10 +372,10 @@ def _slice_first_stable_row(
 ) -> dict[str, Any]:
     """Pick the first stable-run row of a single-group diagnostic frame.
 
-    Mirrors R's ``.first_mature_row()`` -- finds the first link where
-    the ``stable`` boolean run holds for ``min_run`` consecutive links
-    and returns that row coerced to the R column dict. Returns an
-    all-NaN row (see :func:`_na_row`) when no such run exists.
+    Finds the first link where the ``stable`` boolean run holds for
+    ``min_run`` consecutive links and returns that row coerced to the
+    stat-column dict. Returns an all-NaN row (see :func:`_na_row`)
+    when no such run exists.
     """
     stable_arr = diag_df["stable"].to_numpy()
     idx = _detect_first_stable_index(stable_arr, min_run)
@@ -408,7 +405,7 @@ def _build_mat_k_df(
     groups: str | list[str] | None,
     min_run: int,
 ) -> pl.DataFrame:
-    """Per-group "first mature row" frame -- R ``Maturity`` schema.
+    """Per-group "first mature row" frame -- the ``Maturity`` schema.
 
     One row per group with columns ``[groups?, *_R_STAT_COLS]``.
     """
@@ -461,13 +458,12 @@ class Maturity:
         existing ATA factor diagnostic. The user-facing chain is
         ``triangle.link().ata().maturity(...)``.
 
-        The output ``summary()`` mirrors the R ``Maturity`` data.table
-        schema -- one row per group with columns
+        The output ``summary()`` is one row per group with columns
         ``[groups?, ata_from, change, ata_link, mean, median, wt, cv,
         f, f_se, rse, sigma, n_cohorts, n_valid, n_inf, n_nan,
         valid_ratio]``. ``change`` is the maturity point (``ata_to`` of
         the first stable link). When no stable run is found for a
-        group, the stat columns are filled with ``NaN`` (R parity).
+        group, the stat columns are filled with ``NaN``.
         """
         self = cls.__new__(cls)
         self._output_type = ata._output_type
@@ -478,7 +474,7 @@ class Maturity:
         self.max_rse = max_rse
         self.min_run = min_run
 
-        # Per-link diagnostic enriched with all the R ATASummary columns
+        # Per-link diagnostic enriched with all the ATASummary columns
         # (mean / median / wt / counts via the Link long-format frame).
         link_df = ata._link._df
         diag_df = _enriched_ata_diagnostic(ata._df, link_df, self._groups)
@@ -512,8 +508,7 @@ class Maturity:
         Used by :meth:`Maturity.at` to wrap a user-supplied maturity point
         (and optional per-group values). The per-link diagnostic frame
         is intentionally empty -- there is no factor data behind a
-        manual specification, so all stat columns are ``NaN`` (R
-        parity with ``R/maturity.R::maturity_at``).
+        manual specification, so all stat columns are ``NaN``.
         """
         self = cls.__new__(cls)
         self._output_type = "polars"
@@ -652,7 +647,7 @@ class Maturity:
         or ``None``. Otherwise returns ``dict[group_value, int | None]``.
 
         ``None`` is returned for a group where no stable run was found
-        (R's ``NA_real_`` row).
+        (the all-NaN row).
         """
         def _coerce(v: Any) -> int | None:
             if v is None:
@@ -717,7 +712,7 @@ class Maturity:
 
 
 # ---------------------------------------------------------------------------
-# Maturity input dispatcher (R parity: .resolve_maturity)
+# Maturity input dispatcher
 # ---------------------------------------------------------------------------
 
 
@@ -727,7 +722,6 @@ def _resolve_maturity(
 ) -> "Maturity | None":
     """Resolve a 4-type ``maturity`` input to a Maturity object (or None).
 
-    Python counterpart of R's ``.resolve_maturity()`` (see ``R/regime.R``).
     Used by :class:`~lossratio.Loss` / :class:`~lossratio.Ratio` to
     normalise the ``maturity`` argument into a single representation:
     either ``None`` (no maturity override -- caller's default behaviour)

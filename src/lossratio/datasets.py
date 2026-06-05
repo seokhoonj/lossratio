@@ -2,10 +2,9 @@
 
 The package ships a pre-baked synthetic experience dataset
 (:func:`load_experience`) generated via :func:`make_experience` with
-seed 20260501. The generator mirrors R `lossratio`'s
-`data-raw/make_experience.R` — same per-coverage calibration constants,
-same regime shift — but cell values are NOT bit-identical to R because
-numpy's RNG differs from R's `rnorm` even with the same seed.
+seed 20260501. The generator uses fixed per-coverage calibration
+constants and a planted regime shift; cell values depend on numpy's
+RNG and so vary with the numpy version even at a fixed seed.
 
 Each coverage is decomposed across ``age_band`` x ``channel`` so the
 demo exercises the all / coverage / age / channel views with real data.
@@ -227,9 +226,8 @@ def load_experience() -> pl.DataFrame:
     """Load the pre-baked synthetic experience dataset.
 
     Equivalent to ``make_experience(seed=20260501)`` but reads a
-    parquet shipped with the package — fast, deterministic across
-    numpy versions, and shared with R `lossratio`'s `data(experience)`
-    in *recipe* (not bit-identical due to RNG differences).
+    parquet shipped with the package — fast and deterministic across
+    numpy versions.
 
     Returns
     -------

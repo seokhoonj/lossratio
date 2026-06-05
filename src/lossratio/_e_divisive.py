@@ -158,9 +158,9 @@ def _best_split(
     Q-hat(left=[seg[0], seg[tau]); right=[seg[tau], seg[kappa])).
 
     Restricting to ``kappa = n`` (full right suffix) recovers a plain
-    prefix-vs-suffix split test, but ecp's null distribution under
-    permutation depends on the full (tau, kappa) max, so for parity the
-    observed test statistic must use the same search.
+    prefix-vs-suffix split test, but the permutation null distribution
+    depends on the full (tau, kappa) max, so the observed test statistic
+    must use the same double-loop search to stay calibrated against it.
 
     The full sweep runs in O(n^2) time and memory via a 2D prefix-sum
     table over the segment's pairwise distance submatrix. For any

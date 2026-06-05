@@ -2,8 +2,7 @@
 
 Implements ``TriangleValidation.plot()`` (cohort-level bar chart of
 observed vs expected dev counts) and ``TriangleValidation.plot_triangle(x_axis="dev")``
-(cohort x dev heatmap of observed / missing cells). Mirrors R's ``plot.TriangleValidation`` and
-``plot_triangle.TriangleValidation`` (``R/triangle.R``).
+(cohort x dev heatmap of observed / missing cells).
 """
 
 from __future__ import annotations
@@ -112,10 +111,9 @@ def plot_triangle_validation(
     calendar series as the x-axis (same layout selector as
     :meth:`Triangle.plot_triangle`).
 
-    R divergence: R's ``plot_triangle.TriangleValidation`` paints
-    *all* cohorts using a stored ``observed_pairs`` slot. Python's
-    TriangleValidation only carries the gaps frame, so non-gappy
-    cohorts are omitted from the heatmap.
+    Only cohorts with at least one gap are drawn: TriangleValidation
+    carries just the gaps frame, so non-gappy cohorts are omitted from
+    the heatmap.
     """
     if x_axis not in ("dev", "calendar"):
         raise ValueError(

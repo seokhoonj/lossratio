@@ -1,8 +1,8 @@
 """Convergence: detect the development period at which the projected
 loss ratio stabilises.
 
-Mirror of R's ``detect_convergence()`` --- multi-criterion drift /
-slope / dispersion test on the Ratio backtest path.
+A multi-criterion drift / slope / dispersion test on the Ratio
+backtest path.
 """
 
 from __future__ import annotations

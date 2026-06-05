@@ -91,8 +91,7 @@ def _boot_fill_sigma2(s2: np.ndarray) -> np.ndarray:
 
     When a link's ``sigma^2`` is NaN (the last link has only one
     contributing cohort, ``n = 1``), carry forward the previous finite
-    value. If no prior value exists, fall back to ``0``. Mirrors R's
-    ``.boot_fill_sigma2``.
+    value. If no prior value exists, fall back to ``0``.
     """
     out = s2.astype(np.float64, copy=True)
     for i in range(len(out)):
@@ -107,8 +106,8 @@ def _boot_fill_sigma2(s2: np.ndarray) -> np.ndarray:
 def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
     """Compute the per-link Mack anchor from an observed cumulative matrix.
 
-    Mirrors R's ``.boot_anchor_cl`` (single group). For each link
-    ``k`` (dev ``k + 1`` -> dev ``k + 2``), over the cohorts where both
+    Single group. For each link ``k`` (dev ``k + 1`` -> dev ``k + 2``),
+    over the cohorts where both
     ``loss_from`` and ``loss_to`` are finite and ``loss_from > 0``:
 
     * ``f_hat   = sum(loss_to) / sum(loss_from)``
@@ -205,7 +204,7 @@ class _Stage1Result:
 _PROCESS_CODES = {"gamma": 1, "od_pois": 2, "normal": 3}
 
 # Maturity sentinel: a cohort whose mat_k is this never enters the CL stage
-# (mirrors R's INT_MAX "no maturity point" marker).
+# (the "no maturity point" marker -- the largest representable int).
 _NO_MATURITY = np.iinfo(np.int64).max
 
 
@@ -220,9 +219,9 @@ def _boot_kernel_cl_analytical(
 ) -> _Stage1Result:
     """Analytical CL bootstrap kernel (Mack 1993 closed-form propagation).
 
-    Mirrors the R native kernel ``bootstrap_kernel_cl_parametric``
-    followed by the Mack-paradigm Stage 2 simulation
-    ``bootstrap_fwd_sim_cl_link``. Pure numpy, single group.
+    Draws new link factors from the parametric anchor, then runs the
+    Mack-paradigm chain-Markov Stage 2 simulation. Pure numpy, single
+    group.
 
     Stages
     ------
@@ -390,8 +389,8 @@ def _boot_summary_decompose(
 ) -> dict[str, np.ndarray]:
     """Per-cell Pythagorean SE decomposition from the array pair.
 
-    Mirrors the R native ``bootstrap_summary_decompose``. Pure numpy.
-    For each ``(cohort, dev)`` cell, over the replicates ``b`` where
+    Pure numpy. For each ``(cohort, dev)`` cell, over the replicates
+    ``b`` where
     *both* ``cum_mean`` and ``cum_sampled`` are finite (``n >= 2``,
     else all NaN):
 
@@ -403,7 +402,7 @@ def _boot_summary_decompose(
 
     When ``quantile_ci`` is set, also returns ``ci_lo`` / ``ci_hi`` --
     the 2.5% / 97.5% quantiles of the finite ``cum_sampled`` values via
-    ``np.quantile(method="inverted_cdf")`` (= R ``type = 1`` ordinal).
+    ``np.quantile(method="inverted_cdf")`` (type-1 ordinal percentile).
 
     Parameters
     ----------
@@ -449,7 +448,7 @@ def _boot_summary_decompose(
             np.nan,
         )
 
-    # Flatten column-major (cohort fastest) to match the R long-format
+    # Flatten column-major (cohort fastest) to match the long-format
     # reshape order.
     out: dict[str, np.ndarray] = {
         "mean_proj": mean_proj.flatten(order="F"),
@@ -460,7 +459,7 @@ def _boot_summary_decompose(
     }
 
     if quantile_ci:
-        # method="inverted_cdf" == R stats::quantile type = 1; inf is
+        # method="inverted_cdf" is the type-1 ordinal percentile; inf is
         # treated as missing and only cells with >= 2 finite samples
         # get a CI. nanquantile over the rep axis matches the per-cell
         # quantile of the finite subset exactly.
@@ -597,8 +596,8 @@ class _ResidualPool:
 def _boot_steps_cl(f_by_to: np.ndarray):
     """Multiplicative CL step closures for :func:`_boot_fitted_grid`.
 
-    Mirrors R's ``.boot_steps_cl``. ``f_by_to[j]`` is the chain-ladder
-    factor applied at the link ``(dev j-1 -> dev j)`` -- i.e. indexed by
+    ``f_by_to[j]`` is the chain-ladder factor applied at the link
+    ``(dev j-1 -> dev j)`` -- i.e. indexed by
     *destination* dev (0-indexed). The forward step multiplies; the
     backward step divides (skipping non-finite / non-positive factors,
     leaving ``cur`` unchanged).
@@ -630,8 +629,8 @@ def _boot_fitted_grid(
 ) -> np.ndarray:
     """Chain-anchored fitted incremental backbone ``mu_hat_ij``.
 
-    Mirrors R's ``.boot_fitted_grid``. For each cohort ``i`` with last
-    observed dev index ``last_j = last_obs_idx[i]``:
+    For each cohort ``i`` with last observed dev index
+    ``last_j = last_obs_idx[i]``:
 
     1. Anchor the fitted *cumulative* at the observed cumulative:
        ``c_hat[i, last_j] = mat_obs[i, last_j]``.
@@ -699,7 +698,7 @@ def _boot_hat_diag_cl(
 ) -> np.ndarray:
     """ODP-GLM hat-matrix diagonal ``h_ii`` via QR.
 
-    Mirrors R's ``.boot_hat_diag_cl``. The ODP GLM design encodes
+    The ODP GLM design encodes
     ``log(mu_ij) = alpha_i + beta_j`` with the corner constraint
     ``beta_1 = 0`` (the dev-1 indicator is dropped). The design has
     ``p = n_coh + n_dev - 1`` columns: ``n_coh`` cohort indicators
@@ -747,7 +746,7 @@ def _boot_hat_diag_cl(
     whx = w_sqrt[:, None] * X
 
     # Thin QR; rank-deficiency guard -- keep only the leading `rank`
-    # columns of Q (matches R's qr.Q(qr_obj)[, seq_len(rank)]).
+    # columns of Q.
     q, r = np.linalg.qr(whx)
     diag_r = np.abs(np.diag(r))
     tol = diag_r.max() * max(whx.shape) * _RESID_EPS if diag_r.size else 0.0
@@ -765,7 +764,7 @@ def _build_obs_matrix_from_df(
 
     Rows are cohorts (sorted ascending), columns dev (sorted ascending);
     unobserved cells are ``np.nan``. Shared scaffolding for the cell
-    residual helpers -- mirrors R's per-group ``mat_obs`` build.
+    residual helpers (the per-group ``mat_obs`` build).
     """
     df = df.sort(["cohort", "dev"])
     cohorts = sorted(df["cohort"].unique().to_list())
@@ -806,8 +805,8 @@ def _cell_residuals_cl(
 ) -> _CellResiduals:
     """ODP Pearson cell residuals on incremental cells (single group).
 
-    Mirrors R's ``.boot_cell_residuals_one_cl`` (England-Verrall
-    1999/2002; ODP-GLM equivalence via Renshaw-Verrall 1998).
+    England-Verrall 1999/2002; ODP-GLM equivalence via Renshaw-Verrall
+    1998.
 
     The chain-anchored fitted backbone ``mu_hat`` comes from
     :func:`_boot_fitted_grid` using the per-link ``f_hat`` of ``anchor``.
@@ -881,9 +880,8 @@ def _cell_residuals_cl(
             p        = n_coh + n_dev - 1,
         )
 
-    # which() with arr.ind = TRUE iterates column-major in R, but the
-    # output ordering only needs to be self-consistent here; row-major
-    # is fine since coh/dev are carried per residual.
+    # The output ordering only needs to be self-consistent here;
+    # row-major is fine since coh/dev are carried per residual.
     coh_pos, dev_pos_arr = np.where(obs_mask)
     coh_idx = coh_pos + 1            # 1-indexed for the hat design
     dev_idx = dev_pos_arr + 1
@@ -931,8 +929,8 @@ def _cell_residuals_ed(
 ) -> _CellResiduals:
     """ED-paradigm Pearson cell residuals (single group).
 
-    Mirrors R's ``.boot_cell_residuals_ed``. For each link cell
-    ``(cohort, ata_to)`` of a dual-variable Link table:
+    For each link cell ``(cohort, ata_to)`` of a dual-variable Link
+    table:
 
         ``g_hat  = sum(loss_delta) / sum(premium_from)``   (per link)
         ``mu_ed  = g_hat * premium_from``
@@ -957,8 +955,8 @@ def _cell_residuals_ed(
         ``loss_delta`` and the from-side cumulative premium column
         named by ``from_col``.
     from_col
-        Name of the from-side cumulative premium column. Both the R and the Python ``Link`` emit ``premium_from`` -- the
-        default matches.
+        Name of the from-side cumulative premium column. The ``Link``
+        emits ``premium_from`` -- the default matches.
 
     Returns
     -------
@@ -1027,8 +1025,8 @@ def _link_residuals_cl(
 ) -> _LinkResiduals:
     """Mack standardized link residuals (single group).
 
-    Mirrors R's ``.boot_attach_residuals_cl`` (Pinheiro et al. 2003).
-    For each Link row, with the per-link Mack anchor ``f_hat_k`` /
+    Pinheiro et al. 2003. For each Link row, with the per-link Mack
+    anchor ``f_hat_k`` /
     ``sigma2_k`` looked up by ``ata_from`` / ``ata_to``:
 
         ``r_ik = (loss_to - f_hat_k loss_from)
@@ -1096,8 +1094,8 @@ def _link_residuals_cl(
 def _tail_cut_auto(key: np.ndarray, min_pool: int) -> float:
     """Smallest link key whose residual count drops below ``min_pool``.
 
-    Mirrors the ``tail = "auto"`` cut of R's pool builders: count
-    residuals per link key (ascending), return the first key whose
+    The ``tail = "auto"`` cut of the pool builders: count residuals per
+    link key (ascending), return the first key whose
     count ``< min_pool``; ``np.nan`` when every key meets the threshold.
     """
     if key.size == 0:
@@ -1117,8 +1115,7 @@ def _assign_pool_id(
 ) -> np.ndarray:
     """Assign a ``pool_id`` string per residual for a single group.
 
-    Mirrors the ``pool_id`` logic of R's ``.boot_build_pool_cell_cl`` /
-    ``.boot_build_pool_cl`` for the single-group case (the group key
+    The ``pool_id`` logic for the single-group case (the group key
     prefix is empty -- ``""``):
 
     * ``"pooled"``      -> every residual gets ``"all"``.
@@ -1151,7 +1148,7 @@ def _build_pool_cell(
 ) -> _ResidualPool:
     """Assemble a cell-residual pool with ``pool_id`` (single group).
 
-    Mirrors R's ``.boot_build_pool_cell_cl``. Steps:
+    Steps:
 
     1. **Drop** non-finite *and* exact-zero residuals. Exact zeros are
        the per-cohort corner cells (fitted == observed); resampling a
@@ -1222,11 +1219,11 @@ def _build_pool_link(
 ) -> _ResidualPool:
     """Assemble a link-residual pool with ``pool_id`` (single group).
 
-    Mirrors R's ``.boot_build_pool_cl``. Steps:
+    Steps:
 
     1. **Drop** non-finite residuals. (Link residuals do not get the
-       exact-zero drop -- only the cell path has corner zeros; this
-       matches R, which filters ``is.finite(residual)`` only.)
+       exact-zero drop -- only the cell path has corner zeros; the link
+       path filters on finiteness only.)
     2. **Assign ``pool_id``** per ``pooling`` -- keyed on ``ata_to``:
        ``"pooled"`` (one pool), ``"separated"`` (per-link), or
        ``"tail_pooled"`` (per-link before a cut, single ``"POST"``
@@ -1234,7 +1231,7 @@ def _build_pool_link(
        ``< min_pool`` (``tail="auto"``) or the ``maturity`` change
        point (``tail="maturity"``).
 
-    Link residuals are *not* de-meaned (R applies ``demean`` only to the
+    Link residuals are *not* de-meaned (``demean`` applies only to the
     cell path).
 
     Parameters
@@ -1286,9 +1283,8 @@ def _build_pool_link(
 #   (e) deterministic forward-projection of the lower triangle -> cum_mean
 #   (f) noisy forward simulation of the lower triangle -> cum_sampled
 #
-# These mirror the R native kernels in src/bootstrap_cl.c /
-# src/bootstrap_ed.c / src/bootstrap_sa.c. They are vectorised over the
-# n_replicates axis with numpy; the per-dev chain recursion runs a sequential loop.
+# They are vectorised over the n_replicates axis with numpy; the per-dev
+# chain recursion runs a sequential loop.
 #
 # References:
 #   Mack (1993, ASTIN Bull 23/2)        -- sigma_k^2 chain-Markov noise.
@@ -1305,7 +1301,7 @@ def _refit_fstar(
 ) -> np.ndarray:
     """Volume-weighted CL ``f_star`` refit per link, per replicate.
 
-    Mirrors R's ``bootstrap_refit_cl_fstar``. For each link ``k``,
+    For each link ``k``,
     ``f_star[k, b] = sum(cum_to) / sum(cum_from)`` over the cohorts
     whose pseudo cumulative is finite at *both* endpoints (the lower
     triangle has already been masked to NaN). When the destination dev
@@ -1355,7 +1351,7 @@ def _refit_gstar(
 ) -> np.ndarray:
     """Volume-weighted ED ``g_star`` refit per link, per replicate.
 
-    Mirrors R's ``bootstrap_refit_ed_gstar``. For each link ``k``,
+    For each link ``k``,
     ``g_star[k, b] = sum(cum_to - cum_from) / sum(premium_from)`` -- the
     numerator over the cohorts whose pseudo cumulative is finite at
     *both* endpoints, and the denominator summing ``premium_proj`` over
@@ -1412,7 +1408,7 @@ def _fwd_proj_cl(
 ) -> None:
     """Multiplicative CL lower-triangle projection (in place).
 
-    Mirrors R's ``bootstrap_fwd_proj_cl_and_clip``. For each dev ``j``,
+    For each dev ``j``,
     cohorts with ``last_obs[i] < j`` get ``cum[i, j] = f_star[k] *
     cum[i, j-1]`` where ``k = k_idx_by_j[j] - 1`` (``-1`` -> carry the
     previous dev forward unchanged). Finite negatives are clipped to 0.
@@ -1444,7 +1440,7 @@ def _fwd_proj_ed(
 ) -> None:
     """Additive ED lower-triangle projection (in place).
 
-    Mirrors R's ``bootstrap_fwd_proj_ed_and_clip``. For each dev ``j``,
+    For each dev ``j``,
     cohorts with ``last_obs[i] < j`` get ``cum[i, j] = cum[i, j-1] +
     g_star[k] * premium_proj[i, j-1]``. Finite negatives clipped to 0.
     """
@@ -1479,8 +1475,8 @@ def _fwd_proj_sa(
 ) -> None:
     """Stage-adaptive lower-triangle projection (in place).
 
-    Mirrors R's ``bootstrap_sa_fwd_proj_and_clip``. Per cohort the stage
-    switches at ``mat_k[i]`` -- the 1-indexed from-dev where CL begins:
+    Per cohort the stage switches at ``mat_k[i]`` -- the 1-indexed
+    from-dev where CL begins:
     for to-dev ``j``, the link is CL when ``j >= mat_k[i]`` (and
     ``mat_k[i]`` is finite). CL step multiplies; ED step adds.
     """
@@ -1622,8 +1618,8 @@ def _fwd_sim_cl_cell(
 ) -> np.ndarray:
     """Cell-independent CL Stage-2 simulation.
 
-    Mirrors R's ``bootstrap_fwd_sim_cl_cell``. The per-step *mean*
-    increment is read from the noise-free ``cum_mean`` (``inc_mean =
+    The per-step *mean* increment is read from the noise-free
+    ``cum_mean`` (``inc_mean =
     cum_mean[j] - cum_mean[j-1]``); a fresh process draw is added and
     ``cum_sampled`` accumulates additively. The upper triangle is copied
     from ``cum_mean`` unchanged.
@@ -1650,8 +1646,8 @@ def _fwd_sim_ed_cell(
 ) -> np.ndarray:
     """Cell-independent ED Stage-2 simulation.
 
-    Mirrors R's ``bootstrap_fwd_sim_ed_cell``. The per-step mean is the
-    additive ED increment ``inc_mean = g_star[k] * premium_proj[j-1]``;
+    The per-step mean is the additive ED increment
+    ``inc_mean = g_star[k] * premium_proj[j-1]``;
     a fresh process draw is added and ``cum_sampled`` accumulates.
     """
     n_coh, n_dev, n_replicates = cum_mean.shape
@@ -1691,8 +1687,8 @@ def _fwd_sim_sa_cell(
 ) -> np.ndarray:
     """Stage-adaptive Stage-2 simulation.
 
-    Mirrors R's ``bootstrap_sa_fwd_sim_cell``. Like the CL cell path the
-    mean increment is read from the noise-free ``cum_mean``; the
+    Like the CL cell path the mean increment is read from the noise-free
+    ``cum_mean``; the
     dispersion ``phi`` is selected per cell -- ``phi_cl`` when the cell
     is in the CL stage (``j >= mat_k[i]``), else ``phi_ed``.
     """
@@ -1720,7 +1716,7 @@ def _fwd_sim_cl_link(
 ) -> np.ndarray:
     """Chain-Markov CL link Stage-2 simulation.
 
-    Mirrors R's ``bootstrap_fwd_sim_cl_link``. The recursion feeds the
+    The recursion feeds the
     *noisy* ``prev_sampled`` forward: ``mu_step = f_star[k] * prev``,
     ``var = sigma2[k] * |prev|^alpha``. Gamma uses ``shape =
     mu^2/var``, ``scale = var/mu``; Normal adds ``N(0, sqrt(var))``.
@@ -1733,7 +1729,7 @@ def _fwd_sim_cl_link(
     different (equally valid) Monte-Carlo sample than a cohort-major loop
     would produce -- not bit-identical, but the projection means come
     from ``cum_mean`` (untouched here) and the SE shift is Monte-Carlo
-    noise within the statistical R-parity tolerance.
+    noise within the statistical tolerance.
     """
     n_coh, n_dev, n_replicates = cum_mean.shape
     cum_sampled = cum_mean.copy()
@@ -1794,7 +1790,7 @@ def _draw_parametric_cells(
 ) -> np.ndarray:
     """Vectorised parametric Stage-1 draw for many cells at once.
 
-    Mirrors R's ``bootstrap_kernel_*_param`` phase (a). ``mu``
+    The parametric phase (a). ``mu``
     (n_cells,) is the per-cell mean, ``phi`` a scalar or per-cell
     dispersion. Gamma: ``Gamma(shape=mu/phi, scale=phi)``; Normal:
     ``mu + N(0, sqrt(phi*|mu|^alpha))`` clipped to ``>= 0``; a
@@ -1841,7 +1837,7 @@ def _pool_dev_subpools(
     covers ``d``. For ``pooling="pooled"`` every dev maps to the one
     ``"all"`` pool; for ``"separated"`` each dev maps to its own; for
     ``"tail_pooled"`` post-cut devs all map to the single ``POST``
-    pool. Mirrors R's ``pid_by_dev`` -> ``pool_pos`` indirection.
+    pool (a ``dev`` -> ``pool_id`` -> residual-array indirection).
     """
     out: dict[int, np.ndarray] = {}
     if pool is None or len(pool) == 0:
@@ -1875,8 +1871,7 @@ def _resample_increment(
     :func:`_pool_dev_subpools`). An empty / absent pool gives
     ``r_star = 0`` (the pseudo cell is then deterministic at ``mu``).
 
-    Mirrors phase (a) of R's ``bootstrap_kernel_cl_cell`` /
-    ``bootstrap_kernel_ed_cell``.
+    This is phase (a) of the CL / ED cell kernels.
 
     Parameters
     ----------
@@ -1924,8 +1919,8 @@ class _GroupKernelInputs:
     """Per-group scaffolding shared by the resampling kernels.
 
     Built once per group by :func:`_build_group_inputs` from the
-    observed cumulative matrix + the Mack anchor. Carries the index
-    vectors the C kernels receive precomputed from R.
+    observed cumulative matrix + the Mack anchor. Carries the
+    precomputed index vectors the kernels consume.
     """
 
     loss_obs:    np.ndarray   # (n_coh, n_dev) observed cumulative
@@ -2020,7 +2015,6 @@ def _premium_anchor_proj(
 ) -> np.ndarray:
     """Project the premium column forward via CL (fixed across replicates).
 
-    Mirrors R's ``.boot_anchor_premium_cl`` + ``.boot_proj_premium_cl``.
     Volume-weighted per-link factor on observed cumulative premium, then
     a deterministic forward roll from each cohort's last observed dev.
     """
@@ -2060,7 +2054,7 @@ def _ed_intensity_anchor(
     """Per-link volume-weighted ED intensity ``g_hat``, aligned to ``anchor``.
 
     ``g_k = sum(loss_delta) / sum(premium_from)`` over observed link
-    rows; non-finite -> 0. Mirrors R's ``.boot_anchor_ed``.
+    rows; non-finite -> 0.
     """
     sub = link_df.select(["ata_to", "loss_delta", "premium_from"])
     ata_to     = sub["ata_to"].to_numpy().astype(np.float64)
@@ -2094,7 +2088,7 @@ def _active_upper_cells(
 
     Returns ``(coh_idx, dev_idx, lin)`` -- the cohort / 0-indexed dev
     arrays and a column-major linear index into the ``(n_coh, n_dev)``
-    grid (cohort fastest, matching R's ``which()``).
+    grid (cohort fastest).
     """
     n_coh, n_dev = mu_grid.shape
     upper = np.zeros((n_coh, n_dev), dtype=bool)
@@ -2103,7 +2097,7 @@ def _active_upper_cells(
         if lj >= 0:
             upper[i, : lj + 1] = True
     active = upper & np.isfinite(mu_grid)
-    # column-major: cohort fastest (R which() order).
+    # column-major: cohort fastest.
     lin = np.where(active.flatten(order="F"))[0]
     coh_idx = lin % n_coh
     dev_idx = lin // n_coh
@@ -2136,7 +2130,7 @@ def _cumsum_mask(
 ) -> None:
     """Cumsum along dev per cohort, then mask the lower triangle to NaN.
 
-    In place. Mirrors phases (b) + (c) of the R cell kernels. A cohort
+    In place (phases (b) + (c) of the cell kernels). A cohort
     with no observation (``last_obs == -1``) is masked from dev 0.
     """
     n_coh, n_dev, n_replicates = cum.shape
@@ -2150,7 +2144,7 @@ def _cumsum_mask(
 
 
 def _process_code(process: str) -> int:
-    """Map a process name to the integer code shared with the R kernels."""
+    """Map a process name to its internal integer code."""
     return _PROCESS_CODES.get(process, 1)
 
 
@@ -2949,7 +2943,7 @@ class Bootstrap:
         """Resolve the SA stage-transition point to a per-group ``mat_k``.
 
         Only the SA paradigm consumes this. The ``maturity`` config
-        argument accepts four forms (R-parity 4-type dispatch):
+        argument accepts four forms (4-type dispatch):
 
         * ``None`` -- auto-detect via ``triangle.link().ata().maturity()``.
         * a :class:`Maturity` object -- read its ``mat_k``.
@@ -3294,8 +3288,7 @@ class Bootstrap:
         Stage-2 process noise. Built only when ``keep_pseudo=True``.
 
         The value columns are named after the bootstrap ``target`` (e.g.
-        ``loss_mean`` / ``premium_mean``) -- mirrors R's
-        ``.boot_build_pseudo_long`` (``R/bootstrap.R``).
+        ``loss_mean`` / ``premium_mean``).
         """
         cum_mean    = stage1.cum_mean        # (n_cohorts, n_devs, n_replicates)
         cum_sampled = stage1.cum_sampled
@@ -3353,7 +3346,7 @@ class Bootstrap:
 
 
 # ---------------------------------------------------------------------------
-# Section 6 -- Shared resolve / overlay helpers (R parity)
+# Section 6 -- Shared resolve / overlay helpers
 # ---------------------------------------------------------------------------
 
 
@@ -3366,8 +3359,7 @@ def _resolve_bootstrap(
 ) -> "BootstrapTriangle | None":
     """Resolve a polymorphic ``bootstrap`` argument to a result or ``None``.
 
-    Mirrors R's ``.resolve_bootstrap`` (``R/bootstrap.R``). Accepted
-    forms for ``bootstrap``:
+    Accepted forms for ``bootstrap``:
 
     * ``None`` / ``False`` -> ``None`` (bootstrap is opt-in).
     * a :class:`Bootstrap` config instance -> ``bootstrap.fit(triangle,
@@ -3442,8 +3434,7 @@ def _apply_bootstrap_overlay(
 ) -> pl.DataFrame:
     """Overlay bootstrap SE / CV onto the projected cells of a fit grid.
 
-    Mirrors R's ``.apply_bootstrap_overlay`` (``R/bootstrap.R``). Takes a
-    fit's long-format ``$full`` DataFrame and a resolved
+    Takes a fit's long-format ``$full`` DataFrame and a resolved
     :class:`BootstrapTriangle`, renames the bootstrap ``summary`` columns
     to the caller's ``<role>_*`` schema, left-joins on ``keys``, and --
     on *projected cells only* (cells where ``{role}_obs`` is null) --

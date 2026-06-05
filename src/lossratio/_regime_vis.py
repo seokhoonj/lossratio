@@ -1,16 +1,12 @@
 """Regime visualisation -- matplotlib backend.
 
-Implements ``Regime.plot()``: per-group cohort timeline with regime
-segments and change-point vlines. **R divergence:** R's
-``plot.Regime`` draws a PCA scatter of cohort trajectories with
-loading arrows and 90% ellipses, sourced from
-``Regime$trajectory`` / ``Regime$pca`` / ``Regime$labels``. Python
-``Regime`` stores only the per-cohort regime labels and detected
-change points, not the underlying trajectory matrix or PCA
-decomposition. Carrying the trajectory + PCA on every Regime would
-inflate the object footprint substantially and require a refactor of
-``_from_triangle`` -- the cohort-timeline plot serves the same
-"what regimes / where do they switch" question without that cost.
+Implements ``Regime.plot()``: a per-group cohort timeline with regime
+segments and change-point vlines. ``Regime`` stores only the per-cohort
+regime labels and detected change points, not an underlying trajectory
+matrix or PCA decomposition -- carrying those on every Regime would
+inflate the object footprint substantially. The cohort-timeline plot
+answers the "what regimes / where do they switch" question without
+that cost.
 """
 
 from __future__ import annotations

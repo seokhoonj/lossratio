@@ -1,15 +1,13 @@
 """Link-factor diagnostic visualisation -- matplotlib backend.
 
-Implements ``Link.plot()`` / ``ATA.plot()`` / ``Intensity.plot()``.
-Mirrors R's ``plot.Link`` dispatcher (``R/link-vis.R``) and
-its two internal branches ``.plot_link_ata`` (5 types:
+Implements ``Link.plot()`` / ``ATA.plot()`` / ``Intensity.plot()``,
+dispatching to two internal branches: ``_plot_link_ata`` (5 kinds:
 ``cv`` / ``rse`` / ``summary`` / ``box`` / ``point``) and
-``.plot_link_ed`` (3 types: ``summary`` / ``box`` / ``point``).
+``_plot_link_ed`` (3 kinds: ``summary`` / ``box`` / ``point``).
 
 Per-link summaries (``mean`` / ``median`` / weighted) are derived from
-the Link's per-cell ``ata`` / ``intensity`` column on the fly -- Python
-``ATA`` / ``Intensity`` only store the pooled factor diagnostic, not
-the additional R ``summary.Link`` aggregates.
+the Link's per-cell ``ata`` / ``intensity`` column on the fly --
+``ATA`` / ``Intensity`` only store the pooled factor diagnostic.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """Plotting utilities shared across visualisation methods.
 
-Mirrors the helper layer that R `R/utils.R` + `R/utils-plot.R` expose
-to `plot_triangle.*` and `plot.*`. The matplotlib backend is intentional
-(R/Python idiom divergence -- ggplot is not available in Python).
+The helper layer used by the ``plot_triangle.*`` and ``plot.*`` methods:
+grid layout, period-label formatting, divisor selection, and metric
+metadata. The matplotlib backend is used throughout.
 """
 
 from __future__ import annotations
@@ -117,8 +117,8 @@ _VAR_TO_TYPE: dict[str, str] = {
 
 
 def _get_period_type(var: str | None, grain: str | None = None) -> str | None:
-    """R `.get_period_type`. Resolve the period type of a column from
-    its variable name (`uy_m`, `cy_h`, ...), falling back to grain.
+    """Resolve the period type of a column from its variable name
+    (`uy_m`, `cy_h`, ...), falling back to grain.
     """
     if var is None:
         return None
@@ -137,7 +137,7 @@ def _pretty_var_label(var: str | None) -> str:
 
 
 def _cohort_label(var: str | None, grain: str | None = None) -> str:
-    """R `.cohort_label` -- e.g. `"cohort (monthly)"`."""
+    """Build a cohort axis label -- e.g. `"cohort (monthly)"`."""
     if var is None:
         return "cohort"
     t = _get_period_type(var, grain=grain)
@@ -161,8 +161,8 @@ def _format_period_series(
     sep: str = ".",
     abb: bool = True,
 ) -> list[str]:
-    """R `.format_period` -- format a Date series as period labels
-    like `"23.01"`, `"23.2Q"`, `"23.1H"`, `"23"`.
+    """Format a Date series as period labels like `"23.01"`, `"23.2Q"`,
+    `"23.1H"`, `"23"`.
     """
     if period_type == "year":
         years = values.dt.year().to_list()
@@ -184,9 +184,8 @@ def _format_period_series(
 
 
 def _auto_divisor(values: np.ndarray | pl.Series | list[float]) -> float:
-    """R `.auto_divisor` -- pick the largest divisor in
-    {1, 1e3, 1e6, 1e9, 1e12} such that the median formats as a
-    non-zero label at `%.1f`.
+    """Pick the largest divisor in {1, 1e3, 1e6, 1e9, 1e12} such that
+    the median formats as a non-zero label at `%.1f`.
     """
     arr = np.asarray(values, dtype=float)
     arr = arr[np.isfinite(arr) & (arr > 0)]

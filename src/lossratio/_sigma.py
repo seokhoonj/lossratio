@@ -4,7 +4,7 @@ When a development link has only one contributing cohort (``n_k = 1``),
 ``sigma_k`` is not directly estimable from the data and the variance
 term for that link is left unfilled (``sigma2 <= 0`` or ``NaN``).
 :func:`extrapolate_tail_sigma2` fills *every* such unestimated link.
-Mirrors R's ``.extrapolate_sigma_ata`` ``sigma_method`` option set:
+The ``sigma_method`` option set:
 
 * ``"locf"`` (default): every unestimated link receives the single
   last valid ``sigma2`` (last observation carried forward) -- most
@@ -79,8 +79,8 @@ def extrapolate_tail_sigma2(
     if idx_pred.size == 0:
         return s
 
-    # R checks the <2-valid guard before the method switch, so even
-    # `none` warns when there are too few valid sigmas to extrapolate.
+    # The <2-valid guard runs before the method switch, so even `none`
+    # warns when there are too few valid sigmas to extrapolate.
     if idx_valid.size < 2:
         warnings.warn(
             "Fewer than two valid `sigma` values; extrapolation skipped.",
@@ -126,8 +126,9 @@ def extrapolate_tail_sigma2(
 
         s2_last = last_valid
         s2_prev = s[idx_valid[-2]]
-        # R computes sqrt(min(...)) on sigma; on the sigma2 array the
-        # sqrt/square round-trip cancels, so use min(...) directly.
+        # The estimator takes sqrt(min(...)) on sigma; on the sigma2
+        # array the sqrt/square round-trip cancels, so use min(...)
+        # directly.
         sigma2_tail = min(s2_last ** 2 / s2_prev, s2_last, s2_prev)
         if idx_pred.size > 1:
             s[idx_pred[:-1]] = last_valid

@@ -1,8 +1,7 @@
 """Projection-curve visualisation -- matplotlib backend.
 
-Implements ``RatioFit.plot()`` / ``LossFit.plot()`` / ``PremiumFit.plot()``.
-Mirrors R's ``plot.RatioFit`` (``R/ratio-vis.R``) and the
-shared ``.plot_projection_fit`` helper (``R/cl-vis.R``).
+Implements ``RatioFit.plot()`` / ``LossFit.plot()`` / ``PremiumFit.plot()``,
+sharing the ``plot_projection_fit`` helper for the loss / premium fits.
 
 Per-cohort projection curves: solid observed line + bridge segment +
 dashed projected line + optional analytical / bootstrap CI ribbon, one
@@ -83,7 +82,7 @@ def plot_ratio_fit(
 
     # CI columns exist only for cumulative metrics. Premium-side CI cols
     # are present only when the Ratio was fit with se_method="delta"; if
-    # absent, the ribbon is silently skipped (R parity).
+    # absent, the ribbon is silently skipped.
     ci_lo_col: str | None
     ci_hi_col: str | None
     if not is_incr:
@@ -158,7 +157,7 @@ def plot_ratio_fit(
     work = work.with_columns(pl.Series(name="_coh_lbl", values=coh_labels))
 
     # Default per_group: True iff multi-group fit. Single-group returns
-    # one Figure; multi-group returns list[Figure] (R parity).
+    # one Figure; multi-group returns list[Figure].
     if per_group is None:
         per_group = bool(
             groups is not None
