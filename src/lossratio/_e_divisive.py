@@ -100,14 +100,17 @@ def _q_grid(
     n = D_seg.shape[0]
     S = np.zeros((n + 1, n + 1), dtype=np.float64)
     S[1:, 1:] = D_seg.cumsum(axis=0).cumsum(axis=1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        wx = S[T, T] / (n_x * (n_x - 1))
-        cross_sum = S[T, K] - S[T, T]
-        within_y_sum = S[K, K] - S[K, T] - S[T, K] + S[T, T]
-        cross_mean = (2.0 * cross_sum) / (n_x * n_y)
-        wy = within_y_sum / (n_y * (n_y - 1))
-        e_arr = cross_mean - wx - wy
-        q_arr = (n_x * n_y) / (n_x + n_y) * e_arr
+    # The divide/invalid warnings (inf/nan on degenerate cells, masked by
+    # the np.where below) are suppressed by the CALLER's np.errstate set
+    # once around the permutation loop / best-split call -- not per call
+    # here, since this runs in the hot per-permutation loop.
+    wx = S[T, T] / (n_x * (n_x - 1))
+    cross_sum = S[T, K] - S[T, T]
+    within_y_sum = S[K, K] - S[K, T] - S[T, K] + S[T, T]
+    cross_mean = (2.0 * cross_sum) / (n_x * n_y)
+    wy = within_y_sum / (n_y * (n_y - 1))
+    e_arr = cross_mean - wx - wy
+    q_arr = (n_x * n_y) / (n_x + n_y) * e_arr
     return np.where(valid, q_arr, -np.inf)
 
 
@@ -161,7 +164,8 @@ def _best_split(
     D_seg = D[np.ix_(seg_idx, seg_idx)]
 
     tau_vals, T, K, n_x, n_y, valid = _grid_for_segment(n, min_size)
-    q_arr = _q_grid(D_seg, T, K, n_x, n_y, valid)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        q_arr = _q_grid(D_seg, T, K, n_x, n_y, valid)
 
     flat = int(np.argmax(q_arr))
     if not np.isfinite(q_arr.flat[flat]):
@@ -196,11 +200,17 @@ def _permutation_p_value(
     _, T, K, n_x, n_y, valid = _grid_for_segment(n, min_size)
 
     count = 0
-    for _ in range(n_permutations):
-        perm = rng.permutation(n)
-        q_arr = _q_grid(D_base[np.ix_(perm, perm)], T, K, n_x, n_y, valid)
-        if float(q_arr.max()) >= observed_q:
-            count += 1
+    # Set the divide/invalid suppression once for the whole loop instead of
+    # per _q_grid call (which runs n_permutations times).
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for _ in range(n_permutations):
+            perm = rng.permutation(n)
+            # D_base[perm][:, perm] is the same permuted submatrix as
+            # D_base[np.ix_(perm, perm)] but skips the ix_ broadcast
+            # machinery -- this gather is the hot per-permutation line.
+            q_arr = _q_grid(D_base[perm][:, perm], T, K, n_x, n_y, valid)
+            if float(q_arr.max()) >= observed_q:
+                count += 1
     return (count + 1) / (n_permutations + 1)
 
 
