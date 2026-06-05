@@ -350,7 +350,7 @@ def test_premium_ed_aliases_premium_ata():
         seed=20260524,
     )
     assert a.target == b.target == "premium_ata"
-    assert a.breakpoints == b.breakpoints
+    assert a.change_points == b.change_points
     assert a.n_regimes == b.n_regimes
 
 

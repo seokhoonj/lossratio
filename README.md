@@ -119,7 +119,7 @@ fit.summary().select(["coverage", "cohort", "ratio_ult", "ratio_se", "ratio_cv"]
 
 # 4. Detect cohort regime shifts (E-Divisive over the cohort ratio path).
 reg = tri.detect_regime(target="ratio", window=12)
-reg.breakpoints
+reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
 # 5. Calendar-diagonal hold-out backtest. The last 6 diagonals are

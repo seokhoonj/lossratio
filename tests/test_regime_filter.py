@@ -74,11 +74,11 @@ def test_apply_regime_filter_none_returns_original():
     assert out is tri
 
 
-def test_apply_regime_filter_no_breakpoints_passthrough():
+def test_apply_regime_filter_no_change_points_passthrough():
     tri = _sur_triangle()
     # Build a Regime with no changes
     empty = lr.Regime.at(change="1900-01-01")
-    empty.breakpoints = []
+    empty.change_points = []
     out = _apply_regime_filter(tri, empty)
     assert out.to_polars().height == tri.to_polars().height
 
@@ -411,7 +411,7 @@ def test_segment_bridged_borrowed_with_auto_detection():
     # Auto detect on SUR with window=12 should find at least one break
     # (regime drop is in the data), making per-segment estimation
     # meaningful (segment_id column emitted).
-    if fit.loss_fit.regime and fit.loss_fit.regime.breakpoints:
+    if fit.loss_fit.regime and fit.loss_fit.regime.change_points:
         assert "segment_id" in df.columns
 
 

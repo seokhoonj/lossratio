@@ -50,16 +50,16 @@ class EDivisiveResult(NamedTuple):
 
     Attributes
     ----------
-    breakpoints
+    change_points
         Sorted list of *break* indices. Each entry is the first index of
         a new segment in the original data ordering. The initial segment
         starts at 0 and is not listed; only interior breaks are returned.
     p_values
-        P-values aligned with ``breakpoints`` — the permutation p-value
+        P-values aligned with ``change_points`` — the permutation p-value
         at which each break was accepted.
     """
 
-    breakpoints: list[int]
+    change_points: list[int]
     p_values: list[float]
 
 
@@ -250,7 +250,7 @@ def e_divisive(
     """E-Divisive change-point detection.
 
     Greedy divisive change-point detection on a multivariate sequence
-    via the energy statistic. The number of breakpoints is determined
+    via the energy statistic. The number of change_points is determined
     by sequential permutation testing at the chosen significance level.
 
     Parameters
@@ -277,7 +277,7 @@ def e_divisive(
     Returns
     -------
     EDivisiveResult
-        Sorted breakpoints (right-side starts) and matching p-values.
+        Sorted change_points (right-side starts) and matching p-values.
 
     Notes
     -----
@@ -301,7 +301,7 @@ def e_divisive(
 
     # Open segments as (start, end) intervals (end-exclusive)
     segments: list[tuple[int, int]] = [(0, n)]
-    breakpoints: list[int] = []
+    change_points: list[int] = []
     p_values: dict[int, float] = {}
 
     while True:
@@ -329,14 +329,14 @@ def e_divisive(
             break
 
         # Accept the break and split the segment (strict p < sig_level)
-        breakpoints.append(tau)
+        change_points.append(tau)
         p_values[tau] = p_value
         segments.remove((start, end))
         segments.append((start, tau))
         segments.append((tau, end))
 
-    breakpoints.sort()
+    change_points.sort()
     return EDivisiveResult(
-        breakpoints=breakpoints,
-        p_values=[p_values[bp] for bp in breakpoints],
+        change_points=change_points,
+        p_values=[p_values[bp] for bp in change_points],
     )

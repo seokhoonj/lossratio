@@ -214,7 +214,7 @@ def _detect_regime_single(
     caller decides whether to skip or propagate.
 
     When ``edge_scan`` is set (E-Divisive only), a 1-vs-rest effect-size
-    scan (:func:`_edge_scan_breakpoints`) augments the permutation breaks
+    scan (:func:`_edge_scan_change_points`) augments the permutation breaks
     with any boundary regime E-Divisive structurally cannot reach. Edge
     breaks carry a ``NaN`` p-value (they are effect-size gated, not
     permutation tested) so a downstream FDR pass leaves them untouched.
@@ -222,7 +222,7 @@ def _detect_regime_single(
     mat, cohorts, dropped = _build_feature_matrix(sub, target, window)
     n = len(cohorts)
     if method == "e_divisive":
-        breaks_idx, p_vals = _e_divisive_breakpoints(
+        breaks_idx, p_vals = _e_divisive_change_points(
             mat,
             sig_level=sig_level,
             n_permutations=n_permutations,
@@ -230,7 +230,7 @@ def _detect_regime_single(
             seed=seed,
         )
         if edge_scan:
-            for e in _edge_scan_breakpoints(mat, threshold=edge_threshold, min_size=min_size):
+            for e in _edge_scan_change_points(mat, threshold=edge_threshold, min_size=min_size):
                 if e not in breaks_idx:
                     breaks_idx.append(e)
                     p_vals.append(float("nan"))
@@ -240,22 +240,22 @@ def _detect_regime_single(
                 p_vals = [p for _, p in paired]
     else:  # hclust
         n_reg = 2 if n_regimes is None else int(n_regimes)
-        breaks_idx = _hclust_breakpoints(mat, n_regimes=n_reg)
+        breaks_idx = _hclust_change_points(mat, n_regimes=n_reg)
         p_vals = [float("nan")] * len(breaks_idx)
 
     regime_ids = _regime_ids_from_breaks(n, breaks_idx)
-    breakpoints = [cohorts[i] for i in breaks_idx]
+    change_points = [cohorts[i] for i in breaks_idx]
     result: dict[str, Any] = {
         "cohorts": cohorts,
         "regime_ids": regime_ids,
-        "breakpoints": breakpoints,
+        "change_points": change_points,
         "p_values": p_vals,
         "dropped": dropped,
         "n_regimes": int(regime_ids.max()) if n > 0 else 0,
     }
     if with_assess:
         # Quantify each break on the cohort-level scalar (mean over the
-        # window) via the shared kernel. Aligned with ``breakpoints``.
+        # window) via the shared kernel. Aligned with ``change_points``.
         scalar = mat.mean(axis=1)
         result["assess"] = [_assess_change(scalar, i) for i in breaks_idx]
     return result
@@ -284,7 +284,7 @@ def _build_candidates_df(
     frames: list[pl.DataFrame] = []
     for combo, res in per_combo_results:
         assess = res.get("assess")
-        bps = res["breakpoints"]
+        bps = res["change_points"]
         if not assess or not bps:
             continue
         data: dict[str, Any] = {}
@@ -344,7 +344,7 @@ def _sweep_window_candidates(
             continue
         n_win += 1
         n_coh = len(res["cohorts"])
-        for bp, a in zip(res["breakpoints"], res["assess"]):
+        for bp, a in zip(res["change_points"], res["assess"]):
             rec = by_date.setdefault(bp, {"count": 0, "best_n": -1, "assess": None})
             rec["count"] += 1
             if n_coh > rec["best_n"]:
@@ -614,7 +614,7 @@ def _combine_combo_results(
     """
     label_frames: list[pl.DataFrame] = []
     change_frames: list[pl.DataFrame] = []
-    all_breakpoints: list[Any] = []
+    all_change_points: list[Any] = []
     n_regimes_max = 0
     dropped_out: list[Any] | dict[Any, list[Any]]
 
@@ -623,7 +623,7 @@ def _combine_combo_results(
         _, res = per_combo_results[0]
         cohorts = res["cohorts"]
         regime_ids = res["regime_ids"]
-        breakpoints = res["breakpoints"]
+        change_points = res["change_points"]
 
         label_frames.append(
             pl.DataFrame({"cohort": cohorts, "regime_id": regime_ids})
@@ -631,13 +631,13 @@ def _combine_combo_results(
         change_frames.append(
             pl.DataFrame(
                 {
-                    "change": breakpoints,
-                    "regime_id": list(range(2, 2 + len(breakpoints))),
+                    "change": change_points,
+                    "regime_id": list(range(2, 2 + len(change_points))),
                 },
                 schema_overrides={"regime_id": pl.Int64},
             )
         )
-        all_breakpoints.extend(breakpoints)
+        all_change_points.extend(change_points)
         n_regimes_max = max(n_regimes_max, res["n_regimes"])
         dropped_out = list(res["dropped"])
     else:
@@ -645,7 +645,7 @@ def _combine_combo_results(
         for combo, res in per_combo_results:
             cohorts = res["cohorts"]
             regime_ids = res["regime_ids"]
-            breakpoints = res["breakpoints"]
+            change_points = res["change_points"]
 
             # Group column(s) first (single col for a str grp, one per
             # name for a multi-column list grp with a tuple combo).
@@ -655,18 +655,18 @@ def _combine_combo_results(
             lab_data["regime_id"] = regime_ids
             label_frames.append(pl.DataFrame(lab_data))
 
-            if breakpoints:
+            if change_points:
                 ch_data: dict[str, Any] = {}
-                fill_group_columns(ch_data, grp, combo, len(breakpoints))
-                ch_data["change"] = breakpoints
-                ch_data["regime_id"] = list(range(2, 2 + len(breakpoints)))
+                fill_group_columns(ch_data, grp, combo, len(change_points))
+                ch_data["change"] = change_points
+                ch_data["regime_id"] = list(range(2, 2 + len(change_points)))
                 change_frames.append(
                     pl.DataFrame(
                         ch_data,
                         schema_overrides={"regime_id": pl.Int64},
                     )
                 )
-                all_breakpoints.extend(breakpoints)
+                all_change_points.extend(change_points)
             n_regimes_max = max(n_regimes_max, res["n_regimes"])
             dropped_dict[combo] = list(res["dropped"])
         dropped_out = dropped_dict
@@ -684,7 +684,7 @@ def _combine_combo_results(
             schema={"change": pl.Date, "regime_id": pl.Int64},
         )
     )
-    return labels_df, changes_df, all_breakpoints, n_regimes_max, dropped_out
+    return labels_df, changes_df, all_change_points, n_regimes_max, dropped_out
 
 
 def _detect_regime_optimal_window(
@@ -726,7 +726,7 @@ def _detect_regime_optimal_window(
             )
         except ValueError:
             continue
-        sweep.append((int(k), len(res["breakpoints"])))
+        sweep.append((int(k), len(res["change_points"])))
 
     if not sweep:
         return None
@@ -1188,14 +1188,14 @@ def _borrow_screen_group(
     }
 
 
-def _e_divisive_breakpoints(
+def _e_divisive_change_points(
     mat: np.ndarray,
     sig_level: float,
     n_permutations: int,
     min_size: int,
     seed: int | None,
 ) -> tuple[list[int], list[float]]:
-    """E-Divisive breakpoints (right-side starts) and their permutation p-values."""
+    """E-Divisive change_points (right-side starts) and their permutation p-values."""
     res = e_divisive(
         mat,
         sig_level=sig_level,
@@ -1204,7 +1204,7 @@ def _e_divisive_breakpoints(
         alpha=1.0,
         seed=seed,
     )
-    return res.breakpoints, res.p_values
+    return res.change_points, res.p_values
 
 
 def _bh_adjust(p_values: np.ndarray, n_tests: int | None = None) -> np.ndarray:
@@ -1239,7 +1239,7 @@ def _bh_adjust(p_values: np.ndarray, n_tests: int | None = None) -> np.ndarray:
     return out
 
 
-def _edge_scan_breakpoints(
+def _edge_scan_change_points(
     mat: np.ndarray,
     threshold: float,
     min_size: int,
@@ -1304,7 +1304,7 @@ def _edge_scan_breakpoints(
     return sorted(set(breaks))
 
 
-def _hclust_breakpoints(
+def _hclust_change_points(
     mat: np.ndarray,
     n_regimes: int,
 ) -> list[int]:
@@ -1358,7 +1358,7 @@ class Regime:
         used as the feature vector). Mirrors R's ``window`` arg.
     cohort : str
         Original cohort variable name (e.g. ``"uy_m"``).
-    breakpoints : list
+    change_points : list
         Cohort values at which a new regime starts (excluding the first
         cohort).
     n_regimes : int
@@ -1689,25 +1689,25 @@ class Regime:
             rebuilt: list[tuple[Any, dict[str, Any]]] = []
             for ci, (combo, res) in enumerate(per_combo_results):
                 kept = sorted(keep[ci])
-                if len(kept) == len(res["breakpoints"]):
+                if len(kept) == len(res["change_points"]):
                     rebuilt.append((combo, res))
                     continue
                 cohorts = res["cohorts"]
                 n = len(cohorts)
-                bps = [res["breakpoints"][bi] for bi in kept]
+                bps = [res["change_points"][bi] for bi in kept]
                 pvs = [res["p_values"][bi] for bi in kept]
                 idx = [cohorts.index(v) for v in bps]
                 regime_ids = _regime_ids_from_breaks(n, idx)
                 rebuilt.append((combo, {
                     **res,
-                    "breakpoints": bps,
+                    "change_points": bps,
                     "p_values": pvs,
                     "regime_ids": regime_ids,
                     "n_regimes": int(regime_ids.max()) if n > 0 else 0,
                 }))
             per_combo_results = rebuilt
 
-        labels_df, changes_df, breakpoints, n_regimes_total, dropped = (
+        labels_df, changes_df, change_points, n_regimes_total, dropped = (
             _combine_combo_results(per_combo_results, grp)
         )
 
@@ -1732,7 +1732,7 @@ class Regime:
         self.cohort = triangle.cohort
         self.dev = triangle.dev
         self.groups = grp
-        self.breakpoints = breakpoints
+        self.change_points = change_points
         self.n_regimes = n_regimes_total
         self.dropped = dropped
         self.treatment = treatment
@@ -1767,7 +1767,7 @@ class Regime:
         self.cohort = ""
         self.dev = ""
         self.groups = groups
-        self.breakpoints = changes_df["change"].to_list()
+        self.change_points = changes_df["change"].to_list()
         self.n_regimes = 0
         self.dropped = []
         self.treatment = treatment
@@ -2330,13 +2330,13 @@ def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
     point per group -- cohorts strictly before it are dropped. Returns
     ``None`` when the regime has no change points to apply.
     """
-    if not regime.breakpoints:
+    if not regime.change_points:
         return None
 
     changes = regime._changes_df
     gcols = normalize_groups(regime.groups)
     if not gcols or not all(g in changes.columns for g in gcols):
-        cutoff = max(regime.breakpoints)
+        cutoff = max(regime.change_points)
         return pl.DataFrame({"_cutoff": [cutoff]}, schema={"_cutoff": pl.Date})
 
     return (
@@ -2361,7 +2361,7 @@ def _segment_id_expr(
     nested ``when`` chains. Returns ``None`` when the regime has no
     changes (caller should default everything to segment 1).
     """
-    if not regime.breakpoints:
+    if not regime.change_points:
         return None
 
     changes = regime._changes_df
@@ -2380,7 +2380,7 @@ def _segment_id_expr(
         return expr
 
     if not is_multi:
-        sorted_changes = sorted(regime.breakpoints)
+        sorted_changes = sorted(regime.change_points)
         return _single_group_expr(sorted_changes)
 
     # Per-group: build nested when-chain keyed by group value (scalar for
@@ -2638,7 +2638,7 @@ def _apply_regime_filter(
     When ``regime`` is ``None`` or has no change points, the input
     triangle is returned unchanged.
     """
-    if regime is None or not regime.breakpoints:
+    if regime is None or not regime.change_points:
         return triangle
 
     from .triangle import Triangle

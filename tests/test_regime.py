@@ -23,7 +23,7 @@ def test_edivisive_detects_mean_shift():
         ]
     )
     res = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
-    assert res.breakpoints == [25]
+    assert res.change_points == [25]
     assert res.p_values[0] < 0.05
 
 
@@ -32,7 +32,7 @@ def test_edivisive_no_shift_returns_empty():
     rng = np.random.default_rng(123)
     X = rng.normal(loc=0.0, scale=1.0, size=(50, 5))
     res = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
-    assert res.breakpoints == []
+    assert res.change_points == []
     assert res.p_values == []
 
 
@@ -48,10 +48,10 @@ def test_edivisive_two_breaks():
     )
     res = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
     # Two breaks expected (around 20 and 40); allow ±2 tolerance
-    assert len(res.breakpoints) == 2
+    assert len(res.change_points) == 2
     assert all(p < 0.05 for p in res.p_values)
-    assert abs(res.breakpoints[0] - 20) <= 2
-    assert abs(res.breakpoints[1] - 40) <= 2
+    assert abs(res.change_points[0] - 20) <= 2
+    assert abs(res.change_points[1] - 40) <= 2
 
 
 def test_edivisive_too_short_returns_empty():
@@ -59,11 +59,11 @@ def test_edivisive_too_short_returns_empty():
     rng = np.random.default_rng(0)
     X = rng.normal(size=(5, 3))
     res = e_divisive(X, sig_level=0.05, n_permutations=99, min_size=3, seed=1)
-    assert res.breakpoints == []
+    assert res.change_points == []
 
 
 def test_edivisive_seed_reproducible():
-    """Same seed → same breakpoints and p-values."""
+    """Same seed → same change_points and p-values."""
     rng = np.random.default_rng(99)
     X = np.vstack(
         [
@@ -73,7 +73,7 @@ def test_edivisive_seed_reproducible():
     )
     r1 = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
     r2 = e_divisive(X, sig_level=0.05, n_permutations=199, min_size=5, seed=20260509)
-    assert r1.breakpoints == r2.breakpoints
+    assert r1.change_points == r2.change_points
     assert r1.p_values == r2.p_values
 
 
@@ -191,7 +191,7 @@ def test_detect_regime_e_divisive_finds_shift():
     assert reg.window == 12
     assert reg.n_regimes >= 2  # at least one break
     # Break should be near cohort 15 (within tolerance)
-    assert len(reg.breakpoints) >= 1
+    assert len(reg.change_points) >= 1
 
 
 def test_detect_regime_hclust():
@@ -274,32 +274,32 @@ def test_bh_adjust_nan_passthrough_and_n_tests():
 
 
 def test_edge_scan_detects_left_edge_outlier():
-    from lossratio.regime import _edge_scan_breakpoints
+    from lossratio.regime import _edge_scan_change_points
 
     rng = np.random.default_rng(0)
     mat = 1.0 + rng.normal(0, 0.02, size=(12, 4))
     mat[0] = 5.0                                  # first cohort wildly different
-    breaks = _edge_scan_breakpoints(mat, threshold=10.0, min_size=3)
+    breaks = _edge_scan_change_points(mat, threshold=10.0, min_size=3)
     assert breaks == [1]                          # left edge of size 1 -> break @ idx 1
 
 
 def test_edge_scan_quiet_on_noise():
-    from lossratio.regime import _edge_scan_breakpoints
+    from lossratio.regime import _edge_scan_change_points
 
     rng = np.random.default_rng(1)
     mat = 1.0 + rng.normal(0, 0.5, size=(12, 4))  # all noisy, no clear edge
-    breaks = _edge_scan_breakpoints(mat, threshold=10.0, min_size=3)
+    breaks = _edge_scan_change_points(mat, threshold=10.0, min_size=3)
     assert breaks == []
 
 
 def test_edge_scan_blind_zone_cap():
-    from lossratio.regime import _edge_scan_breakpoints
+    from lossratio.regime import _edge_scan_change_points
 
     # min_size=2 -> max_edge=1: only a length-1 edge can be flagged.
     rng = np.random.default_rng(2)
     mat = 1.0 + rng.normal(0, 0.02, size=(12, 4))
     mat[0] = mat[1] = 5.0                          # first TWO cohorts shifted
-    breaks = _edge_scan_breakpoints(mat, threshold=10.0, min_size=2)
+    breaks = _edge_scan_change_points(mat, threshold=10.0, min_size=2)
     assert breaks == [1]                          # capped at the blind zone (k<=1)
 
 

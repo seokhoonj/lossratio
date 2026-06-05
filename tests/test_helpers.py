@@ -25,19 +25,19 @@ def test_regime_at_single_string_change():
     r = lr.Regime.at(change="2024-07-01")
     assert isinstance(r, lr.Regime)
     assert r.method == "manual"
-    assert r.breakpoints == [date(2024, 7, 1)]
+    assert r.change_points == [date(2024, 7, 1)]
     assert r.treatment == "segment_borrowed"  # default treatment
 
 
 def test_regime_at_accepts_date_and_datetime():
     r1 = lr.Regime.at(change=date(2024, 7, 1))
     r2 = lr.Regime.at(change=datetime(2024, 7, 1, 12, 0))
-    assert r1.breakpoints == r2.breakpoints == [date(2024, 7, 1)]
+    assert r1.change_points == r2.change_points == [date(2024, 7, 1)]
 
 
 def test_regime_at_list_of_changes():
     r = lr.Regime.at(change=["2024-07-01", "2024-10-01"])
-    assert r.breakpoints == [date(2024, 7, 1), date(2024, 10, 1)]
+    assert r.change_points == [date(2024, 7, 1), date(2024, 10, 1)]
     assert r.changes.height == 2
 
 

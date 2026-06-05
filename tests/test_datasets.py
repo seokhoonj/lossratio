@@ -46,5 +46,5 @@ def test_load_experience_sur_has_regime_break():
     df = lr.load_experience().filter(pl.col("coverage") == "SUR")
     tri = lr.Triangle(df)
     reg = tri.detect_regime(target="ratio", window=12)
-    assert len(reg.breakpoints) == 1
-    assert reg.breakpoints[0].isoformat() == "2024-07-01"
+    assert len(reg.change_points) == 1
+    assert reg.change_points[0].isoformat() == "2024-07-01"

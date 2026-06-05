@@ -357,7 +357,7 @@ def test_regime_changes_match_r():
     """detect_regime change points (Date list)."""
     r = _load("regime_changes")
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = tri.detect_regime(window=12, method="e_divisive", seed=0).breakpoints
+    py = tri.detect_regime(window=12, method="e_divisive", seed=0).change_points
 
     r_dates = r["change"].to_list()
     assert len(py) == len(r_dates), (

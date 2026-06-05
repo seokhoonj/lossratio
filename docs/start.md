@@ -78,7 +78,7 @@ SUR에 심어 둔 2024년 7월 변화가 검출됩니다.
 
 ```python
 reg = tri.detect_regime(target="ratio", window=12)
-reg.breakpoints
+reg.change_points
 #> [datetime.date(2024, 7, 1)]
 ```
 

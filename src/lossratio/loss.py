@@ -813,7 +813,7 @@ class LossFit:
         if (
             regime is not None
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
-            and regime.breakpoints
+            and regime.change_points
         ):
             if estimator.tail is not False:
                 raise NotImplementedError(
