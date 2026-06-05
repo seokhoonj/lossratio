@@ -454,31 +454,36 @@ def test_detect_regime_grain_sweep():
 # ---------------------------------------------------------------------------
 
 
-def test_evaluate_action_regime_recent_none():
+def test_evaluate_action_regime_or_none():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     reg = tri.detect_regime(
         target="ratio", grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10),
         seed=20260501, n_permutations=199,
     )
     ev = reg.evaluate()
-    assert "action" in ev.columns and "confidence" in ev.columns
-    assert set(ev["action"].unique().to_list()) <= {"regime", "recent", "none"}
+    assert {"action", "still_moving", "confidence"} <= set(ev.columns)
+    # action collapses to regime / none (a material drift is cut too).
+    assert set(ev["action"].unique().to_list()) <= {"regime", "none"}
     # confidence in [0, 1], sorted descending.
     assert ev["confidence"].min() >= 0.0 and ev["confidence"].max() <= 1.0
     assert ev["confidence"].to_list() == sorted(ev["confidence"].to_list(), reverse=True)
-    # accept is exactly the "regime" action.
     assert (ev["accept"] == (ev["action"] == "regime")).all()
-    # only discrete steps become a "regime" cut; drift never does.
-    assert (ev.filter(pl.col("action") == "regime")["kind"] == "step").all()
+    # still_moving only on drift regimes; never on a step regime.
+    type_col = "change_type" if "change_type" in ev.columns else "kind"
+    moving = ev.filter(pl.col("still_moving"))
+    if moving.height:
+        assert (moving[type_col] == "drift").all()
+        assert (moving["action"] == "regime").all()
     # "none" carries zero confidence; acted-on rows carry positive.
     assert (ev.filter(pl.col("action") == "none")["confidence"] == 0.0).all()
-    acted = ev.filter(pl.col("action") != "none")
+    acted = ev.filter(pl.col("action") == "regime")
     if acted.height:
         assert (acted["confidence"] > 0.0).all()
-    # the planted SUR step is a regime with high confidence.
+    # the planted SUR step is a regime, not still-moving.
     sur = ev.filter(pl.col("coverage") == "SUR")
     if sur.height:
         assert sur["action"][0] == "regime"
+        assert not sur["still_moving"][0]
         assert sur["confidence"][0] > 0.5
 
 
