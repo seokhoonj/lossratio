@@ -132,6 +132,14 @@ def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
     _compare(py, r, cols=common)
 
 
+@pytest.mark.xfail(
+    reason="Python corrected the ED segment borrow: the late-dev region is "
+    "borrowed via the level-invariant f_k, not g_k (g_k = delta_loss / "
+    "premium imports the donor's loss-ratio level across the regime change). "
+    "The R fixtures still encode the old g_k borrow; they will be "
+    "regenerated when R is re-ported to the corrected behavior.",
+    strict=False,
+)
 def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
     """ED loss method + CL premium method under segment_bridged_borrowed."""
     r = _load("segment_bridged_borrowed_ratio_ed_full").sort(["cohort", "dev"])
@@ -156,6 +164,11 @@ def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
     )
 
 
+@pytest.mark.xfail(
+    reason="Python corrected the ED segment borrow (level-invariant f_k, not "
+    "g_k); R fixtures pending re-port to the corrected behavior.",
+    strict=False,
+)
 def test_segment_bridged_borrowed_ratio_ed_summary_matches_r():
     """ED method summary comparison."""
     r = _load("segment_bridged_borrowed_ratio_ed_summary").sort(["cohort"])

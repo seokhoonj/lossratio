@@ -152,13 +152,13 @@ def _project_loss(
     g_k: np.ndarray,
     sigma2_g_k: np.ndarray,
     var_g_k: np.ndarray,
-    mat_threshold: float,
+    maturity_threshold: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Cumulative-loss projection + Mack variance recursion.
 
     Given the per-link factor arrays (CL ``f_k`` and ED ``g_k`` with
     their sigma2 / Mack-variance companions) and the SA switch
-    ``mat_threshold`` (``0`` = pure CL, ``inf`` = pure ED, finite =
+    ``maturity_threshold`` (``0`` = pure CL, ``inf`` = pure ED, finite =
     ED below / CL at-or-above that target dev), seeds each cohort from
     its last observed cell and recurses forward. Returns
     ``(loss_proj, proc_se, param_se, total_se)``.
@@ -198,7 +198,7 @@ def _project_loss(
         ck = loss_proj[:, k]
         pk = premium_proj_from_fit[:, k]
 
-        if target_dev < mat_threshold:
+        if target_dev < maturity_threshold:
             # ED phase: additive
             pos = active & ~np.isnan(pk) & (pk > 0)
             if pos.any():
@@ -317,19 +317,19 @@ def _fit_loss_single(
     # Switch threshold: target dev < mat = ED phase; target dev >= mat = CL.
     if method == "sa":
         if mat_k is None:
-            mat_threshold = float("inf")  # fall back to ED throughout
+            maturity_threshold = float("inf")  # fall back to ED throughout
         else:
-            mat_threshold = float(mat_k)
+            maturity_threshold = float(mat_k)
     elif method == "ed":
-        mat_threshold = float("inf")
+        maturity_threshold = float("inf")
     else:  # cl
-        mat_threshold = 0.0
+        maturity_threshold = 0.0
 
     loss_proj, proc_se, param_se, total_se = _project_loss(
         loss_obs, premium_proj_from_fit,
         f_k, sigma2_f_k, var_f_k,
         g_k, sigma2_g_k, var_g_k,
-        mat_threshold,
+        maturity_threshold,
     )
     obs_mask = ~np.isnan(loss_obs)
     last_obs_idx = np.where(
@@ -429,10 +429,16 @@ def _borrowed_loss_group(
                 mk = int(mat_k_override)
         seg_mat_k[s] = mk
 
-    # 2) donor-augment. Donor selection keys off the factor the
-    # projection's late-dev region uses: g_k for pure ED, f_k otherwise
-    # (CL, and SA whose late-dev CL region is what needs borrowing).
-    primary = "g_k" if method == "ed" else "f_k"
+    # 2) donor-augment. The borrowed (late-dev) region is ALWAYS driven
+    # by the multiplicative f_k -- it is level-invariant (f_k = C_{k+1}/C_k
+    # cancels the loss-ratio level), so a donor segment from a different
+    # regime lends only its development SHAPE, not its loss-ratio level.
+    # Borrowing g_k instead would import the donor's loss-ratio level (g_k
+    # = delta_loss / premium IS the per-period loss ratio) -- exactly the
+    # thing a regime split says changed. Donor selection therefore always
+    # keys off f_k; for pure ED the body still projects on its OWN g_k and
+    # only the tail (beyond own data) switches to the borrowed CL f_k.
+    primary = "f_k"
     aug = _augment_segment_factors(seg_arrays, primary)
 
     # 3) re-project each segment with its augmented factors.
@@ -445,17 +451,26 @@ def _borrowed_loss_group(
         a = aug[s]
         mk = seg_mat_k[s]
         if method == "cl":
-            mat_threshold = 0.0
+            maturity_threshold = 0.0
         elif method == "ed":
-            mat_threshold = float("inf")
+            # ED on the segment's OWN data; the borrowed tail (beyond the
+            # segment's own factors) switches to the level-invariant CL f_k
+            # so a different-regime donor's loss-ratio level is not imported
+            # through g_k. The switch sits at the segment's own-data
+            # boundary: link `own_max_link` (target dev own_max_link + 2)
+            # is the last own ED link, so CL starts one link later.
+            own_f = seg_arrays[s]["f_k"]
+            finite = np.flatnonzero(np.isfinite(own_f))
+            own_max_link = int(finite.max()) if finite.size else -1
+            maturity_threshold = float(own_max_link + 3)
         else:  # sa
-            mat_threshold = float(mk) if mk is not None else float("inf")
+            maturity_threshold = float(mk) if mk is not None else float("inf")
 
         loss_proj, proc_se, param_se, total_se = _project_loss(
             lo, pp,
             a["f_k"], a["sigma2_f_k"], a["var_f_k"],
             a["g_k"], a["sigma2_g_k"], a["var_g_k"],
-            mat_threshold,
+            maturity_threshold,
         )
         obs_mask = ~np.isnan(lo)
         last_obs = np.where(
