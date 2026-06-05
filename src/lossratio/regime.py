@@ -535,27 +535,65 @@ def _grain_sweep_candidates(
     allc = allc.with_columns(
         pl.col("change").dt.truncate(f"{align_mpp}mo").alias("_key"),
         pl.col("grain").replace_strict(_GRAIN_MONTHS).alias("_gm"),
+        # sort helper: most step-like first (NaN step_p -> last).
+        pl.col("step_p").fill_nan(2.0).fill_null(2.0).alias("_sp"),
     )
-    # Representative row: finest grain first, then most window-stable.
-    sort_cols, desc = ["_gm"], [False]
+    keys = grp_cols + ["_key"]
+
+    # Representative row = the grain with the STRONGEST step evidence
+    # (lowest step_p), tie-broken by finest grain then most window-stable.
+    # So a phased-in transition's coarse-grain step is the headline, while
+    # `change_type` (below) carries the full per-grain profile.
+    sort_cols, desc = ["_sp", "_gm"], [False, False]
     if "window_stability" in allc.columns:
         sort_cols.append("window_stability")
         desc.append(True)
-    allc = allc.sort(sort_cols, descending=desc, nulls_last=True)
-    keys = grp_cols + ["_key"]
-    value_cols = [c for c in allc.columns if c not in keys and c != "_gm"]
-    agg = allc.group_by(keys, maintain_order=True).agg(
+    allc_sorted = allc.sort(sort_cols, descending=desc, nulls_last=True)
+    value_cols = [
+        c for c in allc_sorted.columns if c not in keys and c not in ("_gm", "_sp")
+    ]
+    agg = allc_sorted.group_by(keys, maintain_order=True).agg(
         pl.col("grain").n_unique().alias("grain_stability"),
         *[pl.col(c).first() for c in value_cols],
+    )
+
+    # Per-grain kind profile: the kind at each grain (null if that grain did
+    # not place a change in this bucket). Surfaces "drift at M, step at H"
+    # (a bounded transition) vs "drift at every grain" (genuine decline).
+    kind_piv = allc.pivot(
+        values="kind", index=keys, on="grain", aggregate_function="first"
+    )
+    present = [g for g in ("M", "Q", "H", "Y") if g in kind_piv.columns]
+    kind_piv = kind_piv.rename({g: f"kind_{g}" for g in present})
+    kcols = [f"kind_{g}" for g in present]
+    out = agg.join(kind_piv.select(keys + kcols), on=keys, how="left")
+
+    any_step = pl.any_horizontal([pl.col(c) == "step" for c in kcols])
+    any_drift = pl.any_horizontal([pl.col(c) == "drift" for c in kcols])
+    out = out.with_columns(
+        pl.when(any_step & any_drift)
+        .then(pl.lit("transition"))   # step at some grains, drift at others
+        .when(any_step)
+        .then(pl.lit("step"))
+        .when(any_drift)
+        .then(pl.lit("drift"))
+        .otherwise(pl.lit("edge"))
+        .alias("change_type")
     ).drop("_key")
-    preferred = grp_cols + [
-        "change", "grain", "grain_stability", "window_stability", "n_windows",
-        "n_pre", "n_post", "level_shift", "t_stat", "p_value", "delta_r2",
-        "step_p", "curved_drift_suspect", "kind",
-    ]
-    order = [c for c in preferred if c in agg.columns]
-    order += [c for c in agg.columns if c not in order]
-    return agg.select(order)
+
+    preferred = (
+        grp_cols
+        + ["change", "grain", "change_type", "grain_stability"]
+        + kcols
+        + [
+            "window_stability", "n_windows", "n_pre", "n_post", "level_shift",
+            "t_stat", "p_value", "delta_r2", "step_p", "curved_drift_suspect",
+            "kind",
+        ]
+    )
+    order = [c for c in preferred if c in out.columns]
+    order += [c for c in out.columns if c not in order]
+    return out.select(order)
 
 
 def _combine_combo_results(
@@ -1814,7 +1852,14 @@ class Regime:
         diff_sig = (pl.col("p_value") < sig).fill_null(False) | (
             pl.col("step_p") < sig
         ).fill_null(False)
-        is_step = pl.col("kind") == "step"
+        # Use the cross-grain profile when present: a "transition" (step at
+        # a coarse grain, drift at a fine one) is a real discrete change
+        # that phased in, so it is regime-eligible -- the representative row
+        # already carries the coarse grain's step_p.
+        if "change_type" in cand.columns:
+            is_step = pl.col("change_type").is_in(["step", "transition"])
+        else:
+            is_step = pl.col("kind") == "step"
         step_regime = is_step & (pl.col("step_p") < sig) & material_move & stab_ok
 
         # Action -- NOT a binary accept. A discrete step is cut at the

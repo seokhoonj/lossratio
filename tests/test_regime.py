@@ -492,3 +492,34 @@ def test_evaluate_custom_rule():
 def test_evaluate_empty_when_no_candidates():
     reg = lr.Regime.at(change="2024-07-01")
     assert reg.evaluate().height == 0
+
+
+def test_grain_sweep_per_grain_kind_profile():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(
+        target="ratio", grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10),
+        seed=20260501, n_permutations=199,
+    )
+    cand = reg.candidates
+    # per-grain kind columns (only for grains that detected something) + the
+    # derived change_type profile.
+    kcols = [c for c in cand.columns if c.startswith("kind_")]
+    assert kcols  # at least one grain produced a kind column
+    assert "change_type" in cand.columns
+    assert set(cand["change_type"].unique().to_list()) <= {
+        "step", "drift", "transition", "edge"
+    }
+    # change_type is consistent with the per-grain kinds: a "step" type has
+    # no drift among its detected grains.
+    for row in cand.iter_rows(named=True):
+        kinds = {row[c] for c in kcols if row[c] is not None}
+        if row["change_type"] == "step":
+            assert "drift" not in kinds
+        elif row["change_type"] == "drift":
+            assert "step" not in kinds
+        elif row["change_type"] == "transition":
+            assert "step" in kinds and "drift" in kinds
+    # the planted SUR regime is a clean step across its detected grains.
+    sur = cand.filter(pl.col("coverage") == "SUR")
+    if sur.height:
+        assert sur["change_type"][0] == "step"
