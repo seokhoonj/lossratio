@@ -994,6 +994,180 @@ def _assess_change(scalar: np.ndarray, change_idx: int) -> dict:
     return out
 
 
+# Borrow-safety / calendar-effect screen thresholds.
+_SCREEN_SHAPE = 0.10      # shape_score >= -> "shape" (borrow unsafe)
+_SCREEN_TREND = 0.05      # |shape_trend| >= -> strong shape trend
+_SCREEN_CAL = 0.10        # |calendar_score| >= -> "calendar" flag
+_SCREEN_F_MEANINGFUL = 1.02  # only compare links where development f >= this
+_SCREEN_MIN_OVERLAP = 2
+
+
+def _borrow_screen_group(
+    loss_cum: np.ndarray,
+    cohort_ranks: np.ndarray,
+    seg_ids: np.ndarray,
+) -> dict:
+    """2-axis residual screen for borrow safety + calendar effect.
+
+    Decides whether the newest segment may safely borrow late-development
+    factors from an older donor, by comparing the segments' development on
+    two axes.
+
+    - Axis 1 (SHAPE): per-segment volume-weighted ATA ``f[s,k]``, then the
+      relative factor difference ``|f[s+1,k]/f[s,k] - 1|`` over the adjacent
+      segments' overlap. A pure level (rate) change leaves f scale-invariant
+      so this is ~0 (borrow safe); a shape change makes it large (unsafe).
+      The overlap is restricted to links with ``f >= _SCREEN_F_MEANINGFUL``
+      so the f~1 late-dev relative-difference explosion does not over-fire,
+      and links are weighted by the min contributing cohort count.
+    - Axis 2 (CALENDAR): residuals of cell increments vs the pooled ATA,
+      regressed along the calendar diagonal after DEV-detrending (so a dev
+      mis-specification cannot masquerade as a calendar trend). A non-trivial
+      slope flags a calendar-year effect.
+
+    ``loss_cum`` is the (n_cohorts, n_dev) CUMULATIVE loss matrix (NaN where
+    undeveloped, column k = dev index k); ``cohort_ranks`` the calendar
+    order; ``seg_ids`` the per-cohort segment id (0=oldest). Returns native
+    scalars: ``shape_score``, ``shape_trend``, ``calendar_score``,
+    ``n_overlap``, ``verdict`` in {insufficient, shape, level}.
+
+    The verdict is driven by the SHAPE axis (scale-invariant, calibrates
+    cleanly). ``calendar_score`` is REPORTED but EXPERIMENTAL -- its
+    slope-x-span scale is not yet calibrated across grains and over-fires on
+    real monthly triangles, so it does not gate the verdict.
+    """
+    loss_cum = np.asarray(loss_cum, dtype=float)
+    cohort_ranks = np.asarray(cohort_ranks)
+    seg_ids = np.asarray(seg_ids)
+    n_cohorts, n_dev = loss_cum.shape
+    n_links = n_dev - 1
+    nan = float("nan")
+
+    seg_vals = np.sort(np.unique(seg_ids))
+    n_seg = seg_vals.size
+
+    # Axis 1 -- per-segment volume-weighted ATA + count + volume.
+    f = np.full((n_seg, max(n_links, 0)), np.nan)
+    cnt = np.zeros((n_seg, max(n_links, 0)))
+    if n_links >= 1:
+        for si, s in enumerate(seg_vals):
+            rows = loss_cum[seg_ids == s]
+            if rows.shape[0] == 0:
+                continue
+            base = rows[:, :-1]
+            lead = rows[:, 1:]
+            both = np.isfinite(base) & np.isfinite(lead)
+            base_sum = np.where(both, base, 0.0).sum(axis=0)
+            lead_sum = np.where(both, lead, 0.0).sum(axis=0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                f[si] = np.where(base_sum > 0, lead_sum / base_sum, np.nan)
+            cnt[si] = both.sum(axis=0)
+
+    shape_score = nan
+    shape_trend = nan
+    n_overlap_total = 0
+    if n_seg >= 2 and n_links >= 1:
+        pair_scores: list[float] = []
+        ks_all: list[np.ndarray] = []
+        rd_all: list[np.ndarray] = []
+        w_all: list[np.ndarray] = []
+        for si in range(n_seg - 1):
+            fa, fb = f[si], f[si + 1]
+            ok = (
+                np.isfinite(fa) & np.isfinite(fb)
+                & (fa > 0)
+                & (fa >= _SCREEN_F_MEANINGFUL)
+            )
+            kidx = np.nonzero(ok)[0]
+            if kidx.size == 0:
+                continue
+            reldiff = np.abs(fb[kidx] / fa[kidx] - 1.0)
+            w = np.minimum(cnt[si, kidx], cnt[si + 1, kidx]).astype(float)
+            if w.sum() <= 0:
+                continue
+            pair_scores.append(float(np.average(reldiff, weights=w)))
+            n_overlap_total += int(kidx.size)
+            ks_all.append(kidx.astype(float))
+            rd_all.append(reldiff)
+            w_all.append(w)
+        if pair_scores:
+            shape_score = float(np.max(pair_scores))
+        if ks_all:
+            ks = np.concatenate(ks_all)
+            rd = np.concatenate(rd_all)
+            ww = np.concatenate(w_all)
+            if ks.size >= 2 and np.ptp(ks) > 0 and ww.sum() > 0:
+                wm_k = np.average(ks, weights=ww)
+                wm_r = np.average(rd, weights=ww)
+                varx = np.sum(ww * (ks - wm_k) ** 2)
+                if varx > 0:
+                    shape_trend = float(
+                        np.sum(ww * (ks - wm_k) * (rd - wm_r)) / varx
+                    )
+
+    # Axis 2 -- calendar-diagonal residual trend, dev-detrended.
+    calendar_score = nan
+    if n_links >= 1:
+        base = loss_cum[:, :-1]
+        lead = loss_cum[:, 1:]
+        both = np.isfinite(base) & np.isfinite(lead)
+        base_sum = np.where(both, base, 0.0).sum(axis=0)
+        lead_sum = np.where(both, lead, 0.0).sum(axis=0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            f_pool = np.where(base_sum > 0, lead_sum / base_sum, np.nan)
+        rows_idx, cols_idx = np.nonzero(both)
+        if rows_idx.size:
+            ci = loss_cum[rows_idx, cols_idx]
+            ci1 = loss_cum[rows_idx, cols_idx + 1]
+            fp = f_pool[cols_idx]
+            exp_incr = (fp - 1.0) * ci
+            # Restrict to MEANINGFUL development (f >= threshold): at f~1 the
+            # expected increment ~ 0, so actual/expected - 1 explodes into
+            # noise -- the same late-dev trap guarded on the shape axis.
+            good = (
+                np.isfinite(exp_incr)
+                & np.isfinite(fp)
+                & (np.abs(exp_incr) > 0)
+                & (fp >= _SCREEN_F_MEANINGFUL)
+            )
+            if good.sum() >= 3:
+                r = (ci1[good] - ci[good]) / exp_incr[good] - 1.0
+                k_cell = cols_idx[good].astype(float)
+                cal = cohort_ranks[rows_idx[good]].astype(float) + (k_cell + 1.0)
+                # Frisch-Waugh-Lovell: partial dev (k) out of both r and cal.
+                x = np.column_stack([np.ones_like(k_cell), k_cell])
+                beta_r, *_ = np.linalg.lstsq(x, r, rcond=None)
+                beta_c, *_ = np.linalg.lstsq(x, cal, rcond=None)
+                r_perp = r - x @ beta_r
+                cal_perp = cal - x @ beta_c
+                vc = float(np.sum(cal_perp ** 2))
+                if vc > 0:
+                    slope = float(np.sum(cal_perp * r_perp) / vc)
+                    calendar_score = slope * float(cal.max() - cal.min())
+
+    # Verdict is driven by the SHAPE axis (borrow safety), which is
+    # scale-invariant and calibrates cleanly. `calendar_score` is REPORTED
+    # as an experimental advisory only -- its absolute scale (slope x span)
+    # is not yet calibrated across grains, so it does not hard-gate the
+    # verdict (it over-fires on real monthly triangles).
+    if n_seg < 2 or not np.isfinite(shape_score) or n_overlap_total < _SCREEN_MIN_OVERLAP:
+        verdict = "insufficient"
+    elif shape_score >= _SCREEN_SHAPE or (
+        np.isfinite(shape_trend) and abs(shape_trend) >= _SCREEN_TREND
+    ):
+        verdict = "shape"
+    else:
+        verdict = "level"
+
+    return {
+        "shape_score": float(shape_score),
+        "shape_trend": float(shape_trend),
+        "calendar_score": float(calendar_score),
+        "n_overlap": int(n_overlap_total),
+        "verdict": verdict,
+    }
+
+
 def _e_divisive_breakpoints(
     mat: np.ndarray,
     sig_level: float,
@@ -1912,6 +2086,71 @@ class Regime:
             treatment=getattr(self, "treatment", "segment_bridged"),
             groups=self.groups,
         )
+
+    def borrow_screen(self, triangle, target: str = "loss"):
+        """Screen each group's borrow safety + calendar effect (2-axis).
+
+        For every group, splits the cumulative ``target`` triangle into
+        segments at this regime's change points and runs
+        :func:`_borrow_screen_group`, returning one row per group with:
+
+        - ``verdict``: ``"level"`` (development shape unchanged -> borrowing
+          the donor's late-dev tail is SAFE), ``"shape"`` (the development
+          pattern changed -> borrowing is UNSAFE, widen the band instead),
+          or ``"insufficient"`` (too few segments / overlap to judge).
+        - ``shape_score`` / ``shape_trend`` (Axis 1, segment-to-segment ATA
+          discrepancy -- the calibrated borrow-safety signal), and
+          ``calendar_score`` (Axis 2, dev-detrended diagonal residual trend
+          -- EXPERIMENTAL, reported but not yet calibrated to gate).
+
+        A transparent guard for the borrow treatments: borrow where the
+        verdict is ``"level"``; treat ``"shape"`` with caution.
+        """
+        tri_df = triangle.to_polars()
+        if target not in tri_df.columns:
+            raise ValueError(f"target {target!r} not in triangle columns")
+        gcols = normalize_groups(self.groups)
+        changes = self._changes_df
+
+        if gcols:
+            group_items = list(
+                tri_df.partition_by(gcols, as_dict=True).items()
+            )
+        else:
+            group_items = [((), tri_df)]
+
+        rows: list[dict] = []
+        for key, gdf in group_items:
+            keyvals = key if isinstance(key, tuple) else (key,)
+            if gcols:
+                chg = changes
+                for c, v in zip(gcols, keyvals):
+                    chg = chg.filter(pl.col(c) == v)
+            else:
+                chg = changes
+            change_dates = sorted(chg["change"].to_list()) if chg.height else []
+
+            piv = (
+                gdf.pivot(values=target, index="cohort", on="dev",
+                          aggregate_function="first")
+                .sort("cohort")
+            )
+            dev_cols = sorted(
+                (c for c in piv.columns if c != "cohort"), key=lambda x: int(x)
+            )
+            loss_cum = piv.select(dev_cols).to_numpy().astype(float)
+            cohorts = piv["cohort"].to_list()
+            seg_ids = np.array(
+                [sum(1 for c in change_dates if c <= ch) for ch in cohorts]
+            )
+            res = _borrow_screen_group(
+                loss_cum, np.arange(len(cohorts)), seg_ids
+            )
+            row = {c: v for c, v in zip(gcols, keyvals)}
+            row.update(res)
+            rows.append(row)
+
+        return mirror_output(pl.DataFrame(rows), self._output_type)
 
     def plot(
         self,

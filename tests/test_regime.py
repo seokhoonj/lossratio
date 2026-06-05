@@ -553,3 +553,46 @@ def test_accepted_drives_the_fit():
         return s.filter(pl.col("coverage") == "SUR")["ratio_ult"].drop_nulls().mean()
 
     assert abs(sur_ult(f0) - sur_ult(f1)) > 1e-3
+
+
+def test_borrow_screen_level_vs_shape():
+    from lossratio.regime import _borrow_screen_group
+
+    ata = np.array([1.8, 1.45, 1.25, 1.15, 1.08, 1.04, 1.02])
+    nd = 8
+
+    def _cohort(a, base):
+        r = [base]
+        for k in range(nd - 1):
+            r.append(r[-1] * a[k])
+        return np.array(r)
+
+    def _tri(anew, scale):
+        rows, seg = [], []
+        for i in range(8):
+            a = ata if i < 4 else anew
+            row = _cohort(a, 100.0) * (scale if i >= 4 else 1.0)
+            row[max(8 - i, 0):] = np.nan
+            rows.append(row)
+            seg.append(0 if i < 4 else 1)
+        return np.vstack(rows), np.arange(8), np.array(seg)
+
+    # pure level change: ATA scale-invariant -> shape_score ~ 0 -> "level".
+    lc, cr, sg = _tri(ata, 2.5)
+    r = _borrow_screen_group(lc, cr, sg)
+    assert r["verdict"] == "level"
+    assert r["shape_score"] < 1e-6
+    # shape change -> "shape".
+    lc, cr, sg = _tri(np.full(7, 1.2), 1.0)
+    assert _borrow_screen_group(lc, cr, sg)["verdict"] == "shape"
+    # single segment -> "insufficient".
+    lc, cr, _ = _tri(ata, 1.0)
+    assert _borrow_screen_group(lc, cr, np.zeros(8, dtype=int))["verdict"] == "insufficient"
+
+
+def test_borrow_screen_method():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SUR"]})
+    scr = reg.borrow_screen(tri)
+    assert {"coverage", "verdict", "shape_score", "calendar_score"} <= set(scr.columns)
+    assert set(scr["verdict"].unique().to_list()) <= {"level", "shape", "insufficient"}
