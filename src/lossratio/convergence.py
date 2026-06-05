@@ -115,10 +115,12 @@ def _extract_portfolio_ratio(bt_fit: Any) -> float:
         return float("nan")
 
     total_loss = ult["loss_ult"].sum()
-    total_exp = ult["premium_ult"].sum()
-    if total_exp is None or not np.isfinite(total_exp) or total_exp <= 0:
+    total_premium = ult["premium_ult"].sum()
+    if total_loss is None or not np.isfinite(total_loss):
         return float("nan")
-    return float(total_loss) / float(total_exp)
+    if total_premium is None or not np.isfinite(total_premium) or total_premium <= 0:
+        return float("nan")
+    return float(total_loss) / float(total_premium)
 
 
 def _ols_slope(x: np.ndarray, y: np.ndarray) -> float:

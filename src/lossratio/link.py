@@ -210,8 +210,13 @@ class Link:
         if exposure is not None:
             exposure = _validate_target_arg("exposure", exposure)
             if exposure not in tri_df.columns:
-                # Auto-disable exposure when it's not present (e.g. a
-                # Triangle without premium). This keeps ATA-only path working.
+                if exposure != "premium":
+                    raise ValueError(
+                        f"`exposure={exposure!r}` column missing from "
+                        f"Triangle. Available columns: {tri_df.columns}"
+                    )
+                # The default premium denominator is absent (e.g. an
+                # ATA-only Triangle) -> fall back to the ATA-only path.
                 exposure = None
 
         if weight is not None:
