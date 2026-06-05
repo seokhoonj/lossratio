@@ -521,6 +521,7 @@ class Triangle:
         edge_scan: bool = False,
         edge_threshold: float = 10.0,
         window_sweep: Sequence[int] | None = None,
+        grain_sweep: Sequence[str] | None = None,
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
@@ -580,6 +581,16 @@ class Triangle:
             windows that detect each change -- a change recurring across
             many windows is robust) and ``n_windows``. ``changes`` still
             comes from the single resolved ``window``. Default ``None``.
+        grain_sweep
+            Optional sequence of cohort grains (e.g. ``["M", "Q", "H"]``).
+            When set, :attr:`Regime.candidates` is built by coarsening the
+            triangle to each grain and re-detecting, then merging by change
+            date -- adding ``grain`` and ``grain_stability`` (how many
+            grains detect each change). A coarser grain averages
+            cohort-level noise, so a noisy coverage can surface at Q / H
+            even when invisible at M. Grains finer than the triangle's own
+            grain are skipped. Combines with ``window_sweep``. Default
+            ``None``.
         """
         from .regime import Regime
 
@@ -600,6 +611,7 @@ class Triangle:
             edge_scan=edge_scan,
             edge_threshold=edge_threshold,
             window_sweep=window_sweep,
+            grain_sweep=grain_sweep,
         )
 
     def detect_maturity(

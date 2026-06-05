@@ -407,3 +407,43 @@ def test_detect_regime_window_sweep_stability():
     if sur.height:
         assert sur["window_stability"][0] >= 0.5
         assert sur["kind"][0] == "step"
+
+
+# ---------------------------------------------------------------------------
+# Grain sweep (_coarsen_triangle + grain_stability)
+# ---------------------------------------------------------------------------
+
+
+def test_coarsen_triangle_matches_direct_build():
+    from lossratio.regime import _coarsen_triangle
+
+    exp = lr.load_experience()
+    tri_m = lr.Triangle(exp, groups="coverage", grain="M")
+    key = lambda t: t._df.select(
+        "coverage", "cohort", "dev", "loss", "premium", "ratio"
+    ).sort("coverage", "cohort", "dev")
+    for g in ("Q", "H"):
+        coarse = _coarsen_triangle(tri_m, g)
+        direct = lr.Triangle(exp, groups="coverage", grain=g)
+        assert coarse.grain == g
+        assert key(coarse).equals(key(direct))   # exact re-aggregation
+    # cannot refine below the source grain
+    with pytest.raises(ValueError):
+        _coarsen_triangle(lr.Triangle(exp, groups="coverage", grain="Q"), "M")
+
+
+def test_detect_regime_grain_sweep():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(
+        target="ratio", grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10),
+        seed=20260501, n_permutations=199,
+    )
+    cand = reg.candidates
+    assert "grain" in cand.columns
+    assert "grain_stability" in cand.columns
+    assert cand["grain_stability"].min() >= 1
+    # the planted SUR regime is detected at >= 1 grain and is a step.
+    sur = cand.filter(pl.col("coverage") == "SUR")
+    if sur.height:
+        assert sur["kind"][0] == "step"
+        assert sur["grain_stability"][0] >= 1

@@ -412,6 +412,152 @@ def _build_sweep_candidates_df(
     return pl.concat(frames, how="vertical_relaxed")
 
 
+_GRAIN_MONTHS = {"M": 1, "Q": 3, "H": 6, "Y": 12}
+
+
+def _coarsen_triangle(tri, target_grain: str):
+    """Re-aggregate a Triangle to a COARSER cohort grain (M -> Q -> H -> Y).
+
+    Reconstructs the per-cell incremental experience (cohort, calendar,
+    incr loss / premium) from the Triangle and rebuilds at ``target_grain``,
+    reusing the Triangle constructor's binning so the coarser table is
+    exactly a direct grain build. Returns the Triangle unchanged when
+    ``target_grain`` equals the source grain. Raises if asked to REFINE
+    (a coarser triangle cannot be un-aggregated to a finer one).
+    """
+    if target_grain not in _GRAIN_MONTHS:
+        raise ValueError(f"unknown grain {target_grain!r}")
+    src = tri.grain
+    if target_grain == src:
+        return tri
+    if _GRAIN_MONTHS[target_grain] < _GRAIN_MONTHS[src]:
+        raise ValueError(
+            f"cannot refine grain {src!r} -> {target_grain!r} (coarsen only)"
+        )
+    mpp = _GRAIN_MONTHS[src]
+    groups = normalize_groups(tri.groups)
+    # calendar of cell (cohort, dev) = cohort + (dev - 1) source periods.
+    recon = tri._df.select(
+        *groups,
+        pl.col("cohort"),
+        pl.col("cohort")
+        .dt.offset_by(pl.format("{}mo", (pl.col("dev") - 1) * mpp))
+        .alias("_calendar"),
+        pl.col("incr_loss"),
+        pl.col("incr_premium"),
+    )
+    from .triangle import Triangle
+
+    return Triangle(
+        recon,
+        groups=tri.groups,
+        cohort="cohort",
+        calendar="_calendar",
+        loss="incr_loss",
+        premium="incr_premium",
+        grain=target_grain,
+        cell_type="incremental",
+    )
+
+
+def _grain_sweep_candidates(
+    triangle,
+    grains: Sequence[str],
+    *,
+    target: str,
+    by: Any,
+    method: str,
+    n_regimes: int | None,
+    sig_level: float,
+    n_permutations: int,
+    min_size: int,
+    seed: int | None,
+    treatment: str,
+    window: Any,
+    window_floor: int | None,
+    fdr: bool,
+    edge_scan: bool,
+    edge_threshold: float,
+    window_sweep: Sequence[int] | None,
+) -> pl.DataFrame:
+    """Candidate table from a COHORT-GRAIN sweep (M / Q / H / Y).
+
+    For each grain the triangle is coarsened (:func:`_coarsen_triangle`)
+    and detection re-run; per-grain candidates are tagged with ``grain``
+    and merged by change date (floored to the coarsest swept grain), so a
+    change detected at several grains is robust. ``grain_stability`` counts
+    how many grains found it; the representative row is the finest-grain,
+    most window-stable one. Coarser grains average cohort-level noise, so a
+    noisy coverage can surface at Q / H even when invisible at M. Grains
+    finer than the triangle's own grain are skipped (cannot un-aggregate).
+    """
+    frames: list[pl.DataFrame] = []
+    seen: list[str] = []
+    for g in grains:
+        try:
+            tri_g = _coarsen_triangle(triangle, g)
+        except ValueError:
+            continue
+        try:
+            reg_g = Regime._from_triangle(
+                tri_g,
+                target=target,
+                window=window,
+                by=by,
+                method=method,
+                n_regimes=n_regimes,
+                sig_level=sig_level,
+                n_permutations=n_permutations,
+                min_size=min_size,
+                seed=seed,
+                treatment=treatment,
+                window_floor=window_floor,
+                fdr=fdr,
+                edge_scan=edge_scan,
+                edge_threshold=edge_threshold,
+                window_sweep=window_sweep,
+                grain_sweep=None,
+            )
+        except ValueError:
+            continue
+        cand = reg_g._candidates_df
+        if cand.is_empty():
+            continue
+        frames.append(cand.with_columns(pl.lit(g).alias("grain")))
+        seen.append(g)
+
+    if not frames:
+        return pl.DataFrame()
+
+    allc = pl.concat(frames, how="vertical_relaxed")
+    align_mpp = max(_GRAIN_MONTHS[g] for g in seen)
+    grp_cols = normalize_groups(triangle.groups)
+    allc = allc.with_columns(
+        pl.col("change").dt.truncate(f"{align_mpp}mo").alias("_key"),
+        pl.col("grain").replace_strict(_GRAIN_MONTHS).alias("_gm"),
+    )
+    # Representative row: finest grain first, then most window-stable.
+    sort_cols, desc = ["_gm"], [False]
+    if "window_stability" in allc.columns:
+        sort_cols.append("window_stability")
+        desc.append(True)
+    allc = allc.sort(sort_cols, descending=desc, nulls_last=True)
+    keys = grp_cols + ["_key"]
+    value_cols = [c for c in allc.columns if c not in keys and c != "_gm"]
+    agg = allc.group_by(keys, maintain_order=True).agg(
+        pl.col("grain").n_unique().alias("grain_stability"),
+        *[pl.col(c).first() for c in value_cols],
+    ).drop("_key")
+    preferred = grp_cols + [
+        "change", "grain", "grain_stability", "window_stability", "n_windows",
+        "n_pre", "n_post", "level_shift", "t_stat", "p_value", "delta_r2",
+        "step_p", "curved_drift_suspect", "kind",
+    ]
+    order = [c for c in preferred if c in agg.columns]
+    order += [c for c in agg.columns if c not in order]
+    return agg.select(order)
+
+
 def _combine_combo_results(
     per_combo_results: list[tuple[Any, dict[str, Any]]],
     grp: str | None,
@@ -1011,6 +1157,7 @@ class Regime:
         edge_scan: bool = False,
         edge_threshold: float = 10.0,
         window_sweep: Sequence[int] | None = None,
+        grain_sweep: Sequence[str] | None = None,
     ) -> "Regime":
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -1026,6 +1173,11 @@ class Regime:
         # changes). Resolve before validation. Mirrors R behaviour.
         if target == "premium_ed":
             target = "premium_ata"
+
+        # Preserve the user-facing target name (before the derive step
+        # rewrites `target` to a derived column) so a grain sweep can re-run
+        # detection on each coarsened triangle with the same target.
+        user_target = target
 
         # `window="auto"` defers to the optimal-window elbow heuristic.
         # Plain integer windows pass through after a >= 2 check.
@@ -1247,6 +1399,30 @@ class Regime:
             )
         else:
             candidates_df = _build_candidates_df(per_combo_results, grp)
+
+        # With `grain_sweep`, candidates instead come from a cohort-grain
+        # sweep (coarsen + re-detect per grain, merge by change), adding
+        # `grain` / `grain_stability` -- a noisy coverage can surface at a
+        # coarser grain it is invisible at finer.
+        if grain_sweep is not None:
+            candidates_df = _grain_sweep_candidates(
+                triangle, grain_sweep,
+                target=user_target,
+                by=by,
+                method=method,
+                n_regimes=n_regimes,
+                sig_level=sig_level,
+                n_permutations=n_permutations,
+                min_size=min_size,
+                seed=seed,
+                treatment=treatment,
+                window=window,
+                window_floor=window_floor,
+                fdr=fdr,
+                edge_scan=edge_scan,
+                edge_threshold=edge_threshold,
+                window_sweep=window_sweep,
+            )
 
         # FDR: Benjamini-Hochberg across EVERY permutation break in the whole
         # multi-combo call. With ~60 coverages each tested at sig_level, ~3
