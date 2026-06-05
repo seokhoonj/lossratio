@@ -346,8 +346,9 @@ def test_summary_f_se_consistent_with_rse_times_f():
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     row = mat.summary().row(0, named=True)
     f, rse, f_se = row["f"], row["rse"], row["f_se"]
-    if all(v is not None and not math.isnan(v) for v in (f, rse, f_se)):
-        assert f_se == pytest.approx(f * rse)
+    # The picked maturity row is finite on this deterministic fixture.
+    assert all(v is not None and not math.isnan(v) for v in (f, rse, f_se))
+    assert f_se == pytest.approx(f * rse)
 
 
 def test_summary_sigma_is_sqrt_sigma2_on_diag_frame():
@@ -355,12 +356,15 @@ def test_summary_sigma_is_sqrt_sigma2_on_diag_frame():
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity()
     df = mat.to_polars().sort("ata_from")
+    n_compared = 0
     for sig, sig2 in zip(df["sigma"].to_list(), df["sigma2"].to_list()):
         if sig is None or sig2 is None:
             continue
         if math.isnan(sig) or math.isnan(sig2):
             continue
         assert sig == pytest.approx(math.sqrt(sig2))
+        n_compared += 1
+    assert n_compared > 0
 
 
 def test_summary_wt_equals_f_for_alpha_one():
@@ -371,8 +375,9 @@ def test_summary_wt_equals_f_for_alpha_one():
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     row = mat.summary().row(0, named=True)
-    if row["f"] is not None and row["wt"] is not None:
-        assert row["wt"] == pytest.approx(row["f"])
+    # The picked maturity row is finite on this deterministic fixture.
+    assert row["f"] is not None and row["wt"] is not None
+    assert row["wt"] == pytest.approx(row["f"])
 
 
 def test_summary_no_detection_returns_nan_row():
