@@ -2065,15 +2065,15 @@ def _ed_intensity_anchor(
     sub = link_df.select(["ata_to", "loss_delta", "premium_from"])
     ata_to     = sub["ata_to"].to_numpy().astype(np.float64)
     loss_delta = sub["loss_delta"].to_numpy().astype(np.float64)
-    prem_from  = sub["premium_from"].to_numpy().astype(np.float64)
+    premium_from  = sub["premium_from"].to_numpy().astype(np.float64)
 
     g_by_to: dict[int, float] = {}
     ok = (
-        np.isfinite(loss_delta) & np.isfinite(prem_from) & (prem_from > 0.0)
+        np.isfinite(loss_delta) & np.isfinite(premium_from) & (premium_from > 0.0)
     )
     for lk in np.unique(ata_to[np.isfinite(ata_to)]):
         sel = ok & (ata_to == lk)
-        s_den = prem_from[sel].sum()
+        s_den = premium_from[sel].sum()
         if s_den > 0.0:
             g_by_to[int(lk)] = loss_delta[sel].sum() / s_den
 

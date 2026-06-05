@@ -2482,8 +2482,9 @@ def _compute_segment_mini_tri_bounds(
             # the boundary link shared with the next (newer) segment --
             # closing the "one-dev gap" that otherwise leaves the seam link
             # (dev M -> M+1) with no donor, which truncates the newer
-            # segment's projection there. Far cheaper than the full midpoint
-            # bridge; the newest segment keeps its natural wall.
+            # segment's projection there. The seam is always a single link,
+            # so one dev suffices; far cheaper than the full midpoint bridge.
+            # The newest segment keeps its natural wall.
             newest = int(unique_segs.max())
             out = natural.copy()
             for i in range(seg_ids.size):

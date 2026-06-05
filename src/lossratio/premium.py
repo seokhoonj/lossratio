@@ -382,13 +382,13 @@ class Premium:
     >>> pf.df.columns
     """
 
-    method: str = "ed"
-    alpha: float = 1.0
-    sigma_method: str = "locf"
-    regime: RegimeArg = None
-    recent: int | None = None
-    tail: TailArg = False
-    conf_level: float = 0.95
+    method:       str        = "ed"
+    alpha:        float      = 1.0
+    sigma_method: str        = "locf"
+    regime:       RegimeArg  = None
+    recent:       int | None = None
+    tail:         TailArg    = False
+    conf_level:   float      = 0.95
 
     def __post_init__(self) -> None:
         from .tail import validate_tail

@@ -274,11 +274,11 @@ def _cell_labels(
         if label_style == "value":
             return [_fmt_or_blank(v, "%.0f") for v in scaled]
         loss_col = "loss" if metric == "ratio" else "incr_loss"
-        prem_col = "premium" if metric == "ratio" else "incr_premium"
+        premium_col = "premium" if metric == "ratio" else "incr_premium"
         loss_vals = df[loss_col].to_numpy() / divisor
-        prem_vals = df[prem_col].to_numpy() / divisor
+        premium_vals = df[premium_col].to_numpy() / divisor
         out = []
-        for r, lo, pr in zip(scaled, loss_vals, prem_vals):
+        for r, lo, pr in zip(scaled, loss_vals, premium_vals):
             if not np.isfinite(r):
                 out.append("")
             else:

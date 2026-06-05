@@ -195,23 +195,23 @@ class Ratio:
         drives the point estimate.
     """
 
-    method: str = "ed"
-    loss_alpha: float = 1.0
-    loss_regime: RegimeArg = None
-    premium_method: str = "ed"
-    premium_alpha: float = 1.0
-    premium_regime: RegimeArg = None
-    sigma_method: str = "locf"
-    recent: int | None = None
-    maturity: MaturityArg = "auto"
-    max_cv: float = 0.15
-    max_rse: float = 0.05
-    min_run: int = 2
-    se_method: str = "fixed"
-    rho: float = 0.95
-    conf_level: float = 0.95
-    tail: TailArg = False
-    uncertainty: UncertaintyArg = None
+    method:         str            = "ed"
+    loss_alpha:     float          = 1.0
+    loss_regime:    RegimeArg      = None
+    premium_method: str            = "ed"
+    premium_alpha:  float          = 1.0
+    premium_regime: RegimeArg      = None
+    sigma_method:   str            = "locf"
+    recent:         int | None     = None
+    maturity:       MaturityArg    = "auto"
+    max_cv:         float          = 0.15
+    max_rse:        float          = 0.05
+    min_run:        int            = 2
+    se_method:      str            = "fixed"
+    rho:            float          = 0.95
+    conf_level:     float          = 0.95
+    tail:           TailArg        = False
+    uncertainty:    UncertaintyArg = None
 
     def __post_init__(self) -> None:
         from .tail import validate_tail
@@ -493,12 +493,12 @@ class RatioFit:
             getattr(self.loss_fit, "tail", False),
             role="loss",
         )
-        prem_r = tail_report_frame(
+        premium_r = tail_report_frame(
             getattr(self.premium_fit, "_tail_results", {}),
             getattr(self.premium_fit, "tail", False),
             role="premium",
         )
-        combined = pl.concat([loss_r, prem_r]) if (loss_r.height or prem_r.height) else loss_r
+        combined = pl.concat([loss_r, premium_r]) if (loss_r.height or premium_r.height) else loss_r
         return mirror_output(combined, self._output_type)
 
     @property
@@ -725,22 +725,22 @@ class RatioFit:
         # Portfolio ultimate premium per group -- fixed across replicates
         # (loss-only bootstrap). Last non-null projection per cohort,
         # summed over cohorts (mirrors `summary`'s ultimate aggregation).
-        prem_coh = (
+        premium_coh = (
             self._df.sort([*gcols, "cohort", "dev"])
             .group_by([*gcols, "cohort"], maintain_order=True)
             .agg(pl.col("premium_proj").drop_nulls().last().alias("_p"))
         )
 
         if per_group:
-            prem_grp = (
-                prem_coh.group_by(gcols).agg(pl.col("_p").sum().alias("premium_ult"))
+            premium_grp = (
+                premium_coh.group_by(gcols).agg(pl.col("_p").sum().alias("premium_ult"))
                 if gcols
-                else prem_coh.select(pl.col("_p").sum().alias("premium_ult"))
+                else premium_coh.select(pl.col("_p").sum().alias("premium_ult"))
             )
             joined = (
-                samples.join(prem_grp, on=gcols, how="inner")
+                samples.join(premium_grp, on=gcols, how="inner")
                 if gcols
-                else samples.join(prem_grp, how="cross")
+                else samples.join(premium_grp, how="cross")
             )
             out = (
                 joined.with_columns(
@@ -754,14 +754,14 @@ class RatioFit:
 
         # Pooled portfolio: sum loss over groups per replicate, divide by
         # the total ultimate premium.
-        total_prem = prem_coh.select(pl.col("_p").sum()).item()
+        total_premium = premium_coh.select(pl.col("_p").sum()).item()
         loss_per_rep = (
             samples.group_by("rep")
             .agg(pl.col("loss_ult_sampled").sum().alias("loss_ult"))
             .sort("rep")
         )
         ratio = loss_per_rep.with_columns(
-            (pl.col("loss_ult") / total_prem).alias("ratio_ult_sampled")
+            (pl.col("loss_ult") / total_premium).alias("ratio_ult_sampled")
         )
         return ratio.get_column("ratio_ult_sampled").to_numpy()
 

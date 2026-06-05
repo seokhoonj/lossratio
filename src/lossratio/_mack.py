@@ -276,7 +276,7 @@ def _fit_mack(
     # Tail-sigma extrapolation. When the last link has a single
     # contributing cohort (n_k = 1), sigma2 is unestimable directly.
     # Delegate to the shared helper so the choice is consistent
-    # across cl / intensity / lr.
+    # across cl / intensity / ratio.
     from ._sigma import extrapolate_tail_sigma2
     sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
 
@@ -466,7 +466,7 @@ def _fit_ed(
 
     # Tail-sigma extrapolation when the last link has n_k = 1.
     # Delegates to the shared helper so the choice is consistent across
-    # cl / intensity / ed / lr (and parity with R's `sigma_method`).
+    # cl / intensity / ed / ratio (and parity with R's `sigma_method`).
     from ._sigma import extrapolate_tail_sigma2
     sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
 

@@ -75,12 +75,12 @@ class ChainLadder:
             self.uncertainty, triangle, target="loss", method="cl",
         )
         return Loss(
-            method      = "cl",
-            alpha       = self.alpha,
+            method       = "cl",
+            alpha        = self.alpha,
             sigma_method = self.sigma_method,
-            recent      = self.recent,
-            regime      = self.regime,
-            tail        = self.tail,
-            conf_level  = self.conf_level,
-            bootstrap   = boots,
+            recent       = self.recent,
+            regime       = self.regime,
+            tail         = self.tail,
+            conf_level   = self.conf_level,
+            bootstrap    = boots,
         ).fit(triangle)
