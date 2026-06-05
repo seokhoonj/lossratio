@@ -452,12 +452,12 @@ def _fit_ed(
 
         ck_eff = ck[mask]
         dl_eff = delta_loss[mask]
-        sum_crp = ck_eff.sum()
+        sum_premium = ck_eff.sum()
         sum_loss = dl_eff.sum()
-        sum_premium_k[k] = sum_crp
-        g_k[k] = sum_loss / sum_crp if sum_crp > 0 else 0.0
+        sum_premium_k[k] = sum_premium
+        g_k[k] = sum_loss / sum_premium if sum_premium > 0 else 0.0
 
-        if n_k >= 2 and sum_crp > 0:
+        if n_k >= 2 and sum_premium > 0:
             sigma2_g_k[k] = _mack_sigma2(dl_eff, ck_eff, g_k[k], n_k)
         else:
             sigma2_g_k[k] = 0.0

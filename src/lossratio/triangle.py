@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 # Triangle-specific: standard dev column name per grain code.
-_GRAIN_TO_DEV_VAR = {
+_GRAIN_TO_DEV_COL = {
     "M": "dev_m",
     "Q": "dev_q",
     "H": "dev_h",
@@ -322,7 +322,7 @@ class Triangle:
         self._loss = loss
         self._premium = premium
         self._grain = grain
-        self._dev = _GRAIN_TO_DEV_VAR[grain]
+        self._dev = _GRAIN_TO_DEV_COL[grain]
 
     @property
     def df(self):

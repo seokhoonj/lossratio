@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from .ratio import RatioFit
 
 
-_VALID_METRICS = ("ratio", "loss", "premium")
+_VALID_RATIO_METRICS = ("ratio", "loss", "premium")
 _VALID_CELL_TYPES = ("cumulative", "incremental")
 
 
@@ -58,9 +58,9 @@ def plot_ratio_fit(
 
     See :meth:`lossratio.RatioFit.plot` for the public docs.
     """
-    if metric not in _VALID_METRICS:
+    if metric not in _VALID_RATIO_METRICS:
         raise ValueError(
-            f"`metric` must be one of {_VALID_METRICS!r}; got {metric!r}."
+            f"`metric` must be one of {_VALID_RATIO_METRICS!r}; got {metric!r}."
         )
     if cell_type not in _VALID_CELL_TYPES:
         raise ValueError(
@@ -144,9 +144,9 @@ def plot_ratio_fit(
             pl.col(ci_hi_col).alias("_hi"),
         )
 
-    cum_word = "Per-Period" if is_incr else "Cumulative"
+    mode_word = "Per-Period" if is_incr else "Cumulative"
     base_lab = {"ratio": "Loss Ratio", "loss": "Loss", "premium": "Premium"}[metric]
-    title_base = f"Projected {cum_word} {base_lab} (method: {fit.method})"
+    title_base = f"Projected {mode_word} {base_lab} (method: {fit.method})"
     hline = 1.0 if (is_ratio and not is_incr) else (0.0 if not is_ratio else None)
     y_axis_kind = "ratio" if is_ratio else "amount"
 

@@ -97,22 +97,22 @@ def _compute_intensity(
 
         ck_eff = ck[mask]
         dl_eff = delta_loss[mask]
-        sum_crp = float(ck_eff.sum())
+        sum_premium = float(ck_eff.sum())
         sum_loss = float(dl_eff.sum())
 
-        if sum_crp <= 0:
+        if sum_premium <= 0:
             g_k[k] = 0.0
             sigma2_k[k] = 0.0
             g_se_k[k] = 0.0
             continue
 
-        g = sum_loss / sum_crp
+        g = sum_loss / sum_premium
         g_k[k] = g
 
         if n_k >= 2:
             sigma2 = _mack_sigma2(dl_eff, ck_eff, g, n_k)
             sigma2_k[k] = sigma2
-            g_se_k[k] = float(np.sqrt(sigma2 / sum_crp)) if sigma2 > 0 else 0.0
+            g_se_k[k] = float(np.sqrt(sigma2 / sum_premium)) if sigma2 > 0 else 0.0
         else:
             sigma2_k[k] = 0.0
             g_se_k[k] = 0.0
@@ -125,7 +125,7 @@ def _compute_intensity(
     sigma2_k_new = extrapolate_tail_sigma2(sigma2_k, sigma_method)
     if sigma2_k_new[-1] != sigma2_k[-1]:
         sigma2_k = sigma2_k_new
-        # Recompute g_se on the filled tail using sum_crp from the same link.
+        # Recompute g_se on the filled tail using sum_premium from the same link.
         k_last = n_links - 1
         ck_last = premium_obs[:, k_last]
         dl_last = loss_obs[:, k_last + 1] - loss_obs[:, k_last]
@@ -133,9 +133,9 @@ def _compute_intensity(
         if link_mask is not None:
             mask_last = mask_last & link_mask[:, k_last]
         if mask_last.any():
-            sum_crp_last = float(ck_last[mask_last].sum())
-            if sum_crp_last > 0 and sigma2_k[-1] > 0:
-                g_se_k[-1] = float(np.sqrt(sigma2_k[-1] / sum_crp_last))
+            sum_premium_last = float(ck_last[mask_last].sum())
+            if sum_premium_last > 0 and sigma2_k[-1] > 0:
+                g_se_k[-1] = float(np.sqrt(sigma2_k[-1] / sum_premium_last))
 
     return _IntensityResult(
         g_k=g_k,

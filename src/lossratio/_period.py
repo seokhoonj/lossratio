@@ -279,8 +279,8 @@ def floor_to_period(col_expr: pl.Expr, grain: str) -> pl.Expr:
         q_start_month = ((col_expr.dt.month() - 1) // 3) * 3 + 1
         return pl.date(col_expr.dt.year(), q_start_month, 1)
     if grain == "H":
-        s_start_month = pl.when(col_expr.dt.month() <= 6).then(1).otherwise(7)
-        return pl.date(col_expr.dt.year(), s_start_month, 1)
+        h_start_month = pl.when(col_expr.dt.month() <= 6).then(1).otherwise(7)
+        return pl.date(col_expr.dt.year(), h_start_month, 1)
     if grain == "Y":
         return pl.date(col_expr.dt.year(), 1, 1)
     raise ValueError(f"Unknown grain: {grain!r}")

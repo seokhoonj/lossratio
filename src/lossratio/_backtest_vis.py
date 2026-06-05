@@ -61,7 +61,7 @@ def plot_backtest(
         )
 
     is_incr = cell_type == "incremental"
-    cum_word = "incremental" if is_incr else "cumulative"
+    mode_word = "incremental" if is_incr else "cumulative"
     stat_cols = [(lab, incr if is_incr else cum) for lab, cum, incr in _STAT_COLUMNS]
     ae_err_col = "incr_ae_err" if is_incr else "ae_err"
 
@@ -72,7 +72,7 @@ def plot_backtest(
             x_col="dev",
             x_label=_pretty_var_label(fit._dev),
             stat_cols=stat_cols,
-            title=f"Backtest A/E Error by development period ({cum_word})",
+            title=f"Backtest A/E Error by development period ({mode_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     if kind == "diag":
@@ -82,7 +82,7 @@ def plot_backtest(
             x_col="cal_idx",
             x_label="calendar diagonal index",
             stat_cols=stat_cols,
-            title=f"Backtest A/E Error by calendar diagonal ({cum_word})",
+            title=f"Backtest A/E Error by calendar diagonal ({mode_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     # cell
@@ -91,7 +91,7 @@ def plot_backtest(
         groups=fit._groups,
         ae_err_col=ae_err_col,
         x_label=_pretty_var_label(fit._dev),
-        title=f"Backtest A/E Error per held-out cell ({cum_word})",
+        title=f"Backtest A/E Error per held-out cell ({mode_word})",
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
 
@@ -216,9 +216,9 @@ def plot_triangle_backtest(
 
     _hide_unused(axes, n, nrow, ncol)
 
-    cum_word = "incremental" if is_incr else "cumulative"
+    mode_word = "incremental" if is_incr else "cumulative"
     fig.suptitle(
-        f"Backtest A/E Error -- held-out cells ({cum_word})",
+        f"Backtest A/E Error -- held-out cells ({mode_word})",
         fontsize=12, fontweight="bold",
     )
     fig.supxlabel(_pretty_var_label(dev), fontsize=10)
