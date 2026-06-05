@@ -528,3 +528,28 @@ def test_grain_sweep_per_grain_kind_profile():
     sur = cand.filter(pl.col("coverage") == "SUR")
     if sur.height:
         assert sur["change_type"][0] == "step"
+
+
+def test_accepted_drives_the_fit():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(
+        target="ratio", grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10),
+        seed=20260501, n_permutations=199,
+    )
+    acc = reg.accepted()
+    assert isinstance(acc, lr.Regime)
+    # accepted changes are exactly the action == "regime" candidates.
+    ev = reg.evaluate()
+    n_regime = ev.filter(pl.col("action") == "regime").height
+    assert acc.changes.height == n_regime
+    # and they actually drive a fit -- the cut changes the projection vs
+    # fitting all cohorts (SUR carries a planted regime).
+    f0 = lr.Ratio().fit(tri)
+    f1 = lr.Ratio(loss_regime=acc).fit(tri)
+
+    def sur_ult(f):
+        s = f.summary()
+        s = s if isinstance(s, pl.DataFrame) else pl.from_pandas(s)
+        return s.filter(pl.col("coverage") == "SUR")["ratio_ult"].drop_nulls().mean()
+
+    assert abs(sur_ult(f0) - sur_ult(f1)) > 1e-3

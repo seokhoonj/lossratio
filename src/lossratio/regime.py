@@ -1879,6 +1879,36 @@ class Regime:
             self._output_type,
         )
 
+    def accepted(self, **evaluate_kwargs) -> "Regime":
+        """Return a Regime of the accepted changes, ready to drive a fit.
+
+        Runs :meth:`evaluate`, keeps the ``action == "regime"`` candidates,
+        and wraps them as a manual Regime -- so the change points the
+        evidence supports can be passed straight to a fit's ``loss_regime``
+        / ``premium_regime`` slot. This closes the loop: detection and the
+        candidate table are inspected, then the SAME accepted cuts drive the
+        actual loss-ratio projection (the fit cuts the original triangle at
+        each change and projects the recent segment), rather than stopping
+        at a table. ``**evaluate_kwargs`` forward to :meth:`evaluate`
+        (``material``, ``sig``, ``rule``).
+
+        Examples
+        --------
+        >>> reg = tri.detect_regime(grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10))
+        >>> fit = lr.Ratio(loss_regime=reg.accepted()).fit(tri)
+        """
+        ev = self.evaluate(**evaluate_kwargs)
+        ev_pl = ev if isinstance(ev, pl.DataFrame) else pl.from_pandas(ev)
+        grp_cols = normalize_groups(self.groups)
+        acc = ev_pl.filter(pl.col("action") == "regime").select(
+            [*grp_cols, "change"]
+        )
+        return Regime._manual(
+            changes_df=acc,
+            treatment=getattr(self, "treatment", "segment_bridged"),
+            groups=self.groups,
+        )
+
     def plot(
         self,
         nrow: int | None = None,
