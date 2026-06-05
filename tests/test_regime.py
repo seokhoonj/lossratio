@@ -246,3 +246,116 @@ def test_detect_regime_low_K_raises():
     tri = lr.Triangle(df)
     with pytest.raises(ValueError, match="window must be"):
         tri.detect_regime(window=1)
+
+
+# ---------------------------------------------------------------------------
+# window_floor / FDR / edge_scan (robustness layer)
+# ---------------------------------------------------------------------------
+
+
+def test_bh_adjust_basic():
+    from lossratio.regime import _bh_adjust
+
+    p = np.array([0.01, 0.02, 0.03, 0.04])
+    adj = _bh_adjust(p)
+    # all four scale to m/rank * p = 0.04, monotone-flattened to 0.04
+    assert np.allclose(adj, 0.04)
+    assert np.all(adj <= 1.0)
+
+
+def test_bh_adjust_nan_passthrough_and_n_tests():
+    from lossratio.regime import _bh_adjust
+
+    p = np.array([0.001, np.nan, 0.5])
+    adj = _bh_adjust(p, n_tests=10)
+    assert np.isnan(adj[1])                      # NaN (edge-scan) passthrough
+    assert adj[0] == pytest.approx(0.01)         # 0.001 * 10 / 1
+    assert adj[2] == pytest.approx(1.0)          # 0.5 * 10 / 2 -> clipped
+
+
+def test_edge_scan_detects_left_edge_outlier():
+    from lossratio.regime import _edge_scan_breakpoints
+
+    rng = np.random.default_rng(0)
+    mat = 1.0 + rng.normal(0, 0.02, size=(12, 4))
+    mat[0] = 5.0                                  # first cohort wildly different
+    breaks = _edge_scan_breakpoints(mat, threshold=10.0, min_size=3)
+    assert breaks == [1]                          # left edge of size 1 -> break @ idx 1
+
+
+def test_edge_scan_quiet_on_noise():
+    from lossratio.regime import _edge_scan_breakpoints
+
+    rng = np.random.default_rng(1)
+    mat = 1.0 + rng.normal(0, 0.5, size=(12, 4))  # all noisy, no clear edge
+    breaks = _edge_scan_breakpoints(mat, threshold=10.0, min_size=3)
+    assert breaks == []
+
+
+def test_edge_scan_blind_zone_cap():
+    from lossratio.regime import _edge_scan_breakpoints
+
+    # min_size=2 -> max_edge=1: only a length-1 edge can be flagged.
+    rng = np.random.default_rng(2)
+    mat = 1.0 + rng.normal(0, 0.02, size=(12, 4))
+    mat[0] = mat[1] = 5.0                          # first TWO cohorts shifted
+    breaks = _edge_scan_breakpoints(mat, threshold=10.0, min_size=2)
+    assert breaks == [1]                          # capped at the blind zone (k<=1)
+
+
+def _edge_regime_triangle(n_cohorts: int = 14, window: int = 6, edge_base: float = 3.0):
+    """Pooled Triangle whose FIRST cohort sits at a different loss level.
+
+    A length-1 edge regime: E-Divisive cannot separate it (needs >= 2 per
+    side), but the 1-vs-rest edge scan can.
+    """
+    from datetime import date
+
+    def _add_months(d: date, m: int) -> date:
+        y, mo = divmod(d.month - 1 + m, 12)
+        return date(d.year + y, mo + 1, 1)
+
+    start = date(2023, 1, 1)
+    rng = np.random.default_rng(7)
+    rows = []
+    for ci in range(n_cohorts):
+        base = edge_base if ci == 0 else 1.0
+        uy = _add_months(start, ci)
+        for k in range(window):
+            rows.append(
+                {
+                    "uy_m": uy,
+                    "cy_m": _add_months(uy, k),
+                    "incr_loss": (base + rng.normal(0, 0.02)) * 100.0,
+                    "incr_premium": 100.0,
+                }
+            )
+    return lr.Triangle(pl.DataFrame(rows))
+
+
+def test_edge_scan_integration_finds_edge_regime():
+    tri = _edge_regime_triangle()
+    # default (no edge scan): E-Divisive cannot separate the 1-cohort edge
+    base = tri.detect_regime(target="ratio", window=4, method="e_divisive", seed=1)
+    assert base.changes.height == 0
+    # edge scan on: the first-cohort regime surfaces (change at the 2nd cohort)
+    scanned = tri.detect_regime(
+        target="ratio", window=4, method="e_divisive", seed=1, edge_scan=True
+    )
+    assert scanned.changes.height == 1
+    assert str(scanned.changes["change"].to_list()[0]) == "2023-02-01"
+
+
+def test_robustness_params_smoke():
+    # all three opt-in params accepted together without error
+    tri = _edge_regime_triangle()
+    reg = tri.detect_regime(
+        target="ratio",
+        window="auto",
+        method="e_divisive",
+        seed=1,
+        window_floor=4,
+        fdr=True,
+        edge_scan=True,
+    )
+    assert reg.method == "e_divisive"

@@ -186,6 +186,8 @@ def _detect_regime_single(
     n_permutations: int,
     min_size: int,
     seed: int | None,
+    edge_scan: bool = False,
+    edge_threshold: float = 10.0,
 ) -> dict[str, Any]:
     """Single-combo detection. Returns the per-combo result dict.
 
@@ -193,20 +195,36 @@ def _detect_regime_single(
     and by :func:`_detect_regime_optimal_window` (per-window sweep).
     Raises ``ValueError`` when the feature matrix cannot be built; the
     caller decides whether to skip or propagate.
+
+    When ``edge_scan`` is set (E-Divisive only), a 1-vs-rest effect-size
+    scan (:func:`_edge_scan_breakpoints`) augments the permutation breaks
+    with any boundary regime E-Divisive structurally cannot reach. Edge
+    breaks carry a ``NaN`` p-value (they are effect-size gated, not
+    permutation tested) so a downstream FDR pass leaves them untouched.
     """
     mat, cohorts, dropped = _build_feature_matrix(sub, target, window)
     n = len(cohorts)
     if method == "e_divisive":
-        breaks_idx = _e_divisive_breakpoints(
+        breaks_idx, p_vals = _e_divisive_breakpoints(
             mat,
             sig_level=sig_level,
             n_permutations=n_permutations,
             min_size=min_size,
             seed=seed,
         )
+        if edge_scan:
+            for e in _edge_scan_breakpoints(mat, threshold=edge_threshold, min_size=min_size):
+                if e not in breaks_idx:
+                    breaks_idx.append(e)
+                    p_vals.append(float("nan"))
+            if breaks_idx:
+                paired = sorted(zip(breaks_idx, p_vals), key=lambda t: t[0])
+                breaks_idx = [b for b, _ in paired]
+                p_vals = [p for _, p in paired]
     else:  # hclust
         n_reg = 2 if n_regimes is None else int(n_regimes)
         breaks_idx = _hclust_breakpoints(mat, n_regimes=n_reg)
+        p_vals = [float("nan")] * len(breaks_idx)
 
     regime_ids = _regime_ids_from_breaks(n, breaks_idx)
     breakpoints = [cohorts[i] for i in breaks_idx]
@@ -214,6 +232,7 @@ def _detect_regime_single(
         "cohorts": cohorts,
         "regime_ids": regime_ids,
         "breakpoints": breakpoints,
+        "p_values": p_vals,
         "dropped": dropped,
         "n_regimes": int(regime_ids.max()) if n > 0 else 0,
     }
@@ -427,8 +446,8 @@ def _e_divisive_breakpoints(
     n_permutations: int,
     min_size: int,
     seed: int | None,
-) -> list[int]:
-    """E-Divisive breakpoints (indices of right-side starts)."""
+) -> tuple[list[int], list[float]]:
+    """E-Divisive breakpoints (right-side starts) and their permutation p-values."""
     res = e_divisive(
         mat,
         sig_level=sig_level,
@@ -437,7 +456,104 @@ def _e_divisive_breakpoints(
         alpha=1.0,
         seed=seed,
     )
-    return res.breakpoints
+    return res.breakpoints, res.p_values
+
+
+def _bh_adjust(p_values: np.ndarray, n_tests: int | None = None) -> np.ndarray:
+    """Benjamini-Hochberg adjusted p-values (FDR).
+
+    Standard step-up procedure: sort ascending, scale the k-th smallest by
+    ``m / rank``, then enforce monotonicity from the largest down. Returns
+    adjusted p-values aligned with the *input* order. ``NaN`` inputs (e.g.
+    edge-scan breaks, which carry no permutation p-value) are passed through
+    untouched and excluded.
+
+    ``n_tests`` overrides the multiplicity denominator ``m``. The relevant
+    multiplicity is the number of *coverages tested* (one first-break test
+    each), not the number of breaks that happened to fire -- a coverage that
+    detected nothing still consumed a test. Pass the combo count so a lone
+    borderline break across many coverages is correctly deflated. Defaults
+    to the number of finite p-values when not given.
+    """
+    p = np.asarray(p_values, dtype=np.float64)
+    finite = np.isfinite(p)
+    out = p.copy()
+    idx = np.where(finite)[0]
+    if idx.size == 0:
+        return out
+    m = idx.size if n_tests is None else max(int(n_tests), idx.size)
+    order = idx[np.argsort(p[idx])]
+    ranks = np.arange(1, order.size + 1)
+    scaled = p[order] * m / ranks
+    # enforce monotone non-decreasing from the top, then clip to 1
+    adj = np.minimum.accumulate(scaled[::-1])[::-1]
+    out[order] = np.minimum(adj, 1.0)
+    return out
+
+
+def _edge_scan_breakpoints(
+    mat: np.ndarray,
+    threshold: float,
+    min_size: int,
+) -> list[int]:
+    """Detect a boundary regime that E-Divisive structurally cannot.
+
+    E-Divisive's energy statistic needs >= 2 cohorts on each side of a split
+    (and the regime detector forbids splits within ``min_size`` of an edge),
+    so a regime occupying only the first / last 1..``min_size``-1 cohorts is
+    unseparable -- a real failure when those cohorts are clearly different
+    (e.g. a coverage whose oldest single cohort sits at a different loss
+    level). This is a *1-vs-rest outlier* problem, not a two-sample
+    distributional one: a length-1 block is well-defined against the
+    *distribution* of the remaining cohorts.
+
+    For each edge, grow a contiguous block ``k = 1, 2, ...`` (capped at the
+    e-divisive blind zone ``< min_size``) while the block's mean is far from
+    the robust centre of the *remaining* cohorts, measured in robust-z
+    (RMS over dev features, MAD scale). A block survives only while every
+    extension stays above ``threshold`` (contiguity); the scan stops at the
+    first cohort that is not an outlier, so an isolated interior spike is not
+    flagged. ``threshold`` is an effect size in noise units -- a clearly
+    different edge cohort scores far above it, while a noisy coverage (large
+    within-rest scatter inflates the denominator) keeps every block below it,
+    so the test is robust to volatility by construction.
+
+    Returns edge break indices (right-side starts): ``[k]`` for a left-edge
+    regime of size ``k``, ``[n - k]`` for a right-edge regime of size ``k``.
+    """
+    n = mat.shape[0]
+    max_edge = max(0, min(min_size - 1, n - 2))
+    if max_edge < 1:
+        return []
+
+    # Per-cohort robust-z: each cohort's RMS standardized distance to the
+    # robust centre (median / MAD over cohorts) per dev feature. Median /
+    # MAD are robust to the few edge outliers, so a clearly different edge
+    # cohort gets a large z while a noisy coverage (large MAD) keeps every
+    # cohort modest. Constant dev features (MAD = 0) are ignored.
+    med = np.median(mat, axis=0)
+    mad = np.median(np.abs(mat - med), axis=0) * 1.4826
+    scale = np.where(mad > 0, mad, np.nan)
+    with np.errstate(invalid="ignore"):
+        zmat = (mat - med) / scale
+        z = np.sqrt(np.nanmean(zmat**2, axis=1))
+
+    breaks: list[int] = []
+    # left edge: leading run of individually-outlier cohorts (contiguity --
+    # an isolated interior spike is not an edge regime), capped at the
+    # e-divisive blind zone (< min_size).
+    k = 0
+    while k < max_edge and np.isfinite(z[k]) and z[k] >= threshold:
+        k += 1
+    if k >= 1:
+        breaks.append(k)
+    # right edge: trailing run
+    j = 0
+    while j < max_edge and np.isfinite(z[n - 1 - j]) and z[n - 1 - j] >= threshold:
+        j += 1
+    if j >= 1:
+        breaks.append(n - j)
+    return sorted(set(breaks))
 
 
 def _hclust_breakpoints(
@@ -524,6 +640,10 @@ class Regime:
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "segment_bridged",
+        window_floor: int | None = None,
+        fdr: bool = False,
+        edge_scan: bool = False,
+        edge_threshold: float = 10.0,
     ) -> "Regime":
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -697,6 +817,15 @@ class Regime:
         else:
             window_per_combo = [int(window)] * len(combos)
 
+        # Window floor (auto path only): the Kneedle elbow can resolve to a
+        # degenerate window=2 on the pooled / maturity-unavailable path,
+        # where a length-2 cohort feature vector gives E-Divisive no power.
+        # Clamping the auto-resolved window up to a floor restores detection
+        # without touching the maturity-anchored windows. Explicit `window`
+        # is the user's choice and is left untouched.
+        if window_is_auto and window_floor is not None:
+            window_per_combo = [max(w, int(window_floor)) for w in window_per_combo]
+
         # Run detection per combo. Failures are skipped (per-combo
         # robustness: a single short coverage shouldn't kill the whole
         # multi-group call). Skipped combos contribute zero rows to
@@ -715,6 +844,8 @@ class Regime:
                     n_permutations=n_permutations,
                     min_size=min_size,
                     seed=seed,
+                    edge_scan=edge_scan,
+                    edge_threshold=edge_threshold,
                 )
             except ValueError:
                 continue
@@ -725,6 +856,49 @@ class Regime:
                 "No group / combo produced a usable detection result. "
                 "Check `window`, `min_size`, and input coverage."
             )
+
+        # FDR: Benjamini-Hochberg across EVERY permutation break in the whole
+        # multi-combo call. With ~60 coverages each tested at sig_level, ~3
+        # spurious first breaks are expected by chance; FDR controls that
+        # family-wise. Edge-scan breaks carry NaN (effect-size gated, not
+        # permutation tested) and are exempt. E-Divisive only.
+        if fdr and method == "e_divisive":
+            flat_p: list[float] = []
+            refs: list[tuple[int, int]] = []
+            for ci, (_, res) in enumerate(per_combo_results):
+                for bi, p in enumerate(res["p_values"]):
+                    flat_p.append(p)
+                    refs.append((ci, bi))
+            adj = _bh_adjust(
+                np.asarray(flat_p, dtype=np.float64),
+                n_tests=len(per_combo_results),
+            )
+            keep: dict[int, set[int]] = {
+                ci: set() for ci in range(len(per_combo_results))
+            }
+            for (ci, bi), a, p0 in zip(refs, adj, flat_p):
+                if not np.isfinite(p0) or a <= sig_level:
+                    keep[ci].add(bi)
+            rebuilt: list[tuple[Any, dict[str, Any]]] = []
+            for ci, (combo, res) in enumerate(per_combo_results):
+                kept = sorted(keep[ci])
+                if len(kept) == len(res["breakpoints"]):
+                    rebuilt.append((combo, res))
+                    continue
+                cohorts = res["cohorts"]
+                n = len(cohorts)
+                bps = [res["breakpoints"][bi] for bi in kept]
+                pvs = [res["p_values"][bi] for bi in kept]
+                idx = [cohorts.index(v) for v in bps]
+                regime_ids = _regime_ids_from_breaks(n, idx)
+                rebuilt.append((combo, {
+                    **res,
+                    "breakpoints": bps,
+                    "p_values": pvs,
+                    "regime_ids": regime_ids,
+                    "n_regimes": int(regime_ids.max()) if n > 0 else 0,
+                }))
+            per_combo_results = rebuilt
 
         labels_df, changes_df, breakpoints, n_regimes_total, dropped = (
             _combine_combo_results(per_combo_results, grp)
@@ -901,6 +1075,10 @@ class Regime:
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "segment_bridged",
+        window_floor: int | None = None,
+        fdr: bool = False,
+        edge_scan: bool = False,
+        edge_threshold: float = 10.0,
     ) -> Callable[["Triangle"], "Regime"]:
         """Build a lazy regime-detection spec.
 
@@ -923,6 +1101,10 @@ class Regime:
                 n_permutations=n_permutations,
                 min_size=min_size,
                 seed=seed,
+                window_floor=window_floor,
+                fdr=fdr,
+                edge_scan=edge_scan,
+                edge_threshold=edge_threshold,
             )
             regime.treatment = treatment
             return regime

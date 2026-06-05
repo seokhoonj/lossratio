@@ -516,6 +516,10 @@ class Triangle:
         min_size: int = 3,
         seed: int | None = None,
         treatment: str = "segment_bridged",
+        window_floor: int | None = None,
+        fdr: bool = False,
+        edge_scan: bool = False,
+        edge_threshold: float = 10.0,
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
@@ -545,6 +549,29 @@ class Triangle:
             group COMBINATION.
         method, n_regimes, sig_level, n_permutations, min_size, seed, treatment
             See :class:`Regime` for full description.
+        window_floor
+            Optional minimum for the ``window="auto"`` resolution. The
+            Kneedle elbow can resolve to a degenerate ``window=2`` on the
+            pooled / maturity-unavailable path, starving E-Divisive; a
+            floor (e.g. ``4``) restores detection. ``None`` (default)
+            leaves auto resolution unchanged. Ignored for an explicit
+            integer ``window``.
+        fdr
+            Apply a Benjamini-Hochberg FDR correction across every
+            permutation break in the call, with the multiplicity equal to
+            the number of coverages tested. Controls the spurious breaks
+            expected by chance when many coverages are screened at once.
+            Edge-scan breaks are exempt. E-Divisive only. Default
+            ``False``.
+        edge_scan
+            Augment E-Divisive with a 1-vs-rest effect-size scan that
+            detects a boundary regime occupying only the first / last
+            1..``min_size``-1 cohorts -- which E-Divisive structurally
+            cannot separate (it needs >= 2 cohorts per side). Robust to
+            volatility by construction. Default ``False``.
+        edge_threshold
+            Effect-size (robust-z, noise units) an edge cohort must
+            exceed for ``edge_scan`` to flag it. Default ``10.0``.
         """
         from .regime import Regime
 
@@ -560,6 +587,10 @@ class Triangle:
             min_size=min_size,
             seed=seed,
             treatment=treatment,
+            window_floor=window_floor,
+            fdr=fdr,
+            edge_scan=edge_scan,
+            edge_threshold=edge_threshold,
         )
 
     def detect_maturity(
