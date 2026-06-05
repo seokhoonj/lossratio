@@ -428,6 +428,29 @@ def test_degenerate_honesty():
     )
     # Borrow leg still present (NaN must not masquerade as a number).
     assert row["ratio_ult_borrow"] is not None
+    # The mean leg falls back to the borrow leg (never null), so the single
+    # computable headline number survives a degenerate curve.
+    assert row["ratio_ult_mean"] == row["ratio_ult_borrow"]
+    assert row["loss_ult_mean"] == row["loss_ult_borrow"]
+
+
+def test_ratio_ult_mean_is_midpoint():
+    """``ratio_ult_mean`` / ``loss_ult_mean`` are the midpoint of the borrow
+    and curve legs -- a single computable headline number (the band rides
+    alongside on its own columns).
+    """
+    fit = _regime_fit()
+    band = fit.segment_band().filter(pl.col("coverage") == "SUR")
+    row = band.row(0, named=True)
+    assert row["ratio_ult_curve"] is not None  # SUR curve is well-defined
+    assert row["ratio_ult_mean"] == pytest.approx(
+        (row["ratio_ult_borrow"] + row["ratio_ult_curve"]) / 2.0
+    )
+    assert row["loss_ult_mean"] == pytest.approx(
+        (row["loss_ult_borrow"] + row["loss_ult_curve"]) / 2.0
+    )
+    # The mean lies inside the band.
+    assert row["band_lo"] <= row["ratio_ult_mean"] <= row["band_hi"]
 
 
 # ---------------------------------------------------------------------------

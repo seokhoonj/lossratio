@@ -51,6 +51,8 @@ _BAND_SCHEMA: dict[str, pl.DataType] = {
     "ratio_ult_borrow":       pl.Float64,
     "loss_ult_curve":         pl.Float64,
     "ratio_ult_curve":        pl.Float64,
+    "loss_ult_mean":          pl.Float64,
+    "ratio_ult_mean":         pl.Float64,
     "band_lo":                pl.Float64,
     "band_hi":                pl.Float64,
     "band_width":             pl.Float64,
@@ -341,6 +343,17 @@ def _segment_band(
                 cr, g_k, sub, n_devs, premium_ult
             )
 
+        # Mean leg: the midpoint of the two tail estimates -- a single
+        # computable headline number (the band rides alongside on its own
+        # columns). Falls back to the borrow leg when the curve is
+        # degenerate, so the column is never null.
+        if not degenerate and ratio_ult_curve is not None:
+            loss_ult_mean = (loss_ult_borrow + loss_ult_curve_out) / 2.0
+            ratio_ult_mean = (ratio_ult_borrow + ratio_ult_curve) / 2.0
+        else:
+            loss_ult_mean = loss_ult_borrow
+            ratio_ult_mean = ratio_ult_borrow
+
         status = _band_status(
             degenerate=degenerate,
             under_determined=bool(cr.under_determined),
@@ -358,6 +371,8 @@ def _segment_band(
             ratio_ult_borrow=ratio_ult_borrow,
             loss_ult_curve=loss_ult_curve_out,
             ratio_ult_curve=ratio_ult_curve,
+            loss_ult_mean=loss_ult_mean,
+            ratio_ult_mean=ratio_ult_mean,
             band_lo=band_lo,
             band_hi=band_hi,
             band_width=band_width,
