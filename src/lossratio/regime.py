@@ -1294,7 +1294,11 @@ class Regime:
                             mat_df.select(
                                 pl.when(change_f.is_null() | change_f.is_nan())
                                 .then(None)
-                                .otherwise(change_f.cast(pl.Int64))
+                                # non-strict: the `otherwise` branch is
+                                # evaluated for every row, so a strict cast
+                                # would still raise on the NaN rows the
+                                # `when` masks. Map NaN -> null instead.
+                                .otherwise(change_f.cast(pl.Int64, strict=False))
                                 .alias("_mat")
                             )["_mat"].to_list()
                         )
