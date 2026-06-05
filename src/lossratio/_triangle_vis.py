@@ -653,9 +653,14 @@ def _compute_triangle_usage(
     if regime is not None:
         treatment = getattr(regime, "treatment", None)
         is_segment_wise = treatment in (
+            "segment_borrowed", "segment_bridged", "segment_bridged_borrowed"
+        )
+        # Only the *_bridged* treatments widen the wall with the
+        # calendar-diagonal bridge; segment_borrowed masks the RAW
+        # per-segment wall (no bridge).
+        is_bridged = treatment in (
             "segment_bridged", "segment_bridged_borrowed"
         )
-        is_bridged = is_segment_wise  # both treatments mask the bridged band
         if not is_segment_wise:
             from .regime import _regime_cutoff_map
             cutoff_map = _regime_cutoff_map(regime)
@@ -927,7 +932,7 @@ def _plot_triangle_usage(
     is_segment_wise = (
         regime_obj is not None
         and getattr(regime_obj, "treatment", None)
-        in ("segment_bridged", "segment_bridged_borrowed")
+        in ("segment_borrowed", "segment_bridged", "segment_bridged_borrowed")
     )
     if regime_obj is not None and not is_segment_wise:
         from .regime import _regime_cutoff_map
