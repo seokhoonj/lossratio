@@ -361,7 +361,7 @@ def detect_convergence(
         mat_k=maturity_point,
         dev_max=dev_max,
         dev_cand=dev_cand,
-        lr=ratio_arr,
+        ratio=ratio_arr,
         revision=revision,
         drift_window=drift_window,
         drift_tail=drift_tail,
@@ -395,7 +395,7 @@ class Convergence:
         Maximum observable dev.
     dev_cand : list[int]
         Candidate dev sequence ``[maturity_point, dev_max - 2]``.
-    lr, revision, drift_window, drift_tail, slope, dispersion : ndarray
+    ratio, revision, drift_window, drift_tail, slope, dispersion : ndarray
         Diagnostic series, one entry per ``dev_cand``.
     pass_window, pass_tail, pass_slope, pass_ : ndarray[bool]
         Per-criterion pass vectors plus the chosen criterion.
@@ -415,7 +415,7 @@ class Convergence:
         mat_k: int,
         dev_max: int,
         dev_cand: list[int],
-        lr: np.ndarray,
+        ratio: np.ndarray,
         revision: np.ndarray,
         drift_window: np.ndarray,
         drift_tail: np.ndarray,
@@ -439,7 +439,7 @@ class Convergence:
         self.maturity_point = mat_k
         self.dev_max = dev_max
         self.dev_cand = list(dev_cand)
-        self.lr = lr
+        self.ratio = ratio
         self.revision = revision
         self.drift_window = drift_window
         self.drift_tail = drift_tail
@@ -463,7 +463,7 @@ class Convergence:
         """One-row-per-candidate diagnostic table."""
         df = pl.DataFrame({
             "dev": self.dev_cand,
-            "ratio": self.lr,
+            "ratio": self.ratio,
             "revision": self.revision,
             "drift_window": self.drift_window,
             "drift_tail": self.drift_tail,

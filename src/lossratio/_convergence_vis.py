@@ -26,7 +26,7 @@ def plot_convergence(
     import matplotlib.pyplot as plt
 
     panels = [
-        ("ratio",         conv.lr,                    None,                "ratio"),
+        ("ratio",         conv.ratio,                 None,                "ratio"),
         ("drift_window",  conv.drift_window,          conv.max_drift,      "drift (window)"),
         ("drift_tail",    conv.drift_tail,            conv.max_drift,      "drift (tail)"),
         ("|slope|",       np.abs(conv.slope),         conv.max_slope,      "|slope|"),

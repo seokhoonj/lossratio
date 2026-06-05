@@ -106,7 +106,7 @@ def test_detect_convergence_pass_arrays_consistency():
     )
     # Diagnostic vectors all have the same length as dev_cand.
     n = len(conv.dev_cand)
-    for arr in [conv.lr, conv.revision, conv.drift_window, conv.drift_tail,
+    for arr in [conv.ratio, conv.revision, conv.drift_window, conv.drift_tail,
                 conv.slope, conv.dispersion,
                 conv.pass_window, conv.pass_tail, conv.pass_slope]:
         assert len(arr) == n
@@ -149,7 +149,7 @@ def test_detect_convergence_multi_group():
     # across groups). convergence_point may be None depending on data, but the
     # diagnostic series must still be populated.
     assert len(conv.dev_cand) > 0
-    finite_ratio = np.isfinite(conv.lr).sum()
+    finite_ratio = np.isfinite(conv.ratio).sum()
     assert finite_ratio > 0
 
 

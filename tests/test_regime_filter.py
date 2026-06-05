@@ -330,6 +330,35 @@ def test_segment_bridged_borrowed_reaches_full_development():
     )
 
 
+def test_segment_borrowed_is_the_default_per_segment_treatment():
+    """`segment_borrowed` (the DEFAULT treatment) masks each segment's RAW
+    per-segment wall (no bridge widening) and keeps segment_id for
+    per-segment estimation + donor borrow -- distinct from the bridged
+    treatments."""
+    tri = _sur_triangle()
+    # No explicit treatment -> the default.
+    r = lr.Regime.at(change="2024-07-01")
+    assert r.treatment == "segment_borrowed"
+
+    fit = lr.Ratio(method="cl", loss_regime=r, premium_regime=r).fit(tri)
+    df = fit.to_polars()
+    assert "segment_id" in df.columns                       # per-segment, not pooled
+    assert sorted(df["segment_id"].drop_nulls().unique().to_list()) == [1, 2]
+
+    # The no-bridge band differs from the bridged-borrowed treatment (the
+    # bridge widens the older segments' walls; segment_borrowed does not).
+    bridged = lr.Ratio(
+        method="cl",
+        loss_regime=lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed"),
+        premium_regime=lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed"),
+    ).fit(tri).to_polars().sort(["cohort", "dev"])
+    bor = df.sort(["cohort", "dev"])
+    assert (
+        bridged["loss_proj"].fill_null(0.0).to_list()
+        != bor["loss_proj"].fill_null(0.0).to_list()
+    )
+
+
 def test_segment_bridged_borrowed_loss_only():
     """Loss-side segment_bridged_borrowed works standalone without Ratio
     composition (keeps segment_id)."""

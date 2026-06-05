@@ -93,7 +93,7 @@ trimmed = lr.Ratio(method="ed", loss_regime=reg).fit(tri) # regime 반영
 효과는 변화 이후의 어린 코호트에서 가장 큽니다. regime을 무시하면 가장
 어린 코호트(2025-12)의 최종 손해율이 **1.42**로 잡히지만, 이는 이미 끝난
 옛 regime의 높은 손해율이 섞여 부풀려진 값입니다. regime을 반영하면 새
-regime의 코호트만으로 추정해 **1.28**로 내려갑니다 — 달라진 상품의 실제
+regime의 코호트만으로 추정해 **0.88**로 내려갑니다 — 달라진 상품의 실제
 수준에 더 가깝습니다.
 
 ```{admonition} regime과 recent는 다른 축

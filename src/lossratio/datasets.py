@@ -234,6 +234,6 @@ def load_experience() -> pl.DataFrame:
     Returns
     -------
     polars.DataFrame
-        Same 18-column shape as :func:`make_experience`.
+        Same 17-column shape as :func:`make_experience`.
     """
     return pl.read_parquet(_DATA_PATH)

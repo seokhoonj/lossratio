@@ -379,9 +379,9 @@ def test_detect_regime_candidates_carries_assess():
     assert cand.height >= reg.changes.height
     # the planted synthetic SUR regime is a clean step.
     sur = cand.filter(pl.col("coverage") == "SUR")
-    if sur.height:
-        assert sur["kind"][0] == "step"
-        assert sur["step_p"][0] < 0.05
+    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur["kind"][0] == "step"
+    assert sur["step_p"][0] < 0.05
 
 
 def test_regime_at_has_empty_candidates():
@@ -404,9 +404,9 @@ def test_detect_regime_window_sweep_stability():
         assert sub["window_stability"].max() <= 1.0
     # the planted synthetic SUR regime recurs across windows (robust).
     sur = cand.filter(pl.col("coverage") == "SUR")
-    if sur.height:
-        assert sur["window_stability"][0] >= 0.5
-        assert sur["kind"][0] == "step"
+    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur["window_stability"][0] >= 0.5
+    assert sur["kind"][0] == "step"
 
 
 # ---------------------------------------------------------------------------
@@ -444,9 +444,9 @@ def test_detect_regime_grain_sweep():
     assert cand["grain_stability"].min() >= 1
     # the planted SUR regime is detected at >= 1 grain and is a step.
     sur = cand.filter(pl.col("coverage") == "SUR")
-    if sur.height:
-        assert sur["kind"][0] == "step"
-        assert sur["grain_stability"][0] >= 1
+    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur["kind"][0] == "step"
+    assert sur["grain_stability"][0] >= 2       # detected at >= 2 grains (M and Q)
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +481,10 @@ def test_evaluate_action_regime_or_none():
         assert (acted["confidence"] > 0.0).all()
     # the planted SUR step is a regime, not still-moving.
     sur = ev.filter(pl.col("coverage") == "SUR")
-    if sur.height:
-        assert sur["action"][0] == "regime"
-        assert not sur["still_moving"][0]
-        assert sur["confidence"][0] > 0.5
+    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur["action"][0] == "regime"
+    assert not sur["still_moving"][0]
+    assert sur["confidence"][0] > 0.5
 
 
 def test_evaluate_custom_rule():
@@ -526,8 +526,8 @@ def test_grain_sweep_per_grain_kind_profile():
             assert "step" in kinds and "drift" in kinds
     # the planted SUR regime is a clean step across its detected grains.
     sur = cand.filter(pl.col("coverage") == "SUR")
-    if sur.height:
-        assert sur["change_type"][0] == "step"
+    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur["change_type"][0] == "step"
 
 
 def test_accepted_drives_the_fit():
@@ -595,7 +595,7 @@ def test_borrow_screen_method():
     reg = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SUR"]})
     scr = reg.borrow_screen(tri)
     assert {"coverage", "verdict", "shape_score", "calendar_score"} <= set(scr.columns)
-    assert set(scr["verdict"].unique().to_list()) <= {"level", "shape", "insufficient"}
+    assert set(scr["verdict"].unique().to_list()) <= {"level", "shape", "calendar", "insufficient"}
 
 
 def test_borrow_screen_calendar_trend():

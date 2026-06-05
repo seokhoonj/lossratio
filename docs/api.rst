@@ -87,7 +87,7 @@ API 레퍼런스
 .. autoclass:: lossratio.ResidualBootstrap
    :members:
 
-.. autoclass:: lossratio.MonteCarlo
+.. autoclass:: lossratio.ParametricBootstrap
    :members:
 
 검증
