@@ -2100,9 +2100,18 @@ class Regime:
         ev = self.evaluate(**evaluate_kwargs)
         ev_pl = ev if isinstance(ev, pl.DataFrame) else pl.from_pandas(ev)
         grp_cols = normalize_groups(self.groups)
-        acc = ev_pl.filter(pl.col("action") == "regime").select(
-            [*grp_cols, "change"]
-        )
+        if "action" in ev_pl.columns:
+            acc = ev_pl.filter(pl.col("action") == "regime").select(
+                [*grp_cols, "change"]
+            )
+        else:
+            # No candidates surfaced (empty evaluate frame) -> no accepted
+            # changes. Return a properly-typed empty `changes_df` so the
+            # resulting Regime simply applies no filter, rather than crashing
+            # on the missing "action" column.
+            acc = pl.DataFrame(
+                schema={**{c: pl.Utf8 for c in grp_cols}, "change": pl.Date}
+            )
         return Regime._manual(
             changes_df=acc,
             treatment=getattr(self, "treatment", "segment_borrowed"),

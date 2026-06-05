@@ -499,6 +499,23 @@ def test_evaluate_empty_when_no_candidates():
     assert reg.evaluate().height == 0
 
 
+def test_accepted_with_no_detected_candidates_returns_empty_regime():
+    """A ``detect_regime`` that surfaces no candidates must let
+    ``accepted()`` return an empty (no-filter) Regime instead of crashing on
+    the missing ``"action"`` column -- the empty evaluate frame carries no
+    schema. Single-config detect on the bundled data yields zero candidates
+    (the planted SUR regime only surfaces under the grain/window sweep)."""
+    tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "CAN"))
+    reg = tri.detect_regime()
+    assert reg.candidates.height == 0
+    acc = reg.accepted()
+    assert isinstance(acc, lr.Regime)
+    assert acc.changes.height == 0
+    # The empty regime applies no filter, so a fit runs exactly as no-regime.
+    fit = lr.Ratio(loss_regime=acc).fit(tri)
+    assert fit.to_polars().height > 0
+
+
 def test_grain_sweep_per_grain_kind_profile():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     reg = tri.detect_regime(
