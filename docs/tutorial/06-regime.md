@@ -96,6 +96,19 @@ trimmed = lr.Ratio(method="ed", loss_regime=reg).fit(tri) # regime 반영
 regime의 코호트만으로 추정해 **0.88**로 내려갑니다 — 달라진 상품의 실제
 수준에 더 가깝습니다.
 
+왜 섞으면 안 되는지 도식으로 보면:
+
+```text
+ 손해율
+  1.5 |********               regime 1 (옛 상품, 높음)
+      |        ****
+      |            - - - - -  전체를 섞어 추정 -> 1.42 (옛 수준이 섞여 부풀려짐)
+  1.0 |
+  0.9 |              oooooo   새 regime 만으로 추정 -> 0.88 (실제 수준)
+      +-------------|-------> 코호트 (uy)
+              2024-07 (탐지된 변화 지점)
+```
+
 ```{admonition} regime과 recent는 다른 축
 :class: note
 
