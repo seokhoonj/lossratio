@@ -1707,6 +1707,110 @@ class Regime:
         """Per-cohort regime labels in the original input format."""
         return mirror_output(self._labels_df, self._output_type)
 
+    def evaluate(
+        self,
+        *,
+        material: float = 0.05,
+        sig: float = 0.05,
+        min_stability: float = 0.5,
+        rule: Callable[[dict], tuple[bool, float]] | None = None,
+    ):
+        """Score :attr:`candidates` into ``accept`` + ``confidence``.
+
+        Applies the step-vs-drift / magnitude / significance / stability
+        logic to every candidate and returns the table annotated with a
+        boolean ``accept`` and a ``confidence`` in ``[0, 1]``, sorted by
+        confidence. The accepted rows (``accept == True``) are the regimes
+        the evidence supports; drift / edge candidates are rejected.
+
+        Default rule -- a candidate is accepted when it is a discrete step
+        (``kind == "step"``), the step is significant (``step_p < sig``),
+        the level moves materially (``abs(level_shift) >= material``), and
+        it is stable (``window_stability >= min_stability`` or
+        ``grain_stability >= 2`` when those columns are present). Confidence
+        blends significance (0.45), stability (0.30) and magnitude (0.25),
+        and is forced to 0 for non-step candidates.
+
+        Parameters
+        ----------
+        material
+            Minimum absolute relative ``level_shift`` to be material.
+        sig
+            Significance level for the step F-test (``step_p``).
+        min_stability
+            Minimum ``window_stability`` (when present) to accept.
+        rule
+            Optional ``rule(row_dict) -> (accept, confidence)`` callable to
+            override the default scoring per candidate row.
+        """
+        cand = self._candidates_df
+        if cand.is_empty():
+            return mirror_output(cand, self._output_type)
+
+        if rule is not None:
+            accepts, confs = [], []
+            for row in cand.iter_rows(named=True):
+                a, c = rule(row)
+                accepts.append(bool(a))
+                confs.append(float(c))
+            scored = cand.with_columns(
+                pl.Series("accept", accepts),
+                pl.Series("confidence", confs),
+            )
+            return mirror_output(
+                scored.sort("confidence", descending=True, nulls_last=True),
+                self._output_type,
+            )
+
+        has_ws = "window_stability" in cand.columns
+        has_gs = "grain_stability" in cand.columns
+        absshift = pl.col("level_shift").abs()
+        sig_score = (1.0 - pl.col("step_p") / sig).clip(0.0, 1.0)
+        mag_score = (absshift / (2.0 * material)).clip(0.0, 1.0)
+
+        # grain_stability in [1, n] -> [0, 1] via (gs - 1)/2 (3-grain full).
+        gs_score = ((pl.col("grain_stability") - 1) / 2.0).clip(0.0, 1.0)
+        if has_ws and has_gs:
+            stab = 0.5 * pl.col("window_stability").fill_null(0.0) + 0.5 * gs_score
+        elif has_ws:
+            stab = pl.col("window_stability").fill_null(0.0)
+        elif has_gs:
+            stab = gs_score
+        else:
+            stab = pl.lit(0.5)  # single-config detect: no stability evidence
+
+        is_step = pl.col("kind") == "step"
+        conf = pl.when(is_step).then(
+            0.45 * sig_score + 0.30 * stab + 0.25 * mag_score
+        ).otherwise(0.0)
+
+        if has_ws and has_gs:
+            stab_ok = (pl.col("window_stability") >= min_stability) | (
+                pl.col("grain_stability") >= 2
+            )
+        elif has_ws:
+            stab_ok = pl.col("window_stability") >= min_stability
+        elif has_gs:
+            stab_ok = pl.col("grain_stability") >= 2
+        else:
+            stab_ok = pl.lit(True)
+
+        accept = (
+            is_step
+            & (pl.col("step_p") < sig)
+            & (absshift >= material)
+            & stab_ok
+        )
+
+        scored = cand.with_columns(
+            conf.alias("confidence"),
+            accept.fill_null(False).alias("accept"),
+        )
+        return mirror_output(
+            scored.sort("confidence", descending=True, nulls_last=True),
+            self._output_type,
+        )
+
     def plot(
         self,
         nrow: int | None = None,

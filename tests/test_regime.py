@@ -447,3 +447,43 @@ def test_detect_regime_grain_sweep():
     if sur.height:
         assert sur["kind"][0] == "step"
         assert sur["grain_stability"][0] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Regime.evaluate (score candidates -> accept + confidence)
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_accepts_step_rejects_drift():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(
+        target="ratio", grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10),
+        seed=20260501, n_permutations=199,
+    )
+    ev = reg.evaluate()
+    assert "confidence" in ev.columns and "accept" in ev.columns
+    # confidence in [0, 1]; sorted descending.
+    assert ev["confidence"].min() >= 0.0 and ev["confidence"].max() <= 1.0
+    assert ev["confidence"].to_list() == sorted(ev["confidence"].to_list(), reverse=True)
+    # the planted SUR step is accepted with high confidence.
+    sur = ev.filter(pl.col("coverage") == "SUR")
+    if sur.height:
+        assert sur["accept"][0]
+        assert sur["confidence"][0] > 0.5
+    # every drift / edge candidate is rejected with zero confidence.
+    nonstep = ev.filter(pl.col("kind") != "step")
+    if nonstep.height:
+        assert not nonstep["accept"].any()
+        assert (nonstep["confidence"] == 0.0).all()
+
+
+def test_evaluate_custom_rule():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(target="ratio", window=12, seed=20260501)
+    ev = reg.evaluate(rule=lambda r: (r["kind"] == "step", 1.0 if r["kind"] == "step" else 0.0))
+    assert set(ev.filter(pl.col("accept"))["kind"].unique().to_list()) <= {"step"}
+
+
+def test_evaluate_empty_when_no_candidates():
+    reg = lr.Regime.at(change="2024-07-01")
+    assert reg.evaluate().height == 0
