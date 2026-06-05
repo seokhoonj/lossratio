@@ -40,7 +40,11 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
-_VALID_TREATMENTS = ("segment_bridged", "segment_bridged_borrowed")
+_VALID_TREATMENTS = (
+    "segment_borrowed",
+    "segment_bridged",
+    "segment_bridged_borrowed",
+)
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -2254,7 +2258,11 @@ def _apply_mini_triangle_filter(
     """
     if df.height == 0:
         return df
-    bridge = True
+    # `segment_borrowed` uses each segment's RAW mini-triangle wall (no
+    # bridge widening / overlap); the gaps a segment cannot reach are filled
+    # by donor borrowing instead. The two `*_bridged*` treatments widen the
+    # band with the next-segment bridge.
+    bridge = regime.treatment != "segment_borrowed"
     gcols = normalize_groups(regime.groups)
     grouped = bool(gcols) and all(g in df.columns for g in gcols)
     rank_keys = gcols if grouped else []

@@ -454,7 +454,7 @@ class PremiumFit:
 
         if (
             regime is not None
-            and regime.treatment == "segment_bridged_borrowed"
+            and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
             and regime.breakpoints
         ):
             return cls._segment_borrowed_fit(triangle, estimator, regime)
