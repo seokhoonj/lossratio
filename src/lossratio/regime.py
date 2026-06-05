@@ -1801,10 +1801,12 @@ class Regime:
             grouped and different groups carry different change points.
         treatment
             Regime application mode.
-            ``"segment_borrowed"`` (default) masks each segment's RAW
-            mini-triangle wall (``dev >= max_cal - seg_last + 1``, no bridge
-            widening), estimates factors per segment, and borrows the
-            late-dev factors a young segment cannot reach from an older
+            ``"segment_borrowed"`` (default) masks each segment's raw
+            mini-triangle wall plus a ONE-DEV seam overlap (the donor's wall
+            drops one dev to cover the boundary link the newer segment
+            borrows -- closing the one-dev gap that would otherwise truncate
+            the newer segment), estimates factors per segment, and borrows
+            the late-dev factors a young segment cannot reach from an older
             donor -- so the seam carries no implicitly-pooled pre-change
             cells. The two ``*_bridged*`` modes instead widen each wall with
             a calendar-diagonal bridge to the next segment's first-cohort
@@ -2606,9 +2608,9 @@ def _apply_regime_filter(
     segment boundaries so a continuous factor run covers every dev and
     every cohort projects to full development.
 
-    - ``"segment_borrowed"`` (default): masks each segment's RAW wall (no
-      bridge widening) and keeps ``segment_id``, so the fit dispatcher
-      routes to per-segment estimation + donor borrow over the narrower
+    - ``"segment_borrowed"`` (default): masks each segment's raw wall plus a
+      one-dev seam overlap (no full bridge) and keeps ``segment_id``, so the
+      fit dispatcher routes to per-segment estimation + donor borrow over the
       band.
 
     - ``"segment_bridged"``: the bridged masked band drops its
