@@ -1719,21 +1719,26 @@ class Regime:
         min_stability: float = 0.5,
         rule: Callable[[dict], tuple[bool, float]] | None = None,
     ):
-        """Score :attr:`candidates` into ``accept`` + ``confidence``.
+        """Score :attr:`candidates` into an ``action`` + ``confidence``.
 
-        Applies the step-vs-drift / magnitude / significance / stability
-        logic to every candidate and returns the table annotated with a
-        boolean ``accept`` and a ``confidence`` in ``[0, 1]``, sorted by
-        confidence. The accepted rows (``accept == True``) are the regimes
-        the evidence supports; drift / edge candidates are rejected.
+        Returns the candidate table annotated with an ``action``, a
+        ``confidence`` in ``[0, 1]``, and a convenience ``accept`` boolean
+        (``action == "regime"``), sorted by confidence. The action is NOT a
+        binary accept -- a material gradual decline is acted on, just
+        differently from a discrete step:
 
-        Default rule -- a candidate is accepted when it is a discrete step
-        (``kind == "step"``), the step is significant (``step_p < sig``),
-        the level moves materially (``abs(level_shift) >= material``), and
-        it is stable (``window_stability >= min_stability`` or
-        ``grain_stability >= 2`` when those columns are present). Confidence
-        blends significance (0.45), stability (0.30) and magnitude (0.25),
-        and is forced to 0 for non-step candidates.
+        - ``"regime"`` -- a discrete step (``kind == "step"``, significant
+          ``step_p < sig``, material ``abs(level_shift) >= material``, and
+          stable). Fit with a regime cut at the change.
+        - ``"recent"`` -- a material gradual change ("drift") whose mean
+          shift is real (``p_value < sig``). NOT ignored: fit on a RECENT
+          window so projection reflects the recent level, not the obsolete
+          old cohorts (a 100 -> 50 decline must project near 50, not 100).
+        - ``"none"`` -- immaterial / edge / unsupported; leave alone.
+
+        Confidence blends significance (0.45 -- the step F-test OR the Welch
+        mean-diff, whichever is stronger), stability (0.30) and magnitude
+        (0.25); it is 0 for ``"none"``.
 
         Parameters
         ----------
@@ -1760,6 +1765,11 @@ class Regime:
             scored = cand.with_columns(
                 pl.Series("accept", accepts),
                 pl.Series("confidence", confs),
+            ).with_columns(
+                pl.when(pl.col("accept"))
+                .then(pl.lit("regime"))
+                .otherwise(pl.lit("none"))
+                .alias("action")
             )
             return mirror_output(
                 scored.sort("confidence", descending=True, nulls_last=True),
@@ -1769,7 +1779,13 @@ class Regime:
         has_ws = "window_stability" in cand.columns
         has_gs = "grain_stability" in cand.columns
         absshift = pl.col("level_shift").abs()
-        sig_score = (1.0 - pl.col("step_p") / sig).clip(0.0, 1.0)
+        # significance from the step F-test (discrete break) OR the Welch
+        # mean-diff (a gradual but real level change). max so a material
+        # drift, which the step test calls insignificant, still scores on
+        # its mean-difference evidence.
+        sig_step = (1.0 - pl.col("step_p") / sig).clip(0.0, 1.0).fill_nan(0.0)
+        sig_diff = (1.0 - pl.col("p_value") / sig).clip(0.0, 1.0).fill_nan(0.0)
+        sig_score = pl.max_horizontal(sig_step, sig_diff)
         mag_score = (absshift / (2.0 * material)).clip(0.0, 1.0)
 
         # grain_stability in [1, n] -> [0, 1] via (gs - 1)/2 (3-grain full).
@@ -1783,11 +1799,6 @@ class Regime:
         else:
             stab = pl.lit(0.5)  # single-config detect: no stability evidence
 
-        is_step = pl.col("kind") == "step"
-        conf = pl.when(is_step).then(
-            0.45 * sig_score + 0.30 * stab + 0.25 * mag_score
-        ).otherwise(0.0)
-
         if has_ws and has_gs:
             stab_ok = (pl.col("window_stability") >= min_stability) | (
                 pl.col("grain_stability") >= 2
@@ -1799,16 +1810,34 @@ class Regime:
         else:
             stab_ok = pl.lit(True)
 
-        accept = (
-            is_step
-            & (pl.col("step_p") < sig)
-            & (absshift >= material)
-            & stab_ok
+        material_move = absshift >= material
+        diff_sig = (pl.col("p_value") < sig).fill_null(False) | (
+            pl.col("step_p") < sig
+        ).fill_null(False)
+        is_step = pl.col("kind") == "step"
+        step_regime = is_step & (pl.col("step_p") < sig) & material_move & stab_ok
+
+        # Action -- NOT a binary accept. A discrete step is cut at the
+        # change; a material gradual decline ("drift") is NOT ignored but
+        # fit on a RECENT window so projection reflects the recent level,
+        # not the obsolete old cohorts; everything else is left alone.
+        action = (
+            pl.when(step_regime)
+            .then(pl.lit("regime"))
+            .when(material_move & diff_sig)
+            .then(pl.lit("recent"))
+            .otherwise(pl.lit("none"))
+        )
+        conf = (
+            pl.when(action != pl.lit("none"))
+            .then(0.45 * sig_score + 0.30 * stab + 0.25 * mag_score)
+            .otherwise(0.0)
         )
 
         scored = cand.with_columns(
+            action.alias("action"),
             conf.alias("confidence"),
-            accept.fill_null(False).alias("accept"),
+            (action == pl.lit("regime")).alias("accept"),
         )
         return mirror_output(
             scored.sort("confidence", descending=True, nulls_last=True),

@@ -454,27 +454,32 @@ def test_detect_regime_grain_sweep():
 # ---------------------------------------------------------------------------
 
 
-def test_evaluate_accepts_step_rejects_drift():
+def test_evaluate_action_regime_recent_none():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     reg = tri.detect_regime(
         target="ratio", grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10),
         seed=20260501, n_permutations=199,
     )
     ev = reg.evaluate()
-    assert "confidence" in ev.columns and "accept" in ev.columns
-    # confidence in [0, 1]; sorted descending.
+    assert "action" in ev.columns and "confidence" in ev.columns
+    assert set(ev["action"].unique().to_list()) <= {"regime", "recent", "none"}
+    # confidence in [0, 1], sorted descending.
     assert ev["confidence"].min() >= 0.0 and ev["confidence"].max() <= 1.0
     assert ev["confidence"].to_list() == sorted(ev["confidence"].to_list(), reverse=True)
-    # the planted SUR step is accepted with high confidence.
+    # accept is exactly the "regime" action.
+    assert (ev["accept"] == (ev["action"] == "regime")).all()
+    # only discrete steps become a "regime" cut; drift never does.
+    assert (ev.filter(pl.col("action") == "regime")["kind"] == "step").all()
+    # "none" carries zero confidence; acted-on rows carry positive.
+    assert (ev.filter(pl.col("action") == "none")["confidence"] == 0.0).all()
+    acted = ev.filter(pl.col("action") != "none")
+    if acted.height:
+        assert (acted["confidence"] > 0.0).all()
+    # the planted SUR step is a regime with high confidence.
     sur = ev.filter(pl.col("coverage") == "SUR")
     if sur.height:
-        assert sur["accept"][0]
+        assert sur["action"][0] == "regime"
         assert sur["confidence"][0] > 0.5
-    # every drift / edge candidate is rejected with zero confidence.
-    nonstep = ev.filter(pl.col("kind") != "step")
-    if nonstep.height:
-        assert not nonstep["accept"].any()
-        assert (nonstep["confidence"] == 0.0).all()
 
 
 def test_evaluate_custom_rule():
