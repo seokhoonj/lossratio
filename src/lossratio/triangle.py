@@ -520,6 +520,7 @@ class Triangle:
         fdr: bool = False,
         edge_scan: bool = False,
         edge_threshold: float = 10.0,
+        window_sweep: Sequence[int] | None = None,
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
@@ -572,6 +573,13 @@ class Triangle:
         edge_threshold
             Effect-size (robust-z, noise units) an edge cohort must
             exceed for ``edge_scan`` to flag it. Default ``10.0``.
+        window_sweep
+            Optional sequence of trajectory windows (e.g. ``range(4, 13)``).
+            When set, :attr:`Regime.candidates` is built from a sweep over
+            these windows, adding ``window_stability`` (the fraction of
+            windows that detect each change -- a change recurring across
+            many windows is robust) and ``n_windows``. ``changes`` still
+            comes from the single resolved ``window``. Default ``None``.
         """
         from .regime import Regime
 
@@ -591,6 +599,7 @@ class Triangle:
             fdr=fdr,
             edge_scan=edge_scan,
             edge_threshold=edge_threshold,
+            window_sweep=window_sweep,
         )
 
     def detect_maturity(

@@ -387,3 +387,23 @@ def test_detect_regime_candidates_carries_assess():
 def test_regime_at_has_empty_candidates():
     reg = lr.Regime.at(change="2024-07-01")
     assert reg.candidates.height == 0
+
+
+def test_detect_regime_window_sweep_stability():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(
+        target="ratio", window=12, window_sweep=range(6, 14),
+        seed=20260501, n_permutations=199,
+    )
+    cand = reg.candidates
+    assert "window_stability" in cand.columns
+    assert "n_windows" in cand.columns
+    sub = cand.filter(pl.col("window_stability").is_not_nan())
+    if sub.height:
+        assert sub["window_stability"].min() > 0.0
+        assert sub["window_stability"].max() <= 1.0
+    # the planted synthetic SUR regime recurs across windows (robust).
+    sur = cand.filter(pl.col("coverage") == "SUR")
+    if sur.height:
+        assert sur["window_stability"][0] >= 0.5
+        assert sur["kind"][0] == "step"

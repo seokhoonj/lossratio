@@ -294,6 +294,124 @@ def _build_candidates_df(
     return pl.concat(frames, how="vertical_relaxed")
 
 
+def _sweep_window_candidates(
+    sub: pl.DataFrame,
+    target: str,
+    windows: Sequence[int],
+    *,
+    method: str,
+    n_regimes: int | None,
+    sig_level: float,
+    n_permutations: int,
+    min_size: int,
+    seed: int | None,
+    edge_scan: bool,
+    edge_threshold: float,
+) -> list[dict[str, Any]]:
+    """Detect across each window in ``windows``, merge by change date.
+
+    A change that recurs across many windows is robust; a window-specific
+    artifact appears at one or two. Returns one row per distinct change
+    cohort value with ``window_stability`` (fraction of usable windows that
+    detected it), ``n_windows`` (how many), and the :func:`_assess_change`
+    columns taken from the window with the most cohorts (most reliable
+    estimate). Failed windows (too few cohorts for that window) are skipped
+    and excluded from the stability denominator.
+    """
+    by_date: dict[Any, dict[str, Any]] = {}
+    n_win = 0
+    for w in windows:
+        try:
+            res = _detect_regime_single(
+                sub,
+                target=target,
+                window=int(w),
+                method=method,
+                n_regimes=n_regimes,
+                sig_level=sig_level,
+                n_permutations=n_permutations,
+                min_size=min_size,
+                seed=seed,
+                edge_scan=edge_scan,
+                edge_threshold=edge_threshold,
+                with_assess=True,
+            )
+        except ValueError:
+            continue
+        n_win += 1
+        n_coh = len(res["cohorts"])
+        for bp, a in zip(res["breakpoints"], res["assess"]):
+            rec = by_date.setdefault(bp, {"count": 0, "best_n": -1, "assess": None})
+            rec["count"] += 1
+            if n_coh > rec["best_n"]:
+                rec["best_n"] = n_coh
+                rec["assess"] = a
+
+    rows: list[dict[str, Any]] = []
+    for bp in sorted(by_date):
+        rec = by_date[bp]
+        rows.append({
+            "change": bp,
+            "window_stability": (rec["count"] / n_win) if n_win else float("nan"),
+            "n_windows": int(rec["count"]),
+            **rec["assess"],
+        })
+    return rows
+
+
+_SWEEP_KEYS = ("change", "window_stability", "n_windows") + _ASSESS_KEYS
+
+
+def _build_sweep_candidates_df(
+    sub_by_combo: dict[Any, pl.DataFrame],
+    combos: list[Any],
+    grp: str | None,
+    *,
+    target: str,
+    windows: Sequence[int],
+    method: str,
+    n_regimes: int | None,
+    sig_level: float,
+    n_permutations: int,
+    min_size: int,
+    seed: int | None,
+    edge_scan: bool,
+    edge_threshold: float,
+) -> pl.DataFrame:
+    """Candidate table from a WINDOW sweep, with ``window_stability``.
+
+    Per combo, :func:`_sweep_window_candidates` runs detection across
+    ``windows`` and merges by change date; the rows are stacked with the
+    group column(s) prepended. Carries ``window_stability`` / ``n_windows``
+    on top of the assess columns. Empty frame when nothing is detected.
+    """
+    frames: list[pl.DataFrame] = []
+    for combo in combos:
+        rows = _sweep_window_candidates(
+            sub_by_combo[combo],
+            target,
+            windows,
+            method=method,
+            n_regimes=n_regimes,
+            sig_level=sig_level,
+            n_permutations=n_permutations,
+            min_size=min_size,
+            seed=seed,
+            edge_scan=edge_scan,
+            edge_threshold=edge_threshold,
+        )
+        if not rows:
+            continue
+        data: dict[str, Any] = {}
+        fill_group_columns(data, grp, combo, len(rows))
+        for key in _SWEEP_KEYS:
+            data[key] = [r[key] for r in rows]
+        frames.append(pl.DataFrame(data))
+    if not frames:
+        return pl.DataFrame()
+    return pl.concat(frames, how="vertical_relaxed")
+
+
 def _combine_combo_results(
     per_combo_results: list[tuple[Any, dict[str, Any]]],
     grp: str | None,
@@ -892,6 +1010,7 @@ class Regime:
         fdr: bool = False,
         edge_scan: bool = False,
         edge_threshold: float = 10.0,
+        window_sweep: Sequence[int] | None = None,
     ) -> "Regime":
         if method not in _VALID_METHODS:
             raise ValueError(
@@ -1109,7 +1228,25 @@ class Regime:
         # Candidate table (all detected breaks + assess metrics) -- built
         # BEFORE the FDR filter, so it is a superset of the accepted
         # `changes`. The evaluation layer scores this transparent table.
-        candidates_df = _build_candidates_df(per_combo_results, grp)
+        # With `window_sweep`, candidates come from a window sweep carrying
+        # `window_stability` (a change that recurs across windows is robust);
+        # otherwise from the single resolved window.
+        if window_sweep is not None:
+            candidates_df = _build_sweep_candidates_df(
+                sub_by_combo, combos, grp,
+                target=target,
+                windows=window_sweep,
+                method=method,
+                n_regimes=n_regimes,
+                sig_level=sig_level,
+                n_permutations=n_permutations,
+                min_size=min_size,
+                seed=seed,
+                edge_scan=edge_scan,
+                edge_threshold=edge_threshold,
+            )
+        else:
+            candidates_df = _build_candidates_df(per_combo_results, grp)
 
         # FDR: Benjamini-Hochberg across EVERY permutation break in the whole
         # multi-combo call. With ~60 coverages each tested at sig_level, ~3
