@@ -200,6 +200,7 @@ def _detect_regime_single(
     seed: int | None,
     edge_scan: bool = False,
     edge_threshold: float = 10.0,
+    with_assess: bool = False,
 ) -> dict[str, Any]:
     """Single-combo detection. Returns the per-combo result dict.
 
@@ -240,7 +241,7 @@ def _detect_regime_single(
 
     regime_ids = _regime_ids_from_breaks(n, breaks_idx)
     breakpoints = [cohorts[i] for i in breaks_idx]
-    return {
+    result: dict[str, Any] = {
         "cohorts": cohorts,
         "regime_ids": regime_ids,
         "breakpoints": breakpoints,
@@ -248,6 +249,49 @@ def _detect_regime_single(
         "dropped": dropped,
         "n_regimes": int(regime_ids.max()) if n > 0 else 0,
     }
+    if with_assess:
+        # Quantify each break on the cohort-level scalar (mean over the
+        # window) via the shared kernel. Aligned with ``breakpoints``.
+        scalar = mat.mean(axis=1)
+        result["assess"] = [_assess_change(scalar, i) for i in breaks_idx]
+    return result
+
+
+_ASSESS_KEYS = (
+    "n_pre", "n_post", "level_shift", "t_stat", "p_value",
+    "delta_r2", "step_p", "curved_drift_suspect", "kind",
+)
+
+
+def _build_candidates_df(
+    per_combo_results: list[tuple[Any, dict[str, Any]]],
+    grp: str | None,
+) -> pl.DataFrame:
+    """Candidate table: one row per detected change with assess metrics.
+
+    Each row carries the change cohort value, optional group column(s), and
+    the :func:`_assess_change` columns (``level_shift``, ``t_stat``,
+    ``p_value``, ``delta_r2``, ``step_p``, ``curved_drift_suspect``,
+    ``kind``, ``n_pre``, ``n_post``). This is the transparent table the
+    evaluation layer scores; it is a *superset* of the accepted
+    ``changes`` (which the FDR / evaluation filter narrows). Empty frame
+    when no combo produced an assessed break.
+    """
+    frames: list[pl.DataFrame] = []
+    for combo, res in per_combo_results:
+        assess = res.get("assess")
+        bps = res["breakpoints"]
+        if not assess or not bps:
+            continue
+        data: dict[str, Any] = {}
+        fill_group_columns(data, grp, combo, len(bps))
+        data["change"] = bps
+        for key in _ASSESS_KEYS:
+            data[key] = [a[key] for a in assess]
+        frames.append(pl.DataFrame(data))
+    if not frames:
+        return pl.DataFrame()
+    return pl.concat(frames, how="vertical_relaxed")
 
 
 def _combine_combo_results(
@@ -1050,6 +1094,7 @@ class Regime:
                     seed=seed,
                     edge_scan=edge_scan,
                     edge_threshold=edge_threshold,
+                    with_assess=True,
                 )
             except ValueError:
                 continue
@@ -1060,6 +1105,11 @@ class Regime:
                 "No group / combo produced a usable detection result. "
                 "Check `window`, `min_size`, and input coverage."
             )
+
+        # Candidate table (all detected breaks + assess metrics) -- built
+        # BEFORE the FDR filter, so it is a superset of the accepted
+        # `changes`. The evaluation layer scores this transparent table.
+        candidates_df = _build_candidates_df(per_combo_results, grp)
 
         # FDR: Benjamini-Hochberg across EVERY permutation break in the whole
         # multi-combo call. With ~60 coverages each tested at sig_level, ~3
@@ -1111,6 +1161,7 @@ class Regime:
         self = cls.__new__(cls)
         self._labels_df = labels_df
         self._changes_df = changes_df
+        self._candidates_df = candidates_df
         self._output_type = triangle._output_type
         self.method = method
         self.target = target
@@ -1154,6 +1205,8 @@ class Regime:
             {"cohort": [], "regime_id": []},
             schema={"cohort": pl.Date, "regime_id": pl.Int64},
         )
+        # Hand-built regimes carry no detection candidates.
+        self._candidates_df = pl.DataFrame()
         self._output_type = "polars"
         self.method = "manual"
         self.target = ""
@@ -1319,6 +1372,22 @@ class Regime:
     def changes(self):
         """Detected (or manually specified) change points as a frame."""
         return mirror_output(self._changes_df, self._output_type)
+
+    @property
+    def candidates(self):
+        """All detected candidate changes with their assessment metrics.
+
+        One row per detected break (before the FDR / evaluation filter --
+        a *superset* of :attr:`changes`), carrying the change cohort value,
+        any group column(s), and the :func:`_assess_change` columns:
+        ``level_shift`` (magnitude), ``t_stat`` / ``p_value`` (Welch,
+        report-only), ``delta_r2``, ``step_p`` (the step-vs-drift F-test
+        gate), ``curved_drift_suspect``, ``kind`` (``edge`` / ``step`` /
+        ``drift``), ``n_pre`` / ``n_post``. Empty for a hand-built
+        (:meth:`at`) regime. This is the transparent table an evaluation
+        rule scores to decide which candidates become accepted regimes.
+        """
+        return mirror_output(self._candidates_df, self._output_type)
 
     @property
     def df(self):

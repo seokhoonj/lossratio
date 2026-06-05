@@ -359,3 +359,31 @@ def test_robustness_params_smoke():
         edge_scan=True,
     )
     assert reg.method == "e_divisive"
+
+
+# ---------------------------------------------------------------------------
+# Regime.candidates (assess metrics attached to detected changes)
+# ---------------------------------------------------------------------------
+
+
+def test_detect_regime_candidates_carries_assess():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    reg = tri.detect_regime(target="ratio", window=12, seed=20260501)
+    cand = reg.candidates
+    for col in ("level_shift", "t_stat", "p_value", "delta_r2",
+                "step_p", "curved_drift_suspect", "kind"):
+        assert col in cand.columns
+    # `changes` stays minimal (golden-safe); assess lives only on candidates.
+    assert "level_shift" not in reg.changes.columns
+    # candidates is a superset of accepted changes.
+    assert cand.height >= reg.changes.height
+    # the planted synthetic SUR regime is a clean step.
+    sur = cand.filter(pl.col("coverage") == "SUR")
+    if sur.height:
+        assert sur["kind"][0] == "step"
+        assert sur["step_p"][0] < 0.05
+
+
+def test_regime_at_has_empty_candidates():
+    reg = lr.Regime.at(change="2024-07-01")
+    assert reg.candidates.height == 0
