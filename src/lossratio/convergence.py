@@ -156,7 +156,7 @@ def detect_convergence(
     triangle
         A :class:`Triangle`.
     method
-        Which stability criterion drives the detected ``convergence_point``. One of:
+        Which stability criterion drives the detected convergence ``point``. One of:
 
         - ``"tail"`` (default, reserving-safe): tail drift over
           ``[k, dev_max]`` falls below ``max_drift``.
@@ -190,8 +190,9 @@ def detect_convergence(
     Returns
     -------
     Convergence
-        Result object exposing ``convergence_point``, ``maturity_point``, ``dev_max``, the
-        candidate dev sequence and per-criterion diagnostics.
+        Result object exposing ``point`` (the convergence dev),
+        ``maturity_point``, ``dev_max``, the candidate dev sequence and
+        per-criterion diagnostics.
     """
     from .ratio import Ratio
     from .backtest import Backtest
@@ -249,7 +250,7 @@ def detect_convergence(
         import warnings
         warnings.warn(
             f"No candidate dev points: maturity_point ({maturity_point}) + 2 > dev_max "
-            f"({dev_max}). Returning convergence_point = None.",
+            f"({dev_max}). Returning point = None.",
             stacklevel=2,
         )
 
@@ -491,7 +492,7 @@ class Convergence:
         Stacked column of ``ratio``, ``drift_window``, ``drift_tail``,
         ``|slope|``, ``dispersion`` series across candidate dev
         cutoffs. Threshold hlines, maturity (``maturity_point``) dotted vline,
-        and detected convergence (``convergence_point``) solid green vline are
+        and detected convergence ``point`` solid green vline are
         overlaid on every panel.
 
         Parameters

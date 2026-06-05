@@ -292,7 +292,8 @@ class BacktestFit:
         Aggregated by cal_idx with the same statistics as
         ``col_summary``.
     fit :
-        The refitted estimator's result (e.g. CLFit / EDFit / RatioFit).
+        The refitted estimator's result (e.g. LossFit / RatioFit /
+        PremiumFit).
     """
 
     def __init__(self) -> None:

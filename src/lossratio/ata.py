@@ -141,7 +141,7 @@ class ATA:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[groups?, dev, f, sigma2, cv, rse, n_obs]``.
+        ``[groups?, dev, f, sigma2, cv, rse, n_cohorts]``.
 
     Examples
     --------

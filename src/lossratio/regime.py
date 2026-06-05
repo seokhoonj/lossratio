@@ -1370,7 +1370,8 @@ class Regime:
 
     def __init__(self) -> None:
         raise TypeError(
-            "Regime is produced by `triangle.regime()` / `Regime.at()` / `.detect()`, not a direct constructor."
+            "Regime is produced by `triangle.detect_regime()` / "
+            "`Regime.at()` / `.detect()`, not a direct constructor."
         )
 
     @classmethod

@@ -185,7 +185,7 @@ class Intensity:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[groups?, dev, g, g_se, sigma2, n_obs]``.
+        ``[groups?, dev, g, g_se, sigma2, n_cohorts]``.
 
     Examples
     --------

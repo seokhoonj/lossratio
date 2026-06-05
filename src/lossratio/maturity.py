@@ -437,16 +437,16 @@ class Maturity:
     df : DataFrame
         Per-link diagnostic table:
         ``[groups?, dev, f, sigma2, cv, rse, stable]``.
-    maturity_point :
+    point :
         Detected maturity dev. Returns ``None`` (no groups) or a dict
-        ``{group_value: maturity_point_or_None}`` (groups set). ``None``
-        value means stability was not reached within the observation
-        window.
+        ``{group_value: dev_or_None}`` (groups set). ``None`` value means
+        stability was not reached within the observation window.
     """
 
     def __init__(self) -> None:
         raise TypeError(
-            "Maturity is produced by `triangle.maturity()` / `Maturity.at()` / `.detect()`, not a direct constructor."
+            "Maturity is produced by `triangle.link().ata().maturity()` / "
+            "`Maturity.at()` / `.detect()`, not a direct constructor."
         )
 
     @classmethod
