@@ -22,6 +22,8 @@ import numpy as np
 import polars as pl
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import pdist
+from scipy.stats import f as _f_dist
+from scipy.stats import ttest_ind
 
 from ._e_divisive import e_divisive
 from ._io import (
@@ -45,6 +47,16 @@ _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
 # trajectory window. Matches R's ``WINDOW_AUTO_FALLBACK``.
 _WINDOW_AUTO_FALLBACK = 6
 _WINDOW_AUTO_SEQ = tuple(range(2, 25))  # 2..24, mirrors R default
+
+# Step-vs-drift gate for `_assess_change`. A change is a discrete regime
+# (kind="step") when a level step at the change cohort, added over a linear
+# cohort trend, improves the fit at F-test significance `_STEP_SIG`; else it
+# is "drift" (the trend already explains the cohort series). The F-test is
+# n-aware (calibrated), unlike a raw delta-R^2 threshold which is blind to
+# sample size and noise scale. Needs `n - 3 >= 1` residual dof, i.e. at
+# least `_MIN_ASSESS_N` cohorts total (and >= 2 on each side).
+_STEP_SIG = 0.05
+_MIN_ASSESS_N = 4
 
 
 def _derive_regime_target(
@@ -438,6 +450,198 @@ def _build_feature_matrix(
         )
 
     return mat, cohorts, dropped
+
+
+def _cohort_level_scalar(
+    tri_df: pl.DataFrame,
+    target: str,
+    window: int,
+) -> tuple[list, np.ndarray]:
+    """Reduce each cohort to one scalar level: mean ``target`` over dev 1..window.
+
+    Parameters
+    ----------
+    tri_df
+        Long-format Triangle frame with ``cohort`` (Date), ``dev`` (int) and
+        the metric column named by ``target``.
+    target
+        Metric column to average (e.g. ``"ratio"``).
+    window
+        Number of leading development periods that define the level. A cohort
+        is kept only if it has at least ``window`` DISTINCT non-null ``dev``
+        cells in ``1..window`` -- so the early trajectory is fully observed
+        and the level is comparable across cohorts (no maturity bias, no
+        ragged short cohorts leaking in).
+
+    Returns
+    -------
+    (cohorts, scalar)
+        ``cohorts`` is the sorted-ascending Python list of kept cohort keys
+        (a list, matching :func:`_build_feature_matrix`, so the caller can
+        ``.index(date)`` and build polars Date columns); ``scalar`` is the
+        aligned float numpy array of per-cohort means. Empty list / array
+        when no cohort qualifies.
+    """
+    if window < 1:
+        raise ValueError(f"window must be >= 1, got {window!r}")
+    for col in ("cohort", "dev", target):
+        if col not in tri_df.columns:
+            raise KeyError(f"tri_df missing required column {col!r}")
+
+    agg = (
+        tri_df.lazy()
+        .select(["cohort", "dev", target])
+        .filter(
+            pl.col("dev").is_between(1, window)
+            & pl.col(target).is_not_null()
+            & pl.col(target).is_not_nan()
+        )
+        # distinct dev (not row count) so duplicate (cohort, dev) rows cannot
+        # fake full early coverage.
+        .group_by("cohort")
+        .agg(
+            pl.col("dev").n_unique().alias("_n_dev"),
+            pl.col(target).mean().alias("_level"),
+        )
+        .filter(pl.col("_n_dev") >= window)
+        .sort("cohort")
+        .collect()
+    )
+    cohorts = agg.get_column("cohort").to_list()
+    scalar = agg.get_column("_level").to_numpy().astype(float)
+    return cohorts, scalar
+
+
+def _fit_sse(y: np.ndarray, X: np.ndarray) -> float:
+    """Residual sum of squares of OLS ``y ~ X`` (X includes the intercept).
+
+    Single source of truth for both ``delta_r2`` and the step F-test, so the
+    F numerator (``sse_trend - sse_step``) cannot drift negative from two
+    independently-conditioned fits. ``rcond=None`` gives a least-norm
+    solution on a rank-deficient design rather than raising.
+    """
+    beta, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+    resid = y - X @ beta
+    return float(resid @ resid)
+
+
+def _assess_change(scalar: np.ndarray, change_idx: int) -> dict:
+    """Quantify the change at ``change_idx`` in a cohort-level scalar series.
+
+    Pure statistics kernel (no group / date handling -- the caller attaches
+    the change date via ``cohorts[change_idx]`` and any group columns). The
+    split is ``pre = scalar[:change_idx]`` / ``post = scalar[change_idx:]``;
+    ``change_idx`` is the first cohort of the new regime.
+
+    Returns a flat dict of NATIVE python scalars (so a list of these rows
+    builds a clean polars ``candidates`` frame -- Int64 / Float64 / Utf8, no
+    Object columns):
+
+    - ``n_pre`` / ``n_post`` (int).
+    - ``level_shift`` (float): magnitude, ``(mean_post - mean_pre)/abs(mean_pre)``;
+      NaN if ``mean_pre == 0`` or a side is empty.
+    - ``t_stat`` / ``p_value`` (float): Welch two-sample test, REPORTED ONLY.
+      A trend induces serial correlation and a ramp split has different-mean
+      halves, so the Welch test fires on *drift* too -- it must NOT gate the
+      step/drift decision. It is an n-aware separation gauge (better than
+      Cohen's d). NaN unless n>=2 on each side.
+    - ``delta_r2`` (float): the extra R^2 a step adds over a linear trend,
+      ``R2(1+idx+step) - R2(1+idx)``. REPORTED (an interior step is only
+      ~0.25, an edge step ~0.7 -- the idx slope absorbs a monotone jump, so
+      do not threshold this directly).
+    - ``step_p`` (float): F-test p-value of the step coefficient over the
+      trend -- THE step/drift gate.
+    - ``curved_drift_suspect`` (bool): the F-test is calibrated against a
+      *linear* null, so smooth curvature (e.g. exponential decay, no step)
+      can read as a step. Set when a step located at a cohort extreme fits
+      about as well as the detected break. Report-only -- does not flip
+      ``kind``; the trend basis stays linear.
+    - ``kind`` (str): ``"edge"`` (a side < 2, or n < `_MIN_ASSESS_N`) /
+      ``"step"`` (``step_p < _STEP_SIG``) / ``"drift"``.
+    """
+    y = np.asarray(scalar, dtype=float)
+    n = y.size
+    if not np.isfinite(y).all():
+        raise ValueError("scalar must be finite (pass _cohort_level_scalar output)")
+    if change_idx < 0 or change_idx > n:
+        raise ValueError(f"change_idx {change_idx} out of range [0, {n}]")
+    change_idx = int(change_idx)
+    n_pre, n_post = change_idx, n - change_idx
+
+    out: dict = {
+        "n_pre": int(n_pre),
+        "n_post": int(n_post),
+        "level_shift": float("nan"),
+        "t_stat": float("nan"),
+        "p_value": float("nan"),
+        "delta_r2": float("nan"),
+        "step_p": float("nan"),
+        "curved_drift_suspect": False,
+        "kind": "edge",
+    }
+
+    pre, post = y[:change_idx], y[change_idx:]
+    if n_pre >= 1 and n_post >= 1:
+        mean_pre = float(pre.mean())
+        if mean_pre != 0.0:
+            out["level_shift"] = (float(post.mean()) - mean_pre) / abs(mean_pre)
+
+    # Edge gate FIRST -- before any lstsq, so a degenerate (collinear) design
+    # is never fitted. A side < 2, or fewer than `_MIN_ASSESS_N` cohorts (no
+    # F-test dof; at n == 3 the step model saturates and delta_r2 is
+    # information-free), is "edge" -- not enough evidence to separate a step
+    # from a trend.
+    if n_pre < 2 or n_post < 2 or n < _MIN_ASSESS_N:
+        return out
+
+    # Welch t -- reported only, never gates (see docstring).
+    tt = ttest_ind(post, pre, equal_var=False)
+    t_raw = float(tt.statistic)
+    out["t_stat"] = abs(t_raw) if np.isfinite(t_raw) else float("nan")
+    out["p_value"] = float(tt.pvalue) if np.isfinite(tt.pvalue) else float("nan")
+
+    # Nested models, fitted ONCE, reused for delta_r2 AND the F-test.
+    idx = np.arange(n, dtype=float)
+    step = (idx >= change_idx).astype(float)
+    ones = np.ones(n)
+    sse_trend = _fit_sse(y, np.column_stack([ones, idx]))
+    sse_step = _fit_sse(y, np.column_stack([ones, idx, step]))
+    sst = float(((y - y.mean()) ** 2).sum())
+    if sst > 0.0:
+        out["delta_r2"] = max(0.0, (sse_trend - sse_step) / sst)
+
+    # Relative tolerance: loss-ratio levels can be ~0.0x or ~1e6, so an
+    # absolute eps is wrongly scaled.
+    tol = 1e-12 * max(1.0, float(y @ y))
+    if sse_step <= tol:
+        # The step model fits to machine precision. Distinguish a perfect
+        # STEP from a perfect TREND (e.g. an exact linear ramp), where the
+        # trend ALSO fits perfectly and the step term adds nothing.
+        if sse_trend <= tol:
+            out["step_p"] = 1.0
+            out["kind"] = "drift"
+        else:
+            out["step_p"] = 0.0
+            out["kind"] = "step"
+    else:
+        ss_gain = max(0.0, sse_trend - sse_step)
+        f_stat = (ss_gain / 1.0) / (sse_step / (n - 3))
+        out["step_p"] = float(_f_dist.sf(f_stat, 1, n - 3))
+        out["kind"] = "step" if out["step_p"] < _STEP_SIG else "drift"
+
+    # Curvature guard (report-only): a step placed at a cohort extreme that
+    # fits about as well as the detected break signals absorbed curvature
+    # rather than a genuine discontinuity.
+    if out["kind"] == "step" and sse_step > tol:
+        for c in (2, n - 2):
+            if c == change_idx or not (2 <= c <= n - 2):
+                continue
+            sse_c = _fit_sse(y, np.column_stack([ones, idx, (idx >= c).astype(float)]))
+            if sse_c <= sse_step * 1.05:
+                out["curved_drift_suspect"] = True
+                break
+
+    return out
 
 
 def _e_divisive_breakpoints(
