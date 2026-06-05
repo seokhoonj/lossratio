@@ -452,19 +452,26 @@ def _borrowed_loss_group(
         mk = seg_mat_k[s]
         if method == "cl":
             maturity_threshold = 0.0
-        elif method == "ed":
-            # ED on the segment's OWN data; the borrowed tail (beyond the
-            # segment's own factors) switches to the level-invariant CL f_k
-            # so a different-regime donor's loss-ratio level is not imported
-            # through g_k. The switch sits at the segment's own-data
-            # boundary: link `own_max_link` (target dev own_max_link + 2)
-            # is the last own ED link, so CL starts one link later.
+        else:
+            # The borrowed tail (beyond the segment's own factors) is ALWAYS
+            # the level-invariant CL f_k -- never the donor's g_k, which
+            # would import a different-regime loss-ratio level. The own-data
+            # boundary is where own factors end: link `own_max_link` (target
+            # dev own_max_link + 2) is the last own link, so CL starts one
+            # link later.
             own_f = seg_arrays[s]["f_k"]
             finite = np.flatnonzero(np.isfinite(own_f))
             own_max_link = int(finite.max()) if finite.size else -1
-            maturity_threshold = float(own_max_link + 3)
-        else:  # sa
-            maturity_threshold = float(mk) if mk is not None else float("inf")
+            boundary = float(own_max_link + 3)
+            if method == "ed":
+                maturity_threshold = boundary
+            else:  # sa: ED below maturity, CL above -- but cap the ED region
+                # at the data boundary so a maturity point past the
+                # segment's own data (k* > k_obs) does not leave a
+                # borrowed-g_k ED gap.
+                maturity_threshold = (
+                    boundary if mk is None else min(float(mk), boundary)
+                )
 
         loss_proj, proc_se, param_se, total_se = _project_loss(
             lo, pp,
