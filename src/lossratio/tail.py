@@ -171,6 +171,18 @@ def _fit_decay(
     return a, b, resid_std
 
 
+def _decay_value(a: float, b: float, i: float, curve: str) -> float:
+    """Evaluate the fitted decay law at position ``i``.
+
+    The single inline kernel of the decay law family, shared by every
+    extrapolation walk so the formula lives in exactly one place:
+
+    * ``"exponential"``: ``exp(a + b*i)`` (a geometric / light tail).
+    * ``"inverse_power"``: ``exp(a) * i**b`` (a polynomial / heavy tail).
+    """
+    return math.exp(a + b * i) if curve == "exponential" else math.exp(a) * i ** b
+
+
 def _extrapolate_terms(
     a: float, b: float, cfg: "Tail", grain: str | None, start: int
 ) -> tuple[list[float], int, bool]:
@@ -186,7 +198,7 @@ def _extrapolate_terms(
     i = start
     converged = False
     while len(terms) < max_h:
-        v = math.exp(a + b * i) if cfg.curve == "exponential" else math.exp(a) * i ** b
+        v = _decay_value(a, b, i, cfg.curve)
         if not math.isfinite(v):
             break
         if v < cfg.tol:
@@ -401,7 +413,7 @@ def _compute_ed_tail_increment_coupled_one(
             )
 
     def _term(a: float, b: float, i: int) -> float:
-        return math.exp(a + b * i) if cfg.curve == "exponential" else math.exp(a) * i ** b
+        return _decay_value(a, b, i, cfg.curve)
 
     ppy = _PERIODS_PER_YEAR.get(grain or "M", 12)
     max_h = cfg.max_horizon if cfg.max_horizon is not None else _DEFAULT_HORIZON_YEARS * ppy

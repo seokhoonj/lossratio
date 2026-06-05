@@ -14,6 +14,7 @@ from .backtest import Backtest, BacktestFit
 from .calendar import Calendar
 from .chain_ladder import ChainLadder
 from .convergence import Convergence
+from .curve import Curve, CurveResult
 from .datasets import load_experience, make_experience
 from .exposure_driven import ExposureDriven
 from .experience import validate_experience
@@ -40,6 +41,8 @@ __all__ = [
     "Calendar",
     "ChainLadder",
     "Convergence",
+    "Curve",
+    "CurveResult",
     "ExposureDriven",
     "Intensity",
     "Link",
