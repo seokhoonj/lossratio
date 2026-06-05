@@ -79,6 +79,9 @@ def test_detect_convergence_methods_dispatch():
             tri, method=method,
             max_drift=0.1, max_slope=0.01, max_dispersion=1.0,
         ).point
+    # At least one method must fire on this deterministic fixture --
+    # otherwise the ordering check below would silently pass on all-None.
+    assert any(v is not None for v in results.values())
     # window is the most permissive locally; tail tends to be later.
     if results["window"] is not None and results["tail"] is not None:
         assert results["window"] <= results["tail"]

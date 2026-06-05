@@ -142,18 +142,24 @@ def test_ata_factors_match_maturity_factors():
     builds on top of ATA factor estimation)."""
     tri = _tri()
     ata = tri.link().ata().df.sort("dev")
-    # Maturity's per-link diagnostic uses R's `ata_from` naming (same
+    # Maturity's per-link diagnostic keys on `ata_from` (the same
     # 1-indexed value as ATA's `dev`).
     maturity = tri.link().ata().maturity().df.sort("ata_from")
 
     for col in ("f", "cv", "rse"):
         a = ata[col].to_list()
         m = maturity[col].to_list()
+        assert len(a) == len(m) and len(a) > 0
+        n_compared = 0
         for x, y in zip(a, m):
             if x is None or y is None:
-                assert x == y
+                assert x is None and y is None
             else:
                 assert x == pytest.approx(y)
+                n_compared += 1
+        # The finite branch must actually run -- an all-null column would
+        # otherwise pass without comparing a single value.
+        assert n_compared > 0
 
 
 # ---------------------------------------------------------------------------

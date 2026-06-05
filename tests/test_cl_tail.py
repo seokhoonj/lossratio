@@ -120,9 +120,10 @@ def test_grain_aware_horizon_cap():
     f = np.array([2.0, 1.5, 1.3, 1.2, 1.15, 1.12, 1.1])
     monthly = compute_tail_factor(f, Tail(max_horizon=None), grain="M")
     yearly = compute_tail_factor(f, Tail(max_horizon=None), grain="Y")
-    if monthly.reason == "horizon_capped":
-        assert monthly.n_steps == 50 * 12
-        assert yearly.n_steps == 50 * 1
+    # The heavy tail never reaches tol within the horizon -> capped.
+    assert monthly.reason == "horizon_capped"
+    assert monthly.n_steps == 50 * 12
+    assert yearly.n_steps == 50 * 1
 
 
 def test_tail_spec_validation():

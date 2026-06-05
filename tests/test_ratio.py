@@ -166,14 +166,18 @@ def test_ratio_sa_mat_k_two_matches_cl_projection():
     sa_fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
     cl_fit = lr.ChainLadder().fit(tri)
 
-    if sa_fit.maturity_point == 2:
-        sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
-        cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-        # Both use CL throughout when mat_k = 2 (target dev >= 2 for all links).
-        for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
-            if a is None or b is None:
-                continue
-            assert a == pytest.approx(b)
+    # The fixture + loose thresholds deterministically yield mat_k = 2.
+    assert sa_fit.maturity_point == 2
+    sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
+    cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
+    # Both use CL throughout when mat_k = 2 (target dev >= 2 for all links).
+    n_compared = 0
+    for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
+        if a is None or b is None:
+            continue
+        assert a == pytest.approx(b)
+        n_compared += 1
+    assert n_compared > 0
 
 
 # ---------------------------------------------------------------------------
