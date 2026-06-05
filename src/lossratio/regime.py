@@ -2389,6 +2389,7 @@ def _compute_segment_mini_tri_bounds(
     seg_ids: np.ndarray,
     max_cal: int,
     bridge: bool = False,
+    seam_overlap: bool = False,
 ) -> np.ndarray:
     """Per-cell effective ``dev_min`` for the segment mini-triangle band.
 
@@ -2473,6 +2474,20 @@ def _compute_segment_mini_tri_bounds(
     )
 
     if not bridge:
+        if seam_overlap:
+            # One-dev seam overlap (segment_borrowed): each non-newest
+            # (donor) segment's wall drops by exactly one dev so it covers
+            # the boundary link shared with the next (newer) segment --
+            # closing the "one-dev gap" that otherwise leaves the seam link
+            # (dev M -> M+1) with no donor, which truncates the newer
+            # segment's projection there. Far cheaper than the full midpoint
+            # bridge; the newest segment keeps its natural wall.
+            newest = int(unique_segs.max())
+            out = natural.copy()
+            for i in range(seg_ids.size):
+                if int(seg_ids[i]) != newest:
+                    out[i] = max(1, int(natural[i]) - 1)
+            return out
         return natural
 
     first_cohort_dev_max = {s: max_cal - seg_first[s] + 1 for s in seg_first}
@@ -2519,11 +2534,12 @@ def _apply_mini_triangle_filter(
     """
     if df.height == 0:
         return df
-    # `segment_borrowed` uses each segment's RAW mini-triangle wall (no
-    # bridge widening / overlap); the gaps a segment cannot reach are filled
-    # by donor borrowing instead. The two `*_bridged*` treatments widen the
-    # band with the next-segment bridge.
+    # `segment_borrowed` uses each segment's raw wall plus a ONE-DEV seam
+    # overlap (the donor's wall drops one dev so it covers the boundary link
+    # the newer segment borrows) -- not the full midpoint bridge the two
+    # `*_bridged*` treatments use.
     bridge = regime.treatment != "segment_borrowed"
+    seam_overlap = regime.treatment == "segment_borrowed"
     gcols = normalize_groups(regime.groups)
     grouped = bool(gcols) and all(g in df.columns for g in gcols)
     rank_keys = gcols if grouped else []
@@ -2553,6 +2569,7 @@ def _apply_mini_triangle_filter(
                 seg_ids=sub["segment_id"].to_numpy(),
                 max_cal=int(sub["_max_cal"][0]),
                 bridge=bridge,
+                seam_overlap=seam_overlap,
             )
             parts.append(sub.with_columns(pl.Series("_dev_min", bounds)))
         df = pl.concat(parts, how="vertical_relaxed")
@@ -2562,6 +2579,7 @@ def _apply_mini_triangle_filter(
             seg_ids=df["segment_id"].to_numpy(),
             max_cal=int(df["_max_cal"][0]),
             bridge=bridge,
+            seam_overlap=seam_overlap,
         )
         df = df.with_columns(pl.Series("_dev_min", bounds))
 

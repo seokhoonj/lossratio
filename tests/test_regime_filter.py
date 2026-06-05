@@ -332,10 +332,12 @@ def test_segment_bridged_borrowed_reaches_full_development():
 
 def test_segment_borrowed_is_the_default_per_segment_treatment():
     """`segment_borrowed` (the DEFAULT treatment) masks each segment's RAW
-    per-segment wall (no bridge widening) and keeps segment_id for
-    per-segment estimation + donor borrow -- distinct from the bridged
-    treatments."""
+    per-segment wall plus a one-dev seam overlap (no full bridge), keeps
+    segment_id for per-segment estimation, and borrows late-dev factors from
+    a donor so even the newest segment projects to FULL development -- the
+    seam overlap closes the one-dev gap that would otherwise truncate it."""
     tri = _sur_triangle()
+    max_dev = tri.to_polars()["dev"].max()
     # No explicit treatment -> the default.
     r = lr.Regime.at(change="2024-07-01")
     assert r.treatment == "segment_borrowed"
@@ -344,9 +346,15 @@ def test_segment_borrowed_is_the_default_per_segment_treatment():
     df = fit.to_polars()
     assert "segment_id" in df.columns                       # per-segment, not pooled
     assert sorted(df["segment_id"].drop_nulls().unique().to_list()) == [1, 2]
+    # The one-dev seam overlap lets the newest segment reach full development
+    # (no seam-gap truncation).
+    newest = df.filter(pl.col("cohort") == df["cohort"].max())
+    assert newest["dev"].max() == max_dev
+    assert newest["loss_proj"].null_count() == 0
 
     # The no-bridge band differs from the bridged-borrowed treatment (the
-    # bridge widens the older segments' walls; segment_borrowed does not).
+    # bridge widens the older segments' walls to a midpoint; segment_borrowed
+    # only overlaps by one dev at the seam).
     bridged = lr.Ratio(
         method="cl",
         loss_regime=lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed"),
