@@ -751,6 +751,12 @@ class RatioFit:
             strict superset: it adds ``selected_grain`` (the fired grain,
             ``null`` when no grain converged) and ``band_status`` may also
             read ``"insufficient"``.
+
+        See Also
+        --------
+        segment_path : the dev-by-dev developing trajectory of the same two
+            legs (and the band around them), for charting rather than just the
+            ultimate headline.
         """
         if not auto_grain:
             from ._band import _segment_band
@@ -760,6 +766,86 @@ class RatioFit:
         from ._band import _segment_band_auto
 
         return _segment_band_auto(self, curve=curve, tol=tol)
+
+    def segment_path(
+        self,
+        *,
+        curve: "Curve | None" = None,
+        tol: float = 1e-4,
+        auto_grain: bool = False,
+    ) -> pl.DataFrame:
+        """Developing path of the recent segment's go-forward loss ratio.
+
+        The dev-by-dev companion to :meth:`segment_band`. Where
+        ``segment_band`` reports the recent segment's ULTIMATE loss ratio two
+        ways (the donor-shape *borrow leg* and the own-intensity *curve leg*)
+        and their spread, this returns the same two legs AS A DEVELOPING PATH:
+        the recent-segment aggregate cumulative loss ratio at each development
+        period, observed part plus projected tail, so a chart can draw the
+        trajectory (solid where observed, dashed in the tail) with the band
+        shaded around it.
+
+        One block of rows per group that has a regime change, about the newest
+        segment only (latest-only treatment, matching ``segment_band``).
+        Groups without a change produce no rows; with no regime at all the
+        result is an empty, correctly-typed frame.
+
+        The observed region is always at the fit's display grain -- it keeps
+        the real period-to-period dynamics and is grain-invariant. There the
+        path shows the single data-anchored borrow trajectory with the band
+        collapsed onto it; the band fans open at the dev where the segment as a
+        whole runs out of data (so a chart reads as a solid certain line that
+        opens into a shaded tail). By construction the last (ultimate) row of
+        each leg equals ``segment_band``'s reported ultimate for that leg
+        (``ratio_borrow`` <-> ``ratio_proj_borrow``, ``ratio_curve`` <->
+        ``ratio_proj_curve``, ``ratio_mean`` <-> ``ratio_proj_mean``). With
+        ``auto_grain=True`` the horizon is the selected coarse grain's
+        ultimate, so the dev index can run a few display periods past the fit's
+        own projection grid to reach that grain's fully-developed point.
+
+        The method is fully additive: it reads the fit and re-fits coarsened
+        copies (auto mode) but never writes back, so a run that never calls it
+        is byte-identical.
+
+        Parameters
+        ----------
+        curve
+            Curve spec for the curve leg. ``None`` (default) uses
+            ``Curve(target="intensity", law="inverse_power", min_points=3)``.
+            A spec with ``target != "intensity"`` raises ``ValueError``.
+        tol
+            Reserved for forward-compatibility with the curve contract;
+            currently inert (the tail sum never truncates).
+        auto_grain
+            When ``False`` (default) the whole path -- observed region and
+            tail -- is at the fit's display grain. When ``True`` the
+            unobserved tail is extrapolated at the per-group selected coarse
+            grain (the same grain :meth:`segment_band` would pick) and then
+            INTERPOLATED back onto the display-grain dev positions, so a
+            fresh regime's tail is drawn from a mature, convergent grain
+            without re-binning the observed period-to-period detail.
+            Interpolation introduces no new extrapolation error. The result
+            then carries a ``selected_grain`` column; when no grain converges
+            the path falls back to the borrow leg only (curve / band columns
+            null).
+
+        Returns
+        -------
+        DataFrame
+            One row per ``group x dev`` of the recent segment, with columns
+            ``dev``, ``ratio_borrow``, ``ratio_curve`` (null when the curve
+            leg is unavailable), ``ratio_mean``, ``band_lo`` / ``band_hi``
+            (the two-leg spread; null in the observed region's collapsed band
+            only when the curve is unavailable), and ``observed`` (``True``
+            where real data backs the period). With ``auto_grain=True`` the
+            frame adds ``selected_grain`` (``null`` on a borrow-only
+            fallback).
+        """
+        from ._band import _segment_path
+
+        return _segment_path(
+            self, curve=curve, tol=tol, auto_grain=auto_grain
+        )
 
     def ultimate_ratio_samples(self, *, per_group: bool = False):
         """Per-replicate portfolio ultimate loss ratio (predictive draws).

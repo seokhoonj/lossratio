@@ -803,3 +803,270 @@ def test_auto_grain_determinism():
     b1 = fit.segment_band(auto_grain=True)
     b2 = fit.segment_band(auto_grain=True)
     assert_frame_equal(b1, b2)
+
+
+# ---------------------------------------------------------------------------
+# 8. Developing path (segment_path) -- the dev-by-dev companion to the band
+# ---------------------------------------------------------------------------
+
+_PATH_COLS = [
+    "dev",
+    "ratio_borrow",
+    "ratio_curve",
+    "ratio_mean",
+    "band_lo",
+    "band_hi",
+    "observed",
+]
+
+
+def test_segment_path_columns_off_vs_on():
+    """OFF: the base path columns. ON: a strict superset with selected_grain."""
+    fit = _regime_fit()
+    off = fit.segment_path()
+    on = fit.segment_path(auto_grain=True)
+    assert [c for c in off.columns if c != "coverage"] == _PATH_COLS
+    assert [c for c in on.columns if c != "coverage"] == _PATH_COLS + [
+        "selected_grain"
+    ]
+
+
+def test_segment_path_no_regime_is_empty_and_typed():
+    """A fit with no regime yields a zero-row, correctly-typed path frame."""
+    tri = _experience_triangle()
+    fit = lr.Ratio(method="ed").fit(tri)  # no regime detection
+    p = fit.segment_path(auto_grain=True)
+    assert p.height == 0
+    assert "selected_grain" in p.columns
+    assert "ratio_borrow" in p.columns
+
+
+def test_segment_path_only_regime_groups():
+    """Only groups with a regime change produce rows (latest-only, like band)."""
+    fit = _regime_fit()
+    p = fit.segment_path(auto_grain=True)
+    band = fit.segment_band(auto_grain=True)
+    band = band if isinstance(band, pl.DataFrame) else pl.from_pandas(band)
+    assert sorted(p["coverage"].unique().to_list()) == sorted(
+        band["coverage"].unique().to_list()
+    )
+
+
+def test_segment_path_is_additive():
+    """Calling segment_path never mutates df / summary / segment_summary."""
+    fit = _regime_fit()
+    df0 = fit.to_polars().clone()
+    sm0 = fit.summary().clone()
+    seg0 = fit.segment_summary().clone()
+    _ = fit.segment_path()
+    _ = fit.segment_path(auto_grain=True)
+    assert_frame_equal(fit.to_polars(), df0)
+    assert_frame_equal(fit.summary(), sm0)
+    assert_frame_equal(fit.segment_summary(), seg0)
+
+
+def test_segment_path_deterministic():
+    fit = _regime_fit()
+    p1 = fit.segment_path(auto_grain=True)
+    p2 = fit.segment_path(auto_grain=True)
+    assert_frame_equal(p1, p2)
+
+
+@pytest.mark.parametrize("auto", [False, True])
+def test_segment_path_ultimate_matches_band(auto):
+    """The last path row of each leg equals segment_band's reported ultimate.
+
+    Both reduce to ``sum loss_proj / sum premium_proj`` at the ultimate dev,
+    so the developing path and the headline band can never disagree.
+    """
+    fit = _regime_fit()
+    band = fit.segment_band(auto_grain=auto)
+    band = band if isinstance(band, pl.DataFrame) else pl.from_pandas(band)
+    path = fit.segment_path(auto_grain=auto)
+    for cov in band["coverage"].unique().to_list():
+        b = band.filter(pl.col("coverage") == cov).row(0, named=True)
+        last = (
+            path.filter(pl.col("coverage") == cov)
+            .sort("dev")
+            .tail(1)
+            .row(0, named=True)
+        )
+        assert last["ratio_borrow"] == pytest.approx(b["ratio_proj_borrow"])
+        assert last["ratio_mean"] == pytest.approx(b["ratio_proj_mean"])
+        if b["ratio_proj_curve"] is not None:
+            assert last["ratio_curve"] == pytest.approx(b["ratio_proj_curve"])
+            assert last["band_lo"] == pytest.approx(b["band_lo"])
+            assert last["band_hi"] == pytest.approx(b["band_hi"])
+        else:
+            assert last["ratio_curve"] is None
+
+
+def test_segment_path_observed_region_grain_invariant():
+    """Observed rows equal the fine-grain recent-segment aggregate exactly.
+
+    The observed region is always at the display grain, so it must reproduce
+    ``sum(loss_proj) / sum(premium_proj)`` over the recent cohorts cell for
+    cell -- the auto-grain tail never re-bins the observed detail.
+    """
+    fit = _regime_fit()
+    path = fit.segment_path(auto_grain=True)
+    df = fit.to_polars().filter(pl.col("coverage") == "SUR")
+    change = fit._regime._changes_df.row(0, named=True)["change"]
+    recent = df.filter(pl.col("cohort") >= change)
+    agg = (
+        recent.group_by("dev")
+        .agg(
+            (pl.col("loss_proj").sum() / pl.col("premium_proj").sum()).alias(
+                "r"
+            )
+        )
+        .sort("dev")
+    )
+    obs = path.filter(
+        (pl.col("coverage") == "SUR") & pl.col("observed")
+    ).select(["dev", "ratio_borrow"])
+    chk = obs.join(agg, on="dev")
+    assert chk.height == obs.height
+    assert (chk["ratio_borrow"] - chk["r"]).abs().max() == pytest.approx(0.0)
+
+
+def test_segment_path_observed_then_tail_structure():
+    """Observed rows have a collapsed band; tail rows have a bracketing band."""
+    fit = _regime_fit()
+    p = fit.segment_path(auto_grain=True).filter(pl.col("coverage") == "SUR")
+    obs = p.filter(pl.col("observed"))
+    tail = p.filter(~pl.col("observed"))
+    assert obs.height > 0 and tail.height > 0
+    # Observed: both legs coincide -> band collapses onto the line.
+    assert (obs["band_lo"] == obs["ratio_borrow"]).all()
+    assert (obs["band_hi"] == obs["ratio_borrow"]).all()
+    assert (obs["ratio_curve"] == obs["ratio_borrow"]).all()
+    # Tail: the band brackets the mean (lo <= mean <= hi).
+    assert (tail["band_lo"] <= tail["ratio_mean"] + 1e-9).all()
+    assert (tail["ratio_mean"] <= tail["band_hi"] + 1e-9).all()
+    # The observed flag is a single contiguous prefix (no holes).
+    flags = p.sort("dev")["observed"].to_list()
+    assert flags == sorted(flags, reverse=True)
+
+
+def test_segment_path_insufficient_falls_back_to_borrow():
+    """When no grain converges the curve / band columns are null, mean=borrow.
+
+    Mirrors segment_band's ``insufficient`` posture so a non-converged tail is
+    never dressed up as a confident curve in the path either.
+    """
+    tri = _synthetic_young_regime()
+    fit = lr.Ratio(
+        method="sa", loss_regime=lr.Regime.at(change="2023-10-01")
+    ).fit(tri)
+    band = fit.segment_band(auto_grain=True)
+    band = band if isinstance(band, pl.DataFrame) else pl.from_pandas(band)
+    assert (band["band_status"] == "insufficient").all()  # precondition
+
+    p = fit.segment_path(auto_grain=True)
+    assert p.height > 0
+    assert p["ratio_curve"].null_count() == p.height
+    assert p["band_lo"].null_count() == p.height
+    assert p["band_hi"].null_count() == p.height
+    assert p["selected_grain"].null_count() == p.height
+    assert (p["ratio_mean"] == p["ratio_borrow"]).all()
+
+
+def test_segment_path_auto_selected_grain_matches_band():
+    """The path's selected_grain equals the band's per group."""
+    fit = _regime_fit()
+    band = fit.segment_band(auto_grain=True)
+    band = band if isinstance(band, pl.DataFrame) else pl.from_pandas(band)
+    path = fit.segment_path(auto_grain=True)
+    for cov in band["coverage"].unique().to_list():
+        bg = band.filter(pl.col("coverage") == cov).row(0, named=True)[
+            "selected_grain"
+        ]
+        pg = (
+            path.filter(pl.col("coverage") == cov)["selected_grain"]
+            .unique()
+            .to_list()
+        )
+        assert pg == [bg]
+
+
+def test_segment_path_curve_target_validation():
+    """A non-intensity curve is rejected (the path formula is g_k-based)."""
+    fit = _regime_fit()
+    with pytest.raises(ValueError, match="target='intensity'"):
+        fit.segment_path(curve=lr.Curve(target="ata"))
+
+
+def test_segment_path_mirror_output_pandas():
+    pd = pytest.importorskip("pandas")
+    df = lr.load_experience()
+    df_pd = df.to_pandas() if isinstance(df, pl.DataFrame) else df
+    tri = lr.Triangle(df_pd, groups="coverage", cohort="uy_m", calendar="cy_m")
+    fit = lr.Ratio(method="sa", loss_regime="auto").fit(tri)
+    p = fit.segment_path(auto_grain=True)
+    assert isinstance(p, pd.DataFrame)
+    assert "selected_grain" in p.columns
+
+
+def test_segment_path_dtypes_and_band_ordering():
+    """``dev``/``observed`` dtypes and ``band_lo <= band_hi`` everywhere."""
+    fit = _regime_fit()
+    p = fit.segment_path(auto_grain=True)
+    assert p.schema["dev"] == pl.Int64
+    assert p.schema["observed"] == pl.Boolean
+    both = p.filter(
+        pl.col("band_lo").is_not_null() & pl.col("band_hi").is_not_null()
+    )
+    assert both.height > 0
+    assert (both["band_lo"] <= both["band_hi"] + 1e-9).all()
+    # Empty and populated frames share the column order + dtypes.
+    empty = lr.Ratio(method="ed").fit(_experience_triangle()).segment_path(
+        auto_grain=True
+    )
+    assert empty.columns == p.columns
+
+
+def _two_col_regime_triangle() -> "lr.Triangle":
+    """A 2-column-groups triangle (coverage x uy-year parity block)."""
+    df = lr.load_experience().with_columns(
+        pl.when(pl.col("uy_m").dt.year() % 2 == 0)
+        .then(pl.lit("E"))
+        .otherwise(pl.lit("O"))
+        .alias("block")
+    )
+    return lr.Triangle(
+        df, groups=["coverage", "block"], cohort="uy_m", calendar="cy_m"
+    )
+
+
+def test_segment_path_multi_column_groups():
+    """The path works under multi-column groups (the pre-release gate).
+
+    Group keys come through on every row, the per-combo selected_grain agrees
+    with the band, and the result is deterministic.
+    """
+    fit = lr.Ratio(method="sa", loss_regime="auto").fit(
+        _two_col_regime_triangle()
+    )
+    band = fit.segment_band(auto_grain=True)
+    band = band if isinstance(band, pl.DataFrame) else pl.from_pandas(band)
+    path = fit.segment_path(auto_grain=True)
+    # Both group columns are present and fully populated.
+    assert {"coverage", "block"}.issubset(set(path.columns))
+    assert path["coverage"].null_count() == 0
+    assert path["block"].null_count() == 0
+    # Same set of regime combos as the band.
+    keys = ["coverage", "block"]
+    pk = path.select(keys).unique().sort(keys)
+    bk = band.select(keys).unique().sort(keys)
+    assert pk.equals(bk)
+    # Per-combo selected_grain matches the band and is constant within a combo.
+    for row in bk.iter_rows(named=True):
+        flt = (pl.col("coverage") == row["coverage"]) & (
+            pl.col("block") == row["block"]
+        )
+        bg = band.filter(flt).row(0, named=True)["selected_grain"]
+        pg = path.filter(flt)["selected_grain"].unique().to_list()
+        assert pg == [bg]
+    # Deterministic.
+    assert_frame_equal(path, fit.segment_path(auto_grain=True))

@@ -34,7 +34,7 @@ import polars as pl
 
 from ._io import normalize_groups
 from .curve import Curve
-from .regime import _coarsen_triangle
+from .regime import _GRAIN_MONTHS, _coarsen_triangle
 
 if TYPE_CHECKING:
     from .curve import CurveResult
@@ -772,4 +772,429 @@ def _empty_auto_band(gcols: list[str], output_type: str) -> pl.DataFrame:
     from ._io import mirror_output
 
     schema = {**{c: pl.Utf8 for c in gcols}, **_AUTO_BAND_SCHEMA}
+    return mirror_output(pl.DataFrame(schema=schema), output_type)
+
+
+# ---------------------------------------------------------------------------
+# Developing path (segment_path) -- the dev-by-dev companion to the band.
+#
+# segment_band reports the recent segment's ULTIMATE two ways (borrow / curve)
+# and their spread. segment_path reports the same two legs AS A DEVELOPING
+# PATH: the recent-segment aggregate cumulative loss ratio at each development
+# period, observed part plus projected tail, so a chart can draw the trajectory
+# (solid where observed, dashed in the tail) with the band shaded around it.
+#
+# The observed region is always at the fit's display (fine) grain -- it keeps
+# the real period-to-period dynamics and is grain-invariant. With
+# ``auto_grain=True`` the unobserved tail is extrapolated at the SELECTED
+# coarse grain (the band's mature, convergent grain) and then INTERPOLATED back
+# onto the fine display-grain dev positions. Interpolation introduces no new
+# extrapolation error: the legs are only ever extrapolated at the selected
+# grain, and the fine path linearly connects those computed marks. By
+# construction the ultimate (last) row equals segment_band's reported ultimates
+# (both reduce to ``sum loss_proj / sum premium_proj`` at the ultimate dev).
+# ---------------------------------------------------------------------------
+
+_PATH_SCHEMA: dict[str, pl.DataType] = {
+    "dev":          pl.Int64,
+    "ratio_borrow": pl.Float64,
+    "ratio_curve":  pl.Float64,
+    "ratio_mean":   pl.Float64,
+    "band_lo":      pl.Float64,
+    "band_hi":      pl.Float64,
+    "observed":     pl.Boolean,
+}
+
+_AUTO_PATH_SCHEMA: dict[str, pl.DataType] = {
+    **_PATH_SCHEMA,
+    "selected_grain": pl.Utf8,
+}
+
+
+def _curve_leg_cum_by_dev(
+    cr: "CurveResult", sub: pl.DataFrame, n_devs: int
+) -> tuple[np.ndarray | None, bool]:
+    """Curve-leg cumulative loss aggregated over recent cohorts, per dev.
+
+    The per-development-period generalisation of :func:`_curve_leg_loss_proj`:
+    instead of only the ultimate, it returns the recent-segment aggregate
+    cumulative curve-leg loss at EVERY dev ``1 .. n_devs`` (array slot ``j`` =
+    dev ``j+1``). Within a cohort's observed span the cumulative loss is the
+    observed ``L_obs``; beyond it the observed last value plus the running
+    premium-weighted sum of the fitted intensity ``cr.evaluate(k)``. Summed
+    across cohorts at each dev. Returns ``(cum, any_term)`` -- ``cum`` is
+    ``None`` when the curve is degenerate (no slope), ``any_term`` reports
+    whether any tail term was added. The ultimate slot equals
+    :func:`_curve_leg_loss_proj`'s scalar by construction.
+    """
+    if cr.slope is None:
+        return None, False
+
+    cohorts = sorted(sub["cohort"].unique().to_list())
+    row_of = {c: i for i, c in enumerate(cohorts)}
+    L = np.full((len(cohorts), n_devs), np.nan, dtype=float)
+    Pp = np.full((len(cohorts), n_devs), np.nan, dtype=float)
+    for c, d, lo, pp in zip(
+        sub["cohort"].to_list(),
+        sub["dev"].to_list(),
+        sub["loss_obs"].to_list(),
+        sub["premium_proj"].to_list(),
+    ):
+        j = int(d) - 1
+        if 0 <= j < n_devs:
+            i = row_of[c]
+            L[i, j] = lo if lo is not None else np.nan
+            Pp[i, j] = pp if pp is not None else np.nan
+
+    cum = np.zeros(n_devs, dtype=float)
+    any_term = False
+    for i in range(len(cohorts)):
+        finite = np.flatnonzero(np.isfinite(L[i]))
+        if finite.size == 0:
+            continue
+        last = int(finite[-1]) + 1  # 1-indexed last observed dev
+        running = float(L[i, last - 1])
+        # Observed span: the cumulative loss is the observed value. Carry the
+        # last valid value across any interior gap (cumulative loss is
+        # monotone) so a NaN cell never poisons the aggregate -- matching the
+        # gap-robustness of the scalar `_curve_leg_loss_proj`. The engine's
+        # triangles are gap-free, so this is hardening, not a live path.
+        carry = 0.0
+        for d in range(1, last + 1):
+            val = L[i, d - 1]
+            if np.isfinite(val):
+                carry = float(val)
+            cum[d - 1] += carry
+        # Tail: accumulate premium-weighted fitted intensity, dev by dev.
+        for d in range(last + 1, n_devs + 1):
+            k = d - 1  # from-dev of the link landing at dev d
+            ev = cr.evaluate(float(k))
+            pr = Pp[i, k - 1]
+            if np.isfinite(ev) and np.isfinite(pr):
+                running += float(ev) * float(pr)
+                any_term = True
+            cum[d - 1] += running
+    if not any_term:
+        return None, False
+    return cum, True
+
+
+def _segment_dev_table(
+    fit: "RatioFit",
+    keyvals: tuple,
+    gcols: list[str],
+    *,
+    curve: Curve,
+) -> dict | None:
+    """Per-dev aggregate borrow / curve ratio marks for one group's recent seg.
+
+    Returns ``None`` when the group has no recent segment. Otherwise a dict
+    with the development-month position of each dev (``dev * step``), the
+    borrow-leg and curve-leg aggregate cumulative loss ratios per dev, the
+    observed boundary in months (``m_obs``), and the grain step. The borrow
+    leg is ``sum(loss_proj) / sum(premium_proj)`` over the recent cohorts at
+    each dev (full grid -- every cohort has a projected value at every dev);
+    the curve leg divides :func:`_curve_leg_cum_by_dev` by the same premium.
+    """
+    reg = fit._regime
+    if reg is None or reg._changes_df.is_empty():
+        return None
+
+    df = fit.to_polars()
+    df = df if isinstance(df, pl.DataFrame) else pl.from_pandas(df)
+    df = df.with_columns(pl.col("cohort").cast(pl.Date))
+    for c, v in zip(gcols, keyvals):
+        if c in df.columns:
+            df = df.filter(pl.col(c) == v)
+
+    chg = reg._changes_df
+    for c, v in zip(gcols, keyvals):
+        if c in chg.columns:
+            chg = chg.filter(pl.col(c) == v)
+    change_dates = sorted(chg["change"].to_list())
+    if not change_dates:
+        return None
+
+    cohorts = sorted(df["cohort"].unique().to_list())
+    recent_cohorts, _change_from = _recent_segment_cohorts(cohorts, change_dates)
+    if not recent_cohorts:
+        return None
+
+    sub = df.filter(pl.col("cohort").is_in(recent_cohorts))
+    n_devs = int(sub["dev"].max())
+    step = _GRAIN_MONTHS[fit._triangle.grain]
+
+    # Borrow leg + the shared premium denominator, per dev.
+    agg = (
+        sub.group_by("dev")
+        .agg(
+            pl.col("loss_proj").sum().alias("loss"),
+            pl.col("premium_proj").sum().alias("premium"),
+        )
+        .sort("dev")
+    )
+    loss_dense = np.full(n_devs, np.nan, dtype=float)
+    prem_dense = np.full(n_devs, np.nan, dtype=float)
+    for d, lo, pr in zip(
+        agg["dev"].to_list(), agg["loss"].to_list(), agg["premium"].to_list()
+    ):
+        loss_dense[int(d) - 1] = lo if lo is not None else np.nan
+        prem_dense[int(d) - 1] = pr if pr is not None else np.nan
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ratio_borrow = np.where(prem_dense > 0.0, loss_dense / prem_dense, np.nan)
+
+    # Observed boundary (months): the latest dev with real observed loss.
+    obs = sub.filter(pl.col("loss_obs").is_not_null())
+    max_obs_dev = int(obs["dev"].max()) if not obs.is_empty() else 0
+    m_obs = max_obs_dev * step
+
+    # Curve leg, per dev (own intensity -> Curve -> premium-weighted cum).
+    g_k = _own_intensity(sub, n_devs)
+    cr = curve.fit(g_k)
+    cum_curve, any_term = _curve_leg_cum_by_dev(cr, sub, n_devs)
+    if cum_curve is None or not any_term:
+        ratio_curve = None
+    else:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ratio_curve = np.where(
+                prem_dense > 0.0, cum_curve / prem_dense, np.nan
+            )
+
+    return {
+        "grain":        fit._triangle.grain,
+        "step":         step,
+        "n_devs":       n_devs,
+        "dev_month":    (np.arange(1, n_devs + 1) * step).astype(int),
+        "ratio_borrow": ratio_borrow,
+        "ratio_curve":  ratio_curve,
+        "m_obs":        m_obs,
+    }
+
+
+def _interp_tail(
+    knots_x: list[float], knots_y: list[float], months: np.ndarray
+) -> np.ndarray:
+    """Linear interpolation of a leg's coarse marks onto fine month positions.
+
+    ``knots_x`` / ``knots_y`` are the coarse development-month marks (boundary
+    anchor first, then the tail marks) and ``months`` the fine positions to
+    fill. ``np.interp`` clamps outside the knot range, which never triggers
+    here (the boundary anchor and the ultimate mark bracket the tail).
+    """
+    return np.interp(months, knots_x, knots_y)
+
+
+def _build_path_rows(
+    keyvals: tuple,
+    gcols: list[str],
+    fine: dict,
+    coarse: dict,
+    *,
+    selected_grain: str | None,
+    curve_available: bool,
+) -> list[dict]:
+    """Assemble the per-dev path rows for one group from fine + coarse tables.
+
+    Rows are at the DISPLAY grain: ``dev`` is the display-grain dev index and
+    its development-month position is ``dev * fine_step``. The observed region
+    (month ``<= m_obs``) takes the fine borrow path verbatim (both legs
+    coincide there). The tail interpolates each available leg's coarse marks
+    (at their coarse-grain month positions) onto the display-dev month
+    positions, anchored at the observed boundary for continuity. The horizon
+    is the coarse (selected-grain) ultimate, which may run past the fine grid;
+    tail rows beyond it come purely from interpolation, never from the fine
+    borrow array. ``selected_grain`` is attached when not ``None`` (auto mode);
+    ``curve_available`` gates the curve leg / band columns.
+    """
+    m_obs = fine["m_obs"]
+    fine_borrow = fine["ratio_borrow"]
+    fine_step = fine["step"]
+    ult_month = int(coarse["dev_month"][-1])
+    j_ult = ult_month // fine_step           # display devs out to the horizon.
+    j_obs = m_obs // fine_step               # last observed display dev.
+
+    # Observed-boundary anchor ratio (fine borrow path at the last obs dev).
+    anchor = (
+        float(fine_borrow[j_obs - 1]) if j_obs >= 1 else float("nan")
+    )
+
+    # Tail knots (development months): boundary anchor + coarse marks beyond it.
+    cm = coarse["dev_month"]
+    cb = coarse["ratio_borrow"]
+    bx = [float(m_obs)] + [float(m) for m in cm if m > m_obs]
+    by = [anchor] + [float(cb[i]) for i, m in enumerate(cm) if m > m_obs]
+
+    if curve_available and coarse["ratio_curve"] is not None:
+        cc = coarse["ratio_curve"]
+        cy = [anchor] + [float(cc[i]) for i, m in enumerate(cm) if m > m_obs]
+    else:
+        cy = None
+
+    rows: list[dict] = []
+    for j in range(1, j_ult + 1):
+        month = j * fine_step
+        observed = month <= m_obs
+        if observed:
+            # Observed region: show the single data-anchored borrow trajectory
+            # and collapse the band onto it. The leg divergence is a tail
+            # property (where the segment as a whole has no more data); the
+            # partial-projection of younger staggered cohorts inside this
+            # region is not surfaced as width -- a display choice, not a claim
+            # that the legs are mathematically equal here.
+            rb = float(fine_borrow[j - 1])
+            rc = rb if curve_available else None
+            mean = rb
+            lo = rb if curve_available else None
+            hi = rb if curve_available else None
+        else:
+            rb = float(_interp_tail(bx, by, np.array([float(month)]))[0])
+            if cy is not None:
+                rc = float(_interp_tail(bx, cy, np.array([float(month)]))[0])
+                mean = (rb + rc) / 2.0
+                lo = min(rb, rc)
+                hi = max(rb, rc)
+            else:
+                rc = None
+                mean = rb
+                lo = hi = None
+        row: dict[str, Any] = {c: v for c, v in zip(gcols, keyvals)}
+        row.update(
+            dev=j,
+            ratio_borrow=rb,
+            ratio_curve=rc,
+            ratio_mean=mean,
+            band_lo=lo,
+            band_hi=hi,
+            observed=observed,
+        )
+        if selected_grain is not None:
+            row["selected_grain"] = selected_grain
+        rows.append(row)
+    return rows
+
+
+def _segment_path(
+    fit: "RatioFit", *, curve: Curve | None, tol: float, auto_grain: bool
+) -> pl.DataFrame:
+    """Build the recent-segment developing-path frame (one block per group).
+
+    See :meth:`RatioFit.segment_path` for the public contract.
+    """
+    if curve is None:
+        curve = Curve(target="intensity", law="inverse_power", min_points=3)
+    if curve.target != "intensity":
+        raise ValueError(
+            "segment_path requires a curve with target='intensity' (the "
+            f"band formula is g_k-based); got target={curve.target!r}."
+        )
+
+    gcols = normalize_groups(fit._groups)
+    auto = bool(auto_grain)
+    empty = _empty_path(gcols, fit._output_type, auto=auto)
+
+    reg = fit._regime
+    if reg is None or reg._changes_df.is_empty():
+        return empty
+
+    df = fit.to_polars()
+    df = df if isinstance(df, pl.DataFrame) else pl.from_pandas(df)
+    df = df.with_columns(pl.col("cohort").cast(pl.Date))
+    changes = reg._changes_df
+
+    parts = (
+        list(df.partition_by(gcols, as_dict=True).items())
+        if gcols
+        else [((), df)]
+    )
+
+    rows: list[dict] = []
+    for key, _gdf in sorted(parts, key=lambda kv: _sort_key(kv[0])):
+        keyvals = key if isinstance(key, tuple) else (key,)
+
+        chg = changes
+        for c, v in zip(gcols, keyvals):
+            if c in chg.columns:
+                chg = chg.filter(pl.col(c) == v)
+        if not sorted(chg["change"].to_list()):
+            continue  # group without a regime change -> no rows.
+
+        fine = _segment_dev_table(fit, keyvals, gcols, curve=curve)
+        if fine is None:
+            continue  # no recent segment at the display grain -> no rows.
+
+        selected_grain, coarse, curve_available = _resolve_path_tail(
+            fit, keyvals, gcols, fine, curve=curve, tol=tol, auto=auto
+        )
+        rows.extend(
+            _build_path_rows(
+                keyvals,
+                gcols,
+                fine,
+                coarse,
+                selected_grain=selected_grain if auto else None,
+                curve_available=curve_available,
+            )
+        )
+
+    if not rows:
+        return empty
+
+    schema_body = _AUTO_PATH_SCHEMA if auto else _PATH_SCHEMA
+    schema = {**{c: pl.Utf8 for c in gcols}, **schema_body}
+    out = pl.DataFrame(rows, schema=_resolve_schema(schema, df, gcols))
+    from ._io import mirror_output
+
+    return mirror_output(out, fit._output_type)
+
+
+def _resolve_path_tail(
+    fit: "RatioFit",
+    keyvals: tuple,
+    gcols: list[str],
+    fine: dict,
+    *,
+    curve: Curve,
+    tol: float,
+    auto: bool,
+) -> tuple[str | None, dict, bool]:
+    """Pick the tail grain and its dev table for one group.
+
+    Non-auto: the tail stays at the display grain (``coarse = fine``), the
+    curve leg is available when the fine curve fit produced one.
+    Auto: walk ``M -> Q -> H -> Y`` via :func:`_select_grain_row`; on a
+    ``"selected"`` verdict re-fit at that grain and take its dev table.
+    On ``"insufficient"`` / ``"degenerate"`` fall back to the fine borrow
+    leg only (curve unavailable -- a non-converged tail is never drawn as a
+    confident curve). Returns ``(selected_grain, coarse_table, curve_available)``.
+    """
+    if not auto:
+        return None, fine, fine["ratio_curve"] is not None
+
+    _row, selected_grain, status = _select_grain_row(
+        fit, keyvals, gcols, curve=curve, tol=tol
+    )
+    if status != "selected" or selected_grain is None:
+        # No grain converged: borrow-only fallback at the display grain.
+        return None, fine, False
+
+    if selected_grain == fine["grain"]:
+        return selected_grain, fine, fine["ratio_curve"] is not None
+
+    refit = _refit_at_grain(fit, selected_grain)
+    if refit is None:
+        return None, fine, False
+    coarse = _segment_dev_table(refit, keyvals, gcols, curve=curve)
+    if coarse is None:
+        return None, fine, False
+    return selected_grain, coarse, coarse["ratio_curve"] is not None
+
+
+def _empty_path(
+    gcols: list[str], output_type: str, *, auto: bool
+) -> pl.DataFrame:
+    """Zero-row, fully-typed developing-path frame (no-regime posture)."""
+    from ._io import mirror_output
+
+    schema_body = _AUTO_PATH_SCHEMA if auto else _PATH_SCHEMA
+    schema = {**{c: pl.Utf8 for c in gcols}, **schema_body}
     return mirror_output(pl.DataFrame(schema=schema), output_type)
