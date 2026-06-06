@@ -25,7 +25,6 @@ from ._io import (
     _nan_skip_diff,
     _nan_to_null,
     fill_group_columns,
-    group_eq,
     mirror_output,
     normalize_groups,
     set_group_values,
@@ -877,8 +876,13 @@ class LossFit:
 
         long_parts: list[pl.DataFrame] = []
         mat_k_rows: list[dict[str, Any]] = []
+        # Partition the premium frame once (single pass) instead of
+        # re-filtering it for every group inside the loop -- partition_by
+        # preserves original row order, so each part is identical to the
+        # old per-group filter.
+        pf_parts = None if groups is None else dict(_iter_group_frames(pf_df, groups))
         for g, sub in _iter_group_frames(tri_df, groups):
-            pf_sub = pf_df if groups is None else pf_df.filter(group_eq(groups, g))
+            pf_sub = pf_df if groups is None else pf_parts[g]
             loss_obs, cohorts, _ = _build_loss_matrix(sub)
             premium_obs, _, _ = _build_premium_matrix(sub)
             # premium_proj from PremiumFit (cohort, dev) -> value
@@ -992,8 +996,13 @@ class LossFit:
             diverged_map: dict[Any, bool] = {}
             self._tail_results = {}
             parts: list[pl.DataFrame] = []
+            # Partition the long frame once rather than re-filtering it per
+            # group (partition_by preserves row order -> identical parts).
+            long_parts_by_g = (
+                None if groups is None else dict(_iter_group_frames(long_df, groups))
+            )
             for g, sub_result in self._internals.items():
-                grp_long = long_df if g is None else long_df.filter(group_eq(groups, g))
+                grp_long = long_df if g is None else long_parts_by_g[g]
                 res, grp_long = _apply_group_tail(sub_result, grp_long, g)
                 factor_map[g] = res.factor
                 diverged_map[g] = res.diverged
@@ -1161,8 +1170,10 @@ class LossFit:
         mat_k_rows: list[dict[str, Any]] = []
         internals_combined: dict[Any, _LossResult] = {}
 
+        # Partition the premium frame once (see the note in _from_triangle).
+        pf_parts = None if groups is None else dict(_iter_group_frames(pf_df, groups))
         for g, sub in _iter_group_frames(tri_df, groups):
-            pf_sub = pf_df if groups is None else pf_df.filter(group_eq(groups, g))
+            pf_sub = pf_df if groups is None else pf_parts[g]
             loss_obs, cohorts, _ = _build_loss_matrix(sub)
             premium_obs, _, _ = _build_premium_matrix(sub)
             premium_proj = _premium_proj_matrix(
