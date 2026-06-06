@@ -1266,8 +1266,8 @@ class LossFit:
         Discloses how each tail number was produced -- curve family, fitted
         decay parameters (``intercept`` / ``slope``), how well the curve fit
         the observed factors (``fit_resid_std``), whether the divergence
-        guard or horizon cap fired, and the OTHER curve family's factor
-        (``alt_curve`` / ``alt_factor``) as a model-choice band. Empty when
+        guard or horizon cap fired, and the OTHER family's factor
+        (``alt_family`` / ``alt_factor``) as a model-choice band. Empty when
         no tail was requested. The tail is an extrapolation, not an estimate
         with a sampling distribution; read this table to judge it.
         """

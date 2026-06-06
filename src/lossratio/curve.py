@@ -20,9 +20,9 @@ exact (zero residual) yet says nothing about validity: read the band,
 not the point.
 
 The decay-law primitive (``_fit_decay``), the divergence boundary, and
-the law-evaluation kernel (``_decay_value``) are shared with the tail
-subsystem in :mod:`lossratio.tail` -- they are imported here, not
-re-implemented.
+the law-evaluation kernel (``_decay_value``) live in the shared
+:mod:`lossratio._decay` module -- they are imported here and by the tail
+subsystem alike, not re-implemented.
 """
 
 from __future__ import annotations
@@ -31,16 +31,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .tail import (
-    _CURVES,
+from ._decay import (
     _DIVERGENCE_SLOPE,
-    _OTHER_CURVE,
+    _FAMILIES,
+    _OTHER_FAMILY,
     _decay_value,
     _fit_decay,
 )
 
 _TARGETS = ("intensity", "ata")
-# _CURVES (imported) == ("inverse_power", "exponential").
+# _FAMILIES (imported) == ("inverse_power", "exponential").
 
 # Small step inside the convergent side when reporting a clamped slope.
 _CLAMP_EPS = 1e-6
@@ -63,11 +63,11 @@ class Curve:
         Factor series the curve is fitted on: ``"intensity"`` (the ED
         intensity ``g_k``, default) or ``"ata"`` (the CL age-to-age
         factor ``f_k`` -- the curve is fitted on the excess ``f_k - 1``).
-    law
-        Decay law: ``"inverse_power"`` (default, ``value = exp(a) *
+    family
+        Decay-law family: ``"inverse_power"`` (default, ``value = exp(a) *
         i**b`` -- a heavy polynomial tail) or ``"exponential"``
-        (``value = exp(a + b*i)`` -- a lighter geometric tail). (The tail
-        subsystem spells this same choice ``curve``.)
+        (``value = exp(a + b*i)`` -- a lighter geometric tail). The tail
+        spec :class:`~lossratio.Tail` spells this same choice ``family``.
     min_points
         Honesty floor on the number of points used in the OLS. A fit on
         fewer than ``min_points`` points is flagged ``under_determined``
@@ -84,11 +84,8 @@ class Curve:
         consumer to opt into.
     """
 
-    # NOTE: the decay-law param is `law` here (not `curve`) to avoid the
-    # redundant `Curve(curve=...)`; the tail spec spells the same choice
-    # `Tail(curve=...)`. A future breaking sweep may unify these.
     target:     str  = "intensity"
-    law:        str  = "inverse_power"
+    family:     str  = "inverse_power"
     min_points: int  = 3
     clamp:      bool = True
 
@@ -97,9 +94,9 @@ class Curve:
             raise ValueError(
                 f"`target` must be one of {_TARGETS}; got {self.target!r}."
             )
-        if self.law not in _CURVES:
+        if self.family not in _FAMILIES:
             raise ValueError(
-                f"`law` must be one of {_CURVES}; got {self.law!r}."
+                f"`family` must be one of {_FAMILIES}; got {self.family!r}."
             )
         if (
             not isinstance(self.min_points, int)
@@ -153,7 +150,7 @@ class Curve:
         if n_points < 2:
             return CurveResult(
                 target=self.target,
-                law=self.law,
+                family=self.family,
                 intercept=None,
                 slope=None,
                 fit_resid_std=None,
@@ -164,16 +161,16 @@ class Curve:
                 clamped_slope=None,
                 under_determined=True,
                 reason="no_decaying_region",
-                alt_law=None,
+                alt_family=None,
                 alt_slope=None,
                 alt_diverged=None,
             )
 
         under_determined = n_points < self.min_points
 
-        a, b, rstd = _fit_decay(region_v, region_idx, self.law)
+        a, b, rstd = _fit_decay(region_v, region_idx, self.family)
 
-        boundary = _DIVERGENCE_SLOPE[self.law]
+        boundary = _DIVERGENCE_SLOPE[self.family]
         diverged = b >= boundary
         if self.clamp and diverged:
             clamped = True
@@ -185,13 +182,13 @@ class Curve:
         # Always-on alt-law band: the same kept points under the OTHER law
         # disclose the model-choice swing (a law-choice effect invisible
         # to the residual std).
-        other = _OTHER_CURVE[self.law]
+        other = _OTHER_FAMILY[self.family]
         _, b_alt, _ = _fit_decay(region_v, region_idx, other)
         alt_diverged = b_alt >= _DIVERGENCE_SLOPE[other]
 
         return CurveResult(
             target=self.target,
-            law=self.law,
+            family=self.family,
             intercept=a,
             slope=b,  # RAW fitted slope -- evaluate uses this, never clamped
             fit_resid_std=rstd,
@@ -202,7 +199,7 @@ class Curve:
             clamped_slope=clamped_slope,
             under_determined=under_determined,
             reason="under_determined" if under_determined else "ok",
-            alt_law=other,
+            alt_family=other,
             alt_slope=b_alt,
             alt_diverged=alt_diverged,
         )
@@ -219,8 +216,8 @@ class CurveResult:
 
     Attributes
     ----------
-    target, law
-        The fitted target and decay law (echoed from the spec).
+    target, family
+        The fitted target and decay-law family (echoed from the spec).
     intercept, slope
         The fitted ``a`` and the RAW fitted ``b`` (never clamped);
         ``None`` when no fit was possible.
@@ -242,12 +239,12 @@ class CurveResult:
     reason
         One-glance status: ``"ok"`` | ``"under_determined"`` |
         ``"no_decaying_region"`` | ``"non_positive"`` | ``"empty"``.
-    alt_law, alt_slope, alt_diverged
-        The OTHER law on the same kept points (the model-choice band).
+    alt_family, alt_slope, alt_diverged
+        The OTHER family on the same kept points (the model-choice band).
     """
 
     target:           str
-    law:              str
+    family:           str
     intercept:        float | None
     slope:            float | None
     fit_resid_std:    float | None
@@ -258,7 +255,7 @@ class CurveResult:
     clamped_slope:    float | None
     under_determined: bool
     reason:           str
-    alt_law:          str | None
+    alt_family:       str | None
     alt_slope:        float | None
     alt_diverged:     bool | None
 
@@ -278,7 +275,7 @@ class CurveResult:
             return float("nan")
 
         i = np.asarray(dev, dtype=float)
-        if self.law == "exponential":
+        if self.family == "exponential":
             value = np.exp(self.intercept + self.slope * i)
         else:  # inverse_power
             value = np.exp(self.intercept) * i ** self.slope
@@ -314,7 +311,7 @@ class CurveResult:
         out: list[float] = []
         i = start
         for _ in range(max(horizon, 0)):
-            v = _decay_value(self.intercept, self.slope, float(i), self.law)
+            v = _decay_value(self.intercept, self.slope, float(i), self.family)
             if not np.isfinite(v):
                 break
             if v < tol:
@@ -328,7 +325,7 @@ def _empty_result(spec: Curve, reason: str) -> CurveResult:
     """A no-fit :class:`CurveResult` for empty / non-positive input."""
     return CurveResult(
         target=spec.target,
-        law=spec.law,
+        family=spec.family,
         intercept=None,
         slope=None,
         fit_resid_std=None,
@@ -339,7 +336,7 @@ def _empty_result(spec: Curve, reason: str) -> CurveResult:
         clamped_slope=None,
         under_determined=True,
         reason=reason,
-        alt_law=None,
+        alt_family=None,
         alt_slope=None,
         alt_diverged=None,
     )

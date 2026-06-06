@@ -55,8 +55,8 @@ def test_inverse_power_heavier_than_exponential():
     # On the same decaying series, the polynomial (inverse_power) tail
     # is heavier than the geometric (exponential) tail.
     f = np.array([2.0, 1.4, 1.2, 1.1, 1.05])
-    ip = compute_tail_factor(f, Tail(curve="inverse_power"), grain="M")
-    ex = compute_tail_factor(f, Tail(curve="exponential"), grain="M")
+    ip = compute_tail_factor(f, Tail(family="inverse_power"), grain="M")
+    ex = compute_tail_factor(f, Tail(family="exponential"), grain="M")
     assert ip.factor > ex.factor
 
 
@@ -107,8 +107,8 @@ def test_divergence_boundary_is_curve_specific():
     # the exponential sum but DIVERGES for inverse_power (Sum k^b is finite
     # only for b < -1). The guard must be curve-aware.
     f = 1.0 + np.arange(1, 9, dtype=float) ** -0.5
-    ip = compute_tail_factor(f, Tail(curve="inverse_power"), grain="M")
-    ex = compute_tail_factor(f, Tail(curve="exponential"), grain="M")
+    ip = compute_tail_factor(f, Tail(family="inverse_power"), grain="M")
+    ex = compute_tail_factor(f, Tail(family="exponential"), grain="M")
     assert ip.diverged and ip.factor == 1.0
     assert -1.0 <= ip.slope < 0.0  # negative (decaying) yet past the -1 boundary
     assert not ex.diverged
@@ -128,7 +128,7 @@ def test_grain_aware_horizon_cap():
 
 def test_tail_spec_validation():
     with pytest.raises(ValueError):
-        Tail(curve="bogus")
+        Tail(family="bogus")
     with pytest.raises(ValueError):
         Tail(on_diverge="bogus")
     with pytest.raises(ValueError):
@@ -554,16 +554,16 @@ def test_tail_report_discloses_provenance_and_band(tri):
     cf = lr.ChainLadder(tail=True).fit(tri)
     rep = cf.tail_report
     for col in (
-        "group", "curve", "intercept", "slope", "fit_resid_std",
+        "group", "family", "intercept", "slope", "fit_resid_std",
         "n_steps", "converged", "diverged", "reason", "factor",
-        "alt_curve", "alt_factor", "tol", "max_horizon",
+        "alt_family", "alt_factor", "tol", "max_horizon",
     ):
         assert col in rep.columns
     # Every group has a fitted curve, the other curve as a band, and a
     # finite fit residual.
     assert rep.height == 4
-    assert (rep["curve"] == "inverse_power").all()
-    assert (rep["alt_curve"] == "exponential").all()
+    assert (rep["family"] == "inverse_power").all()
+    assert (rep["alt_family"] == "exponential").all()
     assert rep["fit_resid_std"].is_finite().all()
     # The model-choice band is real (the two curves disagree).
     assert not np.allclose(rep["factor"].to_numpy(), rep["alt_factor"].to_numpy())

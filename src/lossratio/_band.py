@@ -256,7 +256,7 @@ def _segment_band(
     del tol  # currently inert; see docstring.
 
     if curve is None:
-        curve = Curve(target="intensity", law="inverse_power", min_points=3)
+        curve = Curve(target="intensity", family="inverse_power", min_points=3)
     if curve.target != "intensity":
         raise ValueError(
             "segment_band requires a curve with target='intensity' (the "
@@ -467,16 +467,16 @@ def _alt_curve_ratio(
     """Curve-leg ratio recomputed under the fit's alternate law.
 
     Surfaces the model-choice swing as a ratio: re-fit the alternate law
-    (``cr.alt_law``) on the SAME ``g_k`` series via a fresh
+    (``cr.alt_family``) on the SAME ``g_k`` series via a fresh
     :class:`~lossratio.Curve`, run the same premium-weighted tail sum, and
     divide by the shared denominator. This is the genuine alternate-law
     extrapolation (intercept and slope both from the alt fit, not a slope
     swap on the primary intercept). Returns ``None`` when the alt fit is
     degenerate or no tail term is produced.
     """
-    if cr.alt_law is None or not premium_proj:
+    if cr.alt_family is None or not premium_proj:
         return None
-    alt_cr = Curve(target=cr.target, law=cr.alt_law).fit(g_k)
+    alt_cr = Curve(target=cr.target, family=cr.alt_family).fit(g_k)
     if alt_cr.slope is None:
         return None
     loss_proj, any_term = _curve_leg_loss_proj(alt_cr, sub, n_devs)
@@ -615,7 +615,7 @@ def _select_grain_row(
     ``"insufficient"``, not ``"degenerate"``.
 
     Signal (a) -- slope physicality -- reads the row's ``curve_diverged``
-    (the single source of truth is :data:`tail._DIVERGENCE_SLOPE`, not
+    (the single source of truth is :data:`_decay._DIVERGENCE_SLOPE`, not
     re-derived here). Signal (b) -- leg agreement -- compares the band
     width to the borrow level (the robust anchor) against
     :data:`_AUTO_GRAIN_REL`. A degenerate or under-determined curve at a
@@ -1081,7 +1081,7 @@ def _segment_path(
     See :meth:`RatioFit.segment_path` for the public contract.
     """
     if curve is None:
-        curve = Curve(target="intensity", law="inverse_power", min_points=3)
+        curve = Curve(target="intensity", family="inverse_power", min_points=3)
     if curve.target != "intensity":
         raise ValueError(
             "segment_path requires a curve with target='intensity' (the "

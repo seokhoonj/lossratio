@@ -714,7 +714,7 @@ class RatioFit:
         ----------
         curve
             Curve spec for the curve leg. ``None`` (default) uses
-            ``Curve(target="intensity", law="inverse_power",
+            ``Curve(target="intensity", family="inverse_power",
             min_points=3)``. A spec with ``target != "intensity"`` raises
             ``ValueError`` (the band formula is ``g_k``-based).
         tol
@@ -811,7 +811,7 @@ class RatioFit:
         ----------
         curve
             Curve spec for the curve leg. ``None`` (default) uses
-            ``Curve(target="intensity", law="inverse_power", min_points=3)``.
+            ``Curve(target="intensity", family="inverse_power", min_points=3)``.
             A spec with ``target != "intensity"`` raises ``ValueError``.
         tol
             Reserved for forward-compatibility with the curve contract;
