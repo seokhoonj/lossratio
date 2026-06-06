@@ -684,7 +684,11 @@ class RatioFit:
         return mirror_output(pl.DataFrame(rows), self._output_type)
 
     def segment_band(
-        self, *, curve: "Curve | None" = None, tol: float = 1e-4
+        self,
+        *,
+        curve: "Curve | None" = None,
+        tol: float = 1e-4,
+        auto_grain: bool = False,
     ) -> pl.DataFrame:
         """Honest go-forward band for the recent regime segment's tail.
 
@@ -717,6 +721,21 @@ class RatioFit:
             Reserved for forward-compatibility with the curve contract.
             Currently inert: the per-position evaluation never truncates
             the premium-weighted tail sum.
+        auto_grain
+            When ``False`` (default) the band is computed at the fit's
+            display grain only, byte-identical to prior behaviour. When
+            ``True`` the tail grain is auto-selected per group by
+            coarsening ``M -> Q -> H -> Y`` and stopping at the finest
+            grain where both signals fire -- the curve slope is past the
+            convergence boundary (physical, not divergent) AND the borrow
+            and curve legs agree (the band narrows). At a fresh regime the
+            display grain over-extrapolates an unphysical tail; a coarser,
+            more mature grain recovers a convergent slope and a real,
+            narrow band. The result then carries a ``selected_grain``
+            column and ``band_status`` can read ``"insufficient"`` when no
+            grain converges (a borrow-only fallback). The observed segment
+            loss ratio is grain-invariant, so the auto-grain mode changes
+            only the tail; it never re-bins the displayed observation.
 
         Returns
         -------
@@ -728,11 +747,19 @@ class RatioFit:
             ``curve_reason`` / ``curve_diverged`` /
             ``curve_alt_ratio_ult``). Curve-leg columns are null on a
             degenerate fit (``band_status="degenerate"``), with the borrow
-            leg always preserved.
+            leg always preserved. With ``auto_grain=True`` the frame is a
+            strict superset: it adds ``selected_grain`` (the fired grain,
+            ``null`` when no grain converged) and ``band_status`` may also
+            read ``"insufficient"``.
         """
-        from ._band import _segment_band
+        if not auto_grain:
+            from ._band import _segment_band
 
-        return _segment_band(self, curve=curve, tol=tol)
+            return _segment_band(self, curve=curve, tol=tol)
+
+        from ._band import _segment_band_auto
+
+        return _segment_band_auto(self, curve=curve, tol=tol)
 
     def ultimate_ratio_samples(self, *, per_group: bool = False):
         """Per-replicate portfolio ultimate loss ratio (predictive draws).

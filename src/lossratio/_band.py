@@ -26,6 +26,7 @@ the fit, and a run that does not ask for the band is byte-identical.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -33,6 +34,7 @@ import polars as pl
 
 from ._io import normalize_groups
 from .curve import Curve
+from .regime import _coarsen_triangle
 
 if TYPE_CHECKING:
     from .curve import CurveResult
@@ -481,3 +483,293 @@ def _alt_curve_ratio(
     if not any_term:
         return None
     return loss_ult / premium_ult
+
+
+# ---------------------------------------------------------------------------
+# Auto-grain tail extrapolation (opt-in; default path above is untouched).
+#
+# A fresh regime is too young to observe its own tail. The Curve fits the
+# intensity decay against the development INDEX (k = 1, 2, ...), not real
+# time, so on an immature fine grain it recovers a slope above the
+# convergence boundary -- an unphysical, divergent tail that over-projects
+# the ultimate. The observed segment loss ratio is grain-invariant (the
+# same actual increments over the same cumulative premium), so all of that
+# divergence lives in the unobserved tail.
+#
+# The fix coarsens the TAIL grain (M -> Q -> H -> Y) and stops at the
+# finest grain where BOTH signals fire: (a) the curve slope is past the
+# convergence boundary (physical, not divergent) AND (b) the two legs
+# agree (the band narrows below a relative threshold). The AND is
+# essential -- signal (a) vetoes a narrow band (b) that is two legs jointly
+# wrong (e.g. an immature divergent curve sitting near the borrow leg). If
+# no grain fires both, the band is "insufficient" (not yet estimable) and
+# the headline falls back to the more robust borrow leg.
+#
+# An ultimate is grain-invariant, so the reported ultimate / band just take
+# the selected-grain values -- no interpolation back to the display grain
+# (that display-path step is a separate, deferred increment).
+# ---------------------------------------------------------------------------
+
+# Candidate tail grains, fine -> coarse. The walk starts at the fit's own
+# (display) grain and coarsens; refining is never attempted.
+_AUTO_GRAIN_ORDER: tuple[str, ...] = ("M", "Q", "H", "Y")
+
+# Two-leg agreement threshold for the auto-grain SELECTION (signal (b)):
+# the band counts as converged when band_width / |ratio_ult_borrow| is at
+# or below this. Seeded to the display narrowness threshold but kept a
+# distinct, separately-tunable constant so a future tightening of the
+# selection rule never silently moves the display verdict.
+_AUTO_GRAIN_REL: float = _NARROW_BAND_REL
+
+# ON-path schema: the OFF schema plus one column. The OFF `_BAND_SCHEMA`
+# is intentionally NOT edited, so the default empty / populated frames stay
+# byte-identical.
+_AUTO_BAND_SCHEMA: dict[str, pl.DataType] = {
+    **_BAND_SCHEMA,
+    "selected_grain": pl.Utf8,
+}
+
+
+def _refit_at_grain(fit: "RatioFit", g: str) -> "RatioFit | None":
+    """Re-fit the same estimator on the triangle coarsened to grain ``g``.
+
+    Returns the fit itself when ``g`` is the display grain (no work), and
+    ``None`` when the coarse triangle cannot be built. The re-fit reuses
+    ``fit._estimator`` -- the same method, regime, recent window, etc. --
+    so the coarse band legs are exactly what the engine produces at grain
+    ``g``. A ``loss_regime="auto"`` re-detects on the coarse triangle (the
+    honest coarse regime); a manually pinned ``Regime.at(change=...)``
+    carries through unchanged (a change date is grain-agnostic).
+    """
+    if g == fit._triangle.grain:
+        return fit
+    try:
+        tri_g = _coarsen_triangle(fit._triangle, g)
+    except Exception:
+        return None
+    # `Ratio.fit` only reads the estimator, but clone defensively so a
+    # candidate re-fit can never perturb the caller's config.
+    estimator = dataclasses.replace(fit._estimator)
+    try:
+        return estimator.fit(tri_g)
+    except Exception:
+        return None
+
+
+def _grain_legs(
+    fit: "RatioFit",
+    g: str,
+    keyvals: tuple,
+    gcols: list[str],
+    *,
+    curve: Curve | None,
+    tol: float,
+) -> tuple[dict | None, "RatioFit | None"]:
+    """One coarse re-fit -> the single-grain band row for one group.
+
+    Re-fits the estimator at grain ``g`` and runs the byte-tested
+    single-grain :func:`_segment_band` on it, returning the band row for
+    this group (matched on the group key columns). Returns ``(None, refit)``
+    when the group has no band row at grain ``g`` (no recent segment, or a
+    partial boundary), and ``(None, None)`` when the coarse fit itself
+    could not be built.
+    """
+    refit = _refit_at_grain(fit, g)
+    if refit is None:
+        return None, None
+    band_g = _segment_band(refit, curve=curve, tol=tol)
+    band_g = (
+        band_g if isinstance(band_g, pl.DataFrame) else pl.from_pandas(band_g)
+    )
+    sub = band_g
+    for c, v in zip(gcols, keyvals):
+        if c in sub.columns:
+            sub = sub.filter(pl.col(c) == v)
+    if sub.is_empty():
+        return None, refit
+    return sub.row(0, named=True), refit
+
+
+def _select_grain_row(
+    fit: "RatioFit",
+    keyvals: tuple,
+    gcols: list[str],
+    *,
+    curve: Curve | None,
+    tol: float,
+) -> tuple[dict | None, str | None, str]:
+    """Walk ``M -> Q -> H -> Y``; pick the finest grain that converges.
+
+    Returns ``(row, selected_grain, status)`` where ``status`` is
+    ``"selected"``, ``"insufficient"``, or ``"degenerate"``. On
+    ``"selected"`` the row is the single-grain band row at the finest grain
+    where BOTH signals fire. Otherwise the row is the finest grain that
+    produced any band row (the borrow leg is the honest fallback), or
+    ``None`` when no grain produced a row at all. The fallback status is
+    ``"degenerate"`` when NO grain in the whole walk had a fittable curve
+    (so the distinct default-path degenerate state is preserved), else
+    ``"insufficient"`` (a curve existed at some grain but none converged).
+    The degeneracy verdict is tracked across the entire walk, not read off
+    the finest fallback row alone: a finest grain that degenerates while a
+    coarser grain has a fittable-but-non-converging curve is
+    ``"insufficient"``, not ``"degenerate"``.
+
+    Signal (a) -- slope physicality -- reads the row's ``curve_diverged``
+    (the single source of truth is :data:`tail._DIVERGENCE_SLOPE`, not
+    re-derived here). Signal (b) -- leg agreement -- compares the band
+    width to the borrow level (the robust anchor) against
+    :data:`_AUTO_GRAIN_REL`. A degenerate or under-determined curve at a
+    grain is skipped (a narrow band is not earned there), which lets the
+    point-count floor self-limit the walk: coarsening monotonically reduces
+    the point count, so the coarsest grains fall out on their own.
+    """
+    fine = fit._triangle.grain
+    try:
+        start = _AUTO_GRAIN_ORDER.index(fine)
+    except ValueError:
+        start = 0
+    fallback_row: dict | None = None
+    saw_any_curve = False
+    for g in _AUTO_GRAIN_ORDER[start:]:
+        row, _ = _grain_legs(fit, g, keyvals, gcols, curve=curve, tol=tol)
+        if row is None:
+            continue  # not evaluable at this grain; coarsen further.
+        if fallback_row is None:
+            fallback_row = row  # finest grain that produced any row.
+        if row["band_status"] != "degenerate":
+            saw_any_curve = True  # a curve was fittable at some grain.
+
+        # Degeneracy / data-sufficiency gate: a narrow band is not earned
+        # without a fittable, over-determined curve leg here.
+        if row["ratio_ult_curve"] is None:
+            continue
+        if bool(row["curve_under_determined"]):
+            continue
+
+        # Signal (a): the curve slope is physical (not past the boundary).
+        slope_ok = not bool(row["curve_diverged"])
+
+        # Signal (b): the two legs agree relative to the borrow level.
+        bw = row["band_width"]
+        rub = row["ratio_ult_borrow"]
+        agree = (
+            bw is not None
+            and rub not in (None, 0.0)
+            and bw / abs(rub) <= _AUTO_GRAIN_REL
+        )
+
+        if slope_ok and agree:  # the AND -- both signals must fire.
+            return row, g, "selected"
+
+    if fallback_row is None:
+        return None, None, "insufficient"
+    # Preserve the distinct degenerate state only when NO grain in the whole
+    # walk had a fittable curve. A finest grain that degenerated while a
+    # coarser grain produced a curve (that just never converged) is
+    # insufficient, not degenerate.
+    if not saw_any_curve:
+        return fallback_row, None, "degenerate"
+    return fallback_row, None, "insufficient"
+
+
+def _segment_band_auto(
+    fit: "RatioFit", *, curve: Curve | None, tol: float
+) -> pl.DataFrame:
+    """Auto-grain go-forward band (the ``auto_grain=True`` branch).
+
+    For each regime group, the tail grain is selected by
+    :func:`_select_grain_row`; the reported ultimate / band are the
+    selected-grain values verbatim (an ultimate is grain-invariant -- no
+    interpolation back to the display grain). When no grain converges the
+    band is ``"insufficient"`` and the headline falls back to the borrow
+    leg, so the loss-ratio number is never null. The OFF-path
+    :func:`_segment_band` is reused per candidate grain, so every leg is
+    exactly what the engine produces at that grain.
+    """
+    if curve is not None and curve.target != "intensity":
+        raise ValueError(
+            "segment_band requires a curve with target='intensity' (the "
+            f"band formula is g_k-based); got target={curve.target!r}."
+        )
+
+    gcols = normalize_groups(fit._groups)
+    empty = _empty_auto_band(gcols, fit._output_type)
+
+    reg = fit._regime
+    if reg is None or reg._changes_df.is_empty():
+        return empty
+
+    df = fit.to_polars()
+    df = df if isinstance(df, pl.DataFrame) else pl.from_pandas(df)
+    df = df.with_columns(pl.col("cohort").cast(pl.Date))
+    changes = reg._changes_df
+
+    parts = (
+        list(df.partition_by(gcols, as_dict=True).items())
+        if gcols
+        else [((), df)]
+    )
+
+    rows: list[dict] = []
+    for key, _gdf in sorted(parts, key=lambda kv: _sort_key(kv[0])):
+        keyvals = key if isinstance(key, tuple) else (key,)
+
+        chg = changes
+        for c, v in zip(gcols, keyvals):
+            if c in chg.columns:
+                chg = chg.filter(pl.col(c) == v)
+        if not sorted(chg["change"].to_list()):
+            continue  # group without a regime change -> no row.
+
+        row, selected_grain, status = _select_grain_row(
+            fit, keyvals, gcols, curve=curve, tol=tol
+        )
+        if row is None:
+            continue  # no recent segment at any grain -> no row (as today).
+
+        out_row: dict[str, Any] = {c: v for c, v in zip(gcols, keyvals)}
+        out_row.update(_auto_row_payload(row, selected_grain, status))
+        rows.append(out_row)
+
+    if not rows:
+        return empty
+
+    schema = {**{c: pl.Utf8 for c in gcols}, **_AUTO_BAND_SCHEMA}
+    out = pl.DataFrame(rows, schema=_resolve_schema(schema, df, gcols))
+    from ._io import mirror_output
+
+    return mirror_output(out, fit._output_type)
+
+
+def _auto_row_payload(
+    row: dict, selected_grain: str | None, status: str
+) -> dict[str, Any]:
+    """Map a selected single-grain band row to the auto-band payload.
+
+    On ``"selected"`` the row's band columns pass through verbatim (the
+    ultimate is grain-invariant). On ``"insufficient"`` the curve leg and
+    band columns are nulled and the headline mean falls back to the borrow
+    leg, so the loss-ratio number is never null and a non-converged tail is
+    never dressed up as a point.
+    """
+    payload = {k: row[k] for k in _BAND_SCHEMA}
+    if status == "insufficient":
+        payload["band_status"] = "insufficient"
+        payload["loss_ult_curve"] = None
+        payload["ratio_ult_curve"] = None
+        payload["band_lo"] = None
+        payload["band_hi"] = None
+        payload["band_width"] = None
+        payload["curve_alt_ratio_ult"] = None
+        payload["loss_ult_mean"] = row["loss_ult_borrow"]
+        payload["ratio_ult_mean"] = row["ratio_ult_borrow"]
+    payload["selected_grain"] = selected_grain
+    return payload
+
+
+def _empty_auto_band(gcols: list[str], output_type: str) -> pl.DataFrame:
+    """Zero-row, fully-typed auto-band frame (no-regime / no-row posture)."""
+    from ._io import mirror_output
+
+    schema = {**{c: pl.Utf8 for c in gcols}, **_AUTO_BAND_SCHEMA}
+    return mirror_output(pl.DataFrame(schema=schema), output_type)

@@ -526,3 +526,280 @@ def test_mirror_output_polars():
     fit = _regime_fit()
     band = fit.segment_band()
     assert isinstance(band, pl.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# 11. Auto-grain tail extrapolation (opt-in; default path untouched)
+# ---------------------------------------------------------------------------
+#
+# The fresh-regime go-forward is grain-UNSTABLE: the OBSERVED segment loss
+# ratio is grain-invariant, but the projected tail diverges because the
+# Curve fits the intensity decay against the development INDEX, not real
+# time. On an immature fine grain (monthly) the recovered slope is above the
+# convergence boundary (an unphysical, divergent tail) that over-projects;
+# coarsening to a more mature grain (quarterly) recovers a convergent slope
+# and a real, narrow band. ``auto_grain=True`` auto-selects the finest grain
+# where BOTH the slope is physical AND the two legs agree.
+
+
+def _insufficient_fresh_regime():
+    """A regime so fresh that no grain converges (the insufficient state).
+
+    A single coverage, monthly cohorts, with the change placed so the
+    recent segment is only four cohorts. The recent segment decays very
+    shallowly (its monthly index-fit does not agree with the borrowed donor
+    shape) and the coarse grains have too few points to fit -- so no grain
+    fires both selection signals and the band is ``"insufficient"``.
+    """
+    rng = np.random.default_rng(5)
+    rows: list[dict] = []
+    cohorts = [
+        dt.date(2022 + (m - 1) // 12, (m - 1) % 12 + 1, 1) for m in range(1, 25)
+    ]
+    change = cohorts[24 - 4]  # recent segment = 4 cohorts.
+    for ci, coh in enumerate(cohorts):
+        base = 0.5 if coh >= change else 1.0
+        decay = 0.5 if coh >= change else 2.0
+        n_obs = 24 - ci
+        for d in range(1, n_obs + 1):
+            cal_index = (coh.year - 2022) * 12 + (coh.month - 1) + (d - 1)
+            cal_y = 2022 + cal_index // 12
+            cal_m = cal_index % 12 + 1
+            g = base * (d ** -decay) + 0.001
+            rows.append(
+                dict(
+                    coverage="A",
+                    uy_m=coh,
+                    cy_m=dt.date(cal_y, cal_m, 1),
+                    incr_loss=g * 1_000.0 + rng.normal(0, 0.5),
+                    incr_premium=1_000.0,
+                )
+            )
+    df = pl.DataFrame(rows)
+    tri = lr.Triangle(df, groups="coverage", cohort="uy_m", calendar="cy_m")
+    return tri, change
+
+
+def test_auto_grain_off_byte_identical():
+    """``auto_grain=False`` is byte-identical to the bare default call."""
+    fit = _regime_fit()
+    default = fit.segment_band()
+    off = fit.segment_band(auto_grain=False)
+    assert_frame_equal(default, off)
+    # The OFF columns are exactly today's set -- no ``selected_grain``.
+    assert default.columns == [
+        "coverage",
+        "segment",
+        "change_from",
+        "n_cohorts",
+        "premium_ult",
+        "loss_ult_borrow",
+        "ratio_ult_borrow",
+        "loss_ult_curve",
+        "ratio_ult_curve",
+        "loss_ult_mean",
+        "ratio_ult_mean",
+        "band_lo",
+        "band_hi",
+        "band_width",
+        "band_status",
+        "curve_n_points",
+        "curve_under_determined",
+        "curve_reason",
+        "curve_diverged",
+        "curve_alt_ratio_ult",
+    ]
+    assert "selected_grain" not in default.columns
+
+
+def test_auto_grain_selects_coarse_when_fine_diverges():
+    """The fine grain's divergent curve is vetoed; a coarser grain is picked.
+
+    On the bundled experience data the SUR recent segment is immature at the
+    monthly display grain -- its curve slope is above the convergence
+    boundary (``curve_diverged=True``), an unphysical tail, even though the
+    monthly two-leg spread is small. Signal (a) (slope physicality) vetoes
+    that jointly-wrong narrow band, and the auto-grain walk coarsens to the
+    finest grain where the slope is physical AND the legs agree.
+    """
+    fit = _regime_fit()
+    on = fit.segment_band(auto_grain=True).filter(pl.col("coverage") == "SUR")
+    assert on.height == 1
+    row = on.row(0, named=True)
+    # A coarser grain than the monthly display grain was selected.
+    assert row["selected_grain"] in {"Q", "H", "Y"}
+    assert row["band_status"] in {"narrow", "wide"}
+    assert row["band_status"] != "insufficient"
+
+    # The selected grain is physical (its curve did not diverge), unlike the
+    # vetoed monthly grain.
+    off = fit.segment_band().filter(pl.col("coverage") == "SUR").row(0, named=True)
+    assert off["curve_diverged"] is True  # the fine-grain veto fired.
+    assert row["curve_diverged"] is False
+
+    # The auto-grain ultimate equals a direct re-fit at the selected grain
+    # (selected-grain values verbatim, no interpolation back to fine grain).
+    from lossratio.regime import _coarsen_triangle
+
+    tri_g = _coarsen_triangle(fit._triangle, row["selected_grain"])
+    direct = fit._estimator.fit(tri_g).segment_band()
+    direct = direct.filter(pl.col("coverage") == "SUR").row(0, named=True)
+    assert row["ratio_ult_borrow"] == pytest.approx(direct["ratio_ult_borrow"])
+    assert row["ratio_ult_curve"] == pytest.approx(direct["ratio_ult_curve"])
+
+
+def test_auto_grain_observed_lr_grain_invariant():
+    """The OBSERVED recent-segment loss ratio is identical at M and Q.
+
+    The empirical invariant the whole design rests on: re-binning to a
+    coarser grain changes only the unobserved tail, never the observed
+    increments, so the recent segment's observed loss / premium ratio is
+    grain-invariant. (All the M-vs-Q divergence is therefore tail-only.)
+    """
+    from lossratio.regime import _coarsen_triangle
+
+    fit = _regime_fit()
+    change = fit._regime._changes_df.filter(pl.col("coverage") == "SUR")
+    change_from = max(change["change"].to_list())
+
+    def _observed_lr(grain: str) -> float:
+        # Portfolio observed loss ratio of the recent segment = sum over
+        # cohorts of the LAST observed cumulative loss / premium. (A naive
+        # sum of every cumulative cell would double-count the development
+        # axis differently per grain; the per-cohort latest is the real,
+        # grain-invariant observed aggregate.)
+        f = fit if grain == fit._triangle.grain else (
+            fit._estimator.fit(_coarsen_triangle(fit._triangle, grain))
+        )
+        df = f.to_polars()
+        df = df.with_columns(pl.col("cohort").cast(pl.Date))
+        sub = df.filter(
+            (pl.col("coverage") == "SUR")
+            & (pl.col("cohort") >= change_from)
+        )
+        latest = sub.sort("dev").group_by("cohort").agg(
+            pl.col("loss_obs").drop_nulls().last().alias("loss"),
+            pl.col("premium_obs").drop_nulls().last().alias("premium"),
+        )
+        return float(latest["loss"].sum()) / float(latest["premium"].sum())
+
+    assert _observed_lr("M") == pytest.approx(_observed_lr("Q"), rel=1e-9)
+
+
+def test_auto_grain_insufficient_fallback():
+    """No grain converges -> ``"insufficient"`` + borrow-only headline."""
+    tri, change = _insufficient_fresh_regime()
+    fit = lr.Ratio(
+        method="ed", loss_regime=lr.Regime.at(change=change)
+    ).fit(tri)
+    on = fit.segment_band(auto_grain=True)
+    assert on.height == 1
+    row = on.row(0, named=True)
+    assert row["band_status"] == "insufficient"
+    assert row["selected_grain"] is None
+    # Curve / band columns are nulled -- a non-converged tail is never a point.
+    assert row["loss_ult_curve"] is None
+    assert row["ratio_ult_curve"] is None
+    assert row["band_lo"] is None
+    assert row["band_hi"] is None
+    assert row["band_width"] is None
+    # Headline falls back to the robust borrow leg (never null).
+    assert row["ratio_ult_borrow"] is not None
+    assert row["ratio_ult_mean"] == row["ratio_ult_borrow"]
+    assert row["loss_ult_mean"] == row["loss_ult_borrow"]
+
+
+def test_auto_grain_insufficient_distinct_from_degenerate():
+    """``"insufficient"`` and ``"degenerate"`` are distinct band states.
+
+    ``degenerate`` (default path) = no curve fit at all at the display
+    grain; ``insufficient`` (auto path) = a curve existed at >= 1 grains
+    but none passed the dual signal.
+    """
+    # degenerate fixture (from the default-path degenerate test).
+    rows: list[dict] = []
+    cohorts = [dt.date(2023, m, 1) for m in (10, 11, 12)]
+    for ci, coh in enumerate(cohorts):
+        n_obs = 3 - ci + 1
+        for d in range(1, max(n_obs, 1) + 1):
+            cal_m = coh.month + (d - 1)
+            cal_y = coh.year + (cal_m - 1) // 12
+            cal_m = (cal_m - 1) % 12 + 1
+            rows.append(
+                dict(
+                    coverage="X",
+                    uy_m=coh,
+                    cy_m=dt.date(cal_y, cal_m, 1),
+                    incr_loss=0.0,
+                    incr_premium=1_000.0,
+                )
+            )
+    deg_tri = lr.Triangle(
+        pl.DataFrame(rows), groups="coverage", cohort="uy_m", calendar="cy_m"
+    )
+    deg_fit = lr.Ratio(
+        method="ed", loss_regime=lr.Regime.at(change=dt.date(2023, 11, 1))
+    ).fit(deg_tri)
+    deg_band = deg_fit.segment_band(auto_grain=True)
+    deg_status = (
+        set(deg_band["band_status"].to_list()) if deg_band.height else set()
+    )
+
+    ins_tri, ins_change = _insufficient_fresh_regime()
+    ins_fit = lr.Ratio(
+        method="ed", loss_regime=lr.Regime.at(change=ins_change)
+    ).fit(ins_tri)
+    ins_status = set(
+        ins_fit.segment_band(auto_grain=True)["band_status"].to_list()
+    )
+
+    assert "insufficient" in ins_status
+    assert "insufficient" not in deg_status
+
+
+def test_auto_grain_schema_superset():
+    """ON columns == OFF columns + ``selected_grain`` (same prefix order)."""
+    fit = _regime_fit()
+    off = fit.segment_band()
+    on = fit.segment_band(auto_grain=True)
+    assert on.columns == [*off.columns, "selected_grain"]
+    assert on.schema["selected_grain"] == pl.Utf8
+    # Shared columns keep identical dtypes (a strict superset, not a recast).
+    for col in off.columns:
+        assert on.schema[col] == off.schema[col]
+
+
+def test_auto_grain_empty_frame_typed():
+    """No-regime fit with ``auto_grain=True`` -> 0 rows, typed superset."""
+    tri = _experience_triangle()
+    fit = lr.Ratio(method="sa", loss_regime=None).fit(tri)
+    on = fit.segment_band(auto_grain=True)
+    assert on.height == 0
+    assert "selected_grain" in on.columns
+    assert on.schema["selected_grain"] == pl.Utf8
+    assert "band_status" in on.columns
+
+
+def test_auto_grain_mirror_output_pandas():
+    pd = pytest.importorskip("pandas")
+    df = lr.load_experience()
+    df_pd = df.to_pandas() if isinstance(df, pl.DataFrame) else df
+    tri = lr.Triangle(df_pd, groups="coverage", cohort="uy_m", calendar="cy_m")
+    fit = lr.Ratio(method="sa", loss_regime="auto").fit(tri)
+    on = fit.segment_band(auto_grain=True)
+    assert isinstance(on, pd.DataFrame)
+    assert "selected_grain" in on.columns
+
+
+def test_auto_grain_mirror_output_polars():
+    fit = _regime_fit()
+    on = fit.segment_band(auto_grain=True)
+    assert isinstance(on, pl.DataFrame)
+
+
+def test_auto_grain_determinism():
+    """The auto-grain selection has no RNG; two calls are byte-identical."""
+    fit = _regime_fit()
+    b1 = fit.segment_band(auto_grain=True)
+    b2 = fit.segment_band(auto_grain=True)
+    assert_frame_equal(b1, b2)
