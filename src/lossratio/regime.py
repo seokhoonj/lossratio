@@ -1923,6 +1923,40 @@ class Regime:
         """Detected (or manually specified) change points as a frame."""
         return mirror_output(self._changes_df, self._output_type)
 
+    def changes_at(self, grain: str):
+        """Change points with each ``change`` date snapped to ``grain``.
+
+        For drawing the regime line on a chart aggregated to a coarser
+        grain. A change that falls mid-period (e.g. ``2024-09-01`` viewed at
+        quarterly grain) is snapped UP to the start of the next period
+        (``2024-10-01``) -- the first period lying entirely after the
+        change, which is exactly where the new regime segment begins once
+        cohorts are floored to that grain. A change already on a period
+        boundary is unchanged. The snap is ``ceil`` (next period start), not
+        nearest, so the line always matches the grain-floored segmentation;
+        a "nearest" snap would mis-place a change in the first half of a
+        period.
+
+        ``grain`` is one of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``. The frame
+        is otherwise identical to :attr:`changes` (same columns, group keys,
+        ``regime_id``); only ``change`` moves. Input mirroring is preserved.
+        """
+        from ._period import floor_to_period
+
+        if grain not in _GRAIN_MONTHS:
+            raise ValueError(
+                f"`grain` must be one of {tuple(_GRAIN_MONTHS)}; got {grain!r}."
+            )
+        floored = floor_to_period(pl.col("change"), grain)
+        snapped = (
+            pl.when(floored < pl.col("change"))
+            .then(floored.dt.offset_by(f"{_GRAIN_MONTHS[grain]}mo"))
+            .otherwise(floored)
+            .alias("change")
+        )
+        out = self._changes_df.with_columns(snapped)
+        return mirror_output(out, self._output_type)
+
     @property
     def candidates(self):
         """All detected candidate changes with their assessment metrics.

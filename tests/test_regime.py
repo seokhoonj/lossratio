@@ -1,5 +1,7 @@
 """Tests for cohort regime detection."""
 
+import datetime as dt
+
 import numpy as np
 import polars as pl
 import pytest
@@ -666,3 +668,77 @@ def test_ratio_segment_summary():
     s0 = f0.segment_summary()
     s0 = s0 if isinstance(s0, pl.DataFrame) else pl.from_pandas(s0)
     assert "total" in s0.filter(pl.col("coverage") == "SUR")["segment"].to_list()
+
+
+# ---------------------------------------------------------------------------
+# changes_at: snap change dates to a coarser display grain
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "change, grain, expected",
+    [
+        # mid-quarter change snaps UP to the next quarter start.
+        ("2024-09-01", "Q", dt.date(2024, 10, 1)),
+        ("2024-08-01", "Q", dt.date(2024, 10, 1)),
+        # already on a quarter boundary -> unchanged.
+        ("2024-07-01", "Q", dt.date(2024, 7, 1)),
+        ("2024-10-01", "Q", dt.date(2024, 10, 1)),
+        # display grain M -> identity (monthly changes already aligned).
+        ("2024-09-01", "M", dt.date(2024, 9, 1)),
+        # half-year: 2024-09 is in H2 (starts 2024-07) -> next H = 2025-01.
+        ("2024-09-01", "H", dt.date(2025, 1, 1)),
+        ("2024-07-01", "H", dt.date(2024, 7, 1)),
+        # yearly: anything inside 2024 (not Jan 1) -> 2025-01-01.
+        ("2024-09-01", "Y", dt.date(2025, 1, 1)),
+        ("2024-01-01", "Y", dt.date(2024, 1, 1)),
+    ],
+)
+def test_changes_at_ceil_snaps_to_grain(change, grain, expected):
+    reg = lr.Regime.at(change=change)
+    out = reg.changes_at(grain)
+    out = out if isinstance(out, pl.DataFrame) else pl.from_pandas(out)
+    assert out["change"].to_list() == [expected]
+
+
+def test_changes_at_preserves_columns_and_rows():
+    """Only ``change`` moves; columns / group keys / row count are intact."""
+    reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SUR"]})
+    base = reg.changes
+    base = base if isinstance(base, pl.DataFrame) else pl.from_pandas(base)
+    snapped = reg.changes_at("Q")
+    snapped = snapped if isinstance(snapped, pl.DataFrame) else pl.from_pandas(snapped)
+    assert snapped.columns == base.columns
+    assert snapped.height == base.height
+    # every non-change column is byte-identical.
+    others = [c for c in base.columns if c != "change"]
+    assert snapped.select(others).equals(base.select(others))
+
+
+def test_changes_at_bad_grain_raises():
+    with pytest.raises(ValueError, match="grain"):
+        lr.Regime.at(change="2024-09-01").changes_at("X")
+
+
+def test_changes_at_matches_segment_start():
+    """changes_at(grain) equals the recent segment's first cohort at grain.
+
+    The snapped change date is exactly where the new regime segment begins
+    once cohorts are floored to the grain -- so a coarse refit's recent
+    segment starts on the snapped date.
+    """
+    from lossratio.regime import _coarsen_triangle
+    from lossratio._band import _recent_segment_cohorts
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    # SUR has a detectable regime; pin a mid-quarter change to force a snap.
+    reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SUR"]})
+    snapped = reg.changes_at("Q")
+    snapped = snapped if isinstance(snapped, pl.DataFrame) else pl.from_pandas(snapped)
+    snap_date = snapped.filter(pl.col("coverage") == "SUR")["change"].to_list()[0]
+
+    tri_q = _coarsen_triangle(tri, "Q")
+    df = tri_q._df.filter(pl.col("coverage") == "SUR")
+    cohorts = sorted(df["cohort"].unique().to_list())
+    recent, _ = _recent_segment_cohorts(cohorts, [dt.date(2024, 8, 1)])
+    assert min(recent) == snap_date
