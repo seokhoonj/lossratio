@@ -651,7 +651,7 @@ class PremiumFit:
     def summary(self) -> pl.DataFrame:
         """Per-cohort ultimate premium, SE, and CV.
 
-        Columns are ``[groups?, cohort, premium_ult, premium_total_se,
+        Columns are ``[groups?, cohort, premium_proj, premium_total_se,
         premium_total_cv]`` -- the last projected-dev row per cohort.
         """
         df = self._df
@@ -664,7 +664,7 @@ class PremiumFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
+                pl.col("premium_proj").drop_nulls().last().alias("premium_proj"),
                 pl.col("premium_total_se").drop_nulls().last().alias("premium_total_se"),
                 pl.col("premium_total_cv").drop_nulls().last().alias("premium_total_cv"),
             )

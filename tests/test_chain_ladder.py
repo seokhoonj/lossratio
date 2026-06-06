@@ -270,7 +270,7 @@ def test_cl_summary_columns_and_size() -> None:
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
-        "loss_ult",
+        "loss_proj",
         "loss_total_se",
         "loss_total_cv",
     }
@@ -278,12 +278,12 @@ def test_cl_summary_columns_and_size() -> None:
 
 
 def test_cl_summary_ultimate_for_fully_observed_cohort() -> None:
-    """Cohort 2024-01 has all 5 devs observed; loss_ult must equal the
+    """Cohort 2024-01 has all 5 devs observed; loss_proj must equal the
     observed loss at dev 5 = 500.0 with a null SE (no projection)."""
     fit = lr.ChainLadder().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
+    assert summary["loss_proj"].to_list()[0] == pytest.approx(500.0)
     # Fully observed cohort: no projection, so SE on ultimate is null.
     assert summary["loss_total_se"].to_list()[0] is None
 

@@ -386,7 +386,7 @@ class RatioFit:
 
         # 4b) Ratio tail = the tailed ultimate loss / tailed ultimate premium.
         # Both sides are developed with the same tail (loss runoff and the
-        # cumulative-premium runoff), so ratio_tail = loss_ult / premium_ult
+        # cumulative-premium runoff), so ratio_tail = loss_proj / premium_proj
         # on the last-dev row -- consistent rather than freezing premium.
         if "loss_tail" in full.columns and "premium_tail" in full.columns:
             full = full.with_columns(
@@ -557,9 +557,9 @@ class RatioFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
-                pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
-                pl.col("ratio_proj").drop_nulls().last().alias("ratio_ult"),
+                pl.col("loss_proj").drop_nulls().last().alias("loss_proj"),
+                pl.col("premium_proj").drop_nulls().last().alias("premium_proj"),
+                pl.col("ratio_proj").drop_nulls().last().alias("ratio_proj"),
                 # The columns below keep their own name -- last() preserves
                 # it, so no .alias() is needed.
                 pl.col("maturity_from").drop_nulls().last(),
@@ -579,7 +579,7 @@ class RatioFit:
         # `reserve` = ultimate projected loss - last observed cumulative
         # loss; `ratio_latest` = last observed loss / premium (guarded).
         out = out.with_columns(
-            (pl.col("loss_ult") - pl.col("latest")).alias("reserve"),
+            (pl.col("loss_proj") - pl.col("latest")).alias("reserve"),
             pl.when(
                 pl.col("_premium_latest").is_not_null()
                 & (pl.col("_premium_latest") != 0.0)
@@ -593,11 +593,11 @@ class RatioFit:
             keys
             + [
                 "latest",
-                "loss_ult",
+                "loss_proj",
                 "reserve",
-                "premium_ult",
+                "premium_proj",
                 "ratio_latest",
-                "ratio_ult",
+                "ratio_proj",
                 "maturity_from",
                 "loss_proc_se",
                 "loss_param_se",
@@ -615,8 +615,8 @@ class RatioFit:
         """Ultimate loss ratio per regime SEGMENT, plus a total row.
 
         Splits :meth:`summary`'s per-cohort ultimates by the loss regime's
-        change points and aggregates ``loss_ult`` / ``premium_ult`` ->
-        ``ratio_ult`` per segment (oldest = segment ``"0"``), with a
+        change points and aggregates ``loss_proj`` / ``premium_proj`` ->
+        ``ratio_proj`` per segment (oldest = segment ``"0"``), with a
         ``"total"`` row per group. So one fit yields the go-forward LR of
         the most recent segment, the legacy run-off LR, and the whole-book
         ratio at once -- different questions, one table. With no regime the
@@ -624,8 +624,8 @@ class RatioFit:
 
         Columns: groups, ``segment`` (``"0"``, ``"1"``, ... / ``"total"``),
         ``change_from`` (the date that segment starts; null for segment 0
-        and total), ``n_cohorts``, ``loss_ult``, ``premium_ult``,
-        ``ratio_ult``.
+        and total), ``n_cohorts``, ``loss_proj``, ``premium_proj``,
+        ``ratio_proj``.
         """
         s = self.summary()
         s = s if isinstance(s, pl.DataFrame) else pl.from_pandas(s)
@@ -661,16 +661,16 @@ class RatioFit:
             gs = gs.with_columns(pl.Series("_segment", seg, dtype=pl.Int64))
 
             def _block(sub, label, change_from):
-                lo = float(sub["loss_ult"].sum())
-                pr = float(sub["premium_ult"].sum())
+                lo = float(sub["loss_proj"].sum())
+                pr = float(sub["premium_proj"].sum())
                 row = {c: v for c, v in zip(gcols, keyvals)}
                 row.update(
                     segment=label,
                     change_from=change_from,
                     n_cohorts=int(sub.height),
-                    loss_ult=lo,
-                    premium_ult=pr,
-                    ratio_ult=(lo / pr) if pr else float("nan"),
+                    loss_proj=lo,
+                    premium_proj=pr,
+                    ratio_proj=(lo / pr) if pr else float("nan"),
                 )
                 return row
 
@@ -745,7 +745,7 @@ class RatioFit:
             ``band_status``), and the curve fit's provenance
             (``curve_n_points`` / ``curve_under_determined`` /
             ``curve_reason`` / ``curve_diverged`` /
-            ``curve_alt_ratio_ult``). Curve-leg columns are null on a
+            ``curve_alt_ratio_proj``). Curve-leg columns are null on a
             degenerate fit (``band_status="degenerate"``), with the borrow
             leg always preserved. With ``auto_grain=True`` the frame is a
             strict superset: it adds ``selected_grain`` (the fired grain,
@@ -780,7 +780,7 @@ class RatioFit:
             ``False`` (default) pools all groups into one portfolio ratio
             per replicate and returns a ``(n_replicates,)`` numpy array.
             ``True`` returns a long DataFrame
-            ``[groups?, rep, ratio_ult_sampled]`` (per-group ratio), in
+            ``[groups?, rep, ratio_proj_sampled]`` (per-group ratio), in
             the fit's input format.
 
         Notes
@@ -816,9 +816,9 @@ class RatioFit:
 
         if per_group:
             premium_grp = (
-                premium_coh.group_by(gcols).agg(pl.col("_p").sum().alias("premium_ult"))
+                premium_coh.group_by(gcols).agg(pl.col("_p").sum().alias("premium_proj"))
                 if gcols
-                else premium_coh.select(pl.col("_p").sum().alias("premium_ult"))
+                else premium_coh.select(pl.col("_p").sum().alias("premium_proj"))
             )
             joined = (
                 samples.join(premium_grp, on=gcols, how="inner")
@@ -827,10 +827,10 @@ class RatioFit:
             )
             out = (
                 joined.with_columns(
-                    (pl.col("loss_ult_sampled") / pl.col("premium_ult"))
-                    .alias("ratio_ult_sampled")
+                    (pl.col("loss_proj_sampled") / pl.col("premium_proj"))
+                    .alias("ratio_proj_sampled")
                 )
-                .select([*gcols, "rep", "ratio_ult_sampled"])
+                .select([*gcols, "rep", "ratio_proj_sampled"])
                 .sort([*gcols, "rep"])
             )
             return mirror_output(out, self._output_type)
@@ -840,13 +840,13 @@ class RatioFit:
         total_premium = premium_coh.select(pl.col("_p").sum()).item()
         loss_per_rep = (
             samples.group_by("rep")
-            .agg(pl.col("loss_ult_sampled").sum().alias("loss_ult"))
+            .agg(pl.col("loss_proj_sampled").sum().alias("loss_proj"))
             .sort("rep")
         )
         ratio = loss_per_rep.with_columns(
-            (pl.col("loss_ult") / total_premium).alias("ratio_ult_sampled")
+            (pl.col("loss_proj") / total_premium).alias("ratio_proj_sampled")
         )
-        return ratio.get_column("ratio_ult_sampled").to_numpy()
+        return ratio.get_column("ratio_proj_sampled").to_numpy()
 
     @property
     def n_rows(self) -> int:

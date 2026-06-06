@@ -48,13 +48,13 @@ _BAND_SCHEMA: dict[str, pl.DataType] = {
     "segment":                pl.Utf8,
     "change_from":            pl.Date,
     "n_cohorts":              pl.Int64,
-    "premium_ult":            pl.Float64,
-    "loss_ult_borrow":        pl.Float64,
-    "ratio_ult_borrow":       pl.Float64,
-    "loss_ult_curve":         pl.Float64,
-    "ratio_ult_curve":        pl.Float64,
-    "loss_ult_mean":          pl.Float64,
-    "ratio_ult_mean":         pl.Float64,
+    "premium_proj":            pl.Float64,
+    "loss_proj_borrow":        pl.Float64,
+    "ratio_proj_borrow":       pl.Float64,
+    "loss_proj_curve":         pl.Float64,
+    "ratio_proj_curve":        pl.Float64,
+    "loss_proj_mean":          pl.Float64,
+    "ratio_proj_mean":         pl.Float64,
     "band_lo":                pl.Float64,
     "band_hi":                pl.Float64,
     "band_width":             pl.Float64,
@@ -63,7 +63,7 @@ _BAND_SCHEMA: dict[str, pl.DataType] = {
     "curve_under_determined": pl.Boolean,
     "curve_reason":           pl.Utf8,
     "curve_diverged":         pl.Boolean,
-    "curve_alt_ratio_ult":    pl.Float64,
+    "curve_alt_ratio_proj":    pl.Float64,
 }
 
 
@@ -142,7 +142,7 @@ def _own_intensity(sub: pl.DataFrame, n_devs: int) -> np.ndarray:
     return g_k
 
 
-def _curve_leg_loss_ult(
+def _curve_leg_loss_proj(
     cr: "CurveResult", sub: pl.DataFrame, n_devs: int
 ) -> tuple[float, bool]:
     """Curve-leg ultimate loss summed over the recent cohorts.
@@ -152,12 +152,12 @@ def _curve_leg_loss_ult(
     premium-weighted sum of the fitted intensity over the unobserved
     from-dev positions ``last .. n_devs-1``::
 
-        loss_ult = L_obs[last] + sum_k cr.evaluate(k) * premium_proj[k]
+        loss_proj = L_obs[last] + sum_k cr.evaluate(k) * premium_proj[k]
 
     ``cr.evaluate(k)`` is the intensity at from-dev ``k``; the increment
     lands at dev ``k+1`` (the engine's ED from-column convention). Terms
     where ``evaluate`` is ``nan`` or ``premium_proj`` is null are skipped.
-    Returns ``(loss_ult_curve, any_term)`` -- ``any_term`` is ``True``
+    Returns ``(loss_proj_curve, any_term)`` -- ``any_term`` is ``True``
     when at least one tail term was added (used to detect an all-empty
     degenerate sum).
     """
@@ -177,14 +177,14 @@ def _curve_leg_loss_ult(
             L[i, j] = lo if lo is not None else np.nan
             Pp[i, j] = pp if pp is not None else np.nan
 
-    loss_ult = 0.0
+    loss_proj = 0.0
     any_term = False
     for i in range(len(cohorts)):
         finite = np.flatnonzero(np.isfinite(L[i]))
         if finite.size == 0:
             continue
         last = int(finite[-1]) + 1  # 1-indexed last observed dev
-        loss_ult += float(L[i, last - 1])
+        loss_proj += float(L[i, last - 1])
         ks = np.arange(last, n_devs)  # from-dev positions, 1-indexed
         if ks.size == 0:
             continue
@@ -193,8 +193,8 @@ def _curve_leg_loss_ult(
         term_mask = np.isfinite(ev) & np.isfinite(pr)
         if term_mask.any():
             any_term = True
-            loss_ult += float(np.sum(ev[term_mask] * pr[term_mask]))
-    return loss_ult, any_term
+            loss_proj += float(np.sum(ev[term_mask] * pr[term_mask]))
+    return loss_proj, any_term
 
 
 # Two-leg spread (relative to the level) at or below which the band counts
@@ -209,7 +209,7 @@ def _band_status(
     degenerate: bool,
     under_determined: bool,
     band_width: float | None,
-    ratio_ult_borrow: float | None,
+    ratio_proj_borrow: float | None,
 ) -> str:
     """One-glance honesty flag -- ``"narrow"`` / ``"wide"`` / ``"degenerate"``.
 
@@ -220,7 +220,7 @@ def _band_status(
     the legs disagree by more than ``_NARROW_BAND_REL`` of the level.
     ``"narrow"``: the legs agree on a data-sufficient fit. The curve's own
     divergence and alt-law swing are reported separately
-    (``curve_diverged`` / ``curve_alt_ratio_ult``) -- they qualify the
+    (``curve_diverged`` / ``curve_alt_ratio_proj``) -- they qualify the
     curve leg but do not override a genuine two-leg agreement.
     """
     if degenerate:
@@ -234,9 +234,9 @@ def _band_status(
 
     if (
         band_width is not None
-        and ratio_ult_borrow is not None
-        and ratio_ult_borrow != 0.0
-        and band_width / abs(ratio_ult_borrow) > _NARROW_BAND_REL
+        and ratio_proj_borrow is not None
+        and ratio_proj_borrow != 0.0
+        and band_width / abs(ratio_proj_borrow) > _NARROW_BAND_REL
     ):
         return "wide"
 
@@ -314,53 +314,53 @@ def _segment_band(
         borrow = _borrow_row(seg, gcols, keyvals, change_from)
         if borrow is None:
             continue
-        loss_ult_borrow = borrow["loss_ult"]
-        ratio_ult_borrow = borrow["ratio_ult"]
-        premium_ult = borrow["premium_ult"]
+        loss_proj_borrow = borrow["loss_proj"]
+        ratio_proj_borrow = borrow["ratio_proj"]
+        premium_proj = borrow["premium_proj"]
         n_cohorts = borrow["n_cohorts"]
 
         # Curve leg: own intensity -> Curve fit -> premium-weighted tail.
         g_k = _own_intensity(sub, n_devs)
         cr = curve.fit(g_k)
-        loss_ult_curve, any_term = _curve_leg_loss_ult(cr, sub, n_devs)
+        loss_proj_curve, any_term = _curve_leg_loss_proj(cr, sub, n_devs)
 
         degenerate = cr.slope is None or not any_term
         if degenerate:
-            ratio_ult_curve = None
-            loss_ult_curve_out = None
+            ratio_proj_curve = None
+            loss_proj_curve_out = None
             band_lo = band_hi = band_width = None
-            curve_alt_ratio_ult = None
+            curve_alt_ratio_proj = None
         else:
-            loss_ult_curve_out = loss_ult_curve
-            ratio_ult_curve = (
-                loss_ult_curve / premium_ult if premium_ult else None
+            loss_proj_curve_out = loss_proj_curve
+            ratio_proj_curve = (
+                loss_proj_curve / premium_proj if premium_proj else None
             )
-            if ratio_ult_curve is None:
+            if ratio_proj_curve is None:
                 band_lo = band_hi = band_width = None
             else:
-                band_lo = min(ratio_ult_borrow, ratio_ult_curve)
-                band_hi = max(ratio_ult_borrow, ratio_ult_curve)
+                band_lo = min(ratio_proj_borrow, ratio_proj_curve)
+                band_hi = max(ratio_proj_borrow, ratio_proj_curve)
                 band_width = band_hi - band_lo
-            curve_alt_ratio_ult = _alt_curve_ratio(
-                cr, g_k, sub, n_devs, premium_ult
+            curve_alt_ratio_proj = _alt_curve_ratio(
+                cr, g_k, sub, n_devs, premium_proj
             )
 
         # Mean leg: the midpoint of the two tail estimates -- a single
         # computable headline number (the band rides alongside on its own
         # columns). Falls back to the borrow leg when the curve is
         # degenerate, so the column is never null.
-        if not degenerate and ratio_ult_curve is not None:
-            loss_ult_mean = (loss_ult_borrow + loss_ult_curve_out) / 2.0
-            ratio_ult_mean = (ratio_ult_borrow + ratio_ult_curve) / 2.0
+        if not degenerate and ratio_proj_curve is not None:
+            loss_proj_mean = (loss_proj_borrow + loss_proj_curve_out) / 2.0
+            ratio_proj_mean = (ratio_proj_borrow + ratio_proj_curve) / 2.0
         else:
-            loss_ult_mean = loss_ult_borrow
-            ratio_ult_mean = ratio_ult_borrow
+            loss_proj_mean = loss_proj_borrow
+            ratio_proj_mean = ratio_proj_borrow
 
         status = _band_status(
             degenerate=degenerate,
             under_determined=bool(cr.under_determined),
             band_width=band_width,
-            ratio_ult_borrow=ratio_ult_borrow,
+            ratio_proj_borrow=ratio_proj_borrow,
         )
 
         row: dict[str, Any] = {c: v for c, v in zip(gcols, keyvals)}
@@ -368,13 +368,13 @@ def _segment_band(
             segment=borrow["segment"],
             change_from=change_from,
             n_cohorts=int(n_cohorts),
-            premium_ult=premium_ult,
-            loss_ult_borrow=loss_ult_borrow,
-            ratio_ult_borrow=ratio_ult_borrow,
-            loss_ult_curve=loss_ult_curve_out,
-            ratio_ult_curve=ratio_ult_curve,
-            loss_ult_mean=loss_ult_mean,
-            ratio_ult_mean=ratio_ult_mean,
+            premium_proj=premium_proj,
+            loss_proj_borrow=loss_proj_borrow,
+            ratio_proj_borrow=ratio_proj_borrow,
+            loss_proj_curve=loss_proj_curve_out,
+            ratio_proj_curve=ratio_proj_curve,
+            loss_proj_mean=loss_proj_mean,
+            ratio_proj_mean=ratio_proj_mean,
             band_lo=band_lo,
             band_hi=band_hi,
             band_width=band_width,
@@ -383,7 +383,7 @@ def _segment_band(
             curve_under_determined=bool(cr.under_determined),
             curve_reason=cr.reason,
             curve_diverged=bool(cr.diverged),
-            curve_alt_ratio_ult=curve_alt_ratio_ult,
+            curve_alt_ratio_proj=curve_alt_ratio_proj,
         )
         rows.append(row)
 
@@ -451,9 +451,9 @@ def _borrow_row(
         "segment":     r["segment"],
         "change_from": r["change_from"],
         "n_cohorts":   r["n_cohorts"],
-        "loss_ult":    r["loss_ult"],
-        "premium_ult": r["premium_ult"],
-        "ratio_ult":   r["ratio_ult"],
+        "loss_proj":    r["loss_proj"],
+        "premium_proj": r["premium_proj"],
+        "ratio_proj":   r["ratio_proj"],
     }
 
 
@@ -462,7 +462,7 @@ def _alt_curve_ratio(
     g_k: np.ndarray,
     sub: pl.DataFrame,
     n_devs: int,
-    premium_ult: float,
+    premium_proj: float,
 ) -> float | None:
     """Curve-leg ratio recomputed under the fit's alternate law.
 
@@ -474,15 +474,15 @@ def _alt_curve_ratio(
     swap on the primary intercept). Returns ``None`` when the alt fit is
     degenerate or no tail term is produced.
     """
-    if cr.alt_law is None or not premium_ult:
+    if cr.alt_law is None or not premium_proj:
         return None
     alt_cr = Curve(target=cr.target, law=cr.alt_law).fit(g_k)
     if alt_cr.slope is None:
         return None
-    loss_ult, any_term = _curve_leg_loss_ult(alt_cr, sub, n_devs)
+    loss_proj, any_term = _curve_leg_loss_proj(alt_cr, sub, n_devs)
     if not any_term:
         return None
-    return loss_ult / premium_ult
+    return loss_proj / premium_proj
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +515,7 @@ def _alt_curve_ratio(
 _AUTO_GRAIN_ORDER: tuple[str, ...] = ("M", "Q", "H", "Y")
 
 # Two-leg agreement threshold for the auto-grain SELECTION (signal (b)):
-# the band counts as converged when band_width / |ratio_ult_borrow| is at
+# the band counts as converged when band_width / |ratio_proj_borrow| is at
 # or below this. Seeded to the display narrowness threshold but kept a
 # distinct, separately-tunable constant so a future tightening of the
 # selection rule never silently moves the display verdict.
@@ -641,7 +641,7 @@ def _select_grain_row(
 
         # Degeneracy / data-sufficiency gate: a narrow band is not earned
         # without a fittable, over-determined curve leg here.
-        if row["ratio_ult_curve"] is None:
+        if row["ratio_proj_curve"] is None:
             continue
         if bool(row["curve_under_determined"]):
             continue
@@ -651,7 +651,7 @@ def _select_grain_row(
 
         # Signal (b): the two legs agree relative to the borrow level.
         bw = row["band_width"]
-        rub = row["ratio_ult_borrow"]
+        rub = row["ratio_proj_borrow"]
         agree = (
             bw is not None
             and rub not in (None, 0.0)
@@ -755,14 +755,14 @@ def _auto_row_payload(
     payload = {k: row[k] for k in _BAND_SCHEMA}
     if status == "insufficient":
         payload["band_status"] = "insufficient"
-        payload["loss_ult_curve"] = None
-        payload["ratio_ult_curve"] = None
+        payload["loss_proj_curve"] = None
+        payload["ratio_proj_curve"] = None
         payload["band_lo"] = None
         payload["band_hi"] = None
         payload["band_width"] = None
-        payload["curve_alt_ratio_ult"] = None
-        payload["loss_ult_mean"] = row["loss_ult_borrow"]
-        payload["ratio_ult_mean"] = row["ratio_ult_borrow"]
+        payload["curve_alt_ratio_proj"] = None
+        payload["loss_proj_mean"] = row["loss_proj_borrow"]
+        payload["ratio_proj_mean"] = row["ratio_proj_borrow"]
     payload["selected_grain"] = selected_grain
     return payload
 

@@ -193,9 +193,9 @@ def test_ratio_summary_columns():
     assert set(summary.columns) >= {
         "cohort",
         "latest",
-        "loss_ult",
-        "premium_ult",
-        "ratio_ult",
+        "loss_proj",
+        "premium_proj",
+        "ratio_proj",
         "ratio_se",
         "ratio_cv",
         "ratio_ci_lo",
@@ -210,11 +210,11 @@ def test_ratio_summary_fully_observed_cohort():
     )
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    # Cohort 2024-01 has all 5 devs observed; loss_ult = 500
-    assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
-    # premium_ult = 500 (rp=100 per dev for 5 devs)
-    assert summary["premium_ult"].to_list()[0] == pytest.approx(500.0)
-    assert summary["ratio_ult"].to_list()[0] == pytest.approx(1.0)
+    # Cohort 2024-01 has all 5 devs observed; loss_proj = 500
+    assert summary["loss_proj"].to_list()[0] == pytest.approx(500.0)
+    # premium_proj = 500 (rp=100 per dev for 5 devs)
+    assert summary["premium_proj"].to_list()[0] == pytest.approx(500.0)
+    assert summary["ratio_proj"].to_list()[0] == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

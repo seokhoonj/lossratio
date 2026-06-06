@@ -109,8 +109,12 @@ def test_segment_bridged_borrowed_ratio_cl_full_matches_r():
 
 
 def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
-    """Per-cohort summary (ratio_ult / loss_ult / premium_ult) comparison."""
-    r = _load("segment_bridged_borrowed_ratio_cl_summary").sort(["cohort"])
+    """Per-cohort summary (ratio_proj / loss_proj / premium_proj) comparison."""
+    # R names the summary endpoint columns *_ult; Python uses *_proj.
+    r = _load("segment_bridged_borrowed_ratio_cl_summary").rename(
+        {"loss_ult": "loss_proj", "premium_ult": "premium_proj",
+         "ratio_ult": "ratio_proj"}
+    ).sort(["cohort"])
     tri = _build_triangle()
     reg = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
@@ -125,7 +129,7 @@ def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
     py = py.sort(["cohort"])
 
     common = [
-        c for c in ("loss_ult", "premium_ult", "ratio_ult")
+        c for c in ("loss_proj", "premium_proj", "ratio_proj")
         if c in r.columns and c in py.columns
     ]
     assert common, f"no overlapping summary cols; r={r.columns}, py={py.columns}"
@@ -171,7 +175,10 @@ def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
 )
 def test_segment_bridged_borrowed_ratio_ed_summary_matches_r():
     """ED method summary comparison."""
-    r = _load("segment_bridged_borrowed_ratio_ed_summary").sort(["cohort"])
+    r = _load("segment_bridged_borrowed_ratio_ed_summary").rename(
+        {"loss_ult": "loss_proj", "premium_ult": "premium_proj",
+         "ratio_ult": "ratio_proj"}
+    ).sort(["cohort"])
     tri = _build_triangle()
     reg = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
@@ -186,7 +193,7 @@ def test_segment_bridged_borrowed_ratio_ed_summary_matches_r():
     py = py.sort(["cohort"])
 
     common = [
-        c for c in ("loss_ult", "premium_ult", "ratio_ult")
+        c for c in ("loss_proj", "premium_proj", "ratio_proj")
         if c in r.columns and c in py.columns
     ]
     assert common, f"no overlapping summary cols; r={r.columns}, py={py.columns}"

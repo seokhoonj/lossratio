@@ -1047,7 +1047,7 @@ class LossFit:
         # ----- Join the premium tail (for the ratio's tailed ultimate) -----
         # The embedded PremiumFit was fit with the same `tail`, so it carries
         # `premium_tail` companion columns; pull them onto the loss frame so
-        # RatioFit can compose ratio_tail = loss_ult / premium_ult.
+        # RatioFit can compose ratio_tail = loss_proj / premium_proj.
         if tail_active:
             ptail_cols = [c for c in pf_df.columns if c.endswith("_tail")]
             if ptail_cols:
@@ -1305,11 +1305,11 @@ class LossFit:
     def summary(self) -> pl.DataFrame:
         """Per-cohort latest, ultimate loss, reserve, SE, and CV.
 
-        Columns: ``[groups?, cohort, latest, loss_ult, reserve,
+        Columns: ``[groups?, cohort, latest, loss_proj, reserve,
         loss_proc_se, loss_param_se, loss_total_se, loss_total_cv]`` --
         all from the last projected-dev row per cohort. ``latest`` is the
-        last observed cumulative loss, ``loss_ult`` the ultimate
-        projected loss, ``reserve = loss_ult - latest``.
+        last observed cumulative loss, ``loss_proj`` the ultimate
+        projected loss, ``reserve = loss_proj - latest``.
         """
         df = self._df
         keys: list[str] = []
@@ -1333,7 +1333,7 @@ class LossFit:
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
-                pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
+                pl.col("loss_proj").drop_nulls().last().alias("loss_proj"),
                 pl.col("loss_proc_se").drop_nulls().last().alias("loss_proc_se"),
                 pl.col("loss_param_se").drop_nulls().last().alias("loss_param_se"),
                 pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
@@ -1344,13 +1344,13 @@ class LossFit:
         out = (
             observed.join(ultimate, on=keys, how="inner")
             .with_columns(
-                (pl.col("loss_ult") - pl.col("latest")).alias("reserve")
+                (pl.col("loss_proj") - pl.col("latest")).alias("reserve")
             )
             .select(
                 keys
                 + [
                     "latest",
-                    "loss_ult",
+                    "loss_proj",
                     "reserve",
                     "loss_proc_se",
                     "loss_param_se",

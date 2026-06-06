@@ -564,12 +564,12 @@ def test_accepted_drives_the_fit():
     f0 = lr.Ratio().fit(tri)
     f1 = lr.Ratio(loss_regime=acc).fit(tri)
 
-    def sur_ult(f):
+    def sur_proj(f):
         s = f.summary()
         s = s if isinstance(s, pl.DataFrame) else pl.from_pandas(s)
-        return s.filter(pl.col("coverage") == "SUR")["ratio_ult"].drop_nulls().mean()
+        return s.filter(pl.col("coverage") == "SUR")["ratio_proj"].drop_nulls().mean()
 
-    assert abs(sur_ult(f0) - sur_ult(f1)) > 1e-3
+    assert abs(sur_proj(f0) - sur_proj(f1)) > 1e-3
 
 
 def test_borrow_screen_level_vs_shape():
@@ -650,15 +650,15 @@ def test_ratio_segment_summary():
     ss = fit.segment_summary()
     ss = ss if isinstance(ss, pl.DataFrame) else pl.from_pandas(ss)
     assert {"coverage", "segment", "change_from", "n_cohorts",
-            "loss_ult", "premium_ult", "ratio_ult"} <= set(ss.columns)
+            "loss_proj", "premium_proj", "ratio_proj"} <= set(ss.columns)
     sur = ss.filter(pl.col("coverage") == "SUR")
     assert "total" in sur["segment"].to_list()
     # the total row's ult LR is the premium-weighted blend of the segments.
     seg = sur.filter(pl.col("segment") != "total")
     tot = sur.filter(pl.col("segment") == "total")
     if seg.height >= 1 and tot.height == 1:
-        blend = seg["loss_ult"].sum() / seg["premium_ult"].sum()
-        assert abs(blend - tot["ratio_ult"][0]) < 1e-9
+        blend = seg["loss_proj"].sum() / seg["premium_proj"].sum()
+        assert abs(blend - tot["ratio_proj"][0]) < 1e-9
         # segment cohort counts sum to the total.
         assert seg["n_cohorts"].sum() == tot["n_cohorts"][0]
     # no-regime fit -> a single "total" row per group.

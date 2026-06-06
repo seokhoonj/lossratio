@@ -77,8 +77,8 @@ def _compute_dispersion(
 def _extract_portfolio_ratio(bt_fit: Any) -> float:
     """Portfolio-level projected Ratio from a BacktestFit.
 
-    Computes ``sum(loss_ult) / sum(premium_ult)`` where ``loss_ult`` /
-    ``premium_ult`` are the *latest projected* per-cohort cumulative
+    Computes ``sum(loss_proj) / sum(premium_proj)`` where ``loss_proj`` /
+    ``premium_proj`` are the *latest projected* per-cohort cumulative
     values (last non-null ``loss_proj`` / ``premium_proj`` sorted by
     dev). Using last-non-null is robust when the masked refit's
     projection halts before ``dev_max`` because late ATA factors are
@@ -107,15 +107,15 @@ def _extract_portfolio_ratio(bt_fit: Any) -> float:
         .sort(keys + ["dev"])
         .group_by(keys, maintain_order=True)
         .agg(
-            pl.col("loss_proj").last().alias("loss_ult"),
-            pl.col("premium_proj").last().alias("premium_ult"),
+            pl.col("loss_proj").last().alias("loss_proj"),
+            pl.col("premium_proj").last().alias("premium_proj"),
         )
     )
     if ult.height == 0:
         return float("nan")
 
-    total_loss = ult["loss_ult"].sum()
-    total_premium = ult["premium_ult"].sum()
+    total_loss = ult["loss_proj"].sum()
+    total_premium = ult["premium_proj"].sum()
     if total_loss is None or not np.isfinite(total_loss):
         return float("nan")
     if total_premium is None or not np.isfinite(total_premium) or total_premium <= 0:

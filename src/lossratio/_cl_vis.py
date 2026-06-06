@@ -4,7 +4,7 @@ Implements the ``kind="reserve"`` branch of :meth:`LossFit.plot`. The
 ``kind="projection"`` branch forwards to the shared projection-curve
 helper in ``_ratio_vis``.
 
-A horizontal bar chart of per-cohort reserve (``loss_ult - latest``)
+A horizontal bar chart of per-cohort reserve (``loss_proj - latest``)
 with optional normal-approximation error bars derived from
 ``loss_total_se``. Driven entirely by the fit's ``summary()`` table, so
 it works for any loss fit carrying ``reserve`` / ``loss_total_se``.

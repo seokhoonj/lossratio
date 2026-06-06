@@ -108,9 +108,9 @@ def test_default_output_unchanged():
         "segment",
         "change_from",
         "n_cohorts",
-        "loss_ult",
-        "premium_ult",
-        "ratio_ult",
+        "loss_proj",
+        "premium_proj",
+        "ratio_proj",
     ]
 
 
@@ -136,9 +136,9 @@ def test_borrow_leg_byte_equal():
     )
     assert joined.height == band.height == seg_recent.height
     for col, seg_col in [
-        ("loss_ult_borrow", "loss_ult"),
-        ("ratio_ult_borrow", "ratio_ult"),
-        ("premium_ult", "premium_ult_seg"),
+        ("loss_proj_borrow", "loss_proj"),
+        ("ratio_proj_borrow", "ratio_proj"),
+        ("premium_proj", "premium_proj_seg"),
     ]:
         a = joined[col].to_numpy()
         b = joined[seg_col].to_numpy()
@@ -165,15 +165,15 @@ def test_band_legs_present_when_mature():
     assert band.height == 1
     row = band.row(0, named=True)
     # Both legs land on the mature-ish SUR recent segment.
-    assert row["ratio_ult_borrow"] is not None
-    assert row["ratio_ult_curve"] is not None
+    assert row["ratio_proj_borrow"] is not None
+    assert row["ratio_proj_curve"] is not None
     assert row["curve_reason"] == "ok"
     assert row["curve_n_points"] >= 3
     # The two ultimate loss ratios are close (the two-leg spread is small).
-    assert abs(row["ratio_ult_curve"] - row["ratio_ult_borrow"]) < 0.05
+    assert abs(row["ratio_proj_curve"] - row["ratio_proj_borrow"]) < 0.05
     # band_lo / band_hi bracket both legs.
-    assert row["band_lo"] <= row["ratio_ult_borrow"] <= row["band_hi"]
-    assert row["band_lo"] <= row["ratio_ult_curve"] <= row["band_hi"]
+    assert row["band_lo"] <= row["ratio_proj_borrow"] <= row["band_hi"]
+    assert row["band_lo"] <= row["ratio_proj_curve"] <= row["band_hi"]
     assert row["band_width"] == pytest.approx(row["band_hi"] - row["band_lo"])
     # Data-sufficient agreement -> the honesty flag earns "narrow".
     assert not row["curve_under_determined"]
@@ -251,12 +251,12 @@ def test_band_status_narrow_on_well_determined_curve():
         # narrow is earned by data sufficiency, not a lucky small width.
         assert r["curve_under_determined"] is False
         assert r["curve_diverged"] is False
-        assert r["ratio_ult_curve"] is not None
+        assert r["ratio_proj_curve"] is not None
         assert r["band_width"] is not None
         # The alt-law swing (if present) is within the two-leg spread.
-        if r["curve_alt_ratio_ult"] is not None:
+        if r["curve_alt_ratio_proj"] is not None:
             assert (
-                abs(r["curve_alt_ratio_ult"] - r["ratio_ult_curve"])
+                abs(r["curve_alt_ratio_proj"] - r["ratio_proj_curve"])
                 <= r["band_width"]
             )
 
@@ -328,9 +328,9 @@ def test_band_status_wide_on_divergent_determined_legs():
     assert wide, "expected a wide band from determined but disagreeing legs"
     for r in wide:
         assert r["curve_n_points"] >= 3
-        assert r["ratio_ult_curve"] is not None
+        assert r["ratio_proj_curve"] is not None
         # The spread alone clears the narrow threshold (10% of the level).
-        assert r["band_width"] / abs(r["ratio_ult_borrow"]) > 0.10
+        assert r["band_width"] / abs(r["ratio_proj_borrow"]) > 0.10
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ def test_band_wide_when_under_determined():
         curve=lr.Curve(target="intensity", min_points=20)
     )
     for r in band_strict.iter_rows(named=True):
-        if r["ratio_ult_curve"] is not None:
+        if r["ratio_proj_curve"] is not None:
             assert r["curve_under_determined"] is True
             assert r["band_status"] == "wide"
             # The point is still emitted alongside the flag.
@@ -373,7 +373,7 @@ def test_under_determined_flagged():
     assert row["curve_under_determined"] is True
     assert row["band_status"] == "wide"
     # The curve point is NOT silently dropped.
-    assert row["ratio_ult_curve"] is not None
+    assert row["ratio_proj_curve"] is not None
     assert row["curve_n_points"] >= 2
 
 
@@ -416,8 +416,8 @@ def test_degenerate_honesty():
         pytest.skip("synthetic produced no recent segment row")
     row = band.row(0, named=True)
     assert row["band_status"] == "degenerate"
-    assert row["ratio_ult_curve"] is None
-    assert row["loss_ult_curve"] is None
+    assert row["ratio_proj_curve"] is None
+    assert row["loss_proj_curve"] is None
     assert row["band_lo"] is None
     assert row["band_hi"] is None
     assert row["band_width"] is None
@@ -427,30 +427,30 @@ def test_degenerate_honesty():
         "no_decaying_region",
     )
     # Borrow leg still present (NaN must not masquerade as a number).
-    assert row["ratio_ult_borrow"] is not None
+    assert row["ratio_proj_borrow"] is not None
     # The mean leg falls back to the borrow leg (never null), so the single
     # computable headline number survives a degenerate curve.
-    assert row["ratio_ult_mean"] == row["ratio_ult_borrow"]
-    assert row["loss_ult_mean"] == row["loss_ult_borrow"]
+    assert row["ratio_proj_mean"] == row["ratio_proj_borrow"]
+    assert row["loss_proj_mean"] == row["loss_proj_borrow"]
 
 
-def test_ratio_ult_mean_is_midpoint():
-    """``ratio_ult_mean`` / ``loss_ult_mean`` are the midpoint of the borrow
+def test_ratio_proj_mean_is_midpoint():
+    """``ratio_proj_mean`` / ``loss_proj_mean`` are the midpoint of the borrow
     and curve legs -- a single computable headline number (the band rides
     alongside on its own columns).
     """
     fit = _regime_fit()
     band = fit.segment_band().filter(pl.col("coverage") == "SUR")
     row = band.row(0, named=True)
-    assert row["ratio_ult_curve"] is not None  # SUR curve is well-defined
-    assert row["ratio_ult_mean"] == pytest.approx(
-        (row["ratio_ult_borrow"] + row["ratio_ult_curve"]) / 2.0
+    assert row["ratio_proj_curve"] is not None  # SUR curve is well-defined
+    assert row["ratio_proj_mean"] == pytest.approx(
+        (row["ratio_proj_borrow"] + row["ratio_proj_curve"]) / 2.0
     )
-    assert row["loss_ult_mean"] == pytest.approx(
-        (row["loss_ult_borrow"] + row["loss_ult_curve"]) / 2.0
+    assert row["loss_proj_mean"] == pytest.approx(
+        (row["loss_proj_borrow"] + row["loss_proj_curve"]) / 2.0
     )
     # The mean lies inside the band.
-    assert row["band_lo"] <= row["ratio_ult_mean"] <= row["band_hi"]
+    assert row["band_lo"] <= row["ratio_proj_mean"] <= row["band_hi"]
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +464,7 @@ def test_no_regime_graceful():
     band = fit.segment_band()
     assert band.height == 0
     # Correct schema even when empty.
-    assert "ratio_ult_borrow" in band.columns
+    assert "ratio_proj_borrow" in band.columns
     assert "band_status" in band.columns
     assert "coverage" in band.columns
 
@@ -491,8 +491,8 @@ def test_determinism():
     # A min_points bump changes only flag columns, never the borrow leg.
     b3 = fit.segment_band(curve=lr.Curve(target="intensity", min_points=99))
     assert_frame_equal(
-        b1.select(["coverage", "ratio_ult_borrow", "loss_ult_borrow"]),
-        b3.select(["coverage", "ratio_ult_borrow", "loss_ult_borrow"]),
+        b1.select(["coverage", "ratio_proj_borrow", "loss_proj_borrow"]),
+        b3.select(["coverage", "ratio_proj_borrow", "loss_proj_borrow"]),
     )
 
 
@@ -592,13 +592,13 @@ def test_auto_grain_off_byte_identical():
         "segment",
         "change_from",
         "n_cohorts",
-        "premium_ult",
-        "loss_ult_borrow",
-        "ratio_ult_borrow",
-        "loss_ult_curve",
-        "ratio_ult_curve",
-        "loss_ult_mean",
-        "ratio_ult_mean",
+        "premium_proj",
+        "loss_proj_borrow",
+        "ratio_proj_borrow",
+        "loss_proj_curve",
+        "ratio_proj_curve",
+        "loss_proj_mean",
+        "ratio_proj_mean",
         "band_lo",
         "band_hi",
         "band_width",
@@ -607,7 +607,7 @@ def test_auto_grain_off_byte_identical():
         "curve_under_determined",
         "curve_reason",
         "curve_diverged",
-        "curve_alt_ratio_ult",
+        "curve_alt_ratio_proj",
     ]
     assert "selected_grain" not in default.columns
 
@@ -644,8 +644,8 @@ def test_auto_grain_selects_coarse_when_fine_diverges():
     tri_g = _coarsen_triangle(fit._triangle, row["selected_grain"])
     direct = fit._estimator.fit(tri_g).segment_band()
     direct = direct.filter(pl.col("coverage") == "SUR").row(0, named=True)
-    assert row["ratio_ult_borrow"] == pytest.approx(direct["ratio_ult_borrow"])
-    assert row["ratio_ult_curve"] == pytest.approx(direct["ratio_ult_curve"])
+    assert row["ratio_proj_borrow"] == pytest.approx(direct["ratio_proj_borrow"])
+    assert row["ratio_proj_curve"] == pytest.approx(direct["ratio_proj_curve"])
 
 
 def test_auto_grain_observed_lr_grain_invariant():
@@ -698,15 +698,15 @@ def test_auto_grain_insufficient_fallback():
     assert row["band_status"] == "insufficient"
     assert row["selected_grain"] is None
     # Curve / band columns are nulled -- a non-converged tail is never a point.
-    assert row["loss_ult_curve"] is None
-    assert row["ratio_ult_curve"] is None
+    assert row["loss_proj_curve"] is None
+    assert row["ratio_proj_curve"] is None
     assert row["band_lo"] is None
     assert row["band_hi"] is None
     assert row["band_width"] is None
     # Headline falls back to the robust borrow leg (never null).
-    assert row["ratio_ult_borrow"] is not None
-    assert row["ratio_ult_mean"] == row["ratio_ult_borrow"]
-    assert row["loss_ult_mean"] == row["loss_ult_borrow"]
+    assert row["ratio_proj_borrow"] is not None
+    assert row["ratio_proj_mean"] == row["ratio_proj_borrow"]
+    assert row["loss_proj_mean"] == row["loss_proj_borrow"]
 
 
 def test_auto_grain_insufficient_distinct_from_degenerate():

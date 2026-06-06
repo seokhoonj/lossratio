@@ -224,7 +224,7 @@ def test_summary_columns_and_size() -> None:
     summary = fit.summary()
     assert set(summary.columns) >= {
         "cohort",
-        "loss_ult",
+        "loss_proj",
         "loss_total_se",
         "loss_total_cv",
     }
@@ -235,7 +235,7 @@ def test_summary_fully_observed_cohort() -> None:
     fit = lr.ExposureDriven().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    assert summary["loss_ult"].to_list()[0] == pytest.approx(500.0)
+    assert summary["loss_proj"].to_list()[0] == pytest.approx(500.0)
     se = summary["loss_total_se"].to_list()[0]
     assert se is None or se == pytest.approx(0.0)
 
@@ -291,8 +291,8 @@ def test_ed_and_cl_differ_on_same_triangle() -> None:
     cl_fit = lr.ChainLadder().fit(tri)
     ed_fit = lr.ExposureDriven().fit(tri)
 
-    cl_ult = cl_fit.summary().sort("cohort")["loss_ult"].to_list()
-    ed_ult = ed_fit.summary().sort("cohort")["loss_ult"].to_list()
+    cl_ult = cl_fit.summary().sort("cohort")["loss_proj"].to_list()
+    ed_ult = ed_fit.summary().sort("cohort")["loss_proj"].to_list()
     # Numerically distinct (the two models would only coincide in
     # degenerate cases -- here they diverge because cohorts have
     # different observed loss histories at the same exposure).
