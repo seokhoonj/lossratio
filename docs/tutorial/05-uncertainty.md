@@ -99,7 +99,7 @@ df = lr.load_experience().filter(pl.col("coverage") == "SUR")
 tri = lr.Triangle(df, groups="coverage")
 fit = lr.Ratio(method="cl").fit(tri)
 
-fit.summary().select(["cohort", "ratio_ult", "ratio_cv", "ratio_ci_lo", "ratio_ci_hi"])
+fit.summary().select(["cohort", "ratio_proj", "ratio_cv", "ratio_ci_lo", "ratio_ci_hi"])
 #> 성숙 코호트 (2023-03):  ult 1.52,  CV 0.5%,   CI [1.506, 1.539]
 #> 어린 코호트 (2025-12):  ult 0.90,  CV 17.9%,  CI [0.587, 1.223]
 ```

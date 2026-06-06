@@ -254,10 +254,10 @@ $$
 SUR 담보로 직접 봅니다.
 
 ```python
-link.ata().maturity().df.select(["ata_link", "f", "cv", "rse", "stable"]).head(4)
+link.ata().maturity().df.select(["dev_link", "f", "cv", "rse", "stable"]).head(4)
 #> shape: (4, 5)
 #> ┌──────────┬──────────┬──────────┬──────────┬────────┐
-#> │ ata_link ┆ f        ┆ cv       ┆ rse      ┆ stable │
+#> │ dev_link ┆ f        ┆ cv       ┆ rse      ┆ stable │
 #> │ ---      ┆ ---      ┆ ---      ┆ ---      ┆ ---    │
 #> │ str      ┆ f64      ┆ f64      ┆ f64      ┆ bool   │
 #> ╞══════════╪══════════╪══════════╪══════════╪════════╡
