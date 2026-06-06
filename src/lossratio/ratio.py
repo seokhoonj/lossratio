@@ -355,7 +355,7 @@ class RatioFit:
 
         full = loss_fit._df.clone()
 
-        # 2) join premium SE columns for delta method ----------------------
+        # 3) join premium SE columns for delta method ----------------------
         if estimator.se_method == "delta":
             pf_df = self.premium_fit._df
             keys = [*normalize_groups(self._groups), "cohort", "dev"]
@@ -364,7 +364,7 @@ class RatioFit:
             )
             full = full.join(pf_keep, on=keys, how="left")
 
-        # 3) Ratio point projection -------------------------------------------
+        # 4) Ratio point projection -------------------------------------------
         full = full.with_columns(
             pl.when(
                 pl.col("loss_proj").is_not_null()
@@ -384,7 +384,7 @@ class RatioFit:
             .alias("incr_ratio_proj"),
         )
 
-        # 3b) Ratio tail = the tailed ultimate loss / tailed ultimate premium.
+        # 4b) Ratio tail = the tailed ultimate loss / tailed ultimate premium.
         # Both sides are developed with the same tail (loss runoff and the
         # cumulative-premium runoff), so ratio_tail = loss_ult / premium_ult
         # on the last-dev row -- consistent rather than freezing premium.
@@ -400,12 +400,12 @@ class RatioFit:
                 .alias("ratio_tail")
             )
 
-        # 4) ratio_se / ratio_cv / analytical CI ------------------------------
+        # 5) ratio_se / ratio_cv / analytical CI ------------------------------
         full = _compose_ratio_stats(
             full, estimator.se_method, estimator.rho, estimator.conf_level
         )
 
-        # 5) optional loss-side bootstrap overlay (strictly opt-in) -----------
+        # 6) optional loss-side bootstrap overlay (strictly opt-in) -----------
         # With no bootstrap, `full` is the pure analytical ratio fit and is
         # left byte-unchanged. Otherwise the loss SE columns are overlaid
         # from a loss-side bootstrap and the ratio SE / CV / CI are
@@ -560,15 +560,17 @@ class RatioFit:
                 pl.col("loss_proj").drop_nulls().last().alias("loss_ult"),
                 pl.col("premium_proj").drop_nulls().last().alias("premium_ult"),
                 pl.col("ratio_proj").drop_nulls().last().alias("ratio_ult"),
-                pl.col("maturity_from").drop_nulls().last().alias("maturity_from"),
-                pl.col("loss_proc_se").drop_nulls().last().alias("loss_proc_se"),
-                pl.col("loss_param_se").drop_nulls().last().alias("loss_param_se"),
-                pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
-                pl.col("loss_total_cv").drop_nulls().last().alias("loss_total_cv"),
-                pl.col("ratio_se").drop_nulls().last().alias("ratio_se"),
-                pl.col("ratio_cv").drop_nulls().last().alias("ratio_cv"),
-                pl.col("ratio_ci_lo").drop_nulls().last().alias("ratio_ci_lo"),
-                pl.col("ratio_ci_hi").drop_nulls().last().alias("ratio_ci_hi"),
+                # The columns below keep their own name -- last() preserves
+                # it, so no .alias() is needed.
+                pl.col("maturity_from").drop_nulls().last(),
+                pl.col("loss_proc_se").drop_nulls().last(),
+                pl.col("loss_param_se").drop_nulls().last(),
+                pl.col("loss_total_se").drop_nulls().last(),
+                pl.col("loss_total_cv").drop_nulls().last(),
+                pl.col("ratio_se").drop_nulls().last(),
+                pl.col("ratio_cv").drop_nulls().last(),
+                pl.col("ratio_ci_lo").drop_nulls().last(),
+                pl.col("ratio_ci_hi").drop_nulls().last(),
             )
         )
 
