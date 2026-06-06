@@ -553,14 +553,22 @@ def _compute_triangle_usage(
     ``used`` to ``unused``. Maturity (``m_k``) does not shrink the
     mini-triangle (it's a separate dashed-vline reference only).
     """
-    if recent is not None and (recent < 1 or not isinstance(recent, (int, np.integer))):
+    if recent is not None and (
+        isinstance(recent, bool)
+        or not isinstance(recent, (int, np.integer))
+        or recent < 1
+    ):
         raise ValueError(f"`recent` must be a positive integer; got {recent!r}.")
     if holdout is not None and (
-        holdout < 1 or not isinstance(holdout, (int, np.integer))
+        isinstance(holdout, bool)
+        or not isinstance(holdout, (int, np.integer))
+        or holdout < 1
     ):
         raise ValueError(f"`holdout` must be a positive integer; got {holdout!r}.")
 
-    obs = triangle.df  # polars, standardized columns
+    obs = triangle._df  # internal polars frame (NOT .df, which mirrors to
+    # the input type -- this stays polars for the polars-only ops below, and
+    # the public Triangle.usage() mirrors the final result instead).
 
     grp = triangle.groups
     grp_cols: list[str] = normalize_groups(grp)
@@ -809,7 +817,10 @@ def _compute_triangle_usage(
     )
 
     keep = grp_cols + ["cohort", "dev", "status"]
-    return expanded.select(keep)
+    # Deterministic order: the per-group grid is built via a `group_by`
+    # fan-out (unordered in polars), so sort before returning -- the public
+    # `Triangle.usage()` hands this frame straight to the caller.
+    return expanded.select(keep).sort(grp_cols + ["cohort", "dev"])
 
 
 def _first_post_change_idx(

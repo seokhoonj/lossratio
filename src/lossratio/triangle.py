@@ -23,6 +23,7 @@ from ._period import (
 )
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from .calendar import Calendar
     from .link import Link
     from .maturity import Maturity
@@ -737,6 +738,64 @@ class Triangle:
             )
 
         return Triangle._from_masked(self, df)
+
+    def usage(
+        self,
+        *,
+        recent: int | None = None,
+        regime: Any = None,
+        holdout: int | None = None,
+        maturity: Any = None,
+    ) -> "FrameLike":
+        """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
+
+        Returns one row per ``group x cohort x dev`` cell with a ``status``
+        of ``"used"`` / ``"unused"`` / ``"holdout"`` / ``"future"`` under
+        the given filters -- so a caller can render the usage view itself
+        instead of the bundled matplotlib plot.
+        :meth:`plot_triangle` with ``kind="usage"`` is exactly the chart over
+        this frame, with the same input resolution; this is its data source
+        of truth.
+
+        Parameters
+        ----------
+        recent
+            Number of trailing calendar diagonals kept as ``"used"`` (the
+            recent calendar-diagonal window); cells outside drop to
+            ``"unused"``. ``None`` applies no recent filter.
+        regime
+            ``None``, a :class:`Regime`, or a callable
+            ``triangle -> Regime``. A segment treatment carves the bridged
+            development band per affected group; cells outside it show as
+            ``"unused"``.
+        holdout
+            Number of trailing calendar diagonals flagged ``"holdout"`` (the
+            :class:`Backtest` hold-out pattern).
+        maturity
+            ``None``, an integer ``k*``, a :class:`Maturity`, or ``"auto"``.
+            With ``regime`` this enables hybrid filtering (cohort cut for
+            ``dev < k*``, calendar cut for ``dev >= k*``); standalone it does
+            not shrink the grid (a reference boundary only).
+
+        Returns
+        -------
+        DataFrame
+            Columns: the group key(s) when set, ``cohort``, ``dev``,
+            ``status``. Input mirroring is preserved (pandas in -> pandas
+            out).
+        """
+        from ._triangle_vis import (
+            _compute_triangle_usage,
+            _resolve_maturity_k,
+            _resolve_regime_for_usage,
+        )
+
+        regime_obj = _resolve_regime_for_usage(self, regime)
+        m_k = _resolve_maturity_k(maturity, triangle=self)
+        usage_df = _compute_triangle_usage(
+            self, recent=recent, regime=regime_obj, holdout=holdout, m_k=m_k
+        )
+        return mirror_output(usage_df, self._output_type)
 
     def plot_triangle(
         self,

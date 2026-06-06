@@ -293,3 +293,99 @@ def test_segment_bridged_pooled_render(tri_single):
     finally:
         _close(fig)
 
+
+
+# --- Public usage() data accessor -----------------------------------
+
+
+def test_usage_data_matches_plot_compute(tri_with_groups):
+    """``usage()`` returns the same grid the plot renders (one source)."""
+    from lossratio._triangle_vis import (
+        _resolve_maturity_k,
+        _resolve_regime_for_usage,
+    )
+
+    out = tri_with_groups.usage(holdout=6)
+    assert out.columns == ["coverage", "cohort", "dev", "status"]
+    assert set(out["status"].unique().to_list()) <= {
+        "used", "unused", "holdout", "future",
+    }
+    ro = _resolve_regime_for_usage(tri_with_groups, None)
+    mk = _resolve_maturity_k(None, triangle=tri_with_groups)
+    direct = _compute_triangle_usage(
+        tri_with_groups, recent=None, regime=ro, holdout=6, m_k=mk
+    )
+    from polars.testing import assert_frame_equal
+
+    assert_frame_equal(out, direct)
+
+
+def test_usage_holdout_marks_holdout_cells(tri_with_groups):
+    plain = tri_with_groups.usage()
+    assert "holdout" not in set(plain["status"].unique().to_list())
+    held = tri_with_groups.usage(holdout=6)
+    assert "holdout" in set(held["status"].unique().to_list())
+
+
+def test_usage_regime_marks_unused(tri_with_groups):
+    reg = tri_with_groups.detect_regime(window=12, treatment="segment_bridged")
+    if reg.changes.height == 0:
+        pytest.skip("no change points detected for this fixture")
+    out = tri_with_groups.usage(regime=reg)
+    assert "unused" in set(out["status"].unique().to_list())
+
+
+def test_usage_mirrors_pandas_input():
+    """pandas-in -> pandas-out, values identical to the polars path."""
+    pd = pytest.importorskip("pandas")
+    from polars.testing import assert_frame_equal
+
+    df = lr.make_experience(seed=1)
+    tri_pl = lr.Triangle(df, groups="coverage")
+    tri_pd = lr.Triangle(df.to_pandas(), groups="coverage")
+    out_pl = tri_pl.usage(holdout=6)
+    out_pd = tri_pd.usage(holdout=6)
+    assert isinstance(out_pd, pd.DataFrame)
+    assert_frame_equal(
+        out_pl,
+        pl.from_pandas(out_pd).with_columns(pl.col("cohort").cast(pl.Date)),
+    )
+
+
+def test_usage_plot_renders_for_pandas_input():
+    """Regression: the usage view must render for a pandas-backed Triangle.
+
+    The status compute reads the internal polars frame, not the
+    input-mirrored ``.df``, so a pandas-in Triangle no longer trips the
+    polars-only grid build.
+    """
+    pytest.importorskip("pandas")
+    df = lr.make_experience(seed=1).to_pandas()
+    tri = lr.Triangle(df, groups="coverage")
+    fig = tri.plot_triangle(kind="usage", holdout=6)
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_usage_deterministic_order_multi_column_groups():
+    """Multi-column groups: two calls return byte-identical (sorted) frames."""
+    from polars.testing import assert_frame_equal
+
+    df = lr.make_experience(seed=1).with_columns(
+        pl.when(pl.col("uy_m").dt.year() % 2 == 0)
+        .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
+    )
+    tri = lr.Triangle(df, groups=["coverage", "block"])
+    a = tri.usage(holdout=6)
+    b = tri.usage(holdout=6)
+    assert_frame_equal(a, b)
+    # sorted by group keys then cohort, dev.
+    assert a.equals(a.sort(["coverage", "block", "cohort", "dev"]))
+
+
+@pytest.mark.parametrize("bad", [True, 0, -1, 2.5, "x"])
+def test_usage_rejects_bad_recent(tri_with_groups, bad):
+    with pytest.raises(ValueError, match="recent"):
+        tri_with_groups.usage(recent=bad)
