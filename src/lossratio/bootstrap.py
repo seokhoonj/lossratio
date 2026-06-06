@@ -62,7 +62,7 @@ class _Anchor:
 
     Attributes
     ----------
-    ata_from, ata_to
+    dev_from, dev_to
         1-indexed source / destination development period of each link.
     f_hat
         Volume-weighted chain ladder factor ``sum(loss_to)/sum(loss_from)``.
@@ -77,8 +77,8 @@ class _Anchor:
         ``sum(loss_from)`` over the contributing cohorts.
     """
 
-    ata_from:  np.ndarray
-    ata_to:    np.ndarray
+    dev_from:  np.ndarray
+    dev_to:    np.ndarray
     f_hat:     np.ndarray
     sigma2:    np.ndarray
     f_var:     np.ndarray
@@ -87,7 +87,7 @@ class _Anchor:
 
 
 def _boot_fill_sigma2(s2: np.ndarray) -> np.ndarray:
-    """Mack tail-rule fill for ``sigma^2`` (LOCF, ordered by ``ata_from``).
+    """Mack tail-rule fill for ``sigma^2`` (LOCF, ordered by ``dev_from``).
 
     When a link's ``sigma^2`` is NaN (the last link has only one
     contributing cohort, ``n = 1``), carry forward the previous finite
@@ -124,8 +124,8 @@ def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
     n_cohorts, n_devs = loss_obs.shape
     n_links = max(n_devs - 1, 0)
 
-    ata_from  = np.arange(1, n_links + 1, dtype=np.int64)
-    ata_to    = np.arange(2, n_links + 2, dtype=np.int64)
+    dev_from  = np.arange(1, n_links + 1, dtype=np.int64)
+    dev_to    = np.arange(2, n_links + 2, dtype=np.int64)
     f_hat     = np.full(n_links, np.nan, dtype=np.float64)
     sigma2    = np.full(n_links, np.nan, dtype=np.float64)
     n_cohort  = np.zeros(n_links, dtype=np.int64)
@@ -162,8 +162,8 @@ def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
     f_var = _mack_factor_var(sigma2, sum_from)
 
     return _Anchor(
-        ata_from  = ata_from,
-        ata_to    = ata_to,
+        dev_from  = dev_from,
+        dev_to    = dev_to,
         f_hat     = f_hat,
         sigma2    = sigma2,
         f_var     = f_var,
@@ -513,7 +513,7 @@ class _CellResiduals:
     cohort, dev
         1-d arrays of equal length -- the ``(cohort, dev)`` cell key of
         each residual. ``dev`` is the destination dev of the perturbed
-        increment (for ED this equals the link ``ata_to``).
+        increment (for ED this equals the link ``dev_to``).
     residual
         The *adjusted* Pearson residual (post hat / DF correction).
         ``np.nan`` for cells excluded by the corner-drop rule.
@@ -545,7 +545,7 @@ class _LinkResiduals:
     ----------
     cohort
         Cohort identifier of each link row.
-    ata_from, ata_to
+    dev_from, dev_to
         1-indexed source / destination dev of each link.
     residual
         Mack standardized residual
@@ -554,8 +554,8 @@ class _LinkResiduals:
     """
 
     cohort:    np.ndarray
-    ata_from:  np.ndarray
-    ata_to:    np.ndarray
+    dev_from:  np.ndarray
+    dev_to:    np.ndarray
     residual:  np.ndarray
 
 
@@ -573,7 +573,7 @@ class _ResidualPool:
         Cohort identifier of each pooled residual.
     key
         For cell pools the destination ``dev``; for link pools the
-        ``ata_to`` -- the per-link axis the pool may be split on.
+        ``dev_to`` -- the per-link axis the pool may be split on.
     residual
         The pooled residual value (per-group de-meaned when
         ``demean=True``).
@@ -835,7 +835,7 @@ def _cell_residuals_cl(
         ``target`` column plus ``cohort`` / ``dev``.
     anchor
         Per-link Mack anchor from :func:`_boot_anchor_cl` (only
-        ``f_hat`` / ``ata_to`` are read).
+        ``f_hat`` / ``dev_to`` are read).
     target
         Cumulative metric column, ``"loss"`` or ``"premium"``.
     hat_adj
@@ -853,8 +853,8 @@ def _cell_residuals_cl(
     # f indexed by 0-indexed destination dev.
     f_by_to = np.full(n_dev, np.nan, dtype=np.float64)
     dev_pos = {d: j for j, d in enumerate(devs)}
-    for k in range(len(anchor.ata_to)):
-        j = dev_pos.get(int(anchor.ata_to[k]))
+    for k in range(len(anchor.dev_to)):
+        j = dev_pos.get(int(anchor.dev_to[k]))
         if j is not None:
             f_by_to[j] = anchor.f_hat[k]
 
@@ -929,7 +929,7 @@ def _cell_residuals_ed(
 ) -> _CellResiduals:
     """ED-paradigm Pearson cell residuals (single group).
 
-    For each link cell ``(cohort, ata_to)`` of a dual-variable Link
+    For each link cell ``(cohort, dev_to)`` of a dual-variable Link
     table:
 
         ``g_hat  = sum(loss_delta) / sum(premium_from)``   (per link)
@@ -945,7 +945,7 @@ def _cell_residuals_ed(
     (the ED design differs from the ODP GLM; the raw Pearson residual is
     used directly).
 
-    The output uses the shared cell schema: ``dev = ata_to`` (the
+    The output uses the shared cell schema: ``dev = dev_to`` (the
     increment's own destination dev) and ``mu_hat = mu_ed``.
 
     Parameters
@@ -971,11 +971,11 @@ def _cell_residuals_ed(
         )
 
     df = link_df.select(
-        ["cohort", "ata_to", "loss_delta", from_col]
+        ["cohort", "dev_to", "loss_delta", from_col]
     ).rename({from_col: "premium_from"})
 
     cohort       = df["cohort"].to_numpy()
-    ata_to       = df["ata_to"].to_numpy().astype(np.float64)
+    dev_to       = df["dev_to"].to_numpy().astype(np.float64)
     loss_delta   = df["loss_delta"].to_numpy().astype(np.float64)
     premium_from = df["premium_from"].to_numpy().astype(np.float64)
 
@@ -986,12 +986,12 @@ def _cell_residuals_ed(
         & (premium_from > 0.0)
     )
     g_hat = np.full(loss_delta.shape, np.nan, dtype=np.float64)
-    uniq_links = np.unique(ata_to[np.isfinite(ata_to)])
+    uniq_links = np.unique(dev_to[np.isfinite(dev_to)])
     for lk in uniq_links:
-        sel = g_ok & (ata_to == lk)
+        sel = g_ok & (dev_to == lk)
         s_from = premium_from[sel].sum()
         if s_from > 0.0:
-            g_hat[ata_to == lk] = loss_delta[sel].sum() / s_from
+            g_hat[dev_to == lk] = loss_delta[sel].sum() / s_from
 
     mu_ed = g_hat * premium_from
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -1001,7 +1001,7 @@ def _cell_residuals_ed(
 
     fin = np.isfinite(residual)
     n_obs   = int(fin.sum())
-    n_links = int(np.unique(ata_to[fin]).size) if n_obs else 0
+    n_links = int(np.unique(dev_to[fin]).size) if n_obs else 0
     phi_val = (
         float(np.nansum(residual[fin] ** 2) / (n_obs - n_links))
         if n_obs > n_links
@@ -1010,7 +1010,7 @@ def _cell_residuals_ed(
 
     return _CellResiduals(
         cohort   = cohort,
-        dev      = ata_to.astype(np.int64),
+        dev      = dev_to.astype(np.int64),
         residual = residual.astype(np.float64),
         mu_hat   = mu_ed.astype(np.float64),
         phi      = phi_val,
@@ -1027,7 +1027,7 @@ def _link_residuals_cl(
 
     Pinheiro et al. 2003. For each Link row, with the per-link Mack
     anchor ``f_hat_k`` /
-    ``sigma2_k`` looked up by ``ata_from`` / ``ata_to``:
+    ``sigma2_k`` looked up by ``dev_from`` / ``dev_to``:
 
         ``r_ik = (loss_to - f_hat_k loss_from)
                  / sqrt(sigma2_k loss_from)``
@@ -1038,8 +1038,8 @@ def _link_residuals_cl(
     Parameters
     ----------
     link_df
-        Single-group Link DataFrame -- carries ``cohort`` / ``ata_from``
-        / ``ata_to`` / ``loss_from`` / ``loss_to``.
+        Single-group Link DataFrame -- carries ``cohort`` / ``dev_from``
+        / ``dev_to`` / ``loss_from`` / ``loss_to``.
     anchor
         Per-link Mack anchor from :func:`_boot_anchor_cl`.
 
@@ -1049,22 +1049,22 @@ def _link_residuals_cl(
         Per-row standardized link residuals.
     """
     cohort    = link_df["cohort"].to_numpy()
-    ata_from  = link_df["ata_from"].to_numpy().astype(np.int64)
-    ata_to    = link_df["ata_to"].to_numpy().astype(np.int64)
+    dev_from  = link_df["dev_from"].to_numpy().astype(np.int64)
+    dev_to    = link_df["dev_to"].to_numpy().astype(np.int64)
     loss_from = link_df["loss_from"].to_numpy().astype(np.float64)
     loss_to   = link_df["loss_to"].to_numpy().astype(np.float64)
 
-    # Anchor lookup keyed by (ata_from, ata_to): encode the pair as a
+    # Anchor lookup keyed by (dev_from, dev_to): encode the pair as a
     # single integer key and map each link row onto the sorted anchor
     # keys via searchsorted (anchor links are unique per (from, to)).
-    anc_from = anchor.ata_from.astype(np.int64)
-    anc_to   = anchor.ata_to.astype(np.int64)
+    anc_from = anchor.dev_from.astype(np.int64)
+    anc_to   = anchor.dev_to.astype(np.int64)
     f_row  = np.full(cohort.shape, np.nan, dtype=np.float64)
     s2_row = np.full(cohort.shape, np.nan, dtype=np.float64)
-    if anc_from.size and ata_to.size:
-        scale   = int(max(anc_to.max(), ata_to.max())) + 1
+    if anc_from.size and dev_to.size:
+        scale   = int(max(anc_to.max(), dev_to.max())) + 1
         anc_key = anc_from * scale + anc_to
-        row_key = ata_from * scale + ata_to
+        row_key = dev_from * scale + dev_to
         order      = np.argsort(anc_key, kind="stable")
         sorted_key = anc_key[order]
         pos      = np.clip(np.searchsorted(sorted_key, row_key),
@@ -1085,8 +1085,8 @@ def _link_residuals_cl(
 
     return _LinkResiduals(
         cohort   = cohort,
-        ata_from = ata_from,
-        ata_to   = ata_to,
+        dev_from = dev_from,
+        dev_to   = dev_to,
         residual = residual.astype(np.float64),
     )
 
@@ -1224,10 +1224,10 @@ def _build_pool_link(
     1. **Drop** non-finite residuals. (Link residuals do not get the
        exact-zero drop -- only the cell path has corner zeros; the link
        path filters on finiteness only.)
-    2. **Assign ``pool_id``** per ``pooling`` -- keyed on ``ata_to``:
+    2. **Assign ``pool_id``** per ``pooling`` -- keyed on ``dev_to``:
        ``"pooled"`` (one pool), ``"separated"`` (per-link), or
        ``"tail_pooled"`` (per-link before a cut, single ``"POST"``
-       after). The cut is the smallest ``ata_to`` with count
+       after). The cut is the smallest ``dev_to`` with count
        ``< min_pool`` (``tail="auto"``) or the ``maturity`` change
        point (``tail="maturity"``).
 
@@ -1239,7 +1239,7 @@ def _build_pool_link(
     link
         Link residuals from :func:`_link_residuals_cl`.
     pooling, tail, min_pool, maturity
-        As for :func:`_build_pool_cell`, keyed on ``ata_to``.
+        As for :func:`_build_pool_cell`, keyed on ``dev_to``.
 
     Returns
     -------
@@ -1248,7 +1248,7 @@ def _build_pool_link(
     """
     keep = np.isfinite(link.residual)
     cohort = link.cohort[keep]
-    ata_to = link.ata_to[keep].astype(np.float64)
+    dev_to = link.dev_to[keep].astype(np.float64)
     resid  = link.residual[keep].astype(np.float64)
 
     cut = np.nan
@@ -1256,13 +1256,13 @@ def _build_pool_link(
         if tail == "maturity":
             cut = np.nan if maturity is None else float(maturity)
         else:
-            cut = _tail_cut_auto(ata_to, int(min_pool))
+            cut = _tail_cut_auto(dev_to, int(min_pool))
 
-    pool_id = _assign_pool_id(ata_to, pooling, cut=cut)
+    pool_id = _assign_pool_id(dev_to, pooling, cut=cut)
 
     return _ResidualPool(
         cohort   = cohort,
-        key      = ata_to.astype(np.int64),
+        key      = dev_to.astype(np.int64),
         residual = resid,
         pool_id  = pool_id,
     )
@@ -1942,18 +1942,18 @@ def _build_group_inputs(
     last_obs = _last_obs_idx(loss_obs)
 
     dev_pos = {d: j for j, d in enumerate(devs)}
-    n_links = len(anchor.ata_to)
+    n_links = len(anchor.dev_to)
 
     # link_to_idx[k] = 1-indexed dev column of the link's destination.
     link_to_idx = np.full(n_links, -1, dtype=np.int64)
     for k in range(n_links):
-        j = dev_pos.get(int(anchor.ata_to[k]))
+        j = dev_pos.get(int(anchor.dev_to[k]))
         if j is not None:
             link_to_idx[k] = j + 1
 
     # k_idx_by_j[j] = 1-indexed link landing at to-dev j (-1 if none).
     k_idx_by_j = np.full(n_dev, -1, dtype=np.int64)
-    to_to_k = {int(anchor.ata_to[k]): k for k in range(n_links)}
+    to_to_k = {int(anchor.dev_to[k]): k for k in range(n_links)}
     for j, d in enumerate(devs):
         k = to_to_k.get(int(d))
         if k is not None:
@@ -1979,8 +1979,8 @@ def _fitted_grid_cl(
     n_dev = loss_obs.shape[1]
     f_by_to = np.full(n_dev, np.nan, dtype=np.float64)
     dev_pos = {d: j for j, d in enumerate(devs)}
-    for k in range(len(anchor.ata_to)):
-        j = dev_pos.get(int(anchor.ata_to[k]))
+    for k in range(len(anchor.dev_to)):
+        j = dev_pos.get(int(anchor.dev_to[k]))
         if j is not None:
             f_by_to[j] = anchor.f_hat[k]
     fwd, bwd = _boot_steps_cl(f_by_to)
@@ -2056,8 +2056,8 @@ def _ed_intensity_anchor(
     ``g_k = sum(loss_delta) / sum(premium_from)`` over observed link
     rows; non-finite -> 0.
     """
-    sub = link_df.select(["ata_to", "loss_delta", "premium_from"])
-    ata_to     = sub["ata_to"].to_numpy().astype(np.float64)
+    sub = link_df.select(["dev_to", "loss_delta", "premium_from"])
+    dev_to     = sub["dev_to"].to_numpy().astype(np.float64)
     loss_delta = sub["loss_delta"].to_numpy().astype(np.float64)
     premium_from  = sub["premium_from"].to_numpy().astype(np.float64)
 
@@ -2065,16 +2065,16 @@ def _ed_intensity_anchor(
     ok = (
         np.isfinite(loss_delta) & np.isfinite(premium_from) & (premium_from > 0.0)
     )
-    for lk in np.unique(ata_to[np.isfinite(ata_to)]):
-        sel = ok & (ata_to == lk)
+    for lk in np.unique(dev_to[np.isfinite(dev_to)]):
+        sel = ok & (dev_to == lk)
         s_den = premium_from[sel].sum()
         if s_den > 0.0:
             g_by_to[int(lk)] = loss_delta[sel].sum() / s_den
 
-    n_links = len(anchor.ata_to)
+    n_links = len(anchor.dev_to)
     g_hat = np.zeros(n_links, dtype=np.float64)
     for k in range(n_links):
-        v = g_by_to.get(int(anchor.ata_to[k]))
+        v = g_by_to.get(int(anchor.dev_to[k]))
         if v is not None and np.isfinite(v):
             g_hat[k] = v
     return g_hat
@@ -2208,16 +2208,16 @@ def _boot_kernel_cl_link(
     """
     loss_obs = gi.loss_obs
     n_coh, n_dev = loss_obs.shape
-    n_links = len(anchor.ata_to)
+    n_links = len(anchor.dev_to)
 
     cum = np.full((n_coh, n_dev, n_replicates), np.nan, dtype=np.float64)
     cum[:, 0, :] = loss_obs[:, 0][:, None]
 
-    # Per-link residual sub-pools, keyed by ata_to.
+    # Per-link residual sub-pools, keyed by dev_to.
     pools: dict[int, np.ndarray] = {}
     if pool is not None and len(pool) > 0:
         for k in range(n_links):
-            sub = pool.residual[pool.key == int(anchor.ata_to[k])]
+            sub = pool.residual[pool.key == int(anchor.dev_to[k])]
             if sub.size:
                 pools[k] = sub
 
@@ -2951,7 +2951,7 @@ class Bootstrap:
         * an ``int`` (or per-group ``dict``) -- a literal ``mat_k``.
 
         Returns a ``{group_value: mat_k}`` map. ``mat_k`` is the
-        ``ata_to`` maturity point; the kernels convert it to the
+        ``dev_to`` maturity point; the kernels convert it to the
         1-indexed from-dev ``mat_k - 1`` where CL begins. ``group_value``
         is ``None`` for an ungrouped Triangle.
         """
@@ -3155,8 +3155,8 @@ class Bootstrap:
         n_dev = loss_obs.shape[1]
         g_by_to = np.full(n_dev, np.nan, dtype=np.float64)
         dev_pos = {d: j for j, d in enumerate(devs)}
-        for k in range(len(anchor.ata_to)):
-            j = dev_pos.get(int(anchor.ata_to[k]))
+        for k in range(len(anchor.dev_to)):
+            j = dev_pos.get(int(anchor.dev_to[k]))
             if j is not None:
                 g_by_to[j] = g_hat[k]
 
@@ -3180,14 +3180,14 @@ class Bootstrap:
     def _mat_k_vec(mat_k: int | None, n_coh: int) -> np.ndarray:
         """Per-cohort 1-indexed from-dev where CL begins (SA stage switch).
 
-        ``mat_k`` is the ``ata_to`` maturity point; the kernels switch
+        ``mat_k`` is the ``dev_to`` maturity point; the kernels switch
         to CL once the to-dev ``j >= mat_k - 1`` -- equivalently the
         from-dev ``>= mat_k - 1``. ``None`` -> all-ED
         (``iinfo(int64).max`` sentinel).
         """
         if mat_k is None or not np.isfinite(mat_k):
             return np.full(n_coh, _NO_MATURITY, dtype=np.int64)
-        # mat_k = ata_to (= change); from-dev where CL begins is mat_k - 1.
+        # mat_k = dev_to (= change); from-dev where CL begins is mat_k - 1.
         return np.full(n_coh, max(int(mat_k) - 1, 0), dtype=np.int64)
 
     @staticmethod
@@ -3264,10 +3264,10 @@ class Bootstrap:
     ) -> pl.DataFrame:
         """Assemble a per-link anchor DataFrame for the requested columns."""
         data: dict[str, Any] = {}
-        n_links = len(anchor.ata_from)
+        n_links = len(anchor.dev_from)
         fill_group_columns(data, groups, group_value, n_links)
-        data["ata_from"] = anchor.ata_from
-        data["ata_to"]   = anchor.ata_to
+        data["dev_from"] = anchor.dev_from
+        data["dev_to"]   = anchor.dev_to
         for c in cols:
             data[c] = getattr(anchor, c)
         return pl.DataFrame(data)

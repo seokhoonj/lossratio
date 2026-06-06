@@ -142,9 +142,9 @@ def test_ata_factors_match_maturity_factors():
     builds on top of ATA factor estimation)."""
     tri = _tri()
     ata = tri.link().ata().df.sort("dev")
-    # Maturity's per-link diagnostic keys on `ata_from` (the same
+    # Maturity's per-link diagnostic keys on `dev_from` (the same
     # 1-indexed value as ATA's `dev`).
-    maturity = tri.link().ata().maturity().df.sort("ata_from")
+    maturity = tri.link().ata().maturity().df.sort("dev_from")
 
     for col in ("f", "cv", "rse"):
         a = ata[col].to_list()

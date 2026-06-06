@@ -103,8 +103,8 @@ def test_bootstrap_anchor_matches_r():
     tri = _tri()
     bt = Bootstrap(type="analytical", method="cl", n_replicates=8, seed=1).fit(tri)
 
-    f_anchor = bt.f_anchor.sort(["ata_from"])
-    sigma2_anchor = bt.sigma2_anchor.sort(["ata_from"])
+    f_anchor = bt.f_anchor.sort(["dev_from"])
+    sigma2_anchor = bt.sigma2_anchor.sort(["dev_from"])
 
     assert f_anchor.height == r.height
     assert sigma2_anchor.height == r.height
@@ -751,19 +751,21 @@ def test_phase2_resid_pool_cl_link_matches_r():
     link_res = _link_residuals_cl(link_df, anchor)
 
     # _LinkResiduals carries the full triple; build the comparison frame
-    # directly (the pool's `key` is ata_to only).
+    # directly (the pool's `key` is dev_to only).
     fin = np.isfinite(link_res.residual)
     py = pl.DataFrame(
         {
             "cohort":      _cohort_date_series(link_res.cohort[fin]),
-            "ata_from":    link_res.ata_from[fin],
-            "ata_to":      link_res.ata_to[fin],
+            "dev_from":    link_res.dev_from[fin],
+            "dev_to":      link_res.dev_to[fin],
             "py_residual": link_res.residual[fin],
         }
     )
-    r = _load("boot_resid_cl_link")
+    # The R fixture keys the link by R's ata_from/ata_to; align to the
+    # Python dev_from/dev_to names before the join.
+    r = _load("boot_resid_cl_link").rename({"ata_from": "dev_from", "ata_to": "dev_to"})
     n, mrd = _max_rel_diff_on_join(
-        py, r, ["cohort", "ata_from", "ata_to"], "py_residual", "residual"
+        py, r, ["cohort", "dev_from", "dev_to"], "py_residual", "residual"
     )
     assert n == r.height == py.height
     assert mrd < 1e-7, f"cl-link residual pool max rel diff = {mrd:.2e}"

@@ -59,8 +59,8 @@ def _build_link_df(
     base_cols.extend(
         [
             pl.col("cohort"),
-            pl.col("dev").alias("ata_from"),
-            pl.col("dev").shift(-1).over(over_keys).alias("ata_to"),
+            pl.col("dev").alias("dev_from"),
+            pl.col("dev").shift(-1).over(over_keys).alias("dev_to"),
             pl.col(target).alias("loss_from"),
             pl.col(target).shift(-1).over(over_keys).alias("loss_to"),
         ]
@@ -75,13 +75,13 @@ def _build_link_df(
     if weight is not None:
         base_cols.append(pl.col(weight).alias("weight"))
 
-    out = df.select(base_cols).filter(pl.col("ata_to").is_not_null())
+    out = df.select(base_cols).filter(pl.col("dev_to").is_not_null())
 
     out = out.with_columns(
         [
             pl.format(
-                "{}-{}", pl.col("ata_from"), pl.col("ata_to")
-            ).alias("ata_link"),
+                "{}-{}", pl.col("dev_from"), pl.col("dev_to")
+            ).alias("dev_link"),
             (pl.col("loss_to") - pl.col("loss_from")).alias("loss_delta"),
             pl.when(pl.col("loss_from") > min_denom)
             .then(pl.col("loss_to") / pl.col("loss_from"))
@@ -117,9 +117,9 @@ def _build_link_df(
     col_order.extend(
         [
             "cohort",
-            "ata_from",
-            "ata_to",
-            "ata_link",
+            "dev_from",
+            "dev_to",
+            "dev_link",
             "loss_from",
             "loss_to",
             "loss_delta",
@@ -158,7 +158,7 @@ class Link:
         Long-format link table:
 
         - Always:
-          ``[groups?, cohort, ata_from, ata_to, ata_link,
+          ``[groups?, cohort, dev_from, dev_to, dev_link,
           loss_from, loss_to, loss_delta, ata]``.
         - When ``exposure`` is set:
           ``[premium_from, premium_to, premium_delta, intensity]``.

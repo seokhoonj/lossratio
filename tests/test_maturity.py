@@ -86,7 +86,7 @@ def test_maturity_diagnostic_columns():
     # Per-link diagnostic carries the full R ATASummary column set
     # plus the maturity-specific `stable` boolean.
     expected = {
-        "ata_from", "ata_to", "ata_link",
+        "dev_from", "dev_to", "dev_link",
         "f", "f_se", "sigma", "sigma2",
         "cv", "rse",
         "mean", "median", "wt",
@@ -114,7 +114,7 @@ def test_maturity_repr():
 def test_maturity_stable_data_finds_k_star_at_two():
     """When every link is perfectly stable (CV=0, RSE=0), mat_k=2.
 
-    mat_k is the target dev (ata_to) of the first stable link; the
+    mat_k is the target dev (dev_to) of the first stable link; the
     first link goes from dev 1 to dev 2, so target dev = 2.
     """
     tri = lr.Triangle(_stable_input())
@@ -158,7 +158,7 @@ def test_maturity_f_matches_cl_factors():
     mat = tri.link().ata().maturity()
     cl_fit = lr.ChainLadder().fit(tri)
 
-    mat_f = mat.to_polars().sort("ata_from")["f"].to_list()
+    mat_f = mat.to_polars().sort("dev_from")["f"].to_list()
     # The role-based LossFit dropped CLFit's `_fk_df`; the chain-ladder
     # `f_k` factors survive on the per-group internals (`f_sel`, ordered
     # by dev link). No-groups fit -> single internals entry keyed `None`.
@@ -179,7 +179,7 @@ def test_maturity_cv_first_link_hand_check():
     """
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity()
-    cv = mat.to_polars().sort("ata_from")["cv"].to_list()
+    cv = mat.to_polars().sort("dev_from")["cv"].to_list()
     # CV is positive (some spread)
     assert cv[0] is not None
     assert cv[0] > 0
@@ -190,7 +190,7 @@ def test_maturity_rse_link_with_one_observation_is_null():
     be null (no SE estimate for a single observation)."""
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity()
-    df = mat.to_polars().sort("ata_from")
+    df = mat.to_polars().sort("dev_from")
     rse_link_4 = df["rse"].to_list()[3]
     # With Mack tail rule, sigma^2_4 may be set > 0, so rse_link_4 may
     # actually be defined. But cv at link 4 (n_k=1) should be null.
@@ -261,7 +261,7 @@ def test_maturity_thresholds_stored():
 
 
 _R_SUMMARY_STAT_COLS = (
-    "ata_from", "change", "ata_link",
+    "dev_from", "change", "dev_link",
     "mean", "median", "wt", "cv",
     "f", "f_se", "rse", "sigma",
     "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio",
@@ -309,13 +309,13 @@ def test_summary_change_matches_mat_k():
     assert int(change) == mat.point
 
 
-def test_summary_ata_link_string_format():
-    """`ata_link` is the canonical '<from>-<to>' label."""
+def test_summary_dev_link_string_format():
+    """`dev_link` is the canonical '<from>-<to>' label."""
     tri = lr.Triangle(_stable_input())
     mat = tri.link().ata().maturity()
     row = mat.summary().row(0, named=True)
-    expected = f"{int(row['ata_from'])}-{int(row['change'])}"
-    assert row["ata_link"] == expected
+    expected = f"{int(row['dev_from'])}-{int(row['change'])}"
+    assert row["dev_link"] == expected
 
 
 def test_summary_count_columns_sum_to_n_cohorts():
@@ -355,7 +355,7 @@ def test_summary_sigma_is_sqrt_sigma2_on_diag_frame():
     """`sigma` in per-link diag is sqrt of `sigma2`."""
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity()
-    df = mat.to_polars().sort("ata_from")
+    df = mat.to_polars().sort("dev_from")
     n_compared = 0
     for sig, sig2 in zip(df["sigma"].to_list(), df["sigma2"].to_list()):
         if sig is None or sig2 is None:
@@ -383,7 +383,7 @@ def test_summary_wt_equals_f_for_alpha_one():
 def test_summary_no_detection_returns_nan_row():
     """When no stable run is found, R fills the stat columns with NA.
 
-    Python parity: NaN for numeric columns, None for `ata_link`.
+    Python parity: NaN for numeric columns, None for `dev_link`.
     `mat_k` reports `None`.
     """
     tri = lr.Triangle(_polars_input())
@@ -393,10 +393,10 @@ def test_summary_no_detection_returns_nan_row():
     )
     assert mat.point is None
     row = mat.summary().row(0, named=True)
-    assert row["ata_link"] is None or (
-        isinstance(row["ata_link"], float) and math.isnan(row["ata_link"])
+    assert row["dev_link"] is None or (
+        isinstance(row["dev_link"], float) and math.isnan(row["dev_link"])
     )
-    for col in ("ata_from", "change", "mean", "median",
+    for col in ("dev_from", "change", "mean", "median",
                 "wt", "cv", "f", "f_se", "rse", "sigma",
                 "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio"):
         v = row[col]
@@ -456,8 +456,8 @@ def test_summary_manual_maturity_at_has_r_parity_schema():
         assert col in smr.columns, f"missing column: {col}"
     row = smr.row(0, named=True)
     assert int(row["change"]) == 4
-    assert int(row["ata_from"]) == 3
-    assert row["ata_link"] == "3-4"
+    assert int(row["dev_from"]) == 3
+    assert row["dev_link"] == "3-4"
     # Stat columns are NaN.
     for col in ("mean", "median", "wt", "cv",
                 "f", "f_se", "rse", "sigma",

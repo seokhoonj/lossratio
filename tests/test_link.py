@@ -79,7 +79,7 @@ def test_link_df_has_ata_columns():
     link = _tri().link()
     cols = set(link.df.columns)
     assert {
-        "cohort", "ata_from", "ata_to", "ata_link",
+        "cohort", "dev_from", "dev_to", "dev_link",
         "loss_from", "loss_to", "loss_delta", "ata",
     } <= cols
 

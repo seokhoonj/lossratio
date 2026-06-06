@@ -1,13 +1,17 @@
 """R parity tests for the full ``Maturity.summary()`` 16-column schema.
 
 The R sibling's ``detect_maturity()`` returns a one-row-per-group
-``Maturity`` data.table with columns::
+``Maturity`` data.table. R names the link-pair columns ``ata_from`` /
+``ata_link``; Python names the same axis columns ``dev_from`` /
+``dev_link``, with the rest of the schema shared::
 
-    ata_from, change, ata_link, mean, median, wt, cv,
+    dev_from, change, dev_link, mean, median, wt, cv,
     f, f_se, rse, sigma,
     n_cohorts, n_valid, n_inf, n_nan, valid_ratio
 
-Python's :meth:`Maturity.summary` mirrors that schema. Both must agree
+Python's :meth:`Maturity.summary` mirrors that schema (the R fixture's
+``ata_*`` columns are aligned to the Python ``dev_*`` names on load).
+Both must agree
 to floating-point precision -- the underlying ATA factor estimation is
 deterministic.
 
@@ -31,12 +35,16 @@ ATOL = 1e-6
 RTOL = 1e-9
 
 _NUMERIC_COLS = (
-    "ata_from", "change",
+    "dev_from", "change",
     "mean", "median", "wt", "cv",
     "f", "f_se", "rse", "sigma",
     "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio",
 )
-_STRING_COLS = ("ata_link",)
+_STRING_COLS = ("dev_link",)
+
+# The R fixtures key the link by R's ata_from / ata_link; align them to the
+# Python dev_from / dev_link names on load so the schema compare lines up.
+_R_TO_PY = {"ata_from": "dev_from", "ata_link": "dev_link"}
 
 
 def _load(name: str) -> pl.DataFrame:
@@ -57,7 +65,7 @@ def test_maturity_full_schema_matches_r():
     only checks the scalar ``change`` (= maturity dev). This test
     exercises the per-link stats joined onto the matched row.
     """
-    r = _load("maturity_schema")
+    r = _load("maturity_schema").rename(_R_TO_PY)
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = tri.detect_maturity(target="loss").summary()
 
@@ -96,7 +104,7 @@ def test_maturity_change_equals_mat_k():
     Cross-check of the two access paths into the same value. Catches
     drift if one of the two ever stops mirroring R.
     """
-    r = _load("maturity_schema")
+    r = _load("maturity_schema").rename(_R_TO_PY)
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     mat = tri.detect_maturity(target="loss")
     summary_change = mat.summary()["change"][0]

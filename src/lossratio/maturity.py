@@ -117,7 +117,7 @@ def _detect_mat_k(stable_k: np.ndarray, min_run: int) -> int | None:
     """First link index k where stable_k[k : k + min_run] are all True.
 
     Returns the *target* dev value of that link (1-indexed; the
-    ``ata_to`` index). With this convention the development
+    ``dev_to`` index). With this convention the development
     region splits as ED = ``dev < mat_k`` and CL = ``dev >= mat_k``.
 
     Returns ``None`` if no such window exists.
@@ -139,7 +139,7 @@ def _detect_first_stable_index(
 
     Same scan as :func:`_detect_mat_k`, but returns the 0-indexed
     position into the per-link diagnostic frame (so callers can slice
-    the matched row), not the ``ata_to`` dev value.
+    the matched row), not the ``dev_to`` dev value.
     """
     n_links = len(stable_k)
     if min_run < 1 or n_links < min_run:
@@ -195,9 +195,9 @@ def _compute_maturity(
 
 # Column order for the Maturity output.
 _R_STAT_COLS: tuple[str, ...] = (
-    "ata_from",
+    "dev_from",
     "change",
-    "ata_link",
+    "dev_link",
     "mean",
     "median",
     "wt",
@@ -218,7 +218,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
     """Per-link descriptive stats: mean / median / wt / counts.
 
     Computed directly off the long-format ``Link`` DataFrame (one row
-    per ``(cohort, ata_from)`` pair, with cell-level ``ata`` and
+    per ``(cohort, dev_from)`` pair, with cell-level ``ata`` and
     ``loss_from`` / ``loss_to``):
 
     * ``mean``   -- mean of finite per-cohort ``ata`` factors
@@ -230,7 +230,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
     * ``n_nan``      -- count of NaN ``ata`` values
     * ``valid_ratio`` -- ``n_valid / n_cohorts``
 
-    Grouping is on ``ata_from`` (plus the upstream ``groups`` column if
+    Grouping is on ``dev_from`` (plus the upstream ``groups`` column if
     present). The caller (``Maturity._from_ata``) joins this onto the
     ATA frame's WLS columns ``f / f_se / sigma / rse / cv``.
     """
@@ -239,7 +239,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
 
     has_group_cols = [
         c for c in link_df.columns if c not in {
-            "cohort", "ata_from", "ata_to", "ata_link",
+            "cohort", "dev_from", "dev_to", "dev_link",
             "loss_from", "loss_to", "loss_delta", "ata",
             "premium_from", "premium_to", "premium_delta", "intensity",
             "weight",
@@ -250,7 +250,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
     ata_inf = pl.col("ata").is_infinite()
     ata_nan = pl.col("ata").is_nan()
 
-    by_cols = [*has_group_cols, "ata_from", "ata_to"]
+    by_cols = [*has_group_cols, "dev_from", "dev_to"]
     out = link_df.group_by(by_cols, maintain_order=True).agg(
         [
             pl.col("ata").filter(ata_finite).mean().alias("mean"),
@@ -281,7 +281,7 @@ def _link_descriptive_stats(link_df: pl.DataFrame) -> pl.DataFrame:
             pl.col("n_nan").cast(pl.Int64),
         ]
     )
-    return out.sort([*has_group_cols, "ata_from"])
+    return out.sort([*has_group_cols, "dev_from"])
 
 
 def _enriched_ata_diagnostic(
@@ -291,19 +291,19 @@ def _enriched_ata_diagnostic(
 ) -> pl.DataFrame:
     """Per-link diagnostic with the full ``ATASummary`` column set.
 
-    Joins three sources keyed on (``groups?``, ``ata_from``):
+    Joins three sources keyed on (``groups?``, ``dev_from``):
 
     * ``ata_df``   -- ATA's per-link Mack outputs (``f``, ``sigma2``,
       ``cv``, ``rse``, ``n_cohorts``); ``dev`` column there is the
-      ``ata_from`` index.
+      ``dev_from`` index.
     * ``link_df``  -- the underlying long-format Link table; supplies
       ``mean / median / wt / n_valid / n_inf / n_nan / valid_ratio``
       via :func:`_link_descriptive_stats`.
 
     Adds derived columns:
 
-    * ``ata_to``   = ``ata_from + 1``
-    * ``ata_link`` = ``"<from>-<to>"``
+    * ``dev_to``   = ``dev_from + 1``
+    * ``dev_link`` = ``"<from>-<to>"``
     * ``sigma``    = ``sqrt(sigma2)``
     * ``f_se``     = ``rse * f``  (since ``rse = f_se / f``)
 
@@ -314,14 +314,14 @@ def _enriched_ata_diagnostic(
     if ata_df.is_empty():
         return ata_df
 
-    # ATA frame: dev (= ata_from), f, sigma2, cv, rse, n_cohorts
-    a = ata_df.rename({"dev": "ata_from"})
+    # ATA frame: dev (= dev_from), f, sigma2, cv, rse, n_cohorts
+    a = ata_df.rename({"dev": "dev_from"})
 
     stats = _link_descriptive_stats(link_df)
     if stats.is_empty():
         return a
 
-    join_keys = [*normalize_groups(groups), "ata_from"]
+    join_keys = [*normalize_groups(groups), "dev_from"]
     # Drop overlapping cols from stats (n_cohorts is on both -- keep
     # stats' which is the row count over the link table).
     a = a.drop("n_cohorts")
@@ -330,10 +330,10 @@ def _enriched_ata_diagnostic(
 
     merged = merged.with_columns(
         [
-            pl.col("ata_to").cast(pl.Int64),
+            pl.col("dev_to").cast(pl.Int64),
             pl.format(
-                "{}-{}", pl.col("ata_from"), pl.col("ata_to")
-            ).alias("ata_link"),
+                "{}-{}", pl.col("dev_from"), pl.col("dev_to")
+            ).alias("dev_link"),
             pl.when(pl.col("sigma2").is_not_null())
             .then(pl.col("sigma2").sqrt())
             .otherwise(None)
@@ -354,13 +354,13 @@ def _na_row(groups: str | list[str] | None, group_value: Any | None) -> dict[str
     """All-NaN row for a group where no stable ATA run was found.
 
     The no-match branch: every numeric column is null/NaN and
-    ``ata_link`` is null. Float dtype keeps polars concat/dtype-stable
+    ``dev_link`` is null. Float dtype keeps polars concat/dtype-stable
     across groups.
     """
     row: dict[str, Any] = {}
     set_group_values(row, groups, group_value)
     for col in _R_STAT_COLS:
-        row[col] = None if col == "ata_link" else float("nan")
+        row[col] = None if col == "dev_link" else float("nan")
     return row
 
 
@@ -385,9 +385,9 @@ def _slice_first_stable_row(
     matched = diag_df.row(idx, named=True)
     row: dict[str, Any] = {}
     set_group_values(row, groups, group_value)
-    row["ata_from"] = float(matched["ata_from"])
-    row["change"] = float(matched["ata_to"])
-    row["ata_link"] = matched["ata_link"]
+    row["dev_from"] = float(matched["dev_from"])
+    row["change"] = float(matched["dev_to"])
+    row["dev_link"] = matched["dev_link"]
     for col in ("mean", "median", "wt", "cv", "f", "f_se", "rse", "sigma"):
         v = matched.get(col)
         row[col] = float(v) if v is not None else float("nan")
@@ -459,9 +459,9 @@ class Maturity:
         ``triangle.link().ata().maturity(...)``.
 
         The output ``summary()`` is one row per group with columns
-        ``[groups?, ata_from, change, ata_link, mean, median, wt, cv,
+        ``[groups?, dev_from, change, dev_link, mean, median, wt, cv,
         f, f_se, rse, sigma, n_cohorts, n_valid, n_inf, n_nan,
-        valid_ratio]``. ``change`` is the maturity point (``ata_to`` of
+        valid_ratio]``. ``change`` is the maturity point (``dev_to`` of
         the first stable link). When no stable run is found for a
         group, the stat columns are filled with ``NaN``.
         """
@@ -519,8 +519,8 @@ class Maturity:
         self._dev = ""
 
         n = len(change)
-        ata_from = [c - 1 for c in change]
-        ata_link = [f"{f}-{t}" for f, t in zip(ata_from, change)]
+        dev_from = [c - 1 for c in change]
+        dev_link = [f"{f}-{t}" for f, t in zip(dev_from, change)]
 
         cols: dict[str, list[Any]] = {}
         if groups:
@@ -529,9 +529,9 @@ class Maturity:
         else:
             group_col = None
 
-        cols["ata_from"] = [float(v) for v in ata_from]
+        cols["dev_from"] = [float(v) for v in dev_from]
         cols["change"] = [float(v) for v in change]
-        cols["ata_link"] = ata_link
+        cols["dev_link"] = dev_link
         for stat in (
             "mean", "median", "wt", "cv",
             "f", "f_se", "rse", "sigma",
@@ -563,7 +563,7 @@ class Maturity:
         Parameters
         ----------
         change
-            Maturity dev (the ``ata_to`` index). A single integer or, when
+            Maturity dev (the ``dev_to`` index). A single integer or, when
             the Triangle is grouped and groups carry different maturities,
             a sequence aligned 1:1 with ``groups``.
         groups
@@ -682,12 +682,12 @@ class Maturity:
 
         Schema::
 
-            [groups?, ata_from, change, ata_link,
+            [groups?, dev_from, change, dev_link,
              mean, median, wt, cv,
              f, f_se, rse, sigma,
              n_cohorts, n_valid, n_inf, n_nan, valid_ratio]
 
-        ``change`` is the maturity point (i.e. ``ata_to`` of the first
+        ``change`` is the maturity point (i.e. ``dev_to`` of the first
         stable link). Groups with no stable run have ``NaN`` in every
         stat column.
         """
