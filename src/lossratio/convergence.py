@@ -383,6 +383,136 @@ def detect_convergence(
     )
 
 
+def _portfolio_factor_tail_ratio(fit: Any) -> float:
+    """Portfolio ultimate loss ratio under the *factor* (CL/ED) tail.
+
+    The runoff leg of the convergence-anchored band: the loss / premium
+    development factors extrapolated to ultimate, composed into a ratio.
+    Refits the fit's estimator with ``tail=True`` (forcing the
+    convergence-gated factor tail) unless the fit already carries a tail,
+    then sums the tailed ultimate loss / premium per cohort. Falls back to
+    the untailed projection on any cohort whose tail was refused
+    (``*_tail`` null). Returns ``nan`` on non-positive premium.
+    """
+    import dataclasses
+
+    est = fit._estimator
+    tfit = fit if getattr(est, "tail", False) else dataclasses.replace(
+        est, tail=True
+    ).fit(fit._triangle)
+    full = tfit.to_polars()
+    full = full if isinstance(full, pl.DataFrame) else pl.from_pandas(full)
+
+    keys = [*normalize_groups(fit._groups), "cohort"]
+    has_tail = "loss_tail" in full.columns and "premium_tail" in full.columns
+    agg = [pl.col("loss_proj").last(), pl.col("premium_proj").last()]
+    if has_tail:
+        agg += [pl.col("loss_tail").last(), pl.col("premium_tail").last()]
+    last = (
+        full.filter(
+            pl.col("loss_proj").is_not_null()
+            & pl.col("premium_proj").is_not_null()
+        )
+        .sort(keys + ["dev"])
+        .group_by(keys, maintain_order=True)
+        .agg(*agg)
+    )
+    if last.height == 0:
+        return float("nan")
+    if has_tail:
+        # Match RatioFit's own tail composition (ratio.py): tail BOTH sides
+        # together or NEITHER -- never one tailed against the other frozen.
+        # loss_tail / premium_tail are emitted per group, and a cohort can
+        # carry one without the other; using each independently would mix a
+        # tailed numerator with an untailed denominator (inconsistent
+        # horizon). Where they do not co-occur, fall both back to the
+        # untailed projection (exactly what RatioFit leaves ratio_tail null).
+        both = (
+            pl.col("loss_tail").is_not_null()
+            & pl.col("premium_tail").is_not_null()
+            & (pl.col("premium_tail") != 0.0)
+        )
+        last = last.with_columns(
+            pl.when(both).then(pl.col("loss_tail"))
+            .otherwise(pl.col("loss_proj")).alias("_lu"),
+            pl.when(both).then(pl.col("premium_tail"))
+            .otherwise(pl.col("premium_proj")).alias("_pu"),
+        )
+    else:
+        last = last.with_columns(
+            pl.col("loss_proj").alias("_lu"),
+            pl.col("premium_proj").alias("_pu"),
+        )
+    total_loss = last["_lu"].sum()
+    total_premium = last["_pu"].sum()
+    if total_premium is None or not np.isfinite(total_premium) or total_premium <= 0:
+        return float("nan")
+    return float(total_loss) / float(total_premium)
+
+
+_CONV_TAIL_SCHEMA: dict[str, pl.DataType] = {
+    "status":            pl.Utf8,
+    "k_conv":            pl.Int64,
+    "ratio_latest":      pl.Float64,
+    "ratio_factor_tail": pl.Float64,
+    "ratio_headline":    pl.Float64,
+    "band_lo":           pl.Float64,
+    "band_hi":           pl.Float64,
+    "band_width":        pl.Float64,
+}
+
+
+def convergence_tail_frame(fit: Any, **conv_kwargs: Any) -> "FrameLike":
+    """Convergence(k**)-anchored tail for the portfolio loss ratio.
+
+    See :meth:`~lossratio.RatioFit.convergence_tail` for the contract.
+    """
+    conv = fit.convergence(**conv_kwargs)
+    df = conv.summary()
+    df = df if isinstance(df, pl.DataFrame) else pl.from_pandas(df)
+
+    # The converged / stable level is the latest finite candidate ratio --
+    # the one built from the smallest holdout (the most data used), NOT
+    # `ratio[k**]` which is often nan (early candidate devs need a holdout
+    # past `holdout_max` and are skipped).
+    fin = df.filter(pl.col("ratio").is_finite()).sort("dev")
+    ratio_latest = (
+        float(fin["ratio"].to_list()[-1]) if fin.height else float("nan")
+    )
+    converged = conv.point is not None
+
+    ratio_factor_tail = _portfolio_factor_tail_ratio(fit)
+
+    # ANCHOR: when the LR converged in-window the headline is the observed
+    # plateau (the stable level), NOT the factor-runoff extrapolation; the
+    # factor tail rides along as the other band leg so any disagreement is
+    # disclosed. When immature (no k**) the factor tail is the only forward
+    # estimate -- it becomes the headline but is flagged with a wide band.
+    headline = ratio_latest if converged else ratio_factor_tail
+    status = "converged" if converged else "immature"
+
+    legs = [
+        r for r in (ratio_latest, ratio_factor_tail)
+        if r is not None and np.isfinite(r)
+    ]
+    band_lo = min(legs) if legs else None
+    band_hi = max(legs) if legs else None
+    band_width = (band_hi - band_lo) if band_lo is not None else None
+
+    row = {
+        "status": status,
+        "k_conv": conv.point,
+        "ratio_latest": ratio_latest,
+        "ratio_factor_tail": ratio_factor_tail,
+        "ratio_headline": headline,
+        "band_lo": band_lo,
+        "band_hi": band_hi,
+        "band_width": band_width,
+    }
+    out = pl.DataFrame([row], schema=_CONV_TAIL_SCHEMA)
+    return mirror_output(out, fit._output_type)
+
+
 class Convergence:
     """Result of :func:`detect_convergence`.
 

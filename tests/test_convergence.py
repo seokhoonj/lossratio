@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import numpy as np
 import polars as pl
 import pytest
@@ -12,6 +14,42 @@ from lossratio.convergence import (
     _extract_portfolio_ratio,
     _ols_slope,
 )
+
+
+def _addm(d: dt.date, k: int) -> dt.date:
+    y = d.year + (d.month - 1 + k) // 12
+    m = (d.month - 1 + k) % 12 + 1
+    return dt.date(y, m, 1)
+
+
+def _converging_triangle() -> lr.Triangle:
+    """A triangle whose portfolio loss ratio plateaus at 0.70 in-window.
+
+    Cumulative LR rises to 0.70 by dev ~8 and stays flat, with many cohorts
+    and low noise, so the convergence test fires (k** found) -- the case the
+    ANCHOR branch of ``convergence_tail`` needs.
+    """
+    rng = np.random.default_rng(11)
+    base = dt.date(2020, 1, 1)
+    rows: list[dict] = []
+    NC, ND = 40, 30
+    for ci in range(NC):
+        # Ragged right triangle: oldest cohorts fully developed, youngest
+        # shallow (so the tail does real work on young cohorts).
+        n = max(min(ND, NC - ci), 1)
+        coh = _addm(base, ci)
+        for d in range(1, n + 1):
+            cl = 0.70 * (1 - np.exp(-d / 3.0))
+            pl_prev = 0.70 * (1 - np.exp(-(d - 1) / 3.0)) if d > 1 else 0.0
+            cp, pp = 1000.0 * d, 1000.0 * (d - 1)
+            rows.append(dict(
+                coverage="X", uy_m=coh, cy_m=_addm(coh, d - 1),
+                incr_loss=(cl * cp - pl_prev * pp) * (1 + rng.normal(0, 0.01)),
+                incr_premium=cp - pp,
+            ))
+    return lr.Triangle(
+        pl.DataFrame(rows), groups="coverage", cohort="uy_m", calendar="cy_m"
+    )
 
 
 def _sur_triangle() -> lr.Triangle:
@@ -174,3 +212,72 @@ def test_convergence_repr_contains_key_fields():
     r = repr(conv)
     for token in ("method=", "point=", "maturity_point=", "dev_max=", "candidates="):
         assert token in r
+
+
+# ----- convergence_tail (Direction B: convergence-anchored tail) -----
+
+_CONV_TAIL_COLS = [
+    "status", "k_conv", "ratio_latest", "ratio_factor_tail",
+    "ratio_headline", "band_lo", "band_hi", "band_width",
+]
+
+
+def test_convergence_tail_schema_one_row():
+    ct = lr.Ratio(method="sa").fit(_sur_triangle()).convergence_tail()
+    ct = ct if isinstance(ct, pl.DataFrame) else pl.from_pandas(ct)
+    assert ct.columns == _CONV_TAIL_COLS
+    assert ct.height == 1
+    assert ct["status"][0] in ("converged", "immature")
+
+
+def test_convergence_tail_converged_anchors_to_plateau():
+    """A converging book: status=converged, headline = the observed plateau.
+
+    The factor tail agrees with the convergence level (narrow band), and the
+    headline is the stable level (~0.70), NOT a runoff extrapolation.
+    """
+    ct = lr.Ratio(method="sa").fit(_converging_triangle()).convergence_tail()
+    ct = ct if isinstance(ct, pl.DataFrame) else pl.from_pandas(ct)
+    row = ct.row(0, named=True)
+    assert row["status"] == "converged"
+    assert row["k_conv"] is not None
+    # headline is anchored to the stable level (the plateau), ~0.70.
+    assert row["ratio_headline"] == pytest.approx(row["ratio_latest"])
+    assert row["ratio_headline"] == pytest.approx(0.70, abs=0.02)
+    # factor tail agrees with the plateau -> narrow band.
+    assert row["band_width"] < 0.05
+    assert row["band_lo"] <= row["ratio_headline"] <= row["band_hi"]
+
+
+def test_convergence_tail_immature_flags_and_uses_factor_tail():
+    """Bundled synthetic does not converge in-window -> immature + factor tail."""
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    ct = lr.Ratio(method="sa").fit(tri).convergence_tail()
+    ct = ct if isinstance(ct, pl.DataFrame) else pl.from_pandas(ct)
+    row = ct.row(0, named=True)
+    assert row["status"] == "immature"
+    assert row["k_conv"] is None
+    # headline is the factor-tail leg when there is no observed plateau.
+    assert row["ratio_headline"] == pytest.approx(row["ratio_factor_tail"])
+    # band brackets both legs.
+    assert row["band_lo"] <= row["band_hi"]
+    assert row["band_lo"] <= row["ratio_headline"] <= row["band_hi"]
+
+
+def test_convergence_tail_band_brackets_both_legs():
+    ct = lr.Ratio(method="sa").fit(_converging_triangle()).convergence_tail()
+    ct = ct if isinstance(ct, pl.DataFrame) else pl.from_pandas(ct)
+    row = ct.row(0, named=True)
+    lo = min(row["ratio_latest"], row["ratio_factor_tail"])
+    hi = max(row["ratio_latest"], row["ratio_factor_tail"])
+    assert row["band_lo"] == pytest.approx(lo)
+    assert row["band_hi"] == pytest.approx(hi)
+    assert row["band_width"] == pytest.approx(hi - lo)
+
+
+def test_convergence_tail_mirrors_pandas():
+    pd = pytest.importorskip("pandas")
+    tri = lr.Triangle(lr.load_experience().to_pandas(), groups="coverage")
+    ct = lr.Ratio(method="sa").fit(tri).convergence_tail()
+    assert isinstance(ct, pd.DataFrame)
+    assert list(ct.columns) == _CONV_TAIL_COLS

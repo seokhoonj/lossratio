@@ -526,6 +526,45 @@ class RatioFit:
         kwargs.setdefault("estimator", self._estimator)
         return detect_convergence(self._triangle, **kwargs)
 
+    def convergence_tail(self, **kwargs: Any) -> pl.DataFrame:
+        """Convergence(k**)-anchored tail for the portfolio loss ratio.
+
+        For long-term health the loss ratio rises then PLATEAUS -- the tail
+        question is "has it reached its mature level?" not "develop the
+        factors to ultimate". This gates the tail on :meth:`convergence`:
+
+        * **Converged** (a k** is found in-window): the headline
+          (``ratio_headline``) is ANCHORED to the observed converged level
+          -- the stable backtest loss ratio -- not the factor-runoff
+          extrapolation. The factor (CL/ED) tail rides along as
+          ``ratio_factor_tail`` so any disagreement (the factor tail
+          overshooting the observed plateau) is disclosed as the band.
+        * **Immature** (no k** -- data ends while the ratio is still
+          drifting): the factor tail is the only forward estimate, so it
+          becomes the headline and ``status`` is ``"immature"`` -- the
+          honest "this is assumption territory" signal. (The band is the
+          spread of the two legs, not a total-uncertainty interval: when
+          the factor tail is inert it can be narrow even while immature, so
+          read ``status``, not band width, as the trust signal.)
+
+        One portfolio-level row (k** is a book-level scalar). Extra keyword
+        arguments are forwarded to :meth:`convergence`.
+
+        Returns
+        -------
+        DataFrame
+            One row: ``status`` (``"converged"`` / ``"immature"``),
+            ``k_conv`` (k**, ``null`` when immature), ``ratio_latest`` (the
+            stable / latest backtest loss ratio), ``ratio_factor_tail`` (the
+            factor-runoff ultimate ratio), ``ratio_headline`` (the anchored
+            point), and the band (``band_lo`` / ``band_hi`` /
+            ``band_width``) = the spread of the two legs. Input mirroring is
+            preserved.
+        """
+        from .convergence import convergence_tail_frame
+
+        return convergence_tail_frame(self, **kwargs)
+
     def to_polars(self) -> pl.DataFrame:
         return self._df
 
