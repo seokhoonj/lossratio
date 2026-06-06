@@ -929,7 +929,16 @@ class LossFit:
             row["method"] = estimator.method
             mat_k_rows.append(row)
             self._internals[g] = result
-        long_df = pl.concat(long_parts) if long_parts else pl.DataFrame()
+        # `vertical_relaxed`: per-group frames can disagree on a column's
+        # dtype when one group has an all-null column the others type -- e.g.
+        # `maturity_from` is Null-typed for a group with no detected maturity
+        # but Int64 for groups that have one (common under masked backtest
+        # refits at a coarse grain). Relaxed concat promotes Null -> Int64
+        # rather than raising; it is a no-op when the dtypes already agree.
+        long_df = (
+            pl.concat(long_parts, how="vertical_relaxed")
+            if long_parts else pl.DataFrame()
+        )
         mat_k_df = pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
 
         # ----- Tail (cl multiplicative f->1 / ed additive g->0) ------------
