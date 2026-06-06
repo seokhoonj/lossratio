@@ -236,10 +236,12 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
 끌려오면서 계단이 왼쪽으로 모여 **직각삼각형**이 됩니다. 이렇게 정렬해야
 서로 다른 코호트를 같은 경과 시점에서 세로로 비교할 수 있습니다.
 
-도식으로 보면 (`X` = 관측된 셀, `.` = 미관측 = 예측 대상):
+도식으로 보면 — 위는 달력(`cy`) 축의 계단 배치, 아래는 경과(`dev = cy - uy`)로
+당겨 모든 코호트의 출발을 경과 1 에 맞춘 직각삼각형이다 (`X` = 관측 셀,
+`.` = 미관측 = 예측 대상):
 
 ```text
-  calendar 배치 -- 코호트마다 인수(uy) 시점에서 시작
+  calendar layout (staggered)
    cy ->  1   2   3   4
  uy +----------------+
   1 | X   X   X   X  |
@@ -247,10 +249,9 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
   3 |         X   X  |
   4 |             X  |
     +----------------+
-        |
-        |  dev = cy - uy 로 재정렬
+        |   realign by  dev = cy - uy
         v
-  dev 정렬 -- 모든 코호트를 경과 1 로 당김 (직각삼각형)
+  dev-aligned (right triangle)
    dev -> 1   2   3   4
  uy +----------------+
   1 | X   X   X   X  |

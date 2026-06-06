@@ -233,17 +233,18 @@ CL은 성숙한 구간에서 손해의 진전을 직접 따라가 좋고, ED는 
 안정적입니다. **단계 적응형**(stage-adaptive, SA)은 둘의 장점만 취합니다 —
 3장의 성숙점을 경계로, **성숙점 이전은 ED, 이후는 CL**로 예측합니다.
 
-세 방법의 한 칸 전진 규칙과 SA의 전환을 도식으로 보면:
+세 방법의 한 칸 전진 규칙과 SA의 전환을 도식으로 보면 — CL은 곱셈형(자기 누적
+손해에 앵커), ED는 덧셈형(외부 보험료=노출에 앵커), SA는 성숙점 k* 이전엔 ED,
+이후엔 CL로 갈아탄다:
 
 ```text
- CL (곱셈형):  C[k+1] = C[k] x f_k         코호트 자기 누적손해에 앵커
- ED (덧셈형):  C[k+1] = C[k] + g_k x P[k]  외부 보험료(노출)에 앵커
+  CL (multiplicative):  C[k+1] = C[k] x f_k         <- anchor: own cumulative loss
+  ED (additive):        C[k+1] = C[k] + g_k x P[k]  <- anchor: external premium
 
- SA: 성숙점 k* 이전엔 ED(덧셈), 이후엔 CL(곱셈)으로 갈아탐
-
+  SA: ED before the maturity point k*, CL at/after
        dev:  1    2    3   [k*]   4    5    6
              |---- ED ----|  |---- CL ----|
-              덧셈 / 노출 앵커    곱셈 / 발전 앵커
+              additive          multiplicative
 ```
 
 ```python
