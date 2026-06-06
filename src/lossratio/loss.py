@@ -277,25 +277,41 @@ def _fit_loss_single(
     loss_link_mask = recent_link_mask(loss_obs, recent)
     premium_link_mask = recent_link_mask(premium_obs, recent)
 
-    # ED parameters
-    ed_result = _fit_ed(
-        loss_obs,
-        premium_obs,
-        sigma_method=sigma_method,
-        loss_link_mask=loss_link_mask,
-        premium_link_mask=premium_link_mask,
-    )
-    g_k = ed_result.g_k
-    sigma2_g_k = ed_result.sigma2_g_k
-    var_g_k = _mack_g_var(ed_result)
+    n_links = n_devs - 1
+    _nan_links = np.full(n_links, np.nan, dtype=np.float64)
 
-    # CL parameters
-    cl_result = _fit_mack(
-        loss_obs, sigma_method=sigma_method, link_mask=loss_link_mask
-    )
-    f_k = cl_result.f_k
-    sigma2_f_k = cl_result.sigma2_k
-    var_f_k = _mack_f_var(cl_result)
+    # ED parameters -- needed for the ed and sa phases. A pure cl fit's
+    # projection never reads the ED branch, so its ED factors stay NaN
+    # (skipping the second fit) rather than being computed and discarded.
+    if method in ("ed", "sa"):
+        ed_result = _fit_ed(
+            loss_obs,
+            premium_obs,
+            sigma_method=sigma_method,
+            loss_link_mask=loss_link_mask,
+            premium_link_mask=premium_link_mask,
+        )
+        g_k = ed_result.g_k
+        sigma2_g_k = ed_result.sigma2_g_k
+        var_g_k = _mack_g_var(ed_result)
+    else:
+        g_k = _nan_links.copy()
+        sigma2_g_k = _nan_links.copy()
+        var_g_k = _nan_links.copy()
+
+    # CL parameters -- needed for the cl and sa phases. A pure ed fit's
+    # projection never reads the CL branch, so its CL factors stay NaN.
+    if method in ("cl", "sa"):
+        cl_result = _fit_mack(
+            loss_obs, sigma_method=sigma_method, link_mask=loss_link_mask
+        )
+        f_k = cl_result.f_k
+        sigma2_f_k = cl_result.sigma2_k
+        var_f_k = _mack_f_var(cl_result)
+    else:
+        f_k = _nan_links.copy()
+        sigma2_f_k = _nan_links.copy()
+        var_f_k = _nan_links.copy()
 
     # Maturity (only for SA). `mat_k_override` selects the source:
     # "auto" -> detect from this group's loss triangle; an int -> use
