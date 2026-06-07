@@ -7,14 +7,19 @@ on long-format experience data. Stage-adaptive (SA) projection uses
 an exposure-driven (ED) model before the maturity point and chain
 ladder (CL) after.
 
-This Python implementation is in active development (`0.0.1.devN`
-release line on PyPI).
+This Python implementation is in active development; install from GitHub
+(see below). The PyPI build is an earlier, now-discarded methodology.
 
 ## Install
 
+> [!WARNING]
+> **Work in progress** — the theoretical foundation is being substantially
+> revised, so the API and numerical results may still change. The build on PyPI
+> uses an earlier, now-discarded methodology; install from GitHub for the latest.
+
 ```bash
-pip install lossratio              # polars only
-pip install lossratio[pandas]      # add pandas / pyarrow support
+pip install "git+https://github.com/seokhoonj/lossratio.git"              # polars only
+pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"      # add pandas / pyarrow support
 ```
 
 ## Current status

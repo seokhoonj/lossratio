@@ -6,9 +6,15 @@
 
 ## 설치
 
+```{warning}
+**개발 중(WIP)** — 이론적 토대를 대폭 개정하는 중이라 API와 산출값이 바뀔 수
+있습니다. PyPI 버전은 이미 폐기된 옛 방법론이므로, 최신은 아래처럼 GitHub에서
+설치하세요.
+```
+
 ```bash
-pip install lossratio              # polars only
-pip install lossratio[pandas]      # add pandas / pyarrow support
+pip install "git+https://github.com/seokhoonj/lossratio.git"              # polars only
+pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"      # add pandas / pyarrow support
 ```
 
 ## 데이터 불러오기
