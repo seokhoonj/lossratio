@@ -205,7 +205,8 @@ class Ratio:
     premium_regime: RegimeArg      = None
     sigma_method:   str            = "locf"
     recent:         int | None     = None
-    maturity:       MaturityArg    = "auto"
+    switch:         Any            = None
+    maturity:       MaturityArg    = None
     max_cv:         float          = 0.15
     max_rse:        float          = 0.05
     min_run:        int            = 2
@@ -336,6 +337,7 @@ class RatioFit:
             premium_fit=premium_fit,
             premium_method=estimator.premium_method,
             premium_alpha=estimator.premium_alpha,
+            switch=estimator.switch,
             maturity=estimator.maturity,
             max_cv=estimator.max_cv,
             max_rse=estimator.max_rse,

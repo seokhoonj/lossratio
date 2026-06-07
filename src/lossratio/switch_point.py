@@ -141,7 +141,6 @@ def _select_switch(
     """
     from .chain_ladder import ChainLadder
     from .exposure_driven import ExposureDriven
-    from .maturity import Maturity  # TEMP candidate builder (-> SwitchPoint.at in Stage 3)
     from .stage_adaptive import StageAdaptive
 
     gcols = normalize_groups(triangle._groups)
@@ -157,7 +156,7 @@ def _select_switch(
         "CL": ChainLadder(**cfg),
     }
     for k in k_grid:
-        cands[f"k{k}"] = StageAdaptive(maturity=Maturity.at(k), **cfg)
+        cands[f"k{k}"] = StageAdaptive(switch=SwitchPoint.at(k), **cfg)
 
     deep = _candidate_wape(triangle, cands, h_deep, gcols)
     guard = _candidate_wape(triangle, cands, h_guard, gcols)

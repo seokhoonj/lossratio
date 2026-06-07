@@ -13,6 +13,7 @@ place.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -119,8 +120,69 @@ def _resolve_maturity_override(
     return _resolve_maturity(maturity, triangle)
 
 
+def _resolve_switch(switch: Any, triangle: "Triangle", model_cfg: dict) -> Any:
+    """Resolve the authoritative ``switch`` input to a SwitchPoint override.
+
+    * ``int`` -- normalised to ``SwitchPoint.at(int)``.
+    * a :class:`~lossratio.SwitchPoint` -- returned as-is.
+    * a ``_SwitchSpec`` (from :meth:`SwitchPoint.detect`) -- resolved on
+      ``triangle`` with the estimator's modelling config injected
+      (``model_cfg`` = alpha / sigma_method / recent / regime), so the
+      candidate models apply the SAME regime exactly once. The triangle
+      passed in must be the regime-UNfiltered original (inside a backtest,
+      the calendar-masked training triangle) -- the candidates filter it
+      themselves.
+    """
+    from .switch_point import SwitchPoint, _SwitchSpec
+
+    if isinstance(switch, bool):
+        raise TypeError("`switch` must not be a bool")
+    if isinstance(switch, int):
+        return SwitchPoint.at(switch)
+    if isinstance(switch, SwitchPoint):
+        return switch
+    if isinstance(switch, _SwitchSpec):
+        return switch(triangle, **model_cfg)
+    raise TypeError(
+        "`switch` must be None, an int, a SwitchPoint, or a "
+        f"SwitchPoint.detect() spec; got {type(switch).__name__}."
+    )
+
+
+def _resolve_switch_input(
+    switch: Any,
+    maturity: Any,
+    triangle: "Triangle",
+    *,
+    model_cfg: dict,
+) -> Any:
+    """Resolve the SA switch from the authoritative ``switch`` (or legacy
+    ``maturity``) input. ``switch`` is the authority; ``maturity`` is a
+    deprecated legacy alias. Passing both is an error.
+
+    Returns a SwitchPoint / Maturity override (consumed per-group by
+    :func:`_mat_k_for_group`) or ``None`` (no discretionary switch).
+    """
+    if maturity is not None and switch is not None:
+        raise ValueError(
+            "pass either `switch` (preferred) or the legacy `maturity`, "
+            "not both."
+        )
+    if maturity is not None:
+        warnings.warn(
+            "`maturity=` is deprecated; use `switch=` "
+            "(SwitchPoint.at(k) / SwitchPoint.detect() / an int).",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return _resolve_maturity_override(maturity, triangle)
+    if switch is not None:
+        return _resolve_switch(switch, triangle, model_cfg)
+    return None
+
+
 def _mat_k_for_group(
-    mat_override: "str | Maturity | None",
+    mat_override: "Any",
     group_value: Any | None,
 ) -> int | str | None:
     """Per-group ``mat_k`` for ``_fit_loss_single`` from a resolved override.
@@ -712,7 +774,8 @@ class Loss:
     premium_fit:    PremiumFit | None  = None
     premium_method: str                = "ed"
     premium_alpha:  float              = 1.0
-    maturity:       MaturityArg        = "auto"
+    switch:         Any                = None
+    maturity:       MaturityArg        = None
     max_cv:         float              = 0.15
     max_rse:        float              = 0.05
     min_run:        int                = 2
@@ -819,6 +882,21 @@ class LossFit:
         original_tri = triangle
         regime = _resolve_regime(estimator.regime, triangle)
 
+        # Resolve the SA switch ONCE on the regime-UNfiltered triangle
+        # (inside a backtest this is the calendar-masked training triangle),
+        # injecting the resolved regime into the candidate models so they
+        # apply it exactly once -- avoiding the double-filter that would
+        # happen if a SwitchPoint.detect() spec re-resolved on the already
+        # regime-filtered triangle. Both the general and segment-borrow paths
+        # then consume the SAME per-group switch.
+        switch_override = _resolve_switch_input(
+            estimator.switch, estimator.maturity, original_tri,
+            model_cfg=dict(
+                alpha=estimator.alpha, sigma_method=estimator.sigma_method,
+                recent=estimator.recent, regime=regime,
+            ),
+        )
+
         # segment_bridged_borrowed: per-segment factor estimation. Split
         # the triangle into per-segment mini-Triangles (bridged band
         # filter applied) and recurse with regime=None on each, then
@@ -831,7 +909,9 @@ class LossFit:
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
             and regime.change_points
         ):
-            return cls._segment_borrowed_fit(triangle, estimator, regime)
+            return cls._segment_borrowed_fit(
+                triangle, estimator, regime, switch_override
+            )
 
         triangle = _apply_regime_filter(triangle, regime)
 
@@ -868,16 +948,10 @@ class LossFit:
         tri_df = triangle._df
         groups = triangle._groups
 
-        # Resolve the 4-type `maturity` input (None / Maturity / "auto"
-        # / callable) into a per-group mat_k override consumed by
-        # `_fit_loss_single`. The "auto" sentinel is kept verbatim so
-        # the inline `_compute_maturity` path still honours the
-        # estimator's `max_cv` / `max_rse` / `min_run` thresholds; an
-        # explicit Maturity object / callable is resolved here and its
-        # per-group `mat_k` threaded through.
-        mat_override = _resolve_maturity_override(
-            estimator.maturity, triangle
-        )
+        # The SA switch override was resolved once above (on the
+        # regime-unfiltered triangle); consumed per-group by
+        # `_mat_k_for_group`. SwitchPoint / Maturity both expose `.point`.
+        mat_override = switch_override
 
         # internal-params dict; not exposed to user but kept for Ratio bootstrap
         self._internals: dict[Any, _LossResult] = {}
@@ -1143,6 +1217,7 @@ class LossFit:
         triangle: "Triangle",
         estimator: "Loss",
         regime: Any,
+        switch_override: Any = None,
     ) -> "LossFit":
         """Fit ``segment_bridged_borrowed``: per-segment factors + borrow.
 
@@ -1182,7 +1257,11 @@ class LossFit:
 
         tri_df = masked._df
         groups = masked._groups
-        mat_override = _resolve_maturity_override(estimator.maturity, masked)
+        # The switch was resolved once in `_from_triangle` on the
+        # regime-unfiltered triangle and passed in (selected_switch); the
+        # per-segment effective switch is capped by each segment's borrow
+        # boundary inside `_borrowed_loss_group`.
+        mat_override = switch_override
 
         # ----- Tail on the borrowed factors --------------------------------
         # The tail extrapolates each segment's DONOR-AUGMENTED factors

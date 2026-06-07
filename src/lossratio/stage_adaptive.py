@@ -14,7 +14,7 @@ argument (auto-detected per group by default).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
@@ -33,15 +33,21 @@ class StageAdaptive:
     sigma_method
         Tail-sigma extrapolation: ``"locf"`` (default), ``"min_last2"``,
         or ``"loglinear"``.
+    switch
+        The ED -> CL switch (authoritative input). ``None`` (default) takes
+        no discretionary switch: the general path is pure ED, while a regime
+        segment-borrow path still develops the borrowed late-dev region with
+        the donor's level-invariant ``f_k``. Otherwise an ``int`` (fixed
+        switch dev), a :class:`~lossratio.SwitchPoint`, or a
+        ``SwitchPoint.detect()`` spec (backtest-selected, leakage-safe inside
+        a backtest fold). ``StageAdaptive()`` with no switch and no regime is
+        therefore equivalent to ``ExposureDriven()``.
     maturity
-        Maturity specification for the ED -> CL switch. Four-type
-        dispatch: ``"auto"`` (default, auto-detect per group), a
-        :class:`~lossratio.Maturity` object, a callable
-        ``f(triangle) -> Maturity``, or ``None`` (no switch -- falls back
-        to ED throughout).
+        Deprecated legacy alias for the CV/RSE factor-stability switch.
+        Emits a ``DeprecationWarning``; passing both ``switch`` and
+        ``maturity`` is an error.
     max_cv, max_rse, min_run
-        Stability thresholds for ``maturity="auto"`` detection. Ignored
-        when ``maturity`` is a concrete object or callable.
+        Stability thresholds for the legacy ``maturity="auto"`` detection.
     recent
         Optional positive integer; restricts factor estimation to the
         most-recent ``recent`` calendar diagonals. ``None`` (default)
@@ -71,7 +77,8 @@ class StageAdaptive:
 
     alpha:        float          = 1.0
     sigma_method: str            = "locf"
-    maturity:     MaturityArg    = "auto"
+    switch:       Any            = None
+    maturity:     MaturityArg    = None
     max_cv:       float          = 0.15
     max_rse:      float          = 0.05
     min_run:      int            = 2
@@ -105,6 +112,7 @@ class StageAdaptive:
             method       = "sa",
             alpha        = self.alpha,
             sigma_method = self.sigma_method,
+            switch       = self.switch,
             maturity     = self.maturity,
             max_cv       = self.max_cv,
             max_rse      = self.max_rse,
