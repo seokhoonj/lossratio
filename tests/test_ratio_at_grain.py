@@ -50,6 +50,50 @@ def test_at_grain_portfolio_ultimate_is_grain_invariant():
     assert abs(m_prem - q_prem) < 1e-3
 
 
+def _regime_m_fit():
+    """An M-grain REGIME (segment_borrowed) Ratio fit on the SUR book.
+
+    On the regime path the stored ``incr_loss_proj`` column is NULL at
+    dev 1 for every cohort, so summing that column would drop the dev-1
+    mass. ``at_grain`` derives increments from the (complete) cumulative
+    ``loss_proj`` / ``premium_proj`` instead.
+    """
+    exp = lr.load_experience()
+    exp = pl.from_pandas(exp) if not isinstance(exp, pl.DataFrame) else exp
+    sub = exp.filter(pl.col("coverage") == "SUR")
+    tri = lr.Triangle(
+        sub,
+        cohort="uy_m",
+        calendar="cy_m",
+        loss="incr_loss",
+        premium="incr_premium",
+        grain="M",
+    )
+    return lr.Ratio(
+        method="ed", loss_regime=lr.Regime.at(change="2024-07-01")
+    ).fit(tri)
+
+
+def test_at_grain_regime_portfolio_ultimate_is_grain_invariant():
+    """Regime fits: coarsening to Q must preserve the portfolio ultimate.
+
+    Regression for the dev-1 mass drop: the regime path leaves
+    ``incr_loss_proj`` NULL at dev 1, so re-binning from that column was
+    short by the first increment (~0.56% on this book). Deriving the
+    increments from the complete cumulative projection makes Q EXACT.
+    """
+    fit = _regime_m_fit()
+    summ = fit.summary()
+    summ = pl.from_pandas(summ) if not isinstance(summ, pl.DataFrame) else summ
+    m_loss = summ["loss_proj"].sum()
+    m_prem = summ["premium_proj"].sum()
+    q_loss, q_prem, _ = _portfolio_ultimate(fit.at_grain("Q"))
+
+    assert abs(m_loss - q_loss) < 1e-9 * abs(m_loss)
+    assert abs(m_prem - q_prem) < 1e-9 * abs(m_prem)
+    assert abs(m_loss / m_prem - q_loss / q_prem) < 1e-9
+
+
 def test_at_grain_same_grain_returns_unchanged():
     """``at_grain`` with the source grain returns the fit frame unchanged."""
     fit = _m_fit()

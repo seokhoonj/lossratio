@@ -570,11 +570,12 @@ class RatioFit:
         """Display this fine-grain forecast aggregated to a COARSER grain.
 
         Re-bins the fitted PROJECTED triangle up to ``target_grain``
-        (M -> Q / H / Y) by pure summation of the projected increments --
-        no re-fitting. The fine-grain forecast is reconstructed as
-        per-cell incremental loss / premium, re-binned through the
-        :class:`Triangle` constructor at ``target_grain``, and the
-        cumulative loss / premium / ratio are recomputed on the coarse
+        (M -> Q / H / Y) by pure summation -- no re-fitting. The fine-grain
+        forecast is reconstructed as per-cell incremental loss / premium
+        DERIVED from the cumulative projection (``loss_proj`` /
+        ``premium_proj``, which are complete on every fit path), re-binned
+        through the :class:`Triangle` constructor at ``target_grain``, and
+        the cumulative loss / premium / ratio are recomputed on the coarse
         cells. This keeps an M-grain and a Q-grain DISPLAY consistent:
         they are the same M forecast, just summed into coarser buckets.
 
@@ -611,18 +612,41 @@ class RatioFit:
 
         mpp = _GRAIN_MONTHS[src]
         groups = normalize_groups(self._groups)
-        # Per-cell projected increments (fully populated on the projected
-        # triangle: observed cells carry loss_proj == loss_obs, so the
-        # incr_*_proj diff is defined everywhere). calendar of cell
-        # (cohort, dev) = cohort + (dev - 1) source periods.
-        recon = self._df.select(
-            *groups,
-            pl.col("cohort"),
-            pl.col("cohort")
-            .dt.offset_by(pl.format("{}mo", (pl.col("dev") - 1) * mpp))
-            .alias("_calendar"),
-            pl.col("incr_loss_proj").alias("incr_loss"),
-            pl.col("incr_premium_proj").alias("incr_premium"),
+        # Per-cell projected increments derived from the CUMULATIVE
+        # projection (`loss_proj` / `premium_proj`). The cumulative columns
+        # are complete (no nulls) on every fit path, whereas the stored
+        # `incr_*_proj` column is NULL at dev 1 on the regime
+        # (segment_borrowed) path -- so re-binning from the cumulative is
+        # the only source that captures the dev-1 mass for every fit. Per
+        # (groups, cohort) sorted by dev, the increment is `<role>_proj -
+        # <role>_proj.shift(1)` with dev0 = 0 (fill_value=0.0), so the first
+        # increment = the first cumulative -- matching `_nan_skip_diff`
+        # semantics used by the non-regime `_from_triangle` builder.
+        # calendar of cell (cohort, dev) = cohort + (dev - 1) source periods.
+        diff_keys = [*groups, "cohort"]
+        recon = (
+            self._df.sort([*diff_keys, "dev"])
+            .with_columns(
+                (
+                    pl.col("loss_proj")
+                    - pl.col("loss_proj").shift(1, fill_value=0.0).over(diff_keys)
+                ).alias("incr_loss"),
+                (
+                    pl.col("premium_proj")
+                    - pl.col("premium_proj")
+                    .shift(1, fill_value=0.0)
+                    .over(diff_keys)
+                ).alias("incr_premium"),
+            )
+            .select(
+                *groups,
+                pl.col("cohort"),
+                pl.col("cohort")
+                .dt.offset_by(pl.format("{}mo", (pl.col("dev") - 1) * mpp))
+                .alias("_calendar"),
+                pl.col("incr_loss"),
+                pl.col("incr_premium"),
+            )
         )
         from .triangle import Triangle
 
