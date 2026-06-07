@@ -82,9 +82,9 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["convergence_point"] = pl.DataFrame(
         {
             "convergence_point": [conv.point],
-            "maturity_point": [conv.maturity_point],
+            "start": [conv.start],
         },
-        schema={"convergence_point": pl.Int64, "maturity_point": pl.Int64},
+        schema={"convergence_point": pl.Int64, "start": pl.Int64},
     )
 
     # --- regime detection (seeded) + the treatment effect at fit time ---
@@ -156,9 +156,9 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["mc_convergence_point"] = pl.DataFrame(
         {
             "convergence_point": [mc_conv.point],
-            "maturity_point": [mc_conv.maturity_point],
+            "start": [mc_conv.start],
         },
-        schema={"convergence_point": pl.Int64, "maturity_point": pl.Int64},
+        schema={"convergence_point": pl.Int64, "start": pl.Int64},
     )
 
     mc_reg = mc.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged")

@@ -520,9 +520,8 @@ class RatioFit:
         slope / dispersion criteria). Returns a :class:`Convergence`.
 
         Extra keyword arguments (``method`` / ``max_drift`` / ``max_slope``
-        / ``max_dispersion`` / ``window`` / ``maturity_point`` /
-        ``holdout_max`` / ``min_n_cohorts``) are forwarded to the
-        convergence detector.
+        / ``max_dispersion`` / ``window`` / ``start`` / ``holdout_max`` /
+        ``min_n_cohorts``) are forwarded to the convergence detector.
         """
         from .convergence import detect_convergence
 

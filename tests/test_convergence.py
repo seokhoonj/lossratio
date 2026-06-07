@@ -109,7 +109,7 @@ def test_detect_convergence_returns_object():
     assert isinstance(conv, lr.Convergence)
     assert conv.method == "tail"
     assert conv.dev_max == 36
-    assert conv.maturity_point >= 1
+    assert conv.start == 2
 
 
 def test_detect_convergence_methods_dispatch():
@@ -159,20 +159,29 @@ def test_detect_convergence_pass_arrays_consistency():
     assert np.array_equal(conv.pass_, conv.pass_tail)
 
 
-def test_detect_convergence_manual_maturity_point():
+def test_detect_convergence_manual_start():
     tri = _sur_triangle()
     conv = _converge(
-        tri, maturity_point=10, max_drift=0.1, max_dispersion=1.0,
+        tri, start=10, max_drift=0.1, max_dispersion=1.0,
     )
-    assert conv.maturity_point == 10
+    assert conv.start == 10
     assert conv.dev_cand[0] == 10
 
 
+def test_detect_convergence_maturity_point_is_deprecated_alias():
+    tri = _sur_triangle()
+    with pytest.warns(DeprecationWarning, match="maturity_point"):
+        conv = _converge(
+            tri, maturity_point=10, max_drift=0.1, max_dispersion=1.0,
+        )
+    assert conv.start == 10
+
+
 def test_detect_convergence_no_candidate_warns():
-    """When maturity_point + 2 > dev_max, dev_cand is empty and a warning fires."""
+    """When start + 2 > dev_max, dev_cand is empty and a warning fires."""
     tri = _sur_triangle()
     with pytest.warns(UserWarning, match="No candidate dev points"):
-        conv = _converge(tri, maturity_point=40)
+        conv = _converge(tri, start=40)
     assert conv.point is None
     assert conv.dev_cand == []
 
@@ -214,7 +223,7 @@ def test_convergence_repr_contains_key_fields():
     tri = _sur_triangle()
     conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     r = repr(conv)
-    for token in ("method=", "point=", "maturity_point=", "dev_max=", "candidates="):
+    for token in ("method=", "point=", "start=", "dev_max=", "candidates="):
         assert token in r
 
 

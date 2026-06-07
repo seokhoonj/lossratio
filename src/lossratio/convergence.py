@@ -144,6 +144,7 @@ def detect_convergence(
     max_slope: float = 1e-3,
     max_dispersion: float = 0.15,
     window: int = 5,
+    start: int = 2,
     maturity_point: int | None = None,
     holdout_max: int | None = None,
     min_n_cohorts: int = 5,
@@ -175,12 +176,15 @@ def detect_convergence(
         Upper bound on the cross-cohort dispersion. Default ``0.15``.
     window
         Drift window length (in dev steps). Default ``5``.
+    start
+        First development period to scan for convergence (the candidate
+        floor). Default ``2``. Convergence runs its own holdout backtests,
+        so it no longer needs an external maturity/stability anchor.
     maturity_point
-        Pre-computed maturity point. When ``None``, auto-detected from
-        the Ratio-link ATA.
+        Deprecated alias for ``start`` (emits a ``DeprecationWarning``).
     holdout_max
         Cap on holdout depth. When ``None``, set to
-        ``max(window, (dev_max - maturity_point) // 2)``.
+        ``max(window, (dev_max - start) // 2)``.
     min_n_cohorts
         Minimum cohorts required to compute dispersion. Default ``5``.
     **backtest_kwargs
@@ -191,9 +195,10 @@ def detect_convergence(
     -------
     Convergence
         Result object exposing ``point`` (the convergence dev),
-        ``maturity_point``, ``dev_max``, the candidate dev sequence and
+        ``start``, ``dev_max``, the candidate dev sequence and
         per-criterion diagnostics.
     """
+    import warnings
     from .ratio import Ratio
     from .backtest import Backtest
 
@@ -211,45 +216,32 @@ def detect_convergence(
         raise ValueError("window must be >= 2")
     window = int(window)
 
-    # 1. Resolve maturity_point from Ratio-link ATA if not given.
-    if maturity_point is None:
-        mat = (
-            triangle.link(target="ratio", exposure=None, weight="premium")
-            .ata()
-            .maturity()
+    # 1. Resolve the candidate-scan floor. `maturity_point` is a deprecated
+    # alias for `start`; convergence no longer anchors on the ATA stability
+    # point (it runs its own holdout backtests).
+    if maturity_point is not None:
+        warnings.warn(
+            "`maturity_point=` is deprecated; use `start=`.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        mat_k_raw = mat.point
-        if isinstance(mat_k_raw, dict):
-            vals = [v for v in mat_k_raw.values() if v is not None]
-            if not vals:
-                raise ValueError(
-                    "Auto maturity_point failed: no mature Ratio link in any group. "
-                    "Pass maturity_point=... explicitly (e.g. detect_convergence("
-                    "triangle, maturity_point=4)) to bypass."
-                )
-            maturity_point = int(min(vals))
-        else:
-            if mat_k_raw is None:
-                raise ValueError(
-                    "Auto maturity_point failed: no mature Ratio link detected. "
-                    "Pass maturity_point=... explicitly."
-                )
-            maturity_point = int(mat_k_raw)
-    maturity_point = int(maturity_point)
+        start = int(maturity_point)
+    start = int(start)
+    if start < 2:
+        raise ValueError(f"start must be >= 2, got {start}")
 
     # 2. dev_max + candidate sequence.
     dev_max = int(triangle.to_polars()["dev"].max())
     if holdout_max is None:
-        holdout_max = max(window, (dev_max - maturity_point) // 2)
+        holdout_max = max(window, (dev_max - start) // 2)
     holdout_max = int(holdout_max)
 
-    if dev_max - 2 >= maturity_point:
-        dev_cand = list(range(maturity_point, dev_max - 1))
+    if dev_max - 2 >= start:
+        dev_cand = list(range(start, dev_max - 1))
     else:
         dev_cand = []
-        import warnings
         warnings.warn(
-            f"No candidate dev points: maturity_point ({maturity_point}) + 2 > dev_max "
+            f"No candidate dev points: start ({start}) + 2 > dev_max "
             f"({dev_max}). Returning point = None.",
             stacklevel=2,
         )
@@ -330,16 +322,21 @@ def detect_convergence(
             if v is not None:
                 dispersion[i] = float(v)
 
-    # 9. per-method pass tests.
+    # 9. per-method pass tests. A candidate whose own Ratio could not be
+    # computed (NaN -- e.g. an early dev below the holdout cap) must never be
+    # selected, even if the tail/slope skipped over it: guard on the
+    # candidate's own finite Ratio. With `start=2` this matters where the old
+    # maturity floor used to keep early candidates out.
+    finite_ratio = np.isfinite(ratio_arr)
     pass_d = np.isfinite(dispersion) & (dispersion < max_dispersion)
     pass_window = (
-        np.isfinite(drift_window) & (drift_window < max_drift) & pass_d
+        np.isfinite(drift_window) & (drift_window < max_drift) & pass_d & finite_ratio
     )
     pass_tail = (
-        np.isfinite(drift_tail) & (drift_tail < max_drift) & pass_d
+        np.isfinite(drift_tail) & (drift_tail < max_drift) & pass_d & finite_ratio
     )
     pass_slope = (
-        np.isfinite(slope_arr) & (np.abs(slope_arr) < max_slope) & pass_d
+        np.isfinite(slope_arr) & (np.abs(slope_arr) < max_slope) & pass_d & finite_ratio
     )
     pass_all = pass_window & pass_tail & pass_slope
 
@@ -361,7 +358,7 @@ def detect_convergence(
         triangle=triangle,
         method=method,
         conv_k=conv_k,
-        mat_k=maturity_point,
+        start=start,
         dev_max=dev_max,
         dev_cand=dev_cand,
         ratio=ratio_arr,
@@ -522,12 +519,12 @@ class Convergence:
         First dev at which the chosen ``method``'s pass test fires.
     method : str
         Which criterion selected ``point``.
-    maturity_point : int
-        Maturity point used as the lower bound of the candidate window.
+    start : int
+        Floor used as the lower bound of the candidate window.
     dev_max : int
         Maximum observable dev.
     dev_cand : list[int]
-        Candidate dev sequence ``[maturity_point, dev_max - 2]``.
+        Candidate dev sequence ``[start, dev_max - 2]``.
     ratio, revision, drift_window, drift_tail, slope, dispersion : ndarray
         Diagnostic series, one entry per ``dev_cand``.
     pass_window, pass_tail, pass_slope, pass_ : ndarray[bool]
@@ -545,7 +542,7 @@ class Convergence:
         triangle: "Triangle",
         method: str,
         conv_k: int | None,
-        mat_k: int,
+        start: int,
         dev_max: int,
         dev_cand: list[int],
         ratio: np.ndarray,
@@ -569,7 +566,7 @@ class Convergence:
         self._output_type = triangle._output_type
         self.point = conv_k
         self.method = method
-        self.maturity_point = mat_k
+        self.start = start
         self.dev_max = dev_max
         self.dev_cand = list(dev_cand)
         self.ratio = ratio
@@ -621,7 +618,7 @@ class Convergence:
 
         Stacked column of ``ratio``, ``drift_window``, ``drift_tail``,
         ``|slope|``, ``dispersion`` series across candidate dev
-        cutoffs. Threshold hlines, maturity (``maturity_point``) dotted vline,
+        cutoffs. Threshold hlines, the candidate-floor (``start``) dotted vline,
         and detected convergence ``point`` solid green vline are
         overlaid on every panel.
 
@@ -646,7 +643,7 @@ class Convergence:
         bits = [
             f"method={self.method}",
             f"point={self.point}",
-            f"maturity_point={self.maturity_point}",
+            f"start={self.start}",
             f"dev_max={self.dev_max}",
             f"candidates={n}",
             f"passes(window/tail/slope)={n_win}/{n_tail}/{n_slope}",

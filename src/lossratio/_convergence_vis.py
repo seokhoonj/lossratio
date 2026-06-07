@@ -50,9 +50,9 @@ def plot_convergence(
             ax.plot(x[m], values[m], color="#1f77b4", linewidth=0.8, marker="o", markersize=3)
         if threshold is not None and np.isfinite(threshold):
             ax.axhline(threshold, color="#d62728", linestyle="--", linewidth=0.7)
-        # maturity_point dotted vline
-        if conv.maturity_point is not None:
-            ax.axvline(conv.maturity_point, color="grey", linestyle=":", linewidth=0.7)
+        # candidate-floor (start) dotted vline
+        if conv.start is not None:
+            ax.axvline(conv.start, color="grey", linestyle=":", linewidth=0.7)
         # convergence_point solid green vline (if found)
         if conv.point is not None and not (
             isinstance(conv.point, float) and np.isnan(conv.point)
@@ -71,7 +71,7 @@ def plot_convergence(
         else "NA"
     )
     subtitle = (
-        f"method = {conv.method}   maturity_point = {conv.maturity_point}   "
+        f"method = {conv.method}   start = {conv.start}   "
         f"convergence_point = {conv_k_str}   (max_drift = {conv.max_drift}, "
         f"max_slope = {conv.max_slope}, max_dispersion = {conv.max_dispersion}, "
         f"window = {conv.window})"
