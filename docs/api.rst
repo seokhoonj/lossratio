@@ -2,7 +2,7 @@ API 레퍼런스
 ============
 
 공개 API 전체 목록입니다. 설명문(docstring)은 영어로 작성되어 있으며,
-개념적 배경과 사용 흐름은 :doc:`튜토리얼 <tutorial/index>`을 참고하세요.
+개념적 배경과 사용 흐름은 튜토리얼(:doc:`tutorial/index`)을 참고하세요.
 
 데이터와 삼각형
 ---------------
@@ -61,6 +61,9 @@ API 레퍼런스
    :members:
 
 .. autoclass:: lossratio.StageAdaptive
+   :members:
+
+.. autoclass:: lossratio.SwitchPoint
    :members:
 
 .. autoclass:: lossratio.Tail

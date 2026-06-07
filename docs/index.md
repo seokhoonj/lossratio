@@ -37,14 +37,15 @@ lossratio는 장기 건강보험의 **손해율(loss ratio)**, 곧
 바로 구축. 누적·증분, 다양한 집계 주기를 일관되게 처리.
 :::
 
-:::{grid-item-card} 단계 적응형 예측
-성숙점 이전에는 노출 기반(ED), 이후에는 체인래더(CL)로 예측하는
-단계 적응형(SA) 방법. 초기 변동성에 강건한 손해율 예측.
+:::{grid-item-card} 노출 기반 예측
+기본은 노출 기반(exposure-driven, ED)의 안전한 베이스라인.
+필요하면 `SwitchPoint`로 ED->CL 전환점을 골라 단계 적응형(SA)으로
+전환. 초기 변동성에 강건한 손해율 예측.
 :::
 
 :::{grid-item-card} 진단과 탐지
-ATA 인자·성숙점·수렴점 진단, 그리고 인수 코호트의 구조 변화
-(regime) 탐지까지 한 인터페이스로.
+ATA 인자(age-to-age factor)·수렴점(convergence point) 진단, 그리고
+인수 코호트의 구조 변화(regime) 탐지까지 한 인터페이스로.
 :::
 
 :::{grid-item-card} 검증과 불확실성

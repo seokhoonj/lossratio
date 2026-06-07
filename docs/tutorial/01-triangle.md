@@ -10,6 +10,19 @@
 - 누적값과 증분값, 그리고 삼각형을 들여다보는 법
 ```
 
+이 장은 전체 흐름의 **첫 단계**, 경험 데이터를 삼각형으로 정리하는
+자리입니다.
+
+```{mermaid}
+flowchart LR
+  A["경험 데이터"] --> B["Triangle<br/>삼각형 (이 장)"]
+  B --> C["link 진단"]
+  C --> D["예측"]
+  D --> E["불확실성"]
+  E --> F["regime · 백테스트"]
+  style B fill:#ffe08a,stroke:#d39e00,stroke-width:2px
+```
+
 ## 1.1 손해율이란
 
 **손해율(loss ratio)**은 받은 보험료 대비 나간 손해의 비율입니다.
@@ -180,11 +193,16 @@ tri
 이 패키지는 **월(M) 단위를 기본**으로 둡니다. lossratio의 핵심 가치가
 *손해율 수준(level)을 가장 이르게, 그러나 믿을 수 있게 읽어내는 속도*에
 있기 때문입니다 — 분기·반기로 묶으면 그만큼 첫 신호가 늦어집니다. 월
-단위의 출렁임은 3장의 성숙점이 연속성·CV·RSE 문턱으로 걸러 내므로,
+단위의 출렁임은 2장에서 볼 ATA 인자의 변동(CV·RSE) 진단으로 다스리므로,
 *집계로 노이즈를 죽이는* 대신 *판단 기준으로 노이즈를 다스립니다*.
 분기·반기·연 단위는 신호를 이르게 읽을 필요가 없는 **구조 분석**
 (수렴·대각선 효과·regime 탐지)에서, 포트폴리오 크기에 맞춰 신뢰도를
 키울 때 씁니다.
+
+이 튜토리얼의 삼각형 그림은 칸을 읽기 쉽게 **분기(Q) 단위**로 집계해
+보여 줍니다. 월 단위는 경과 칸이 30개를 넘어 한 장에 너무 빽빽하기
+때문입니다. 분석 자체는 월 단위로 하되, *그림으로 구조를 눈에 익힐
+때는* 분기로 묶어 봅니다.
 ```
 
 ## 1.5 누적과 증분
@@ -272,17 +290,17 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
 
    df = lr.load_experience()
    df_sur = df.filter(pl.col("coverage") == "SUR")
-   tri = lr.Triangle(df_sur, groups="coverage")
+   tri = lr.Triangle(df_sur, groups="coverage", grain="Q")
 
 .. plot::
    :context: close-figs
-   :caption: 달력 위치 그대로 그린 손해율. 코호트마다 출발점이 어긋난 계단 모양이다.
+   :caption: 달력 위치 그대로 그린 분기별 손해율. 코호트마다 출발점이 어긋난 계단 모양이다.
 
    tri.plot_triangle(metric="ratio", x_axis="calendar")
 
 .. plot::
    :context: close-figs
-   :caption: 경과기간에 맞춰 정렬한 손해율. 출발점이 경과 1로 모여 직각삼각형이 된다.
+   :caption: 경과기간에 맞춰 정렬한 분기별 손해율. 출발점이 경과 1로 모여 직각삼각형이 된다.
 
    tri.plot_triangle(metric="ratio", x_axis="dev")
 ```
@@ -294,6 +312,7 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
 ## 1.7 함께 보기
 
 - {doc}`2장 — 손해 진전 속도 <02-ata>`: 이웃한 경과를 이어
-  손해 진전 속도(ATA 인자)를 손으로 구하고, 경과별로 읽습니다.
+  손해 진전 속도(ATA 인자)를 손으로 구하고, 경과별로 읽으며, ATA 인자가
+  코호트 간에 안정되는 구간을 진단합니다.
 - {doc}`API 레퍼런스 <../api>`의 `Triangle`, `load_experience`,
   `derive_grain_columns`

@@ -2,10 +2,11 @@
 
 Loss ratio analytics
 for long-term health insurance — cohort development analysis,
-stage-adaptive projection, regime detection, and backtest validation
-on long-format experience data. Stage-adaptive (SA) projection uses
-an exposure-driven (ED) model before the maturity point and chain
-ladder (CL) after.
+exposure-driven and stage-adaptive projection, regime detection, and
+backtest validation on long-format experience data. The
+exposure-driven (ED) model is the default, safe baseline; a
+stage-adaptive (SA) fit can opt in to an ED->CL switch that hands off
+to chain ladder (CL) past a chosen development period.
 
 This Python implementation is in active development; install from GitHub
 (see below). The PyPI build is an earlier, now-discarded methodology.
@@ -34,15 +35,24 @@ Working components:
   carry an `incr_` prefix (`incr_loss`, `incr_premium`, `incr_ratio`).
 - `ChainLadder`, `ExposureDriven`, `StageAdaptive`, `Ratio` —
   sklearn-style estimators for chain-ladder, exposure-driven, and
-  stage-adaptive projection. The three loss models return a `LossFit`,
-  `Ratio` returns a `RatioFit`; each exposes `summary()`, a `df`
-  projection frame, and per-cohort SE / CV.
+  stage-adaptive projection. `ExposureDriven` is the default, safe
+  baseline; `StageAdaptive` with no `switch` is identical to it, and
+  opts in to an ED->CL handoff only when given a `switch=`. The three
+  loss models return a `LossFit`, `Ratio` returns a `RatioFit`; each
+  exposes `summary()`, a `df` projection frame, and per-cohort SE / CV.
+- `SwitchPoint` — locates the ED->CL handoff for a stage-adaptive fit
+  by backtesting: it picks the boundary that minimises out-of-sample
+  loss-projection error, instead of an in-sample factor heuristic.
+  `SwitchPoint.detect()` is a leakage-safe lazy spec (resolved on the
+  consumer's own triangle, so it is safe inside a backtest fold);
+  `SwitchPoint.at(k)` fixes the boundary. It is deliberately
+  conservative — on thin or quarterly data it usually defers to a pure
+  ED fit (the safe baseline).
 - `Triangle.link()` — builds the long-format `Link` table (one row
   per cohort × adjacent dev pair). Method chain `tri.link().ata()` /
   `tri.link().intensity()` returns paired factor-level diagnostics
-  (multiplicative ATA factors, additive ED intensities). Add
-  `.maturity(...)` after `.ata()` to detect the development period
-  at which age-to-age factors stabilise.
+  (multiplicative ATA factors with per-link `f` / `cv` / `rse`,
+  additive ED intensities).
 - `Triangle.detect_regime()` — detects structural shifts across the
   cohort sequence via E-Divisive or Ward hierarchical clustering
   (returns a `Regime` result).
@@ -63,9 +73,9 @@ import polars as pl
 import lossratio as lr
 
 # Built-in synthetic experience: four coverages (CI / CAN / HOS / SUR),
-# 36 monthly cohorts each, up to 36 dev months, with the full M/Q/H/Y
-# grain enrichment (15 columns). SUR carries one regime shift at
-# 2024-07; we focus on SUR for this walk-through.
+# monthly cohorts up to 36 dev months, with the full M/Q/H/Y grain
+# enrichment. SUR carries one regime shift at 2024-07; we focus on SUR
+# for this walk-through.
 df = lr.load_experience()
 df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).head(3)
 #> shape: (3, 6)
@@ -74,9 +84,9 @@ df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).he
 #> │ ---      ┆ ---        ┆ ---        ┆ ---   ┆ ---       ┆ ---          │
 #> │ str      ┆ date       ┆ date       ┆ i64   ┆ i64       ┆ i64          │
 #> ╞══════════╪════════════╪════════════╪═══════╪═══════════╪══════════════╡
-#> │ CI       ┆ 2023-01-01 ┆ 2023-01-01 ┆ 1     ┆ 12562144  ┆ 18836105     │
-#> │ CI       ┆ 2023-01-01 ┆ 2023-02-01 ┆ 2     ┆ 651603    ┆ 17699438     │
-#> │ CI       ┆ 2023-01-01 ┆ 2023-03-01 ┆ 3     ┆ 3719107   ┆ 19232426     │
+#> │ CI       ┆ 2023-01-01 ┆ 2023-01-01 ┆ 1     ┆ 1418956   ┆ 1356200      │
+#> │ CI       ┆ 2023-01-01 ┆ 2023-02-01 ┆ 2     ┆ 73602     ┆ 1274360      │
+#> │ CI       ┆ 2023-01-01 ┆ 2023-03-01 ┆ 3     ┆ 420092    ┆ 1384735      │
 #> └──────────┴────────────┴────────────┴───────┴───────────┴──────────────┘
 
 # 1. Subset to SUR (the coverage with the planted regime shift), then
@@ -104,23 +114,27 @@ ata.df.head(3)
 #> │ SUR      ┆ 3   ┆ 1.448392 ┆ 111593.578463 ┆ 0.029951 ┆ 0.004935 ┆ 33        │
 #> └──────────┴─────┴──────────┴───────────────┴──────────┴──────────┴───────────┘
 
-ata.maturity(max_cv=0.15, max_rse=0.05, min_run=2).point
-#> {'SUR': 2}
+# 3. Project loss ratios. `lr.Ratio()` defaults to method="ed" — the
+#    exposure-driven, safe baseline.
+fit = lr.Ratio(method="ed").fit(tri)
 
-# 3. Project loss ratios with the stage-adaptive method (ED before the
-#    maturity point, CL after). `lr.Ratio()` defaults to method="ed".
-fit = lr.Ratio(method="sa").fit(tri)
-fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se", "ratio_cv"]).head(3)
-#> shape: (3, 5)
-#> ┌──────────┬────────────┬────────────┬──────────┬──────────┐
-#> │ coverage ┆ cohort     ┆ ratio_proj ┆ ratio_se ┆ ratio_cv │
-#> │ ---      ┆ ---        ┆ ---        ┆ ---      ┆ ---      │
-#> │ str      ┆ date       ┆ f64        ┆ f64      ┆ f64      │
-#> ╞══════════╪════════════╪════════════╪══════════╪══════════╡
-#> │ SUR      ┆ 2023-01-01 ┆ 1.509562   ┆ null     ┆ null     │
-#> │ SUR      ┆ 2023-02-01 ┆ 1.508976   ┆ 0.004335 ┆ 0.002873 │
-#> │ SUR      ┆ 2023-03-01 ┆ 1.522523   ┆ 0.00836  ┆ 0.005491 │
-#> └──────────┴────────────┴────────────┴──────────┴──────────┘
+#    To opt into a stage-adaptive ED->CL switch, pass a `switch=` — an
+#    int fixes the handoff dev, `lr.SwitchPoint.detect()` selects it by
+#    backtesting. Here the switch is fixed at dev 12.
+fit = lr.Ratio(method="sa", switch=12).fit(tri)
+fit.switch_point
+#> {'SUR': 12}
+fit.summary().select(["coverage", "cohort", "ratio_proj", "switch_from"]).head(3)
+#> shape: (3, 4)
+#> ┌──────────┬────────────┬────────────┬─────────────┐
+#> │ coverage ┆ cohort     ┆ ratio_proj ┆ switch_from │
+#> │ ---      ┆ ---        ┆ ---        ┆ ---         │
+#> │ str      ┆ date       ┆ f64        ┆ i64         │
+#> ╞══════════╪════════════╪════════════╪═════════════╡
+#> │ SUR      ┆ 2023-01-01 ┆ 1.509562   ┆ 12          │
+#> │ SUR      ┆ 2023-02-01 ┆ 1.508976   ┆ 12          │
+#> │ SUR      ┆ 2023-03-01 ┆ 1.522523   ┆ 12          │
+#> └──────────┴────────────┴────────────┴─────────────┘
 
 # 4. Detect cohort regime shifts (E-Divisive over the cohort ratio path).
 reg = tri.detect_regime(target="ratio", window=12)
@@ -131,7 +145,7 @@ reg.change_points
 #    masked, the estimator is refitted on the remaining cells, and
 #    the projection is compared with actual loss.
 #    ae_err = actual / predicted - 1 (signed relative error).
-bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6).fit(tri)
+bt = lr.Backtest(estimator=lr.Ratio(method="ed"), holdout=6).fit(tri)
 bt.diag_summary.select(
     ["coverage", "cal_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt"]
 ).head(3)
@@ -141,11 +155,16 @@ bt.diag_summary.select(
 #> │ ---      ┆ ---     ┆ --- ┆ ---         ┆ ---        ┆ ---       │
 #> │ str      ┆ i64     ┆ u32 ┆ f64         ┆ f64        ┆ f64       │
 #> ╞══════════╪═════════╪═════╪═════════════╪════════════╪═══════════╡
-#> │ SUR      ┆ 31      ┆ 29  ┆ 0.000615    ┆ 0.002411   ┆ 0.001107  │
-#> │ SUR      ┆ 32      ┆ 28  ┆ 0.000807    ┆ -0.000776  ┆ 0.000218  │
-#> │ SUR      ┆ 33      ┆ 27  ┆ -0.00358    ┆ -0.001933  ┆ -0.002875 │
+#> │ SUR      ┆ 31      ┆ 29  ┆ -0.038762   ┆ -0.004586  ┆ -0.026285 │
+#> │ SUR      ┆ 32      ┆ 28  ┆ -0.060688   ┆ -0.011492  ┆ -0.04627  │
+#> │ SUR      ┆ 33      ┆ 27  ┆ -0.08139    ┆ -0.010749  ┆ -0.065249 │
 #> └──────────┴─────────┴─────┴─────────────┴────────────┴───────────┘
 ```
+
+When a `SwitchPoint.detect()` spec defers to a pure ED fit (it often
+does on thin or quarterly data), `switch_point` is `None` and the
+`switch_from` column is null — the projection is the ED baseline, which
+is the intended conservative behaviour.
 
 To analyse multiple coverages jointly, drop the upfront filter; every
 estimator and detector then fits per group, with `coverage` already
