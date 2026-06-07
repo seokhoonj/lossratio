@@ -7,7 +7,7 @@ import lossratio as lr
 
 
 def _toy_triangle_input() -> pl.DataFrame:
-    """5-cohort, 5-dev experience data (same fixture as CL/ED/Maturity tests)."""
+    """5-cohort, 5-dev experience data (same fixture as CL/ED tests)."""
     return pl.DataFrame(
         {
             "cy_m": [
@@ -134,48 +134,34 @@ def test_ratio_ed_method_matches_ed_fit():
 
 
 # ---------------------------------------------------------------------------
-# method="sa" — uses maturity for stage transition
+# method="sa" — explicit switch for stage transition
 # ---------------------------------------------------------------------------
 
 
-def test_ratio_sa_with_loose_thresholds_detects_mat_k_early():
-    """With loose thresholds, mat_k should be detected (e.g., 1).
-
-    Exercises the deprecated CV/RSE switch via the legacy ``maturity="auto"``
-    path (the default is now ``switch=None``)."""
-    fit = lr.Ratio(
-        method="sa", maturity="auto", max_cv=10.0, max_rse=10.0, min_run=2
-    ).fit(lr.Triangle(_toy_triangle_input()))
-    assert fit.maturity_point is not None
-
-
-def test_ratio_sa_strict_thresholds_falls_back_to_ed():
-    """When maturity not detected, SA falls back to ED throughout, so
+def test_ratio_sa_no_switch_falls_back_to_ed():
+    """With no switch (switch=None), SA falls back to ED throughout, so
     loss_proj should match the pure-ED projection."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.Ratio(method="sa", max_cv=1e-9, max_rse=1e-9, min_run=2).fit(tri)
+    sa_fit = lr.Ratio(method="sa", switch=None).fit(tri)
     ed_fit = lr.ExposureDriven().fit(tri)
 
-    assert sa_fit.maturity_point is None
+    assert sa_fit.switch_point is None
     sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
     ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
     assert sa_df["loss_proj"].to_list() == ed_df["loss_proj"].to_list()
 
 
-def test_ratio_sa_mat_k_two_matches_cl_projection():
-    """With mat_k=2, every link's target dev (>= 2) lies in the CL
-    region (target dev >= mat_k), so SA reduces to pure CL."""
+def test_ratio_sa_switch_two_matches_cl_projection():
+    """With switch=2, every link's target dev (>= 2) lies in the CL
+    region (target dev >= switch), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.Ratio(
-        method="sa", maturity="auto", max_cv=10.0, max_rse=10.0, min_run=2
-    ).fit(tri)
+    sa_fit = lr.Ratio(method="sa", switch=2).fit(tri)
     cl_fit = lr.ChainLadder().fit(tri)
 
-    # The fixture + loose thresholds deterministically yield mat_k = 2.
-    assert sa_fit.maturity_point == 2
+    assert sa_fit.switch_point == 2
     sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
     cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-    # Both use CL throughout when mat_k = 2 (target dev >= 2 for all links).
+    # Both use CL throughout when switch = 2 (target dev >= 2 for all links).
     n_compared = 0
     for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
         if a is None or b is None:
@@ -255,13 +241,13 @@ def test_ratio_groups_fitted_independently():
     assert a_loss == b_loss
 
 
-def test_ratio_sa_mat_k_per_group_dict():
+def test_ratio_sa_switch_point_per_group_dict():
     df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
-    fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0).fit(
+    fit = lr.Ratio(method="sa", switch=2).fit(
         lr.Triangle(df, groups="coverage")
     )
-    assert isinstance(fit.maturity_point, dict)
-    assert "SUR" in fit.maturity_point
+    assert isinstance(fit.switch_point, dict)
+    assert "SUR" in fit.switch_point
 
 
 # ---------------------------------------------------------------------------
@@ -313,85 +299,47 @@ def test_ratio_explicit_method_still_works():
 
 
 # ---------------------------------------------------------------------------
-# maturity 4-type dispatch on Loss / Ratio
+# switch dispatch on StageAdaptive / Ratio
 # ---------------------------------------------------------------------------
 
 
-def test_maturity_none_disables_sa_switch():
-    """maturity=None -> SA falls back to ED throughout (mat_k is None)."""
+def test_switch_none_disables_sa_switch():
+    """switch=None -> SA falls back to ED throughout (switch_point is None)."""
     tri = lr.Triangle(_toy_triangle_input())
-    fit = lr.StageAdaptive(maturity=None).fit(tri)
-    assert fit.maturity_point is None
+    fit = lr.StageAdaptive(switch=None).fit(tri)
+    assert fit.switch_point is None
 
 
 def test_no_switch_is_sa_default():
     """The SA default is `switch=None` (no discretionary switch): the
-    general path then equals pure ED, and no maturity point is reported."""
+    general path then equals pure ED, and no switch point is reported."""
     tri = lr.Triangle(_toy_triangle_input())
     assert lr.StageAdaptive().switch is None
-    assert lr.StageAdaptive().maturity is None
     sa = lr.StageAdaptive().fit(tri)
     ed = lr.ExposureDriven().fit(tri)
-    assert sa.maturity_point is None
+    assert sa.switch_point is None
     assert (
         sa.to_polars().sort(["cohort", "dev"])["loss_proj"].to_list()
         == ed.to_polars().sort(["cohort", "dev"])["loss_proj"].to_list()
     )
 
 
-def test_maturity_object_overrides_auto_detect():
-    """A passed Maturity object overrides auto-detection."""
+def test_switch_int_override():
+    """An explicit int switch sets the effective switch point."""
     tri = lr.Triangle(_toy_triangle_input())
-
-    # auto-detect with strict thresholds finds nothing.
-    auto_fit = lr.StageAdaptive(
-        max_cv=1e-9, max_rse=1e-9, min_run=2
-    ).fit(tri)
-    assert auto_fit.maturity_point is None
-
-    # an explicit Maturity object wins regardless of thresholds.
-    mat = lr.Maturity.at(point=3)
-    over_fit = lr.StageAdaptive(
-        maturity=mat, max_cv=1e-9, max_rse=1e-9
-    ).fit(tri)
-    assert over_fit.maturity_point == 3
+    fit = lr.StageAdaptive(switch=3).fit(tri)
+    assert fit.switch_point == 3
 
 
-def test_maturity_callable_spec_dispatch():
-    """A maturity_spec callable is invoked on the fit triangle."""
+def test_ratio_switch_int_override():
+    """Ratio threads an int switch into the inner Loss fit."""
     tri = lr.Triangle(_toy_triangle_input())
-    spec = lr.Maturity.detect(max_cv=10.0, max_rse=10.0, min_run=2)
-    fit = lr.StageAdaptive(maturity=spec).fit(tri)
-    assert fit.maturity_point is not None
+    fit = lr.Ratio(method="sa", switch=3).fit(tri)
+    assert fit.switch_point == 3
 
 
-def test_maturity_callable_must_return_maturity():
-    """A callable returning a non-Maturity raises a clear error."""
+def test_ratio_switch_none_disables_sa_switch():
+    """Ratio(method='sa', switch=None) -> no switch."""
     tri = lr.Triangle(_toy_triangle_input())
-    bad = lambda triangle: 3  # noqa: E731 -- returns an int, not Maturity
-    with pytest.raises(TypeError, match="Maturity"):
-        lr.StageAdaptive(maturity=bad).fit(tri)
-
-
-def test_maturity_invalid_string_raises():
-    """A maturity string other than 'auto' raises."""
-    tri = lr.Triangle(_toy_triangle_input())
-    with pytest.raises(ValueError, match="auto"):
-        lr.StageAdaptive(maturity="bogus").fit(tri)
-
-
-def test_ratio_maturity_object_overrides_auto_detect():
-    """Ratio threads a Maturity object into the inner Loss fit."""
-    tri = lr.Triangle(_toy_triangle_input())
-    mat = lr.Maturity.at(point=3)
-    fit = lr.Ratio(
-        method="sa", maturity=mat, max_cv=1e-9, max_rse=1e-9
-    ).fit(tri)
-    assert fit.maturity_point == 3
-
-
-def test_ratio_maturity_none_disables_sa_switch():
-    """Ratio(method='sa', maturity=None) -> no maturity switch."""
-    tri = lr.Triangle(_toy_triangle_input())
-    fit = lr.Ratio(method="sa", maturity=None).fit(tri)
-    assert fit.maturity_point is None
+    fit = lr.Ratio(method="sa", switch=None).fit(tri)
+    assert fit.switch_point is None

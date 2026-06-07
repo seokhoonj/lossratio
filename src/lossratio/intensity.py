@@ -1,14 +1,14 @@
 """ED intensity factor diagnostic.
 
-Parallel to :mod:`maturity` for the exposure-driven (ED) workflow:
-exposes the per-link intensity ``g_k = E[ΔL / C^P]`` along with its
-standard error and residual sigma, computed via weighted least
-squares on each cohort×link pair.
+Parallel to :class:`ATA` (the multiplicative side) for the
+exposure-driven (ED) workflow: exposes the per-link intensity
+``g_k = E[ΔL / C^P]`` along with its standard error and residual sigma,
+computed via weighted least squares on each cohort×link pair.
 
-Unlike maturity, ED has no "stable point" concept — :math:`g_k` decays
-toward zero at long development, which makes CV / RSE structurally
-ill-behaved. ``Intensity`` therefore reports diagnostic quantities
-only; there is no ``mat_k`` detection.
+Unlike the ATA factor, ED has no factor-stability point concept --
+:math:`g_k` decays toward zero at long development, which makes CV / RSE
+structurally ill-behaved. ``Intensity`` therefore reports diagnostic
+quantities only; there is no stability detection.
 """
 
 from __future__ import annotations
@@ -177,10 +177,10 @@ class Intensity:
 
     Per-development-link estimates of the exposure-driven intensity
     ``g_k = E[ΔL / C^P]``, with standard errors and residual sigma.
-    Parallel to :class:`Maturity` for the multiplicative ATA side, but
-    *without* a ``mat_k`` detection: in ED, ``g_k`` decays toward zero
-    at long development, which makes CV / RSE diagnostics ill-behaved
-    by construction (not by instability).
+    Parallel to :class:`ATA` for the multiplicative side, but *without*
+    a factor-stability point: in ED, ``g_k`` decays toward zero at long
+    development, which makes CV / RSE diagnostics ill-behaved by
+    construction (not by instability).
 
     Properties
     ----------
@@ -266,8 +266,8 @@ class Intensity:
 
     def summary(self) -> "FrameLike":
         """Alias for :attr:`df`. Provided for parity with
-        :meth:`Maturity.summary`; ED has no separate ``mat_k``
-        summary because there is no maturity concept."""
+        :meth:`ATA.summary`; ED reports diagnostics only, with no
+        factor-stability point."""
         return mirror_output(self._df, self._output_type)
 
     def plot(self, **kwargs: Any) -> Any:

@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from ._io import FrameLike
     from .calendar import Calendar
     from .link import Link
-    from .maturity import Maturity
     from .regime import Regime
     from .total import Total
 
@@ -468,7 +467,6 @@ class Triangle:
 
         - ``tri.link().ata()``                    → :class:`ATA`
         - ``tri.link().intensity()``              → :class:`Intensity`
-        - ``tri.link().ata().maturity(...)``      → :class:`Maturity`
 
         Parameters
         ----------
@@ -492,7 +490,7 @@ class Triangle:
         >>> tri = lr.Triangle(df, groups="coverage")
         >>> link = tri.link()                          # target='loss', exposure='premium'
         >>> link = tri.link(target='loss')             # ATA-only
-        >>> link.ata().maturity(max_cv=0.15)
+        >>> link.ata().summary()
         """
         from .link import Link
 
@@ -527,7 +525,8 @@ class Triangle:
         """Detect structural regime shifts across underwriting cohorts.
 
         The default ``window="auto"`` resolves each group's trajectory
-        window via :meth:`detect_maturity`, falling back to the elbow
+        window via the ATA factor-stability point (where the age-to-age
+        factors become CV/RSE-stable), falling back to the elbow
         heuristic and finally to a fixed default (``6``) when neither
         signal is available.
 
@@ -540,7 +539,7 @@ class Triangle:
             ``"premium_ed"``). Default ``"ratio"``.
         window
             Trajectory window. Integer (e.g. ``12``) for a fixed
-            window, or ``"auto"`` (default) for the maturity-first
+            window, or ``"auto"`` (default) for the factor-stability-first
             elbow-fallback resolver.
         by
             Optional override for the per-group dispatch. ``None``
@@ -554,7 +553,7 @@ class Triangle:
         window_floor
             Optional minimum for the ``window="auto"`` resolution. The
             Kneedle elbow can resolve to a degenerate ``window=2`` on the
-            pooled / maturity-unavailable path, starving E-Divisive; a
+            pooled / stability-unavailable path, starving E-Divisive; a
             floor (e.g. ``4``) restores detection. ``None`` (default)
             leaves auto resolution unchanged. Ignored for an explicit
             integer ``window``.
@@ -612,63 +611,6 @@ class Triangle:
             edge_threshold=edge_threshold,
             window_sweep=window_sweep,
             grain_sweep=grain_sweep,
-        )
-
-    def detect_maturity(
-        self,
-        target: str = "loss",
-        weight: str | None = None,
-        max_cv: float = 0.15,
-        max_rse: float = 0.05,
-        min_run: int = 2,
-    ) -> Maturity:
-        """Detect the age-to-age maturity point ``k*``.
-
-        Convenience entry point for the canonical chain
-        ``triangle.link(target=target, weight=weight).ata().maturity(...)``.
-
-        Maturity is determined jointly by:
-
-        * cross-cohort ``CV(f_k) < max_cv``
-        * pooled-factor ``RSE(f_k) < max_rse``
-        * sustained for ``min_run`` consecutive stable links
-
-        Parameters
-        ----------
-        target
-            Cumulative metric used as the link numerator. Default
-            ``"loss"`` (chain-ladder convention). One of ``"loss"``,
-            ``"premium"``, ``"ratio"``. Forwarded to
-            :meth:`Triangle.link` as ``target`` (matching ``link`` /
-            ``detect_regime`` / ``Maturity.detect``).
-        weight
-            Optional WLS weight column. Forwarded to :meth:`Triangle.link`.
-        max_cv
-            Maximum cross-cohort coefficient of variation.
-            Default ``0.15``.
-        max_rse
-            Maximum pooled-factor relative standard error.
-            Default ``0.05``.
-        min_run
-            Minimum consecutive stable links. Default ``2``.
-
-        Returns
-        -------
-        Maturity
-            One :class:`Maturity` per Triangle (per group when
-            ``groups`` is set on the Triangle).
-
-        Notes
-        -----
-        ``alpha`` (WLS variance structure), ``groups`` (rebucket to a
-        coarser partition), and ``min_valid_ratio`` / ``min_n_valid``
-        thresholds are not yet plumbed through the ATA pipeline; the
-        active thresholds are CV / RSE only.
-        """
-        return (
-            self.link(target=target, weight=weight)
-            .ata()
-            .maturity(max_cv=max_cv, max_rse=max_rse, min_run=min_run)
         )
 
     def mask(self, holdout: int = 0) -> Triangle:
@@ -745,7 +687,7 @@ class Triangle:
         recent: int | None = None,
         regime: Any = None,
         holdout: int | None = None,
-        maturity: Any = None,
+        switch: Any = None,
     ) -> "FrameLike":
         """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
 
@@ -771,11 +713,11 @@ class Triangle:
         holdout
             Number of trailing calendar diagonals flagged ``"holdout"`` (the
             :class:`Backtest` hold-out pattern).
-        maturity
-            ``None``, an integer ``k*``, a :class:`Maturity`, or ``"auto"``.
+        switch
+            ``None``, an integer switch dev, or a :class:`SwitchPoint`.
             With ``regime`` this enables hybrid filtering (cohort cut for
-            ``dev < k*``, calendar cut for ``dev >= k*``); standalone it does
-            not shrink the grid (a reference boundary only).
+            ``dev < switch``, calendar cut for ``dev >= switch``); standalone
+            it does not shrink the grid (a reference boundary only).
 
         Returns
         -------
@@ -786,14 +728,15 @@ class Triangle:
         """
         from ._triangle_vis import (
             _compute_triangle_usage,
-            _resolve_maturity_k,
+            _resolve_switch_k,
             _resolve_regime_for_usage,
         )
 
         regime_obj = _resolve_regime_for_usage(self, regime)
-        m_k = _resolve_maturity_k(maturity, triangle=self)
+        switch_k = _resolve_switch_k(switch, triangle=self)
         usage_df = _compute_triangle_usage(
-            self, recent=recent, regime=regime_obj, holdout=holdout, m_k=m_k
+            self, recent=recent, regime=regime_obj, holdout=holdout,
+            switch_k=switch_k,
         )
         return mirror_output(usage_df, self._output_type)
 
@@ -812,7 +755,7 @@ class Triangle:
         recent: int | None = None,
         regime: Any = None,
         holdout: int | None = None,
-        maturity: Any = None,
+        switch: Any = None,
     ) -> Any:
         """Triangle heatmap (cell-value or status), backed by matplotlib.
 
@@ -822,7 +765,7 @@ class Triangle:
             ``"value"`` (default; cell-value heatmap of one metric) or
             ``"usage"`` (status heatmap showing which cells the fit
             would use vs. drop under the given ``recent`` / ``regime`` /
-            ``holdout`` / ``maturity`` masks).
+            ``holdout`` / ``switch`` masks).
         x_axis
             ``"dev"`` (default; columns are the development index, the
             aligned right-triangle layout) or ``"calendar"`` (columns
@@ -832,7 +775,7 @@ class Triangle:
             ``cohort + (dev - 1)`` at the triangle grain. Applies to
             both views; in the usage view the ``recent`` / ``holdout``
             calendar-diagonal masks become clean vertical bands, and the
-            ``maturity`` boundary becomes a stepped diagonal.
+            ``switch`` boundary becomes a stepped diagonal.
         metric
             (value view) One of: ``"ratio"``, ``"incr_ratio"``,
             ``"loss"``, ``"incr_loss"``, ``"premium"``,
@@ -863,13 +806,13 @@ class Triangle:
             (usage view) Number of trailing calendar diagonals to flag
             as "holdout" (the hold-out pattern used by
             :class:`Backtest`).
-        maturity
-            (usage view) ``None``, an integer ``k*``, or a
-            :class:`Maturity` instance. When supplied alongside
-            ``regime``, switches to hybrid filtering -- cohort cut on
-            ``dev < k*`` (ED region), calendar cut on ``dev >= k*``
-            (CL region). Also draws a dashed vertical line at
-            ``dev = k*``. ``"auto"`` is reserved for a later pass.
+        switch
+            (usage view) ``None``, an integer switch dev, or a
+            :class:`SwitchPoint`. When supplied alongside ``regime``,
+            switches to hybrid filtering -- cohort cut on
+            ``dev < switch`` (ED region), calendar cut on
+            ``dev >= switch`` (CL region). Also draws a dashed vertical
+            line at ``dev = switch``.
         nrow, ncol
             Facet wrap layout when ``groups`` is set. Defaults to a
             near-square grid.
@@ -896,7 +839,7 @@ class Triangle:
             recent=recent,
             regime=regime,
             holdout=holdout,
-            maturity=maturity,
+            switch=switch,
         )
 
     def plot(

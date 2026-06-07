@@ -136,11 +136,6 @@ def test_link_intensity_returns_intensity():
     assert isinstance(intensity, lr.Intensity)
 
 
-def test_link_ata_then_maturity_returns_maturity():
-    mat = _tri().link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
-    assert isinstance(mat, lr.Maturity)
-
-
 def test_link_build_once_summarise_twice():
     """Same Link should produce identical ATA / Intensity results
     each time it's queried."""

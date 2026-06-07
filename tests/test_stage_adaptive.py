@@ -41,10 +41,10 @@ def test_matches_loss_engine() -> None:
     assert_frame_equal(new, old)
 
 
-def test_maturity_passthrough_matches_loss() -> None:
+def test_switch_passthrough_matches_loss() -> None:
     tri = _triangle()
-    new = lr.StageAdaptive(maturity=None).fit(tri).to_polars()
-    old = Loss(method="sa", maturity=None).fit(tri).to_polars()
+    new = lr.StageAdaptive(switch=None).fit(tri).to_polars()
+    old = Loss(method="sa", switch=None).fit(tri).to_polars()
     assert_frame_equal(new, old)
 
 

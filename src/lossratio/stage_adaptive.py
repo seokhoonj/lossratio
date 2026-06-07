@@ -1,14 +1,14 @@
-"""Stage-adaptive loss model (exposure-driven before maturity, CL after).
+"""Stage-adaptive loss model (exposure-driven before the switch, CL after).
 
 ``StageAdaptive`` is a loss-side estimator: ``.fit(triangle)`` develops the
-cumulative ``loss`` series with a maturity switch -- exposure-driven (ED)
+cumulative ``loss`` series with an ED -> CL switch -- exposure-driven (ED)
 for early development (where age-to-age factors are volatile) and Mack chain
-ladder (CL) once the development has matured -- and returns a role-based
+ladder (CL) past the switch dev -- and returns a role-based
 :class:`~lossratio.loss.LossFit` (``.model == "stage_adaptive"``).
 
 It is the ED+CL composition configuration of the shared loss-projection
-engine. The maturity switch ``k*`` is resolved from the ``maturity``
-argument (auto-detected per group by default).
+engine. The switch dev is resolved from the ``switch`` argument (a
+:class:`~lossratio.SwitchPoint`, an int, or ``None`` for pure ED).
 """
 
 from __future__ import annotations
@@ -17,14 +17,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
+    from ._types import RegimeArg, TailArg, UncertaintyArg
     from .loss import LossFit
     from .triangle import Triangle
 
 
 @dataclass(kw_only=True)
 class StageAdaptive:
-    """Stage-adaptive (ED-before-maturity, CL-after) loss projection.
+    """Stage-adaptive (ED-before-switch, CL-after) loss projection.
 
     Parameters
     ----------
@@ -42,12 +42,6 @@ class StageAdaptive:
         ``SwitchPoint.detect()`` spec (backtest-selected, leakage-safe inside
         a backtest fold). ``StageAdaptive()`` with no switch and no regime is
         therefore equivalent to ``ExposureDriven()``.
-    maturity
-        Deprecated legacy alias for the CV/RSE factor-stability switch.
-        Emits a ``DeprecationWarning``; passing both ``switch`` and
-        ``maturity`` is an error.
-    max_cv, max_rse, min_run
-        Stability thresholds for the legacy ``maturity="auto"`` detection.
     recent
         Optional positive integer; restricts factor estimation to the
         most-recent ``recent`` calendar diagonals. ``None`` (default)
@@ -60,9 +54,9 @@ class StageAdaptive:
         applies no tail; a positive number is an explicit multiplicative
         factor; ``True`` / a :class:`~lossratio.Tail` spec computes the
         tail of whichever stage is active at the last development column --
-        the post-maturity CL (multiplicative ``f -> 1``, fit on the
-        post-maturity factors) when a maturity switch is found, otherwise
-        the ED additive ``g -> 0`` tail.
+        the post-switch CL (multiplicative ``f -> 1``, fit on the post-switch
+        factors) when a switch is found, otherwise the ED additive
+        ``g -> 0`` tail.
     conf_level
         Confidence level for the analytical CI on ``loss_proj``. Default
         ``0.95``.
@@ -78,10 +72,6 @@ class StageAdaptive:
     alpha:        float          = 1.0
     sigma_method: str            = "locf"
     switch:       Any            = None
-    maturity:     MaturityArg    = None
-    max_cv:       float          = 0.15
-    max_rse:      float          = 0.05
-    min_run:      int            = 2
     recent:       int | None     = None
     regime:       RegimeArg      = None
     tail:         TailArg        = False
@@ -113,10 +103,6 @@ class StageAdaptive:
             alpha        = self.alpha,
             sigma_method = self.sigma_method,
             switch       = self.switch,
-            maturity     = self.maturity,
-            max_cv       = self.max_cv,
-            max_rse      = self.max_rse,
-            min_run      = self.min_run,
             recent       = self.recent,
             regime       = self.regime,
             tail         = self.tail,

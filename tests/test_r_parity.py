@@ -106,17 +106,6 @@ def test_triangle_build_matches_r():
 # ---------------------------------------------------------------------------
 
 
-def test_ratio_sa_full_matches_r():
-    r = _load("ratio_sa_full").sort(["cohort", "dev"])
-    tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = (
-        lr.Ratio(method="sa", maturity="auto").fit(tri)
-        .to_polars()
-        .sort(["cohort", "dev"])
-    )
-    _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
-
-
 def test_ratio_ed_full_matches_r():
     r = _load("ratio_ed_full").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
@@ -137,18 +126,6 @@ def test_ratio_cl_full_matches_r():
         .sort(["cohort", "dev"])
     )
     _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
-
-
-def test_ratio_sa_maturity_matches_r():
-    """Maturity dev: R's $maturity table carries the link target dev in
-    the `change` column (mirrors the `change` column convention used by
-    Regime). Python exposes the same value via `fit.maturity_point[<group>]`."""
-    r = _load("ratio_sa_maturity")
-    tri = lr.Triangle(_exp_sur(), groups="coverage")
-    fit = lr.Ratio(method="sa", maturity="auto").fit(tri)
-    r_k = int(r["change"].max())
-    py_k = fit.maturity_point["surgery"]
-    assert py_k == r_k, f"maturity_point mismatch: py={py_k} r={r_k}"
 
 
 # ---------------------------------------------------------------------------
@@ -372,45 +349,12 @@ def test_regime_changes_match_r():
 # ---------------------------------------------------------------------------
 
 
-def test_ratio_sa_summary_matches_r():
-    """Ratio(method='sa').summary() — per-cohort ultimate / SE / CV.
-
-    Compares the full numeric column set. The R fixture is dumped with
-    bootstrap disabled (`fit_ratio(..., bootstrap = FALSE)`), so the SE
-    columns are the deterministic analytical values — comparable to
-    Python's analytical SE. Fully-observed cohorts carry NaN SE in
-    Python (no projection) vs 0 in R; `_compare_numeric` skips those.
-    """
-    # R names the summary endpoint columns loss_ult / premium_ult /
-    # ratio_ult / reserve; Python uses loss_proj / premium_proj /
-    # ratio_proj / loss_proj_remaining. Align the R fixture on load so the
-    # numeric compare lines up.
-    r = _load("ratio_sa_summary").rename(
-        {"loss_ult": "loss_proj", "premium_ult": "premium_proj",
-         "ratio_ult": "ratio_proj", "reserve": "loss_proj_remaining"}
-    ).sort(["cohort"])
-    tri = lr.Triangle(_exp_sur(), groups="coverage")
-    ratio_fit = lr.Ratio(method="sa", maturity="auto").fit(tri)
-    py = ratio_fit.summary().sort(["cohort"])
-
-    _compare_numeric(
-        py, r,
-        cols=[
-            "latest", "loss_proj", "loss_proj_remaining", "premium_proj",
-            "ratio_latest", "ratio_proj", "maturity_from",
-            "loss_proc_se", "loss_param_se", "loss_total_se",
-            "loss_total_cv", "ratio_se", "ratio_cv",
-            "ratio_ci_lo", "ratio_ci_hi",
-        ],
-    )
-
-
 # ---------------------------------------------------------------------------
 # backtest with target = "ratio"
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("method", ["ed", "sa"])
+@pytest.mark.parametrize("method", ["ed"])
 def test_backtest_ratio_ae_err_matches_r(method: str):
     """Cell-level parity with R's backtest output, per loss method.
 
@@ -423,7 +367,7 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method, maturity="auto" if method == "sa" else None),
+        estimator=lr.Ratio(method=method),
         holdout=6, target="ratio",
     ).fit(tri)
     py_aligned = bt.ae_err.sort(["cohort", "dev"])
@@ -441,7 +385,7 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     )
 
 
-@pytest.mark.parametrize("method", ["ed", "sa"])
+@pytest.mark.parametrize("method", ["ed"])
 def test_backtest_col_summary_matches_r(method: str):
     """col_summary aggregates by dev, per loss method.
 
@@ -451,7 +395,7 @@ def test_backtest_col_summary_matches_r(method: str):
     r = _load(f"backtest_ratio_{method}_col_summary").sort(["dev"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method, maturity="auto" if method == "sa" else None),
+        estimator=lr.Ratio(method=method),
         holdout=6, target="ratio",
     ).fit(tri)
     py = bt.col_summary.sort(["dev"])
@@ -471,13 +415,13 @@ def test_backtest_col_summary_matches_r(method: str):
     )
 
 
-@pytest.mark.parametrize("method", ["ed", "sa"])
+@pytest.mark.parametrize("method", ["ed"])
 def test_backtest_diag_summary_matches_r(method: str):
     """diag_summary aggregates by calendar diagonal, per loss method."""
     r = _load(f"backtest_ratio_{method}_diag_summary").sort(["cal_idx"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
-        estimator=lr.Ratio(method=method, maturity="auto" if method == "sa" else None),
+        estimator=lr.Ratio(method=method),
         holdout=6, target="ratio",
     ).fit(tri)
     py = bt.diag_summary.sort(["cal_idx"])

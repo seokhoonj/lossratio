@@ -409,46 +409,6 @@ def test_mask_with_groups():
 
 
 # ---------------------------------------------------------------------------
-# Triangle.detect_maturity: convenience entry point
-# ---------------------------------------------------------------------------
-
-
-def test_detect_maturity_returns_maturity():
-    """Calling Triangle.detect_maturity returns a Maturity instance."""
-    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
-    tri = lr.Triangle(exp, groups=None)
-    m = tri.detect_maturity()
-    assert isinstance(m, lr.Maturity)
-
-
-def test_detect_maturity_matches_chain():
-    """The convenience entry point is identical to the explicit chain
-    ``triangle.link().ata().maturity(...)``."""
-    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
-    tri = lr.Triangle(exp, groups=None)
-    direct = tri.detect_maturity(max_cv=0.2, max_rse=0.1, min_run=2)
-    chained = (
-        tri.link(target="loss")
-        .ata()
-        .maturity(max_cv=0.2, max_rse=0.1, min_run=2)
-    )
-    assert direct.point == chained.point
-
-
-def test_detect_maturity_with_groups():
-    """A grouped Triangle yields per-group maturity values."""
-    exp = lr.load_experience().filter(
-        pl.col("coverage").is_in(["SUR", "CI"])
-    )
-    tri = lr.Triangle(exp, groups="coverage")
-    m = tri.detect_maturity()
-    assert isinstance(m, lr.Maturity)
-    # maturity_point is a dict {group_value: int|None} for grouped triangles.
-    assert isinstance(m.point, dict)
-    assert set(m.point.keys()) == {"SUR", "CI"}
-
-
-# ---------------------------------------------------------------------------
 # TriangleValidation: gap detection + invalid-row detection
 # ---------------------------------------------------------------------------
 

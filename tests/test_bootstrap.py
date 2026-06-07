@@ -905,7 +905,18 @@ _PHASE2_PARADIGMS = [
 ]
 
 
-@pytest.mark.parametrize("fixture,config", _PHASE2_PARADIGMS)
+# The ``sa`` paradigm's R fixture was generated with the removed CV/RSE
+# auto-switch SA; the new SA default (no discretionary switch) is pure ED,
+# so it no longer matches that fixture (it now matches the ED fixture). The
+# R-vs-Python comparison is dropped for ``sa`` until a new SA golden is
+# regenerated; the invariant / reproducibility paradigm tests below still
+# exercise the ``sa`` config.
+_PHASE2_R_PARADIGMS = [
+    (f, c) for f, c in _PHASE2_PARADIGMS if c["method"] != "sa"
+]
+
+
+@pytest.mark.parametrize("fixture,config", _PHASE2_R_PARADIGMS)
 def test_phase2_summary_statistically_close_to_r(fixture, config):
     """Python ``Bootstrap`` summary vs the R n_replicates=4000 fixture for each
     Phase-2 paradigm.

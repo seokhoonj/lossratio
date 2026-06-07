@@ -22,7 +22,6 @@ from .intensity import Intensity
 from .link import Link
 from .loss import LossFit
 from .ratio import Ratio, RatioFit
-from .maturity import Maturity
 from .premium import Premium, PremiumFit
 from .regime import Regime
 from .stage_adaptive import StageAdaptive
@@ -48,7 +47,6 @@ __all__ = [
     "Intensity",
     "Link",
     "LossFit",
-    "Maturity",
     "ParametricBootstrap",
     "Premium",
     "PremiumFit",

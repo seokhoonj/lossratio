@@ -66,16 +66,6 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["ratio_sa"] = _frame(lr.Ratio(method="sa").fit(tri))
     out["ratio_ed_delta"] = _frame(lr.Ratio(method="ed", se_method="delta").fit(tri))
 
-    # --- maturity ---
-    mat = tri.link().ata().maturity()
-    out["maturity"] = _frame(mat)
-    out["maturity_point"] = pl.DataFrame(
-        {
-            "group": list(mat.point.keys()),
-            "point": [int(v) for v in mat.point.values()],
-        }
-    )
-
     # --- convergence (SUR) ---
     conv = lr.Ratio(method="sa").fit(sur).convergence()
     out["convergence"] = _frame(conv)
@@ -136,19 +126,6 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
         lr.Ratio(method="ed", se_method="delta").fit(mc)
     )
 
-    mc_mat = mc.link().ata().maturity()
-    out["mc_maturity"] = _frame(mc_mat)
-    # maturity.point is keyed by the (coverage, block) TUPLE here -- split
-    # the tuple back into its group columns so the fixture pins the keys.
-    mc_keys = list(mc_mat.point.keys())
-    out["mc_maturity_point"] = pl.DataFrame(
-        {
-            "coverage": [k[0] for k in mc_keys],
-            "block": [k[1] for k in mc_keys],
-            "point": [int(v) for v in mc_mat.point.values()],
-        }
-    )
-
     # multi-column convergence pools to a single portfolio point (by design);
     # pin it so the multi-col convergence path is covered.
     mc_conv = lr.Ratio(method="sa").fit(mc).convergence()
@@ -187,7 +164,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
 CASE_NAMES = [
     "triangle", "calendar", "total",
     "cl", "ed", "loss_sa", "premium", "ratio_sa", "ratio_ed_delta",
-    "maturity", "maturity_point", "convergence", "convergence_point",
+    "convergence", "convergence_point",
     "regime_changes", "loss_sa_regime_sb", "loss_sa_regime_bb",
     "bt_ae_err", "bt_col_summary", "bt_diag_summary",
     "boot_analytical_cl", "boot_parametric_cl",
@@ -195,7 +172,6 @@ CASE_NAMES = [
     "mc_triangle", "mc_calendar", "mc_total",
     "mc_cl", "mc_ed", "mc_loss_sa", "mc_premium",
     "mc_ratio_sa", "mc_ratio_ed_delta",
-    "mc_maturity", "mc_maturity_point",
     "mc_convergence", "mc_convergence_point",
     "mc_regime_changes", "mc_loss_sa_regime_sb", "mc_loss_sa_regime_bb",
     "mc_bt_ae_err", "mc_bt_col_summary", "mc_bt_diag_summary",

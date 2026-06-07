@@ -298,7 +298,7 @@ def test_ratio_ed_tail_propagates(tri):
 
 
 def test_ratio_sa_tail_propagates(tri):
-    # SA tail is active (post-maturity CL / ED fallback); it surfaces on
+    # SA tail is active (post-switch CL / ED fallback); it surfaces on
     # the RatioFit and emits no "has no effect" warning.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -481,14 +481,16 @@ def test_sa_default_no_tail_columns(tri):
     assert all("tail" not in c for c in sa._df.columns)
 
 
-def test_sa_tail_post_maturity_cl_is_multiplicative(tri):
-    # With a detected maturity the last stage is CL -> the tail is the
+def test_sa_tail_post_switch_cl_is_multiplicative(tri):
+    # With a switch the last stage is CL -> the tail is the
     # multiplicative factor applied to the last cumulative loss. Use a
-    # group whose post-maturity factors actually converge (SUR; the
+    # group whose post-switch factors actually converge (SUR; the
     # curve-aware guard diverges the slow-decaying groups to 1.0).
-    sa = lr.StageAdaptive(maturity="auto", tail=True).fit(tri)
+    sa = lr.StageAdaptive(switch=2, tail=True).fit(tri)
     assert "loss_tail" in sa._df.columns
-    assert all(v.mat_k is not None for v in sa._internals.values())
+    assert all(
+        v.effective_switch_point is not None for v in sa._internals.values()
+    )
     assert sa.tail_factor["SUR"] > 1.0  # this group converges
     last = (
         sa._df.with_columns(
@@ -503,9 +505,11 @@ def test_sa_tail_post_maturity_cl_is_multiplicative(tri):
 
 
 def test_sa_tail_all_ed_is_additive(tri):
-    # With maturity=None the SA fit is ED throughout -> the additive tail.
-    sa = lr.StageAdaptive(maturity=None, tail=True).fit(tri)
-    assert all(v.mat_k is None for v in sa._internals.values())
+    # With switch=None the SA fit is ED throughout -> the additive tail.
+    sa = lr.StageAdaptive(switch=None, tail=True).fit(tri)
+    assert all(
+        v.effective_switch_point is None for v in sa._internals.values()
+    )
     sum_g = compute_ed_tail_increment_coupled(
         sa._internals["CAN"].g_sel,
         sa.premium_fit._premium_f_k["CAN"],
@@ -535,35 +539,38 @@ def test_sa_tail_numeric_is_multiplicative(tri):
 def test_borrowed_tail_follows_effective_switch_not_selected(tri):
     """segment_bridged_borrowed + switch=None: a segment whose edge is forced
     to donor-f_k CL past its own-data boundary gets the multiplicative CL
-    tail, even though no discretionary switch was selected (mat_k=None). The
-    prior code keyed the tail off the selected mat_k and wrongly applied the
-    additive ED tail to such a borrowed CL edge."""
+    tail, even though no discretionary switch was selected
+    (selected_switch_point=None). The prior code keyed the tail off the
+    selected switch and wrongly applied the additive ED tail to such a
+    borrowed CL edge."""
     reg = lr.Regime.at(
         change="2024-07-01", treatment="segment_bridged_borrowed"
     )
     sa = lr.StageAdaptive(switch=None, tail=True, regime=reg).fit(tri)
 
     # switch=None -> no discretionary switch was selected anywhere.
-    assert all(v.mat_k is None for v in sa._internals.values())
+    assert all(
+        v.selected_switch_point is None for v in sa._internals.values()
+    )
 
     # A borrowed-edge segment: the effective switch is finite and within the
     # dev range (the body capped the ED region at the donor-borrow boundary),
     # so the last stage is CL.
     borrowed = [
         key for key, v in sa._internals.items()
-        if v.effective_switch is not None
-        and np.isfinite(v.effective_switch)
-        and v.effective_switch <= v.n_devs
+        if v.effective_switch_point is not None
+        and np.isfinite(v.effective_switch_point)
+        and v.effective_switch_point <= v.n_devs
     ]
     assert borrowed, "the borrow regime must create at least one CL-edge segment"
 
     # Each borrowed segment's tail factor is the CL (multiplicative)
     # computation on its augmented post-boundary factors -- NOT the additive
-    # ED increment the buggy mat_k-keyed path would have produced.
+    # ED increment the buggy switch-keyed path would have produced.
     for key in borrowed:
         v = sa._internals[key]
         cl = compute_tail_factor(
-            v.f_sel[max(int(v.effective_switch) - 2, 0):], True, tri.grain
+            v.f_sel[max(int(v.effective_switch_point) - 2, 0):], True, tri.grain
         ).factor
         assert sa.tail_factor[key] == pytest.approx(cl)
 

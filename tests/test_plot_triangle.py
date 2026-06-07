@@ -188,9 +188,9 @@ def test_x_axis_calendar_value(tri_single):
 
 def test_x_axis_calendar_usage(tri_single):
     # Usage view honours the calendar axis too, with the calendar-diagonal
-    # recent / holdout masks and the maturity boundary overlaid.
+    # recent / holdout masks and the switch boundary overlaid.
     fig = tri_single.plot_triangle(
-        kind="usage", x_axis="calendar", recent=12, holdout=6, maturity="auto"
+        kind="usage", x_axis="calendar", recent=12, holdout=6, switch=3
     )
     try:
         assert fig.get_axes()
@@ -239,8 +239,8 @@ def test_x_axis_calendar_multigroup_facets(tri_with_groups):
             _close(fig)
 
 
-def test_usage_calendar_maturity_is_a_staircase(tri_single):
-    # The maturity boundary is a single vline on the dev axis but a
+def test_usage_calendar_switch_is_a_staircase(tri_single):
+    # The switch boundary is a single vline on the dev axis but a
     # stepped diagonal (many dashed segments) on the calendar axis.
     def _n_dashed(fig):
         ax = [a for a in fig.get_axes() if a.get_visible()][0]
@@ -248,9 +248,9 @@ def test_usage_calendar_maturity_is_a_staircase(tri_single):
             1 for ln in ax.lines if ln.get_linestyle() in ("--", "dashed")
         )
 
-    fig_dev = tri_single.plot_triangle(kind="usage", maturity=3, x_axis="dev")
+    fig_dev = tri_single.plot_triangle(kind="usage", switch=3, x_axis="dev")
     fig_cal = tri_single.plot_triangle(
-        kind="usage", maturity=3, x_axis="calendar"
+        kind="usage", switch=3, x_axis="calendar"
     )
     try:
         assert _n_dashed(fig_dev) == 1

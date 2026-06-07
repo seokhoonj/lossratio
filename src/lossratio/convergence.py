@@ -145,7 +145,6 @@ def detect_convergence(
     max_dispersion: float = 0.15,
     window: int = 5,
     start: int = 2,
-    maturity_point: int | None = None,
     holdout_max: int | None = None,
     min_n_cohorts: int = 5,
     **backtest_kwargs: Any,
@@ -179,9 +178,7 @@ def detect_convergence(
     start
         First development period to scan for convergence (the candidate
         floor). Default ``2``. Convergence runs its own holdout backtests,
-        so it no longer needs an external maturity/stability anchor.
-    maturity_point
-        Deprecated alias for ``start`` (emits a ``DeprecationWarning``).
+        so it needs no external factor-stability anchor.
     holdout_max
         Cap on holdout depth. When ``None``, set to
         ``max(window, (dev_max - start) // 2)``.
@@ -216,16 +213,8 @@ def detect_convergence(
         raise ValueError("window must be >= 2")
     window = int(window)
 
-    # 1. Resolve the candidate-scan floor. `maturity_point` is a deprecated
-    # alias for `start`; convergence no longer anchors on the ATA stability
-    # point (it runs its own holdout backtests).
-    if maturity_point is not None:
-        warnings.warn(
-            "`maturity_point=` is deprecated; use `start=`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        start = int(maturity_point)
+    # 1. Resolve the candidate-scan floor. Convergence no longer anchors on
+    # the ATA factor-stability point (it runs its own holdout backtests).
     start = int(start)
     if start < 2:
         raise ValueError(f"start must be >= 2, got {start}")
@@ -326,7 +315,7 @@ def detect_convergence(
     # computed (NaN -- e.g. an early dev below the holdout cap) must never be
     # selected, even if the tail/slope skipped over it: guard on the
     # candidate's own finite Ratio. With `start=2` this matters where the old
-    # maturity floor used to keep early candidates out.
+    # factor-stability floor used to keep early candidates out.
     finite_ratio = np.isfinite(ratio_arr)
     pass_d = np.isfinite(dispersion) & (dispersion < max_dispersion)
     pass_window = (

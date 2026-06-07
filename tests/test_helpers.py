@@ -1,5 +1,5 @@
-"""Tests for the factory helpers ``regime_at`` / ``regime_spec`` /
-``maturity_at`` / ``maturity_spec`` (4-type dispatch entry points)."""
+"""Tests for the factory helpers ``regime_at`` / ``regime_spec``
+(4-type dispatch entry points)."""
 
 from __future__ import annotations
 
@@ -121,67 +121,3 @@ def test_regime_spec_forwards_method():
     spec = lr.Regime.detect(window=12, method="hclust", n_regimes=2)
     r = spec(tri)
     assert r.method == "hclust"
-
-
-# ---------------------------------------------------------------------------
-# maturity_at
-# ---------------------------------------------------------------------------
-
-
-def test_maturity_at_single_int():
-    m = lr.Maturity.at(point=6)
-    assert isinstance(m, lr.Maturity)
-    assert m.point == 6
-
-
-def test_maturity_at_with_groups():
-    m = lr.Maturity.at(point=[6, 8], groups={"coverage": ["SUR", "CI"]})
-    assert m.point == {"SUR": 6, "CI": 8}
-
-
-def test_maturity_at_validation_errors():
-    with pytest.raises(TypeError, match="must be int or Sequence"):
-        lr.Maturity.at(point="bogus")
-    with pytest.raises(ValueError, match="length"):
-        lr.Maturity.at(point=[])
-    with pytest.raises(ValueError, match="equal length"):
-        lr.Maturity.at(point=[6, 8], groups={"coverage": ["SUR"]})
-
-
-# ---------------------------------------------------------------------------
-# maturity_spec
-# ---------------------------------------------------------------------------
-
-
-def test_maturity_spec_returns_callable():
-    spec = lr.Maturity.detect()
-    assert callable(spec)
-
-
-def test_maturity_spec_invocation_yields_maturity():
-    tri = _sur_triangle()
-    spec = lr.Maturity.detect()
-    m = spec(tri)
-    assert isinstance(m, lr.Maturity)
-    assert m.max_cv == 0.15
-    assert m.min_run == 2
-
-
-def test_maturity_spec_ratio_path():
-    """The spec exposes the link-target dispatch needed for Ratio maturity:
-    target='ratio', exposure=None, weight='premium' is the recipe convergence
-    detection uses internally."""
-    tri = _sur_triangle()
-    spec = lr.Maturity.detect(target="ratio", exposure=None, weight="premium")
-    m = spec(tri)
-    assert isinstance(m, lr.Maturity)
-    assert m.point is not None  # SUR data should yield a mature Ratio link
-
-
-def test_maturity_spec_threshold_overrides_propagate():
-    tri = _sur_triangle()
-    spec = lr.Maturity.detect(max_cv=0.5, max_rse=0.5, min_run=1)
-    m = spec(tri)
-    assert m.max_cv == 0.5
-    assert m.max_rse == 0.5
-    assert m.min_run == 1

@@ -6,8 +6,9 @@ for the additive (exposure-driven) side; both are *factor-level*
 diagnostics that report per-link estimates with standard errors and
 spread, without performing projection.
 
-For maturity-point detection on top of the same factor diagnostic see
-:class:`Maturity`.
+The CV / RSE factor-stability columns this diagnostic reports are also
+what the ``link.plot(model="ata", show_factor_stability=...)`` overlay
+shades.
 """
 
 from __future__ import annotations
@@ -22,17 +23,112 @@ from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normaliz
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._mack import _build_value_matrix, _fit_mack
-from .maturity import _compute_cv_rse
 
 if TYPE_CHECKING:
     from ._io import FrameLike
     from .link import Link
-    from .maturity import Maturity
 
 
 # ---------------------------------------------------------------------------
 # Internal computation
 # ---------------------------------------------------------------------------
+
+
+def _compute_cv_rse(
+    loss_obs: np.ndarray,
+    f_k: np.ndarray,
+    sigma2_k: np.ndarray,
+    link_mask: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute CV (across cohort link factors) and RSE (of pooled f_k).
+
+    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
+    (see :mod:`lossratio._recent`). When supplied, both the cross-cohort
+    CV and the pooled RSE are computed only from links inside the
+    recent wedge. ``None`` (default) is the byte-identical no-filter
+    path.
+    """
+    n_cohorts, n_devs = loss_obs.shape
+    n_links = n_devs - 1
+
+    cv_k = np.full(n_links, np.nan, dtype=np.float64)
+    rse_k = np.full(n_links, np.nan, dtype=np.float64)
+
+    for k in range(n_links):
+        col_k = loss_obs[:, k]
+        col_k1 = loss_obs[:, k + 1]
+        mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
+        n_k = int(mask.sum())
+
+        # Cross-cohort CV of individual link factors (needs n_k >= 2,
+        # and the denominator C^L_{i,k} > 0 for each contributing cohort).
+        if n_k >= 2:
+            ck = col_k[mask]
+            ck1 = col_k1[mask]
+            ck_pos = ck > 0
+            if ck_pos.sum() >= 2:
+                indiv = ck1[ck_pos] / ck[ck_pos]
+                f_mean = float(indiv.mean())
+                f_sd = float(indiv.std(ddof=1))
+                if f_mean != 0:
+                    cv_k[k] = f_sd / f_mean
+
+        # RSE of pooled f_k. Three cases:
+        #   n_k >= 2, sigma^2 > 0  -> RSE = sqrt(sigma^2 / sum_j C_j) / f_k
+        #   n_k >= 2, sigma^2 == 0 -> perfectly stable estimate, RSE = 0
+        #   n_k <  2               -> insufficient samples, leave NaN
+        #
+        # The denominator must match the cohorts that actually contributed
+        # to f_k: those with both c_k > 0 and c_{k+1} finite (the pooled
+        # factor fit uses the same subset). Summing all finite c_k would
+        # understate SE and bias rse downward.
+        fit_mask = mask & (col_k > 0)
+        sum_col = float(col_k[fit_mask].sum())
+        if n_k >= 2 and sum_col > 0 and f_k[k] > 0:
+            if sigma2_k[k] > 0:
+                f_se = np.sqrt(sigma2_k[k] / sum_col)
+                rse_k[k] = float(f_se / f_k[k])
+            else:
+                rse_k[k] = 0.0
+
+    return cv_k, rse_k
+
+
+def _detect_stability_point(
+    loss_obs: np.ndarray,
+    max_cv: float = 0.15,
+    max_rse: float = 0.05,
+    min_run: int = 2,
+    link_mask: np.ndarray | None = None,
+) -> int | None:
+    """First dev (1-indexed ``dev_to``) where the ATA factor becomes
+    CV/RSE-stable for ``min_run`` consecutive links, else ``None``.
+
+    Applies ``CV(f_k) < max_cv`` AND ``RSE(f_k) < max_rse`` to the
+    per-link factor stats and returns the ``dev_to`` of the first
+    sustained stable run. The development region splits as
+    ED = ``dev < point`` and CL = ``dev >= point``. An internal
+    factor-stability diagnostic (no projection); used by the
+    ``detect_regime(window="auto")`` trajectory-window resolver.
+    """
+    mack = _fit_mack(loss_obs, link_mask=link_mask)
+    cv_k, rse_k = _compute_cv_rse(
+        loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
+    )
+    n_links = len(cv_k)
+    stable = np.zeros(n_links, dtype=bool)
+    for k in range(n_links):
+        if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):
+            stable[k] = (cv_k[k] < max_cv) and (rse_k[k] < max_rse)
+    if min_run < 1 or n_links < min_run:
+        return None
+    for k in range(n_links - min_run + 1):
+        if bool(np.all(stable[k : k + min_run])):
+            # link k goes from dev (k+1) -> dev (k+2); dev_to = k + 2.
+            return k + 2
+    return None
 
 
 @dataclass
@@ -134,9 +230,9 @@ class ATA:
     count. Parallel to :class:`Intensity` for the additive side;
     builds on the Mack pooled factor (:func:`cl._fit_mack`).
 
-    For stability-point detection on top of these diagnostics, see
-    :class:`Maturity` (which threshold-filters CV / RSE and locates a
-    ``mat_k``).
+    The CV / RSE columns are what the
+    ``link.plot(model="ata", show_factor_stability=...)`` overlay shades
+    to mark where the factors become stable.
 
     Properties
     ----------
@@ -212,40 +308,6 @@ class ATA:
     def summary(self) -> "FrameLike":
         """Alias for :attr:`df` (parallel to :meth:`Intensity.summary`)."""
         return mirror_output(self._df, self._output_type)
-
-    def maturity(
-        self,
-        max_cv: float = 0.15,
-        max_rse: float = 0.05,
-        min_run: int = 2,
-    ) -> "Maturity":
-        """Detect the maturity point ``k*`` on top of these factor
-        diagnostics.
-
-        Maturity is a *post-processing* step that applies the
-        ``CV < max_cv`` AND ``RSE < max_rse`` thresholds to the
-        per-link factor stats and locates the first run of
-        ``min_run`` consecutive stable links.
-
-        Parameters
-        ----------
-        max_cv
-            Threshold on the cross-cohort coefficient of variation
-            of individual link factors.
-        max_rse
-            Threshold on the relative standard error of the pooled
-            ``f_k``.
-        min_run
-            Required number of consecutive stable links.
-        """
-        from .maturity import Maturity
-
-        return Maturity._from_ata(
-            self,
-            max_cv=max_cv,
-            max_rse=max_rse,
-            min_run=min_run,
-        )
 
     def plot(self, **kwargs: Any) -> Any:
         """ATA factor diagnostic plot (matplotlib).

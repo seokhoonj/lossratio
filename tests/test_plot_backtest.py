@@ -200,14 +200,13 @@ def test_backtest_plot_triangle_usage_auto_regime_resolved(tri_multi):
         _close(fig)
 
 
-def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
-    # The legacy `maturity='auto'` switch makes the usage view resolve the
-    # maturity inline via detect_maturity().
+def test_backtest_plot_triangle_usage_switch_inferred(tri_multi):
+    # The estimator's `switch` slot is inferred into the usage view.
     bt = lr.Backtest(
-        estimator=lr.StageAdaptive(maturity="auto"),
+        estimator=lr.StageAdaptive(switch=lr.SwitchPoint.at(point=6)),
         holdout=4, target="loss",
     ).fit(tri_multi)
-    assert bt._infer_maturity() == "auto"
+    assert bt._infer_switch() is not None
     fig = bt.plot_triangle(kind="usage")
     try:
         assert isinstance(fig, plt.Figure)
@@ -215,10 +214,9 @@ def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
         _close(fig)
 
 
-def test_backtest_plot_triangle_usage_explicit_maturity(bt_single):
-    from lossratio import Maturity
-    mat = Maturity.at(point=6)
-    fig = bt_single.plot_triangle(kind="usage", maturity=mat)
+def test_backtest_plot_triangle_usage_explicit_switch(bt_single):
+    sw = lr.SwitchPoint.at(point=6)
+    fig = bt_single.plot_triangle(kind="usage", switch=sw)
     try:
         assert isinstance(fig, plt.Figure)
     finally:

@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 _RESIDUALS = ("cell", "link")
 _PROCESSES = ("gamma", "od_pois", "normal")
 _POOLINGS = ("pooled", "separated", "tail_pooled")
-_TAILS = ("auto", "maturity")
+_TAILS = ("auto",)
 
 
 @dataclass

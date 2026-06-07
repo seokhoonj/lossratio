@@ -201,12 +201,16 @@ def test_ratio_loss_and_premium_regime_independent():
     ratio_reg = lr.Regime.at(change="2024-07-01")
     pr_reg = lr.Regime.at(change="2024-10-01")
 
+    # An explicit early switch makes the loss side CL across the projection
+    # range, so it stays independent of `premium_regime` (a pure-ED loss
+    # path is exposure-anchored and would legitimately move with premium).
+    switch = lr.SwitchPoint.at(point=2)
     fit = lr.Ratio(
-        method="sa", maturity="auto", loss_regime=ratio_reg, premium_regime=pr_reg
+        method="sa", switch=switch, loss_regime=ratio_reg, premium_regime=pr_reg
     ).fit(tri)
     # Reference fit: same loss_regime, but premium uses the loss change.
     fit_same = lr.Ratio(
-        method="sa", maturity="auto", loss_regime=ratio_reg, premium_regime=ratio_reg
+        method="sa", switch=switch, loss_regime=ratio_reg, premium_regime=ratio_reg
     ).fit(tri)
 
     assert fit.loss_fit.regime is ratio_reg

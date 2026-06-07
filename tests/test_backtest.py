@@ -211,7 +211,7 @@ def test_backtest_with_ed_estimator():
 
 def test_backtest_with_ratio_sa_estimator():
     bt = lr.Backtest(
-        estimator=lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2),
+        estimator=lr.Ratio(method="sa", switch=lr.SwitchPoint.at(point=3)),
         holdout=1,
     ).fit(lr.Triangle(_toy_triangle_input()))
     assert bt.ae_err.shape[0] == 3

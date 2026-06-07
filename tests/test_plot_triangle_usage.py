@@ -2,7 +2,7 @@
 
 ggplot <-> matplotlib bit-parity is intentionally out of scope. These
 tests assert that the categorical-status figure renders for the
-documented filter combinations (recent / regime / holdout / maturity),
+documented filter combinations (recent / regime / holdout / switch),
 the legend carries all four states, and the cell classifier produces
 the expected counts for a controlled input.
 """
@@ -75,13 +75,13 @@ def test_renders_regime_only(tri_with_groups):
         _close(fig)
 
 
-def test_renders_maturity_scalar(tri_with_groups):
+def test_renders_switch_scalar(tri_with_groups):
     r = tri_with_groups.detect_regime()
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, maturity=6)
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, switch=6)
     try:
         # subtitle text added as fig.text(...) -- search all texts
         texts = [t.get_text() for t in fig.texts]
-        assert any("maturity k* = 6" in s for s in texts)
+        assert any("switch = 6" in s for s in texts)
     finally:
         _close(fig)
 
@@ -89,7 +89,7 @@ def test_renders_maturity_scalar(tri_with_groups):
 def test_renders_full_hybrid(tri_with_groups):
     r = tri_with_groups.detect_regime()
     fig = tri_with_groups.plot_triangle(
-        kind="usage", recent=18, regime=r, holdout=6, maturity=6
+        kind="usage", recent=18, regime=r, holdout=6, switch=6
     )
     try:
         title = fig._suptitle.get_text()
@@ -123,17 +123,6 @@ def test_legend_present_with_four_states(tri_with_groups):
 # --- Arg validation --------------------------------------------------
 
 
-def test_maturity_auto_renders(tri_with_groups):
-    # `maturity='auto'` runs detect_maturity inline and renders without
-    # raising. The exact k* depends on the synthetic experience fixture,
-    # but the figure must render and surface a maturity vline overlay.
-    fig = tri_with_groups.plot_triangle(kind="usage", maturity="auto")
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
-
-
 def test_regime_auto_renders(tri_with_groups):
     # `regime='auto'` runs detect_regime inline. If detection raises
     # internally (degenerate triangle), the resolver returns None and the
@@ -145,9 +134,9 @@ def test_regime_auto_renders(tri_with_groups):
         _close(fig)
 
 
-def test_maturity_callable_renders(tri_with_groups):
+def test_switch_callable_renders(tri_with_groups):
     fig = tri_with_groups.plot_triangle(
-        kind="usage", maturity=lambda t: 6
+        kind="usage", switch=lambda t: 6
     )
     try:
         assert isinstance(fig, plt.Figure)
@@ -176,22 +165,9 @@ def test_negative_holdout_rejected(tri_with_groups):
         tri_with_groups.plot_triangle(kind="usage", holdout=0)
 
 
-def test_invalid_maturity_rejected(tri_with_groups):
-    with pytest.raises(ValueError, match="maturity"):
-        tri_with_groups.plot_triangle(kind="usage", maturity=-1)
-
-
-def test_maturity_from_maturity_instance(tri_with_groups):
-    mat = tri_with_groups.detect_maturity(min_run=2)
-    r = tri_with_groups.detect_regime()
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, maturity=mat)
-    try:
-        # Maturity vline drawn -> at least one dashed line per axis.
-        ax = [a for a in fig.get_axes() if a.get_visible()][0]
-        vlines = [ln for ln in ax.get_lines() if ln.get_linestyle() == "--"]
-        assert vlines, "expected at least one dashed line"
-    finally:
-        _close(fig)
+def test_invalid_switch_rejected(tri_with_groups):
+    with pytest.raises(ValueError, match="switch"):
+        tri_with_groups.plot_triangle(kind="usage", switch=-1)
 
 
 # --- Classifier unit tests ------------------------------------------
@@ -301,7 +277,7 @@ def test_segment_bridged_pooled_render(tri_single):
 def test_usage_data_matches_plot_compute(tri_with_groups):
     """``usage()`` returns the same grid the plot renders (one source)."""
     from lossratio._triangle_vis import (
-        _resolve_maturity_k,
+        _resolve_switch_k,
         _resolve_regime_for_usage,
     )
 
@@ -311,9 +287,9 @@ def test_usage_data_matches_plot_compute(tri_with_groups):
         "used", "unused", "holdout", "future",
     }
     ro = _resolve_regime_for_usage(tri_with_groups, None)
-    mk = _resolve_maturity_k(None, triangle=tri_with_groups)
+    mk = _resolve_switch_k(None, triangle=tri_with_groups)
     direct = _compute_triangle_usage(
-        tri_with_groups, recent=None, regime=ro, holdout=6, m_k=mk
+        tri_with_groups, recent=None, regime=ro, holdout=6, switch_k=mk
     )
     from polars.testing import assert_frame_equal
 

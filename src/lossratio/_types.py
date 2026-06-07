@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Literal
 
-    from .maturity import Maturity
     from .regime import Regime
     from .tail import Tail
     from .triangle import Triangle
@@ -34,12 +33,6 @@ if TYPE_CHECKING:
         | ParametricBootstrap
         | Callable[[Triangle], object]
         | None
-    )
-
-    # Maturity switch: a concrete Maturity, a lazy recipe, the "auto"
-    # auto-detect sentinel, or None (no switch).
-    MaturityArg = (
-        Maturity | Callable[[Triangle], Maturity] | Literal["auto"] | None
     )
 
     # Regime (cohort-axis) filter: a concrete Regime, a lazy recipe, the

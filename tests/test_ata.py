@@ -133,36 +133,6 @@ def test_ata_cv_nonneg_when_present():
 
 
 # ---------------------------------------------------------------------------
-# Consistency with Maturity (same f_k / cv_k / rse_k)
-# ---------------------------------------------------------------------------
-
-
-def test_ata_factors_match_maturity_factors():
-    """ATA should produce identical f, cv, rse as Maturity (Maturity
-    builds on top of ATA factor estimation)."""
-    tri = _tri()
-    ata = tri.link().ata().df.sort("dev")
-    # Maturity's per-link diagnostic keys on `dev_from` (the same
-    # 1-indexed value as ATA's `dev`).
-    maturity = tri.link().ata().maturity().df.sort("dev_from")
-
-    for col in ("f", "cv", "rse"):
-        a = ata[col].to_list()
-        m = maturity[col].to_list()
-        assert len(a) == len(m) and len(a) > 0
-        n_compared = 0
-        for x, y in zip(a, m):
-            if x is None or y is None:
-                assert x is None and y is None
-            else:
-                assert x == pytest.approx(y)
-                n_compared += 1
-        # The finite branch must actually run -- an all-null column would
-        # otherwise pass without comparing a single value.
-        assert n_compared > 0
-
-
-# ---------------------------------------------------------------------------
 # Output type mirroring
 # ---------------------------------------------------------------------------
 

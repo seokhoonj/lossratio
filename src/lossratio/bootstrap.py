@@ -41,7 +41,6 @@ from ._io import (
 )
 from ._mack import _mack_factor_var, _mack_sigma2
 from .link import _build_link_df
-from .maturity import Maturity
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -203,9 +202,9 @@ class _Stage1Result:
 
 _PROCESS_CODES = {"gamma": 1, "od_pois": 2, "normal": 3}
 
-# Maturity sentinel: a cohort whose mat_k is this never enters the CL stage
-# (the "no maturity point" marker -- the largest representable int).
-_NO_MATURITY = np.iinfo(np.int64).max
+# Switch sentinel: a cohort whose switch dev is this never enters the CL
+# stage (the "no switch" marker -- the largest representable int).
+_NO_SWITCH = np.iinfo(np.int64).max
 
 
 def _boot_kernel_cl_analytical(
@@ -1143,7 +1142,6 @@ def _build_pool_cell(
     pooling:  str   = "pooled",
     tail:     str   = "auto",
     min_pool: int   = 5,
-    maturity: float | None = None,
     demean:   bool  = True,
 ) -> _ResidualPool:
     """Assemble a cell-residual pool with ``pool_id`` (single group).
@@ -1161,8 +1159,7 @@ def _build_pool_cell(
        ``"pooled"`` (one pool), ``"separated"`` (per-dev), or
        ``"tail_pooled"`` (per-dev before a cut, single ``"POST"``
        after). The cut is the smallest ``dev`` with count ``< min_pool``
-       (``tail="auto"``) or the ``maturity`` change point
-       (``tail="maturity"``).
+       (``tail="auto"``).
 
     Parameters
     ----------
@@ -1175,8 +1172,6 @@ def _build_pool_cell(
         Tail-cut rule for ``pooling="tail_pooled"``.
     min_pool
         Minimum per-dev pool count for ``tail="auto"``.
-    maturity
-        Maturity change point (a dev value) for ``tail="maturity"``.
     demean
         Whether to subtract the per-group residual mean.
 
@@ -1195,10 +1190,7 @@ def _build_pool_cell(
 
     cut = np.nan
     if pooling == "tail_pooled":
-        if tail == "maturity":
-            cut = np.nan if maturity is None else float(maturity)
-        else:
-            cut = _tail_cut_auto(dev, int(min_pool))
+        cut = _tail_cut_auto(dev, int(min_pool))
 
     pool_id = _assign_pool_id(dev, pooling, cut=cut)
 
@@ -1215,7 +1207,6 @@ def _build_pool_link(
     pooling:  str   = "pooled",
     tail:     str   = "auto",
     min_pool: int   = 5,
-    maturity: float | None = None,
 ) -> _ResidualPool:
     """Assemble a link-residual pool with ``pool_id`` (single group).
 
@@ -1228,8 +1219,7 @@ def _build_pool_link(
        ``"pooled"`` (one pool), ``"separated"`` (per-link), or
        ``"tail_pooled"`` (per-link before a cut, single ``"POST"``
        after). The cut is the smallest ``dev_to`` with count
-       ``< min_pool`` (``tail="auto"``) or the ``maturity`` change
-       point (``tail="maturity"``).
+       ``< min_pool`` (``tail="auto"``).
 
     Link residuals are *not* de-meaned (``demean`` applies only to the
     cell path).
@@ -1238,7 +1228,7 @@ def _build_pool_link(
     ----------
     link
         Link residuals from :func:`_link_residuals_cl`.
-    pooling, tail, min_pool, maturity
+    pooling, tail, min_pool
         As for :func:`_build_pool_cell`, keyed on ``dev_to``.
 
     Returns
@@ -1253,10 +1243,7 @@ def _build_pool_link(
 
     cut = np.nan
     if pooling == "tail_pooled":
-        if tail == "maturity":
-            cut = np.nan if maturity is None else float(maturity)
-        else:
-            cut = _tail_cut_auto(dev_to, int(min_pool))
+        cut = _tail_cut_auto(dev_to, int(min_pool))
 
     pool_id = _assign_pool_id(dev_to, pooling, cut=cut)
 
@@ -1496,7 +1483,7 @@ def _fwd_proj_sa(
                 cum[i, j, :] = prev
                 continue
             mk = int(mat_k[i])
-            stage_cl = (mk != _NO_MATURITY) and (j >= mk)
+            stage_cl = (mk != _NO_SWITCH) and (j >= mk)
             if stage_cl:
                 f_b = f_star[k, :]
                 f_b = np.where(np.isfinite(f_b), f_b, 1.0)
@@ -1699,7 +1686,7 @@ def _fwd_sim_sa_cell(
     inc_mean3 = _cum_diff_inc_mean3(cum_mean)
     # per-cell dispersion: phi_cl in the CL stage (j >= mat_k), else phi_ed.
     mk = mat_k.astype(np.int64)
-    stage_cl = (mk[:, None] != _NO_MATURITY) & (np.arange(n_dev)[None, :] >= mk[:, None])
+    stage_cl = (mk[:, None] != _NO_SWITCH) & (np.arange(n_dev)[None, :] >= mk[:, None])
     phi = np.where(stage_cl, phi_cl, phi_ed)
     return _fwd_sim_cell_bulk(
         rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
@@ -2373,7 +2360,7 @@ def _boot_kernel_sa_cell(
     a_i = lin_all % n_coh
     a_j = lin_all // n_coh
     # CL iff the to-dev j reaches the CL-start from-dev mat_k[i].
-    is_cl = (mat_k[a_i] != _NO_MATURITY) & (a_j >= mat_k[a_i])
+    is_cl = (mat_k[a_i] != _NO_SWITCH) & (a_j >= mat_k[a_i])
 
     cl_fin = np.isfinite(mu_cl_grid.flatten(order="F")[lin_all])
     ed_fin = np.isfinite(mu_ed_grid.flatten(order="F")[lin_all])
@@ -2526,7 +2513,7 @@ def _boot_kernel_sa_parametric(
     lin_all = np.where(upper.flatten(order="F"))[0]
     a_i = lin_all % n_coh
     a_j = lin_all // n_coh
-    is_cl = (mat_k[a_i] != _NO_MATURITY) & (a_j >= mat_k[a_i])
+    is_cl = (mat_k[a_i] != _NO_SWITCH) & (a_j >= mat_k[a_i])
 
     mu_cl_flat = mu_cl_grid.flatten(order="F")
     mu_ed_flat = mu_ed_grid.flatten(order="F")
@@ -2745,7 +2732,7 @@ class Bootstrap:
     demean:       bool       = True
     tail:         str        = "auto"
     min_pool:     int        = 5
-    maturity:     Any        = None
+    switch:       Any        = None
     n_replicates: int        = 499
     seed:         int | None = None
     alpha:        float      = 1.0
@@ -2863,8 +2850,8 @@ class Bootstrap:
         pseudo_parts: list[pl.DataFrame] = []
         ultimate_parts: list[pl.DataFrame] = []
 
-        # Resolve a per-group maturity map for the SA paradigm.
-        mat_k_map = self._resolve_maturity_map(triangle)
+        # Resolve a per-group switch map for the SA paradigm.
+        switch_map = self._resolve_switch_map(triangle)
 
         for g, sub in _iter_group_frames(tri_df, groups):
             loss_obs, cohorts, devs = self._build_obs_matrix(sub, target)
@@ -2877,7 +2864,7 @@ class Bootstrap:
                 devs     = devs,
                 anchor   = anchor,
                 target   = target,
-                mat_k    = mat_k_map.get(g),
+                mat_k    = switch_map.get(g),
                 rng      = rng,
             )
             stage1.cohorts = cohorts
@@ -2956,56 +2943,46 @@ class Bootstrap:
 
     # -- internal helpers ---------------------------------------------------
 
-    def _resolve_maturity_map(
+    def _resolve_switch_map(
         self,
         triangle: "Triangle",
     ) -> dict[Any, int | None]:
-        """Resolve the SA stage-transition point to a per-group ``mat_k``.
+        """Resolve the SA stage-transition point to a per-group switch dev.
 
-        Only the SA paradigm consumes this. The ``maturity`` config
-        argument accepts four forms (4-type dispatch):
+        Only the SA paradigm consumes this. The ``switch`` config argument
+        accepts:
 
-        * ``None`` -- auto-detect via ``triangle.link().ata().maturity()``.
-        * a :class:`Maturity` object -- read its ``mat_k``.
-        * a callable ``f(triangle) -> Maturity``.
-        * an ``int`` (or per-group ``dict``) -- a literal ``mat_k``.
+        * ``None`` (default) -- no discretionary switch (all-ED bootstrap),
+          mirroring the SA point projection's pure-ED default.
+        * a :class:`SwitchPoint` -- read its ``point``.
+        * a callable ``f(triangle) -> SwitchPoint`` (a ``SwitchPoint.detect()``
+          spec).
+        * an ``int`` (or per-group ``dict``) -- a literal switch dev.
 
-        Returns a ``{group_value: mat_k}`` map. ``mat_k`` is the
-        ``dev_to`` maturity point; the kernels convert it to the
-        1-indexed from-dev ``mat_k - 1`` where CL begins. ``group_value``
-        is ``None`` for an ungrouped Triangle.
+        Returns a ``{group_value: switch_k}`` map. ``switch_k`` is the
+        ``dev_to`` switch point; the kernels convert it to the 1-indexed
+        from-dev ``switch_k - 1`` where CL begins. ``group_value`` is
+        ``None`` for an ungrouped Triangle.
         """
         if self.method != "sa":
             return {}
 
-        mat = self.maturity
-        if callable(mat) and not isinstance(mat, (int, np.integer)):
-            mat = mat(triangle)
+        sw = self.switch
+        if callable(sw) and not isinstance(sw, (int, np.integer)):
+            sw = sw(triangle)
 
         groups = triangle._groups
 
-        if mat is None:
-            # Auto-detect through the link -> ata -> maturity chain.
-            try:
-                mat = triangle.link(target="loss").ata().maturity()
-            except (
-                ValueError, KeyError, RuntimeError,
-                pl.exceptions.ColumnNotFoundError, pl.exceptions.ComputeError,
-            ):
-                # Degenerate input (no valid links, single-cohort, ...)
-                # -> all-ED bootstrap. Genuine pipeline bugs propagate.
-                mat = None
+        point = getattr(sw, "point", None) if sw is not None else None
+        if point is not None:
+            if isinstance(point, dict):
+                return point
+            return {None: point} if groups is None else {}
 
-        if isinstance(mat, Maturity):
-            mk = mat.point
-            if isinstance(mk, dict):
-                return mk
-            return {None: mk} if groups is None else {}
-
-        if isinstance(mat, dict):
-            return mat
-        if isinstance(mat, (int, np.integer)):
-            return {None: int(mat)}
+        if isinstance(sw, dict):
+            return sw
+        if isinstance(sw, (int, np.integer)):
+            return {None: int(sw)}
         return {}
 
     def _run_group_kernel(
@@ -3200,14 +3177,14 @@ class Bootstrap:
     def _mat_k_vec(mat_k: int | None, n_coh: int) -> np.ndarray:
         """Per-cohort 1-indexed from-dev where CL begins (SA stage switch).
 
-        ``mat_k`` is the ``dev_to`` maturity point; the kernels switch
+        ``mat_k`` is the ``dev_to`` switch point; the kernels switch
         to CL once the to-dev ``j >= mat_k - 1`` -- equivalently the
         from-dev ``>= mat_k - 1``. ``None`` -> all-ED
         (``iinfo(int64).max`` sentinel).
         """
         if mat_k is None or not np.isfinite(mat_k):
-            return np.full(n_coh, _NO_MATURITY, dtype=np.int64)
-        # mat_k = dev_to (= change); from-dev where CL begins is mat_k - 1.
+            return np.full(n_coh, _NO_SWITCH, dtype=np.int64)
+        # mat_k = dev_to switch; from-dev where CL begins is mat_k - 1.
         return np.full(n_coh, max(int(mat_k) - 1, 0), dtype=np.int64)
 
     @staticmethod

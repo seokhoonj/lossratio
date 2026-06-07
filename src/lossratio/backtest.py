@@ -517,7 +517,7 @@ class BacktestFit:
         *,
         recent: int | None = None,
         regime: Any = None,
-        maturity: Any = None,
+        switch: Any = None,
     ) -> Any:
         """A/E error heatmap (``kind='value'``) or cell-status
         heatmap (``kind='usage'``), backed by matplotlib.
@@ -540,16 +540,15 @@ class BacktestFit:
             Facet layout.
         figsize
             Passed to ``plt.subplots``.
-        recent, regime, maturity
+        recent, regime, switch
             (``kind='usage'`` only) override values for the filter
             overlays. By default the usage view reads ``recent`` and
             ``regime`` from the estimator that drove the backtest
             (``recent`` from the loss model / ``Ratio``; ``regime``
             from the loss-side of ``Ratio``, or ``regime`` of the
-            loss model); ``maturity`` defaults to ``None`` -- callers
-            who want a maturity hline overlay must pass an explicit
-            :class:`Maturity` instance or scalar (maturity is not
-            auto-detected here; supply it explicitly).
+            loss model), and ``switch`` from the estimator's ``switch``
+            slot (a :class:`SwitchPoint` or scalar) to draw the ED->CL
+            boundary; pass an explicit value to override.
 
         Returns
         -------
@@ -570,18 +569,18 @@ class BacktestFit:
         # kind == "usage": forward to the Triangle-side usage
         # renderer with `holdout=self.holdout` and filter args
         # inherited from `self.estimator` (overridable via kwargs).
-        # The Triangle renderer resolves `"auto"` for both regime and
-        # maturity via inline `detect_*` calls.
+        # The Triangle renderer resolves `"auto"` for regime via an
+        # inline `detect_regime` call.
         from ._triangle_vis import _plot_triangle_usage
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
-        eff_maturity = maturity if maturity is not None else self._infer_maturity()
+        eff_switch = switch if switch is not None else self._infer_switch()
         return _plot_triangle_usage(
             self._triangle,
             recent=eff_recent,
             regime=eff_regime,
             holdout=self.holdout,
-            maturity=eff_maturity,
+            switch=eff_switch,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
@@ -604,16 +603,14 @@ class BacktestFit:
             return getattr(est, "loss_regime")
         return getattr(est, "regime", None)
 
-    def _infer_maturity(self) -> Any:
-        """Extract maturity from `self.estimator`, if any.
+    def _infer_switch(self) -> Any:
+        """Extract the SA ``switch`` from `self.estimator`, if any.
 
-        ``lr.StageAdaptive`` / ``lr.Ratio`` carry a ``maturity`` slot.
-        The Triangle renderer accepts ``"auto"`` directly and runs
-        :meth:`Triangle.detect_maturity` inline, so a literal
-        ``"auto"`` is forwarded as-is. ChainLadder / ExposureDriven have
-        no maturity concept and return ``None``.
+        ``lr.StageAdaptive`` / ``lr.Ratio`` carry a ``switch`` slot (a
+        :class:`SwitchPoint`, an int, or ``None``). ChainLadder /
+        ExposureDriven have no switch concept and return ``None``.
         """
-        return getattr(self.estimator, "maturity", None)
+        return getattr(self.estimator, "switch", None)
 
     def __repr__(self) -> str:
         n_cells = self._ae_err.height

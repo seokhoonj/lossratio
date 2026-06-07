@@ -36,9 +36,6 @@ API 레퍼런스
 .. autoclass:: lossratio.Intensity
    :members:
 
-.. autoclass:: lossratio.Maturity
-   :members:
-
 .. autoclass:: lossratio.Convergence
    :members:
 

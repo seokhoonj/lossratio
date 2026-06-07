@@ -79,7 +79,7 @@ def plot_triangle(
     recent: int | None = None,
     regime: Any = None,
     holdout: int | None = None,
-    maturity: Any = None,
+    switch: Any = None,
 ) -> Any:
     """Triangle heatmap dispatcher. See
     :meth:`lossratio.Triangle.plot_triangle` for the public docs.
@@ -99,7 +99,7 @@ def plot_triangle(
             recent=recent,
             regime=regime,
             holdout=holdout,
-            maturity=maturity,
+            switch=switch,
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
@@ -393,64 +393,41 @@ def _threshold_color(v: float, threshold: float, when: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_maturity_k(
-    maturity: Any,
+def _resolve_switch_k(
+    switch: Any,
     triangle: Triangle | None = None,
 ) -> int | None:
-    """Resolve the ``maturity`` arg to an integer ``k*`` or ``None``.
+    """Resolve the ``switch`` overlay arg to an integer switch dev or ``None``.
 
-    ``None``: no maturity, no overlay, no hybrid threshold.
-    ``int``: scalar ``k*``, used directly.
-    :class:`Maturity` instance: read its ``change`` column (the
-    maturity link's to-index).
-    ``"auto"``: when ``triangle`` is supplied, runs
-    :meth:`Triangle.detect_maturity` and collapses the per-group result
-    to a single scalar via ``max(k*)`` (the per-group fallback used by
-    the SA fitter); when ``triangle`` is ``None``, returns
-    ``None`` silently so the caller can detect upstream.
-    Callable: invoked with ``triangle`` (when supplied) and the result
-    is re-resolved.
+    ``None``: no switch, no overlay, no hybrid threshold.
+    ``int``: scalar switch dev, used directly.
+    A :class:`SwitchPoint`: read its ``point``, collapsing a per-group
+    result to a single scalar via ``max`` (the per-group fallback used by
+    the SA fitter).
+    Callable: invoked with ``triangle`` (when supplied) and the result is
+    re-resolved.
     """
-    from .maturity import Maturity
-
-    if maturity is None:
+    if switch is None:
         return None
-    if isinstance(maturity, str):
-        if maturity == "auto":
-            if triangle is None:
-                return None
-            try:
-                mat = triangle.detect_maturity()
-            except (ValueError, KeyError, RuntimeError):
-                # Failed auto-detect -> render the usage view without the
-                # maturity overlay rather than crash the plot.
-                return None
-            return _resolve_maturity_k(mat, triangle=triangle)
-        raise ValueError(
-            f"`maturity` must be None, an int, 'auto', a Maturity "
-            f"instance, or a callable; got {maturity!r}."
-        )
-    if isinstance(maturity, Maturity):
-        k = maturity.point
-        if k is None:
-            return None
-        if isinstance(k, dict):
-            vals = [v for v in k.values() if v is not None]
-            return int(max(vals)) if vals else None
-        return int(k)
-    if isinstance(maturity, (int, np.integer)) and not isinstance(maturity, bool):
-        if int(maturity) < 1:
+    if isinstance(switch, (int, np.integer)) and not isinstance(switch, bool):
+        if int(switch) < 1:
             raise ValueError(
-                f"`maturity` must be a positive integer; got {maturity}."
+                f"`switch` must be a positive integer; got {switch}."
             )
-        return int(maturity)
-    if callable(maturity):
+        return int(switch)
+    point = getattr(switch, "point", None)
+    if point is not None:
+        if isinstance(point, dict):
+            vals = [v for v in point.values() if v is not None]
+            return int(max(vals)) if vals else None
+        return int(point)
+    if callable(switch):
         if triangle is None:
             return None
-        return _resolve_maturity_k(maturity(triangle), triangle=triangle)
+        return _resolve_switch_k(switch(triangle), triangle=triangle)
     raise ValueError(
-        f"`maturity` must be None, an int, 'auto', a Maturity instance, "
-        f"or a callable; got {maturity!r}."
+        f"`switch` must be None, an int, a SwitchPoint, or a callable; "
+        f"got {switch!r}."
     )
 
 
@@ -539,7 +516,7 @@ def _compute_triangle_usage(
     recent: int | None = None,
     regime: Any = None,
     holdout: int | None = None,
-    m_k: int | None = None,
+    switch_k: int | None = None,
 ) -> pl.DataFrame:
     """Build the per-cell status grid driving the usage heatmap.
 
@@ -550,7 +527,7 @@ def _compute_triangle_usage(
     ``segment_wise`` regimes carve out a mini-triangle per segment
     anchored on the latest calendar diagonal -- cells in an affected
     group but outside their segment's mini-triangle drop from
-    ``used`` to ``unused``. Maturity (``m_k``) does not shrink the
+    ``used`` to ``unused``. The switch (``switch_k``) does not shrink the
     mini-triangle (it's a separate dashed-vline reference only).
     """
     if recent is not None and (
@@ -696,18 +673,18 @@ def _compute_triangle_usage(
     else:
         change_pass_expr = pl.lit(True)
 
-    if m_k is not None:
-        m_k_geq = pl.col("dev") >= m_k
-        m_k_lt = pl.col("dev") < m_k
+    if switch_k is not None:
+        switch_k_geq = pl.col("dev") >= switch_k
+        switch_k_lt = pl.col("dev") < switch_k
     else:
-        m_k_geq = pl.lit(False)
-        m_k_lt = pl.lit(True)
-    has_m_k = m_k is not None
+        switch_k_geq = pl.lit(False)
+        switch_k_lt = pl.lit(True)
+    has_switch_k = switch_k is not None
 
     if has_recent and has_change:
-        if has_m_k:
-            pass_filter = (m_k_lt & change_pass_expr) | (
-                m_k_geq & (pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent))
+        if has_switch_k:
+            pass_filter = (switch_k_lt & change_pass_expr) | (
+                switch_k_geq & (pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent))
             )
         else:
             pass_filter = change_pass_expr & (
@@ -716,8 +693,8 @@ def _compute_triangle_usage(
     elif has_recent:
         pass_filter = pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent)
     elif has_change:
-        if has_m_k:
-            pass_filter = m_k_geq | change_pass_expr
+        if has_switch_k:
+            pass_filter = switch_k_geq | change_pass_expr
         else:
             pass_filter = change_pass_expr
     else:
@@ -743,7 +720,7 @@ def _compute_triangle_usage(
     #   dev_min(segment) = max_cal - seg_last_cohort_rank + 1
     #
     # Cells in an affected group but outside their segment's
-    # mini-triangle drop from `used` to `unused`. Maturity (`m_k`) does
+    # mini-triangle drop from `used` to `unused`. The switch (`switch_k`) does
     # not shrink the mini-triangle here (it's a separate vline only).
     if is_segment_wise and regime is not None:
         bp = (
@@ -849,7 +826,7 @@ def _plot_triangle_usage(
     recent: int | None,
     regime: Any,
     holdout: int | None,
-    maturity: Any,
+    switch: Any,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
@@ -860,14 +837,14 @@ def _plot_triangle_usage(
     from matplotlib.patches import Patch, Rectangle
 
     regime_obj = _resolve_regime_for_usage(triangle, regime)
-    m_k = _resolve_maturity_k(maturity, triangle=triangle)
+    switch_k = _resolve_switch_k(switch, triangle=triangle)
 
     usage_df = _compute_triangle_usage(
         triangle,
         recent=recent,
         regime=regime_obj,
         holdout=holdout,
-        m_k=m_k,
+        switch_k=switch_k,
     )
 
     grp = triangle.groups
@@ -994,19 +971,19 @@ def _plot_triangle_usage(
         ax.set_yticks(range(ny))
         ax.set_yticklabels(y_levels, fontsize=8)
 
-        # Maturity boundary at dev = m_k. On the dev axis this is a single
+        # Switch boundary at dev = switch_k. On the dev axis this is a single
         # vertical line; on the calendar axis it is a stepped diagonal,
-        # since each cohort reaches dev = m_k at its own calendar period.
-        if m_k is not None:
+        # since each cohort reaches dev = switch_k at its own calendar period.
+        if switch_k is not None:
             if x_axis == "calendar":
-                _draw_maturity_staircase(
-                    ax, m_k, step, cohort_values_desc, x_levels
+                _draw_switch_staircase(
+                    ax, switch_k, step, cohort_values_desc, x_levels
                 )
             else:
                 ax.axvline(
-                    x_idx_get(x_idx, m_k) - 0.5
-                    if m_k in x_idx
-                    else m_k - 1.5,
+                    x_idx_get(x_idx, switch_k) - 0.5
+                    if switch_k in x_idx
+                    else switch_k - 1.5,
                     linestyle="--", color="black", linewidth=0.6,
                 )
 
@@ -1067,10 +1044,10 @@ def _plot_triangle_usage(
     )
     fig.suptitle(title_txt, fontsize=12, fontweight="bold")
 
-    if m_k is not None:
+    if switch_k is not None:
         fig.text(
             0.5, 0.925,
-            f"hybrid mode: maturity k* = {m_k}",
+            f"hybrid mode: switch = {switch_k}",
             ha="center", va="top", fontsize=9, style="italic",
         )
 
@@ -1094,22 +1071,22 @@ def _plot_triangle_usage(
     return fig
 
 
-def _draw_maturity_staircase(
+def _draw_switch_staircase(
     ax: Any,
-    m_k: int,
+    switch_k: int,
     step: int,
     cohort_values_desc: list,
     x_levels: list,
 ) -> None:
-    """Draw the dev = ``m_k`` boundary on a calendar x-axis.
+    """Draw the dev = ``switch_k`` boundary on a calendar x-axis.
 
-    On the calendar axis each cohort reaches ``dev = m_k`` at its own
-    calendar period (``cohort + (m_k - 1)`` at the grain), so the
+    On the calendar axis each cohort reaches ``dev = switch_k`` at its own
+    calendar period (``cohort + (switch_k - 1)`` at the grain), so the
     boundary is a stepped diagonal rather than a single vertical line.
     Rows run newest-cohort-first (``yi = 0`` at the top), so the step
     descends to the left as cohorts get older.
     """
-    months = (m_k - 1) * step
+    months = (switch_k - 1) * step
     boundaries = (
         pl.DataFrame({"c": cohort_values_desc})
         .with_columns(pl.col("c").dt.offset_by(f"{months}mo").alias("b"))["b"]
@@ -1131,9 +1108,9 @@ def _draw_maturity_staircase(
 
 
 def x_idx_get(x_idx: dict, key: int) -> int:
-    """Lookup with fall-back for off-grid maturity values (k* past max
-    dev or before min dev). The fallback positions the vline just past
-    the boundary so it still reads as an overlay."""
+    """Lookup with fall-back for off-grid switch values (past max dev or
+    before min dev). The fallback positions the vline just past the
+    boundary so it still reads as an overlay."""
     if key in x_idx:
         return x_idx[key]
     idxs = list(x_idx.values())

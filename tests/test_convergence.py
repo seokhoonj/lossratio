@@ -60,10 +60,10 @@ def _sur_triangle() -> lr.Triangle:
 def _converge(tri: lr.Triangle, **kwargs):
     """Convergence via the fit method (default sa estimator), the public path.
 
-    Uses the legacy ``maturity="auto"`` CV/RSE switch so the convergence
-    candidate fits reproduce the pre-SwitchPoint behaviour these tests pin.
+    The convergence detector runs its own holdout backtests, so the SA
+    switch is irrelevant here; the default (pure-ED) SA estimator suffices.
     """
-    return lr.Ratio(method="sa", maturity="auto").fit(tri).convergence(**kwargs)
+    return lr.Ratio(method="sa").fit(tri).convergence(**kwargs)
 
 
 # ----- helper unit tests -----
@@ -168,15 +168,6 @@ def test_detect_convergence_manual_start():
     assert conv.dev_cand[0] == 10
 
 
-def test_detect_convergence_maturity_point_is_deprecated_alias():
-    tri = _sur_triangle()
-    with pytest.warns(DeprecationWarning, match="maturity_point"):
-        conv = _converge(
-            tri, maturity_point=10, max_drift=0.1, max_dispersion=1.0,
-        )
-    assert conv.start == 10
-
-
 def test_detect_convergence_no_candidate_warns():
     """When start + 2 > dev_max, dev_cand is empty and a warning fires."""
     tri = _sur_triangle()
@@ -259,21 +250,6 @@ def test_convergence_tail_converged_anchors_to_plateau():
     assert row["ratio_headline"] == pytest.approx(0.70, abs=0.02)
     # factor tail agrees with the plateau -> narrow band.
     assert row["band_width"] < 0.05
-    assert row["band_lo"] <= row["ratio_headline"] <= row["band_hi"]
-
-
-def test_convergence_tail_immature_flags_and_uses_factor_tail():
-    """Bundled synthetic does not converge in-window -> immature + factor tail."""
-    tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    ct = lr.Ratio(method="sa", maturity="auto").fit(tri).convergence_tail()
-    ct = ct if isinstance(ct, pl.DataFrame) else pl.from_pandas(ct)
-    row = ct.row(0, named=True)
-    assert row["status"] == "immature"
-    assert row["k_conv"] is None
-    # headline is the factor-tail leg when there is no observed plateau.
-    assert row["ratio_headline"] == pytest.approx(row["ratio_factor_tail"])
-    # band brackets both legs.
-    assert row["band_lo"] <= row["band_hi"]
     assert row["band_lo"] <= row["ratio_headline"] <= row["band_hi"]
 
 

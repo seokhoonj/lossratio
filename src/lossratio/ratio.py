@@ -22,7 +22,7 @@ from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
     from ._io import FrameLike
-    from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
+    from ._types import RegimeArg, TailArg, UncertaintyArg
     from .curve import Curve
     from .triangle import Triangle
 
@@ -147,15 +147,12 @@ class Ratio:
         :class:`Premium`.
     premium_alpha
         Variance-structure exponent for the premium fit. Default ``1``.
-    maturity
-        Maturity specification for the ``method="sa"`` switch.
-        Four-type dispatch: ``"auto"`` (default,
-        auto-detect tuned by ``max_cv`` / ``max_rse`` / ``min_run``),
-        a :class:`~lossratio.Maturity` object (explicit override), a
-        callable ``f(triangle) -> Maturity`` (lazy spec — e.g.
-        :meth:`~lossratio.Maturity.detect`), or ``None`` (no switch, SA
-        falls back to ED). Forwarded to the inner :class:`Loss`.
-        Consulted only when ``method="sa"``.
+    switch
+        ED->CL switch specification for ``method="sa"``: ``None``
+        (default, no discretionary switch — SA falls back to ED), an
+        ``int`` (fixed switch dev), a :class:`~lossratio.SwitchPoint`,
+        or a ``SwitchPoint.detect()`` spec. Forwarded to the inner
+        :class:`Loss`. Consulted only when ``method="sa"``.
     premium_regime
         Premium-side regime filter. Same four-type dispatch as
         ``loss_regime``. Defaults to ``None`` (no filter); pass an
@@ -206,10 +203,6 @@ class Ratio:
     sigma_method:   str            = "locf"
     recent:         int | None     = None
     switch:         Any            = None
-    maturity:       MaturityArg    = None
-    max_cv:         float          = 0.15
-    max_rse:        float          = 0.05
-    min_run:        int            = 2
     se_method:      str            = "fixed"
     rho:            float          = 0.95
     conf_level:     float          = 0.95
@@ -270,14 +263,15 @@ class RatioFit:
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
         loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
-        incr_premium_proj, maturity_from, loss_*_se, loss_total_cv,
+        incr_premium_proj, switch_from, loss_*_se, loss_total_cv,
         loss_ci_*, ratio_proj, incr_ratio_proj, ratio_se, ratio_cv,
         ratio_ci_lo, ratio_ci_hi]`` (plus ``premium_total_se`` /
         ``premium_total_cv`` when ``se_method="delta"``).
     method : str
         ``"ed"``, ``"sa"``, or ``"cl"``.
-    maturity_point :
-        Detected maturity for ``"sa"`` (single value or dict per group).
+    switch_point :
+        Effective ED->CL switch dev for ``"sa"`` (single value or dict
+        per group).
     loss_fit, premium_fit :
         The embedded :class:`LossFit` and :class:`PremiumFit`.
     """
@@ -338,10 +332,6 @@ class RatioFit:
             premium_method=estimator.premium_method,
             premium_alpha=estimator.premium_alpha,
             switch=estimator.switch,
-            maturity=estimator.maturity,
-            max_cv=estimator.max_cv,
-            max_rse=estimator.max_rse,
-            min_run=estimator.min_run,
         )
         # Forward the tail to the loss-side Loss (effective for every
         # loss method: cl / ed / sa).
@@ -506,9 +496,9 @@ class RatioFit:
         return mirror_output(combined, self._output_type)
 
     @property
-    def maturity_point(self):
-        """Detected maturity (delegated to LossFit)."""
-        return self.loss_fit.maturity_point
+    def switch_point(self):
+        """Effective ED->CL switch dev for SA (delegated to LossFit)."""
+        return self.loss_fit.switch_point
 
     def convergence(self, **kwargs: Any) -> "Convergence":
         """Detect where this fit's projected loss ratio converges.
@@ -849,7 +839,7 @@ class RatioFit:
                 *tail_agg,
                 # The columns below keep their own name -- last() preserves
                 # it, so no .alias() is needed.
-                pl.col("maturity_from").drop_nulls().last(),
+                pl.col("switch_from").drop_nulls().last(),
                 pl.col("loss_proc_se").drop_nulls().last(),
                 pl.col("loss_param_se").drop_nulls().last(),
                 pl.col("loss_total_se").drop_nulls().last(),
@@ -928,7 +918,7 @@ class RatioFit:
                 "ratio_latest",
                 "ratio_proj",
                 "ratio_ultimate",
-                "maturity_from",
+                "switch_from",
                 "loss_proc_se",
                 "loss_param_se",
                 "loss_total_se",

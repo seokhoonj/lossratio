@@ -13,7 +13,6 @@ place.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -42,13 +41,12 @@ from ._mack import (
 )
 from ._mack import _mack_step_cl
 from ._mack import _mack_step_ed
-from .maturity import Maturity, _compute_maturity, _resolve_maturity
 from .premium import Premium, PremiumFit
 from ._segment import _augment_segment_factors, _expand_to_full_grid
 
 if TYPE_CHECKING:
     from ._io import FrameLike
-    from ._types import MaturityArg, RegimeArg, TailArg
+    from ._types import RegimeArg, TailArg
     from .triangle import Triangle
 
 
@@ -81,7 +79,10 @@ class _LossResult:
     total_se: np.ndarray
     premium_obs: np.ndarray
     premium_proj: np.ndarray
-    mat_k: int | None
+    # The SwitchPoint-selected ED->CL switch dev (internal/diagnostic), or
+    # None for no discretionary switch. Kept for future diagnostics; the
+    # public surface exposes the EFFECTIVE switch, not this raw selection.
+    selected_switch_point: int | None
     # internal parameters retained for Ratio bootstrap reuse
     g_sel: np.ndarray
     g_sigma2: np.ndarray
@@ -90,41 +91,15 @@ class _LossResult:
     f_sigma2: np.ndarray
     f_var: np.ndarray
     last_obs: np.ndarray
-    maturity_from: int | None
-    # The effective switch dev actually applied at the edge (= the maturity
-    # threshold the body used). In the segment-borrow path this is the
-    # boundary-capped value (`min(selected, boundary)`, or the boundary when
-    # no switch was selected), so the tail can follow the forced donor-f_k CL
-    # edge past a segment's own-data reach. `None` on the general path, where
-    # the tail reads `mat_k` directly.
-    effective_switch: float | None = None
-
-
-def _resolve_maturity_override(
-    maturity: Any,
-    triangle: "Triangle",
-) -> "str | Maturity | None":
-    """Resolve the estimator's ``maturity`` input for the SA switch.
-
-    Returns one of three shapes consumed downstream:
-
-    * ``"auto"`` -- the sentinel kept verbatim so ``_fit_loss_single``
-      runs the inline :func:`_compute_maturity` detection, which
-      honours the estimator's ``max_cv`` / ``max_rse`` / ``min_run``
-      thresholds.
-    * ``None`` -- no maturity switch (SA falls back to ED throughout).
-    * a :class:`~lossratio.Maturity` object -- an explicit override
-      (from a passed Maturity, or a ``maturity_spec`` callable). Its
-      per-group ``mat_k`` is read by :func:`_mat_k_for_group`.
-
-    The ``"auto"`` sentinel is *not* routed through
-    :func:`~lossratio.maturity._resolve_maturity` because that path
-    would build the Maturity with default thresholds; keeping the
-    inline detection preserves the estimator's tuning knobs.
-    """
-    if maturity == "auto":
-        return "auto"
-    return _resolve_maturity(maturity, triangle)
+    # The EFFECTIVE switch dev: the dev where the CL stage actually begins for
+    # this group's projection. General path = the selected switch (no cap).
+    # Segment-borrow path = the boundary-capped value (`min(selected,
+    # boundary)`, or the boundary itself when no switch was selected), so the
+    # forced donor-f_k CL edge past a segment's own-data reach is recorded
+    # honestly. `None` = pure ED throughout (no CL stage). This is what the
+    # public `switch_from` column / `switch_point` property report, and what
+    # the tail follows.
+    effective_switch_point: int | None = None
 
 
 def _resolve_switch(switch: Any, triangle: "Triangle", model_cfg: dict) -> Any:
@@ -158,57 +133,38 @@ def _resolve_switch(switch: Any, triangle: "Triangle", model_cfg: dict) -> Any:
 
 def _resolve_switch_input(
     switch: Any,
-    maturity: Any,
     triangle: "Triangle",
     *,
     model_cfg: dict,
 ) -> Any:
-    """Resolve the SA switch from the authoritative ``switch`` (or legacy
-    ``maturity``) input. ``switch`` is the authority; ``maturity`` is a
-    deprecated legacy alias. Passing both is an error.
-
-    Returns a SwitchPoint / Maturity override (consumed per-group by
-    :func:`_mat_k_for_group`) or ``None`` (no discretionary switch).
-    """
-    if maturity is not None and switch is not None:
-        raise ValueError(
-            "pass either `switch` (preferred) or the legacy `maturity`, "
-            "not both."
-        )
-    if maturity is not None:
-        warnings.warn(
-            "`maturity=` is deprecated; use `switch=` "
-            "(SwitchPoint.at(k) / SwitchPoint.detect() / an int).",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return _resolve_maturity_override(maturity, triangle)
-    if switch is not None:
-        return _resolve_switch(switch, triangle, model_cfg)
-    return None
+    """Resolve the SA ``switch`` input to a per-group switch override
+    (consumed by :func:`_switch_for_group`), or ``None`` -- no discretionary
+    switch, so SA falls back to pure ED."""
+    if switch is None:
+        return None
+    return _resolve_switch(switch, triangle, model_cfg)
 
 
-def _mat_k_for_group(
-    mat_override: "Any",
+def _switch_for_group(
+    override: "Any",
     group_value: Any | None,
-) -> int | str | None:
-    """Per-group ``mat_k`` for ``_fit_loss_single`` from a resolved override.
+) -> int | None:
+    """Per-group switch dev for ``_fit_loss_single`` from a resolved
+    :class:`SwitchPoint` override.
 
-    ``"auto"`` and ``None`` pass straight through. A :class:`Maturity`
-    object yields its ``mat_k`` for ``group_value`` -- a scalar for an
-    ungrouped Maturity, the matching dict entry for a grouped one. A
-    missing or null per-group ``mat_k`` becomes ``None`` (no switch for
-    that group).
+    ``None`` passes straight through (no switch). A :class:`SwitchPoint`
+    yields its ``point`` for ``group_value`` -- a scalar for an ungrouped
+    one, the matching dict entry for a grouped one. A missing or null
+    per-group point becomes ``None`` (no switch for that group).
     """
-    if mat_override is None or mat_override == "auto":
-        return mat_override
+    if override is None:
+        return None
 
-    # mat_override is a Maturity object.
-    mat_k = mat_override.point
-    if isinstance(mat_k, dict):
-        val = mat_k.get(group_value)
+    point = override.point
+    if isinstance(point, dict):
+        val = point.get(group_value)
     else:
-        val = mat_k
+        val = point
     return None if val is None else int(val)
 
 
@@ -221,13 +177,13 @@ def _project_loss(
     g_k: np.ndarray,
     sigma2_g_k: np.ndarray,
     var_g_k: np.ndarray,
-    maturity_threshold: float,
+    switch_threshold: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Cumulative-loss projection + Mack variance recursion.
 
     Given the per-link factor arrays (CL ``f_k`` and ED ``g_k`` with
     their sigma2 / Mack-variance companions) and the SA switch
-    ``maturity_threshold`` (``0`` = pure CL, ``inf`` = pure ED, finite =
+    ``switch_threshold`` (``0`` = pure CL, ``inf`` = pure ED, finite =
     ED below / CL at-or-above that target dev), seeds each cohort from
     its last observed cell and recurses forward. Returns
     ``(loss_proj, proc_se, param_se, total_se)``.
@@ -267,7 +223,7 @@ def _project_loss(
         ck = loss_proj[:, k]
         pk = premium_proj_from_fit[:, k]
 
-        if target_dev < maturity_threshold:
+        if target_dev < switch_threshold:
             # ED phase: additive
             pos = active & ~np.isnan(pk) & (pk > 0)
             if pos.any():
@@ -309,11 +265,8 @@ def _fit_loss_single(
     premium_proj_from_fit: np.ndarray,
     method: str,
     sigma_method: str,
-    max_cv: float,
-    max_rse: float,
-    min_run: int,
     recent: int | None = None,
-    mat_k_override: int | str | None = "auto",
+    switch_override: int | None = None,
 ) -> _LossResult:
     """Project cumulative loss + decompose variance (process / parameter).
 
@@ -324,20 +277,14 @@ def _fit_loss_single(
     composition layering.
 
     ``recent`` is the optional recent-diagonal window: when supplied,
-    the ED / CL factor parameters and the SA maturity point are
-    estimated from the recent-``N`` calendar wedge while the point
-    projection stays seeded from the full triangle. ``None`` (default)
-    is the byte-identical no-filter path.
+    the ED / CL factor parameters are estimated from the recent-``N``
+    calendar wedge while the point projection stays seeded from the full
+    triangle. ``None`` (default) is the byte-identical no-filter path.
 
-    ``mat_k_override`` controls the SA maturity switch (only consulted
-    when ``method == "sa"``):
-
-    * ``"auto"`` (default) -- auto-detect ``mat_k`` from the loss
-      triangle via :func:`_compute_maturity` (the ``max_cv`` /
-      ``max_rse`` / ``min_run`` thresholds).
-    * an ``int`` -- use this explicit maturity dev (a :class:`Maturity`
-      object's ``mat_k`` for this group); skips auto-detection.
-    * ``None`` -- no maturity switch: SA falls back to ED throughout.
+    ``switch_override`` controls the SA ED->CL switch (only consulted
+    when ``method == "sa"``): an ``int`` switch dev (the per-group
+    :class:`SwitchPoint` point), or ``None`` for no switch (SA falls
+    back to ED throughout).
     """
     from ._recent import recent_link_mask
 
@@ -383,38 +330,31 @@ def _fit_loss_single(
         sigma2_f_k = _nan_links.copy()
         var_f_k = _nan_links.copy()
 
-    # Maturity (only for SA). `mat_k_override` selects the source:
-    # "auto" -> detect from this group's loss triangle; an int -> use
-    # the explicit value (a Maturity object's mat_k); None -> no switch.
-    mat_k: int | None = None
-    if method == "sa":
-        if mat_k_override == "auto":
-            mat = _compute_maturity(
-                loss_obs, max_cv, max_rse, min_run,
-                link_mask=loss_link_mask,
-            )
-            mat_k = mat.mat_k
-        elif mat_k_override is None:
-            mat_k = None
-        else:
-            mat_k = int(mat_k_override)
+    # SA switch (only for SA). `switch_override` is the per-group switch
+    # dev (an int) or None (no switch -> pure ED throughout).
+    selected: int | None = None
+    if method == "sa" and switch_override is not None:
+        selected = int(switch_override)
 
-    # Switch threshold: target dev < mat = ED phase; target dev >= mat = CL.
+    # Switch threshold: target dev < switch = ED phase; >= switch = CL.
     if method == "sa":
-        if mat_k is None:
-            maturity_threshold = float("inf")  # fall back to ED throughout
-        else:
-            maturity_threshold = float(mat_k)
+        switch_threshold = (
+            float("inf") if selected is None else float(selected)
+        )
     elif method == "ed":
-        maturity_threshold = float("inf")
+        switch_threshold = float("inf")
     else:  # cl
-        maturity_threshold = 0.0
+        switch_threshold = 0.0
+
+    # General path: the effective switch equals the selected switch (no
+    # borrow-boundary cap). None for ed / cl and pure-ED sa.
+    effective = selected
 
     loss_proj, proc_se, param_se, total_se = _project_loss(
         loss_obs, premium_proj_from_fit,
         f_k, sigma2_f_k, var_f_k,
         g_k, sigma2_g_k, var_g_k,
-        maturity_threshold,
+        switch_threshold,
     )
     obs_mask = ~np.isnan(loss_obs)
     last_obs_idx = np.where(
@@ -432,7 +372,7 @@ def _fit_loss_single(
         total_se=total_se,
         premium_obs=premium_obs,
         premium_proj=premium_proj_from_fit,
-        mat_k=mat_k,
+        selected_switch_point=selected,
         g_sel=g_k,
         g_sigma2=sigma2_g_k,
         g_var=var_g_k,
@@ -440,7 +380,7 @@ def _fit_loss_single(
         f_sigma2=sigma2_f_k,
         f_var=var_f_k,
         last_obs=last_obs_idx,
-        maturity_from=mat_k,
+        effective_switch_point=effective,
     )
 
 
@@ -451,11 +391,8 @@ def _borrowed_loss_group(
     seg_of_cohort: np.ndarray,
     method: str,
     sigma_method: str,
-    max_cv: float,
-    max_rse: float,
-    min_run: int,
     recent: int | None,
-    mat_k_override: int | str | None,
+    switch_override: int | None,
 ) -> tuple[dict[int, _LossResult], dict[int, np.ndarray]]:
     """Per-group ``segment_bridged_borrowed`` fit.
 
@@ -481,7 +418,7 @@ def _borrowed_loss_group(
     # 1) per-segment factor estimation (full-range row subsets).
     seg_arrays: dict[int, dict[str, np.ndarray]] = {}
     seg_rows: dict[int, np.ndarray] = {}
-    seg_mat_k: dict[int, int | None] = {}
+    seg_switch: dict[int, int | None] = {}
     for s in segs:
         rows = np.where(seg_of_cohort == s)[0]
         seg_rows[s] = rows
@@ -503,16 +440,9 @@ def _borrowed_loss_group(
             "var_g_k": _mack_g_var(ed),
         }
         mk: int | None = None
-        if method == "sa":
-            if mat_k_override == "auto":
-                mk = _compute_maturity(
-                    lo, max_cv, max_rse, min_run, link_mask=lmask
-                ).mat_k
-            elif mat_k_override is None:
-                mk = None
-            else:
-                mk = int(mat_k_override)
-        seg_mat_k[s] = mk
+        if method == "sa" and switch_override is not None:
+            mk = int(switch_override)
+        seg_switch[s] = mk
 
     # 2) donor-augment. The borrowed (late-dev) region is ALWAYS driven
     # by the multiplicative f_k -- it is level-invariant (f_k = C_{k+1}/C_k
@@ -534,9 +464,9 @@ def _borrowed_loss_group(
         po = premium_obs[rows]
         pp = premium_proj[rows]
         a = aug[s]
-        mk = seg_mat_k[s]
+        mk = seg_switch[s]
         if method == "cl":
-            maturity_threshold = 0.0
+            switch_threshold = 0.0
         else:
             # The borrowed tail (beyond the segment's own factors) is ALWAYS
             # the level-invariant CL f_k -- never the donor's g_k, which
@@ -549,12 +479,11 @@ def _borrowed_loss_group(
             own_max_link = int(finite.max()) if finite.size else -1
             boundary = float(own_max_link + 3)
             if method == "ed":
-                maturity_threshold = boundary
-            else:  # sa: ED below maturity, CL above -- but cap the ED region
-                # at the data boundary so a maturity point past the
-                # segment's own data (k* > k_obs) does not leave a
-                # borrowed-g_k ED gap.
-                maturity_threshold = (
+                switch_threshold = boundary
+            else:  # sa: ED below the switch, CL above -- but cap the ED
+                # region at the data boundary so a switch past the segment's
+                # own data (k > k_obs) does not leave a borrowed-g_k ED gap.
+                switch_threshold = (
                     boundary if mk is None else min(float(mk), boundary)
                 )
 
@@ -562,7 +491,7 @@ def _borrowed_loss_group(
             lo, pp,
             a["f_k"], a["sigma2_f_k"], a["var_f_k"],
             a["g_k"], a["sigma2_g_k"], a["var_g_k"],
-            maturity_threshold,
+            switch_threshold,
         )
         obs_mask = ~np.isnan(lo)
         last_obs = np.where(
@@ -570,6 +499,12 @@ def _borrowed_loss_group(
             n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
             -1,
         )
+        # Effective switch = the dev where CL actually begins. For cl there
+        # is no ED stage (None, matching the general cl path); otherwise the
+        # boundary-capped threshold the body applied (always finite here --
+        # `boundary` or `min(selected, boundary)`), so even a no-discretionary
+        # -switch borrowed segment records its forced donor-f_k CL boundary.
+        effective = None if method == "cl" else int(switch_threshold)
         results[s] = _LossResult(
             n_devs=n_devs,
             loss_obs=lo,
@@ -579,8 +514,7 @@ def _borrowed_loss_group(
             total_se=total_se,
             premium_obs=po,
             premium_proj=pp,
-            mat_k=mk,
-            effective_switch=maturity_threshold,
+            selected_switch_point=mk,
             g_sel=a["g_k"],
             g_sigma2=a["sigma2_g_k"],
             g_var=a["var_g_k"],
@@ -588,7 +522,7 @@ def _borrowed_loss_group(
             f_sigma2=a["sigma2_f_k"],
             f_var=a["var_f_k"],
             last_obs=last_obs,
-            maturity_from=mk,
+            effective_switch_point=effective,
         )
     return results, seg_rows
 
@@ -629,7 +563,7 @@ def _loss_long_df(
     loss_ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
     loss_ci_hi = np.where(both_finite, loss_proj + z_alpha * total_se, np.nan)
 
-    maturity_from = getattr(result, "maturity_from", None)
+    switch_from = result.effective_switch_point
 
     cohort_flat = [c for c in cohorts for _ in range(n_devs)]
     dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
@@ -643,7 +577,7 @@ def _loss_long_df(
     df_data["loss_obs"] = loss_obs.flatten()
     df_data["loss_proj"] = loss_proj.flatten()
     df_data["incr_loss_proj"] = incr_proj.flatten()
-    df_data["maturity_from"] = [maturity_from] * total
+    df_data["switch_from"] = [switch_from] * total
     df_data["loss_proc_se"] = proc_se.flatten()
     df_data["loss_param_se"] = param_se.flatten()
     df_data["loss_total_se"] = total_se.flatten()
@@ -674,10 +608,10 @@ def _loss_long_df(
         )
 
     # Restore the original column order (premium columns sit between
-    # incr_loss_proj and maturity_from).
+    # incr_loss_proj and switch_from).
     desired = ["cohort", "dev", "loss_obs", "loss_proj", "incr_loss_proj",
                "premium_obs", "premium_proj", "incr_premium_proj",
-               "maturity_from",
+               "switch_from",
                "loss_proc_se", "loss_param_se", "loss_total_se",
                "loss_total_cv", "loss_ci_lo", "loss_ci_hi"]
     if groups is not None:
@@ -700,11 +634,10 @@ class Loss:
         Projection method:
 
         * ``"ed"`` (default): pure ED for all dev periods. The
-          unconditional safe baseline -- no maturity dependency.
+          unconditional safe baseline -- no switch dependency.
         * ``"cl"``: pure Mack chain ladder.
-        * ``"sa"``: stage-adaptive — ED before maturity, CL after.
-          The maturity switch is resolved from the ``maturity``
-          argument.
+        * ``"sa"``: stage-adaptive — ED before the switch dev, CL
+          after. The switch is resolved from the ``switch`` argument.
     alpha
         Variance-structure exponent for the loss fit. Default ``1``.
     sigma_method
@@ -719,31 +652,23 @@ class Loss:
         ``premium_fit`` is ``None``.
     premium_alpha
         Variance-structure exponent for the premium fit. Default ``1``.
-    maturity
-        Maturity specification for the ``"sa"`` (stage-adaptive)
-        switch. Four-type dispatch:
+    switch
+        ED->CL switch specification for the ``"sa"`` (stage-adaptive)
+        method:
 
-        * ``"auto"`` (default): auto-detect the maturity point per
-          group from the loss triangle, tuned by ``max_cv`` /
-          ``max_rse`` / ``min_run``.
-        * a :class:`~lossratio.Maturity` object (e.g. from
-          :meth:`~lossratio.Maturity.at` or
-          ``triangle.link().ata().maturity()``): use its ``mat_k``
-          directly, overriding auto-detection.
-        * a callable ``f(triangle) -> Maturity`` (e.g. the lazy spec
-          from :meth:`~lossratio.Maturity.detect`): invoked on the fit's
+        * ``None`` (default): no discretionary switch -- ``"sa"`` falls
+          back to ED throughout (a regime segment-borrow path still
+          develops the borrowed late-dev region with the donor's
+          level-invariant ``f_k``).
+        * an ``int``: a fixed switch dev (normalised to
+          :meth:`~lossratio.SwitchPoint.at`).
+        * a :class:`~lossratio.SwitchPoint`: use its ``point`` directly.
+        * a ``SwitchPoint.detect()`` spec: resolved on the fit's
           triangle -- inside backtest this is the masked fold, so the
-          detected switch never peeks at held-out cells.
-        * ``None``: no maturity switch -- ``"sa"`` falls back to ED
-          throughout.
+          selected switch never peeks at held-out cells.
 
         Consulted only when ``method="sa"``; ignored for the other
         methods.
-    max_cv, max_rse, min_run
-        Stability thresholds for ``maturity="auto"`` detection
-        (``CV < max_cv`` and ``RSE < max_rse``, sustained for
-        ``min_run`` consecutive links). Ignored when ``maturity`` is a
-        :class:`~lossratio.Maturity` object or a callable.
     conf_level
         Confidence level for analytical CI on ``loss_proj``. Default
         ``0.95``.
@@ -783,10 +708,6 @@ class Loss:
     premium_method: str                = "ed"
     premium_alpha:  float              = 1.0
     switch:         Any                = None
-    maturity:       MaturityArg        = None
-    max_cv:         float              = 0.15
-    max_rse:        float              = 0.05
-    min_run:        int                = 2
     conf_level:     float              = 0.95
     regime:         RegimeArg          = None
     recent:         int | None         = None
@@ -828,7 +749,7 @@ class Loss:
         _validate_recent(self.recent)
         # The tail is effective for every loss method: cl (multiplicative
         # f->1), ed (additive g->0), and sa (the tail of whichever stage is
-        # active at the last development column -- post-maturity CL when a
+        # active at the last development column -- post-switch CL when a
         # switch is found, else ED).
         from .tail import validate_tail
         validate_tail(self.tail)
@@ -846,12 +767,12 @@ class LossFit:
     df : DataFrame
         Long-format triangle with columns ``[groups?, cohort, dev,
         loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
-        incr_premium_proj, maturity_from, loss_proc_se, loss_param_se,
+        incr_premium_proj, switch_from, loss_proc_se, loss_param_se,
         loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
         ``"ed"``, ``"sa"``, or ``"cl"``.
-    maturity_point :
-        Detected maturity for ``"sa"`` (None elsewhere).
+    switch_point :
+        Effective ED->CL switch dev for ``"sa"`` (None elsewhere).
     premium_fit :
         The embedded :class:`PremiumFit` used for premium projection.
     """
@@ -898,7 +819,7 @@ class LossFit:
         # regime-filtered triangle. Both the general and segment-borrow paths
         # then consume the SAME per-group switch.
         switch_override = _resolve_switch_input(
-            estimator.switch, estimator.maturity, original_tri,
+            estimator.switch, original_tri,
             model_cfg=dict(
                 alpha=estimator.alpha, sigma_method=estimator.sigma_method,
                 recent=estimator.recent, regime=regime,
@@ -958,14 +879,14 @@ class LossFit:
 
         # The SA switch override was resolved once above (on the
         # regime-unfiltered triangle); consumed per-group by
-        # `_mat_k_for_group`. SwitchPoint / Maturity both expose `.point`.
-        mat_override = switch_override
+        # `_switch_for_group` (a SwitchPoint exposes `.point`).
+        switch_resolved = switch_override
 
         # internal-params dict; not exposed to user but kept for Ratio bootstrap
         self._internals: dict[Any, _LossResult] = {}
 
         long_parts: list[pl.DataFrame] = []
-        mat_k_rows: list[dict[str, Any]] = []
+        switch_rows: list[dict[str, Any]] = []
         # Partition the premium frame once (single pass) instead of
         # re-filtering it for every group inside the loop -- partition_by
         # preserves original row order, so each part is identical to the
@@ -985,11 +906,8 @@ class LossFit:
                 premium_proj_mat,
                 estimator.method,
                 estimator.sigma_method,
-                estimator.max_cv,
-                estimator.max_rse,
-                estimator.min_run,
                 recent=estimator.recent,
-                mat_k_override=_mat_k_for_group(mat_override, g),
+                switch_override=_switch_for_group(switch_resolved, g),
             )
             long_parts.append(
                 _loss_long_df(
@@ -999,21 +917,21 @@ class LossFit:
             row: dict[str, Any] = {}
             if groups is not None:
                 set_group_values(row, groups, g)
-            row["mat_k"] = result.mat_k
+            row["switch_point"] = result.effective_switch_point
             row["method"] = estimator.method
-            mat_k_rows.append(row)
+            switch_rows.append(row)
             self._internals[g] = result
         # `vertical_relaxed`: per-group frames can disagree on a column's
         # dtype when one group has an all-null column the others type -- e.g.
-        # `maturity_from` is Null-typed for a group with no detected maturity
-        # but Int64 for groups that have one (common under masked backtest
-        # refits at a coarse grain). Relaxed concat promotes Null -> Int64
-        # rather than raising; it is a no-op when the dtypes already agree.
+        # `switch_from` is Null-typed for a group with no switch but Int64
+        # for groups that have one (common under masked backtest refits at a
+        # coarse grain). Relaxed concat promotes Null -> Int64 rather than
+        # raising; it is a no-op when the dtypes already agree.
         long_df = (
             pl.concat(long_parts, how="vertical_relaxed")
             if long_parts else pl.DataFrame()
         )
-        mat_k_df = pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
+        switch_df = pl.DataFrame(switch_rows) if switch_rows else pl.DataFrame()
 
         # ----- Tail (cl multiplicative f->1 / ed additive g->0) ------------
         # Append per-group `_tail`-suffixed companion columns to the
@@ -1078,15 +996,14 @@ class LossFit:
                 return _apply_cl_tail(sub_result.f_sel, grp_long, g, warn=True)
             if method == "ed":
                 return _apply_ed_tail(sub_result.g_sel, grp_long, g)
-            # method == "sa": the tail follows the stage active at the last
-            # development column. A finite mat_k means the post-maturity CL
-            # stage reaches the edge -> CL tail fit on the post-maturity
-            # factors (dev >= mat_k, i.e. links k >= mat_k - 2). No mat_k
-            # (all-ED fallback) -> the additive ED tail.
-            mat_k = sub_result.mat_k
-            if mat_k is None:
+            # method == "sa": the tail follows the EFFECTIVE switch. A finite
+            # switch means the CL stage reaches the edge -> CL tail fit on the
+            # post-switch factors (dev >= switch, i.e. links k >= switch - 2).
+            # No switch (pure-ED sa) -> the additive ED tail.
+            eff = sub_result.effective_switch_point
+            if eff is None:
                 return _apply_ed_tail(sub_result.g_sel, grp_long, g)
-            cl_start = max(int(mat_k) - 2, 0)
+            cl_start = max(int(eff) - 2, 0)
             f_post = sub_result.f_sel[cl_start:]
             return _apply_cl_tail(f_post, grp_long, g, warn=True)
 
@@ -1151,7 +1068,7 @@ class LossFit:
         )
 
         self._df = long_df
-        self._mat_k_df = mat_k_df
+        self._switch_df = switch_df
         return self
 
     def _maybe_overlay_bootstrap(
@@ -1266,10 +1183,10 @@ class LossFit:
         tri_df = masked._df
         groups = masked._groups
         # The switch was resolved once in `_from_triangle` on the
-        # regime-unfiltered triangle and passed in (selected_switch); the
-        # per-segment effective switch is capped by each segment's borrow
-        # boundary inside `_borrowed_loss_group`.
-        mat_override = switch_override
+        # regime-unfiltered triangle and passed in; the per-segment effective
+        # switch is capped by each segment's borrow boundary inside
+        # `_borrowed_loss_group`.
+        switch_resolved = switch_override
 
         # ----- Tail on the borrowed factors --------------------------------
         # The tail extrapolates each segment's DONOR-AUGMENTED factors
@@ -1323,16 +1240,14 @@ class LossFit:
                     )
                 return r, df_s
             # method == "sa": the tail follows the EFFECTIVE switch, not the
-            # selected mat_k. A borrowed segment's edge is forced to donor-f_k
+            # raw selection. A borrowed segment's edge is forced to donor-f_k
             # CL past its own-data boundary (the body capped the ED region
-            # there), so even with no discretionary switch (mat_k=None) the
-            # last stage is CL and the tail must be the multiplicative CL tail.
-            # Only when the effective switch lies beyond the last dev (the
-            # whole edge is still ED) does the additive ED tail apply.
-            eff = res.effective_switch
-            edge_is_cl = (
-                eff is not None and np.isfinite(eff) and eff <= res.n_devs
-            )
+            # there), so even with no discretionary switch the last stage is
+            # CL and the tail must be the multiplicative CL tail. Only when the
+            # effective switch lies beyond the last dev (the whole edge is
+            # still ED) does the additive ED tail apply.
+            eff = res.effective_switch_point
+            edge_is_cl = eff is not None and eff <= res.n_devs
             if not edge_is_cl:
                 r = compute_ed_tail_increment_coupled(
                     res.g_sel, pf_fk_map.get(g), tail, grain
@@ -1353,7 +1268,7 @@ class LossFit:
             return r, df_s
 
         long_parts: list[pl.DataFrame] = []
-        mat_k_rows: list[dict[str, Any]] = []
+        switch_rows: list[dict[str, Any]] = []
         internals_combined: dict[Any, _LossResult] = {}
 
         # Partition the premium frame once (see the note in _from_triangle).
@@ -1377,8 +1292,7 @@ class LossFit:
             results, seg_rows = _borrowed_loss_group(
                 loss_obs, premium_obs, premium_proj, seg_of_cohort,
                 estimator.method, estimator.sigma_method,
-                estimator.max_cv, estimator.max_rse, estimator.min_run,
-                estimator.recent, _mat_k_for_group(mat_override, g),
+                estimator.recent, _switch_for_group(switch_resolved, g),
             )
             for s in sorted(results):
                 res = results[s]
@@ -1394,12 +1308,12 @@ class LossFit:
                 long_parts.append(df_s)
                 row: dict[str, Any] = {
                     "segment_id": s,
-                    "mat_k": res.mat_k,
+                    "switch_point": res.effective_switch_point,
                     "method": estimator.method,
                 }
                 if groups is not None:
                     set_group_values(row, groups, g)
-                mat_k_rows.append(row)
+                switch_rows.append(row)
                 internals_combined[(g, s) if groups is not None else s] = res
 
         self = cls.__new__(cls)
@@ -1447,8 +1361,8 @@ class LossFit:
                     how="left",
                 )
 
-        self._mat_k_df = (
-            pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
+        self._switch_df = (
+            pl.DataFrame(switch_rows) if switch_rows else pl.DataFrame()
         )
         full_df = self._maybe_overlay_bootstrap(full_df, triangle, estimator)
 
@@ -1478,23 +1392,25 @@ class LossFit:
         )
 
     @property
-    def maturity_point(self):
-        """Detected maturity for SA (None for ED/CL)."""
+    def switch_point(self):
+        """Effective ED->CL switch dev for SA (None for ED/CL and pure-ED
+        SA). In a segment-borrow fit this is the boundary-capped effective
+        switch actually applied."""
         if self.method != "sa":
             return None
         if self._groups is None:
-            row = self._mat_k_df.row(0, named=True)
-            return row["mat_k"]
+            row = self._switch_df.row(0, named=True)
+            return row["switch_point"]
         if isinstance(self._groups, str):
-            keys = self._mat_k_df[self._groups].to_list()
+            keys = self._switch_df[self._groups].to_list()
         else:
             keys = [
                 tuple(r)
-                for r in self._mat_k_df.select(
+                for r in self._switch_df.select(
                     normalize_groups(self._groups)
                 ).iter_rows()
             ]
-        return dict(zip(keys, self._mat_k_df["mat_k"].to_list()))
+        return dict(zip(keys, self._switch_df["switch_point"].to_list()))
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
@@ -1667,7 +1583,7 @@ class LossFit:
     def __repr__(self) -> str:
         n_rows = self._df.height
         if self._groups is not None:
-            n_groups = self._mat_k_df.height
+            n_groups = self._switch_df.height
             return (
                 f"<LossFit(method={self.method!r}): "
                 f"{n_groups} groups, {n_rows} rows>"

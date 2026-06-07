@@ -1477,16 +1477,19 @@ class Regime:
             sub_by_combo = dict(_iter_group_frames(tri_df, grp))
 
         # Resolve trajectory window per combo. ``window="auto"`` first
-        # tries the maturity point (``detect_maturity`` on the Triangle)
-        # for each combo. When maturity is unavailable (pooled
-        # detection, NA maturity, or `by` mismatching the Triangle's
-        # stored groups) it falls back to the Kneedle elbow on the
+        # tries the ATA factor-stability point (the dev where the
+        # age-to-age factors become CV/RSE-stable) for each combo. When
+        # that is unavailable (pooled detection, degenerate input, or no
+        # sustained stable run) it falls back to the Kneedle elbow on the
         # change-count sweep; if the elbow is also undefined, falls
         # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
-            # Map the regime target -> a valid cumulative target for
-            # detect_maturity (which supports cumulative metrics only).
-            # Derived targets fall back to "ratio".
+            from .ata import _detect_stability_point
+            from ._mack import _build_value_matrix
+
+            # Map the regime target -> a valid cumulative metric for the
+            # ATA factor diagnostic (cumulative metrics only). Derived
+            # targets fall back to "ratio".
             _MAT_LOSS_MAP = {
                 "ratio": "ratio",
                 "loss": "loss",
@@ -1497,59 +1500,27 @@ class Regime:
             }
             mat_loss = _MAT_LOSS_MAP.get(target, "ratio")
 
-            # First pass: try maturity. Pooled detection (grp is None)
-            # cannot match maturity rows back to combos, so skip.
-            maturity_by_combo: dict[Any, int | None] = {}
+            # Per-combo factor-stability point. Pooled detection (grp is
+            # None) cannot tie a stability point back to combos, so skip.
+            stability_by_combo: dict[Any, int | None] = {}
             if grp is not None:
-                try:
-                    mat = triangle.detect_maturity(target=mat_loss)
-                    mat_df = mat.summary()
-                    # Coerce mat_df to polars if needed (mirror_output
-                    # may have returned pandas).
-                    if not isinstance(mat_df, pl.DataFrame):
-                        mat_df = pl.from_pandas(mat_df)
-                    gcols = normalize_groups(grp)
-                    if (
-                        all(g in mat_df.columns for g in gcols)
-                        and "point" in mat_df.columns
-                    ):
-                        # Vectorised: per group key, point -> int, mapping
-                        # null / NaN to None (mirrors the per-row int(v)
-                        # with the None / NaN guards). The key is a scalar
-                        # for a str group, a tuple for a multi-column group
-                        # (matching the `combos` entries).
-                        point_f = pl.col("point").cast(
-                            pl.Float64, strict=False
+                for combo in combos:
+                    try:
+                        mat_obs, _, _ = _build_value_matrix(
+                            sub_by_combo[combo], value_col=mat_loss
                         )
-                        mats = (
-                            mat_df.select(
-                                pl.when(point_f.is_null() | point_f.is_nan())
-                                .then(None)
-                                # non-strict: the `otherwise` branch is
-                                # evaluated for every row, so a strict cast
-                                # would still raise on the NaN rows the
-                                # `when` masks. Map NaN -> null instead.
-                                .otherwise(point_f.cast(pl.Int64, strict=False))
-                                .alias("_mat")
-                            )["_mat"].to_list()
+                        stability_by_combo[combo] = _detect_stability_point(
+                            mat_obs
                         )
-                        if isinstance(grp, str):
-                            keys: list[Any] = mat_df[grp].to_list()
-                        else:
-                            keys = [
-                                tuple(r) for r in mat_df.select(grp).iter_rows()
-                            ]
-                        maturity_by_combo = dict(zip(keys, mats))
-                except (ValueError, KeyError, RuntimeError):
-                    # detect_maturity may raise on degenerate input
-                    # (no valid links, single-cohort triangle, etc.).
-                    # The elbow fallback handles these.
-                    maturity_by_combo = {}
+                    except (ValueError, KeyError, RuntimeError):
+                        # Degenerate input (no valid links, single-cohort,
+                        # ...): the elbow fallback handles it.
+                        stability_by_combo[combo] = None
 
             window_per_combo: list[int] = []
             for combo in combos:
-                # Maturity-first path (per-combo when grp is set).
-                mat_k = maturity_by_combo.get(combo) if grp is not None else None
+                # Factor-stability path (per-combo when grp is set).
+                mat_k = stability_by_combo.get(combo) if grp is not None else None
                 if mat_k is not None and mat_k >= 2:
                     window_per_combo.append(mat_k)
                     continue
@@ -1572,10 +1543,10 @@ class Regime:
             window_per_combo = [int(window)] * len(combos)
 
         # Window floor (auto path only): the Kneedle elbow can resolve to a
-        # degenerate window=2 on the pooled / maturity-unavailable path,
+        # degenerate window=2 on the pooled / stability-unavailable path,
         # where a length-2 cohort feature vector gives E-Divisive no power.
         # Clamping the auto-resolved window up to a floor restores detection
-        # without touching the maturity-anchored windows. Explicit `window`
+        # without touching the stability-anchored windows. Explicit `window`
         # is the user's choice and is left untouched.
         if window_is_auto and window_floor is not None:
             window_per_combo = [max(w, int(window_floor)) for w in window_per_combo]

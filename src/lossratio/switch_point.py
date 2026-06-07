@@ -20,9 +20,9 @@ the evidence is real, not a denominator-effect artifact):
   ``None`` -- no auto-switch; the caller should roll up to a coarser
   aggregate or specify the switch by hand).
 
-``point`` mirrors :class:`~lossratio.Maturity` so the downstream switch
-plumbing is shared: ``None`` = no switch (pure ED), ``1`` = switch at the
-first link (pure CL), ``k >= 2`` = ED before ``k`` and CL from ``k`` on.
+``point`` encodes the switch directly: ``None`` = no switch (pure ED),
+``1`` = switch at the first link (pure CL), ``k >= 2`` = ED before ``k``
+and CL from ``k`` on.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ cumulative ``loss`` series via the additive exposure-driven rule
 projected onto the developing cumulative premium) and returns a role-based
 :class:`~lossratio.loss.LossFit` (``.model == "exposure_driven"``).
 
-ExposureDriven is the unconditional safe baseline -- no maturity dependency,
+ExposureDriven is the unconditional safe baseline -- no switch dependency,
 robust to early-development age-to-age volatility. It is the all-ED
 configuration of the shared loss-projection engine. The optional ``tail``
 extends the projection beyond the observed window via the additive
