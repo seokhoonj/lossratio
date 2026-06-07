@@ -817,8 +817,8 @@ class RatioFit:
         )
 
         # A fit can leave trailing null cells past a cohort's reach
-        # (e.g. segment-bridged regimes), so "ultimate" must look at the
-        # last non-null projection per cohort, not the last row.
+        # (e.g. segment-bridged regimes), so the per-cohort projection must
+        # be the last *non-null* `*_proj`, not the last row.
         #
         # Tail cascade: when a tail is active the fit carries scalar
         # companion columns `loss_tail` / `premium_tail` on each cohort's

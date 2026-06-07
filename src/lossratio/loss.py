@@ -1432,10 +1432,11 @@ class LossFit:
             .agg(pl.col("loss_obs").last().alias("latest"))
         )
 
-        # Ultimate per cohort = last *non-null* projection (matches the
+        # Per-cohort projection = last *non-null* `loss_proj` (matches the
         # RatioFit policy). drop_nulls() is a no-op when every cohort
         # projects to full development, and guards a fit that leaves
-        # trailing null cells past a cohort's reach.
+        # trailing null cells past a cohort's reach. (The tail-inclusive
+        # headline is `loss_ultimate`, built below -- not this aggregate.)
         #
         # Tail cascade: an active tail leaves a scalar `loss_tail` on each
         # cohort's last-dev row. `loss_proj` stays the within-triangle

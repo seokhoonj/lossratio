@@ -702,9 +702,10 @@ class PremiumFit:
         df = self._df
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]
 
-        # Ultimate per cohort = last *non-null* projection (matches the
-        # RatioFit policy; no-op when every cohort projects to full
-        # development).
+        # Per-cohort projection = last *non-null* `premium_proj` (matches
+        # the RatioFit policy; no-op when every cohort projects to full
+        # development). The tail-inclusive headline is `premium_ultimate`,
+        # built below -- not this aggregate.
         #
         # Tail cascade: an active tail leaves a scalar `premium_tail` on each
         # cohort's last-dev row. `premium_proj` stays the within-triangle
