@@ -84,6 +84,12 @@ class Analytical:
     seed:         int | None = None
     quantile_ci:  bool       = False
 
+    def __post_init__(self) -> None:
+        if self.n_replicates < 1:
+            raise ValueError(
+                f"n_replicates must be >= 1, got {self.n_replicates!r}"
+            )
+
     def _resolve(
         self, triangle: "Triangle", *, target: str, method: str
     ) -> "BootstrapTriangle | None":

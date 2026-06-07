@@ -9,6 +9,7 @@ import polars as pl
 from ._io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
+    from ._types import RegimeArg
     from .triangle import Triangle
 
 
@@ -278,9 +279,12 @@ class BacktestFit:
     ----------
     ae_err : DataFrame
         Per-cell hold-out comparison
-        ``[groups?, cohort, dev, cal_idx, actual, expected, ae_err]``.
+        ``[groups?, cohort, dev, actual, expected, aeg, ae_err,
+        incr_actual, incr_expected, incr_aeg, incr_ae_err, cal_idx]``.
+        ``aeg = actual - expected`` (signed gap, target units) and
         ``ae_err = actual / expected - 1`` (signed relative error;
-        positive = under-projection, negative = over-projection).
+        positive = under-projection, negative = over-projection). The
+        ``incr_`` columns are the per-period (incremental) counterparts.
     col_summary : DataFrame
         Aggregated by dev:
         ``[groups?, dev, n, ae_err_mean, ae_err_med, ae_err_wt]``.
@@ -516,7 +520,7 @@ class BacktestFit:
         figsize: tuple[float, float] | None = None,
         *,
         recent: int | None = None,
-        regime: Any = None,
+        regime: "RegimeArg" = None,
         switch: Any = None,
     ) -> Any:
         """A/E error heatmap (``kind='value'``) or cell-status

@@ -3,9 +3,9 @@
 Covers:
 
 1. ``detect_regime(window="auto")`` -- the resolved window value and the
-   resulting ``$changes`` table. R falls back to maturity-detection when
-   ``window="auto"``; Python's elbow heuristic must land on the same
-   per-combo integer.
+   resulting ``$changes`` table. The R side (legacy naming, not yet
+   re-ported) falls back to ``detect_maturity()`` when ``window="auto"``;
+   Python's elbow heuristic must land on the same per-combo integer.
 2. ``detect_regime(by=...)`` -- per-group dispatch on a multi-coverage
    Triangle. The combined ``$changes`` and ``$labels`` tables (prefixed
    with the group column) must match R row-for-row.
@@ -103,8 +103,9 @@ def _compare_loose_numeric(
 def test_regime_window_auto_resolved_value_matches_r():
     """The auto-resolved window integer must match R.
 
-    R's auto-window path delegates to ``detect_maturity()``; Python's
-    delegates to the elbow heuristic. The two heuristics intersect on
+    The R side (legacy naming, not yet re-ported) delegates its auto-window
+    path to ``detect_maturity()``; Python delegates to the elbow heuristic.
+    The two heuristics intersect on
     well-behaved triangles -- when they diverge we want the test to
     surface the gap loudly.
     """

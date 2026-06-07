@@ -98,8 +98,7 @@ def _candidate_wape(
     tables: dict[str, pl.DataFrame] = {}
     for name, est in cands.items():
         ae = Backtest(estimator=est, holdout=h, target="loss").fit(triangle)
-        df = ae.to_polars() if hasattr(ae, "to_polars") else ae.ae_err
-        df = ae.ae_err if hasattr(ae, "ae_err") else df
+        df = ae.ae_err
         tables[name] = df.select([*gcols, "cohort", "dev", "actual", "expected"])
 
     common: pl.DataFrame | None = None
@@ -278,8 +277,10 @@ class SwitchPoint:
         ``k >= 2`` = ED before ``k`` / CL after. A single int (applied to
         all groups) or a sequence aligned 1:1 with ``groups``.
         """
+        if isinstance(point, bool):
+            raise TypeError("point must not be a bool")
         if isinstance(point, int):
-            seq = [point]
+            seq = [int(point)]
         elif isinstance(point, Sequence) and not isinstance(point, str):
             seq = [int(v) for v in point]
         else:

@@ -46,7 +46,8 @@ from ._segment import _augment_segment_factors, _expand_to_full_grid
 
 if TYPE_CHECKING:
     from ._io import FrameLike
-    from ._types import RegimeArg, TailArg
+    from ._types import RegimeArg, SwitchArg, TailArg
+    from .switch_point import SwitchPoint
     from .triangle import Triangle
 
 
@@ -102,7 +103,9 @@ class _LossResult:
     effective_switch_point: int | None = None
 
 
-def _resolve_switch(switch: Any, triangle: "Triangle", model_cfg: dict) -> Any:
+def _resolve_switch(
+    switch: "SwitchArg", triangle: "Triangle", model_cfg: dict
+) -> "SwitchPoint":
     """Resolve the authoritative ``switch`` input to a SwitchPoint override.
 
     * ``int`` -- normalised to ``SwitchPoint.at(int)``.
@@ -132,11 +135,11 @@ def _resolve_switch(switch: Any, triangle: "Triangle", model_cfg: dict) -> Any:
 
 
 def _resolve_switch_input(
-    switch: Any,
+    switch: "SwitchArg",
     triangle: "Triangle",
     *,
     model_cfg: dict,
-) -> Any:
+) -> "SwitchPoint | None":
     """Resolve the SA ``switch`` input to a per-group switch override
     (consumed by :func:`_switch_for_group`), or ``None`` -- no discretionary
     switch, so SA falls back to pure ED."""
@@ -146,7 +149,7 @@ def _resolve_switch_input(
 
 
 def _switch_for_group(
-    override: "Any",
+    override: Any,
     group_value: Any | None,
 ) -> int | None:
     """Per-group switch dev for ``_fit_loss_single`` from a resolved
@@ -707,7 +710,7 @@ class Loss:
     premium_fit:    PremiumFit | None  = None
     premium_method: str                = "ed"
     premium_alpha:  float              = 1.0
-    switch:         Any                = None
+    switch:         SwitchArg          = None
     conf_level:     float              = 0.95
     regime:         RegimeArg          = None
     recent:         int | None         = None
@@ -1041,8 +1044,8 @@ class LossFit:
                 self.tail_factor = no_tail
                 self.tail_diverged = False
             else:
-                self.tail_factor = {g: no_tail for g in self._internals.keys()}
-                self.tail_diverged = {g: False for g in self._internals.keys()}
+                self.tail_factor = {g: no_tail for g in self._internals}
+                self.tail_diverged = {g: False for g in self._internals}
 
         # ----- Join the premium tail (for the ratio's tailed ultimate) -----
         # The embedded PremiumFit was fit with the same `tail`, so it carries

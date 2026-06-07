@@ -378,9 +378,9 @@ class Premium:
     Examples
     --------
     >>> import lossratio as lr
+    >>> df = lr.load_experience()
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> pf = lr.Premium().fit(tri)
-    >>> pf.df.columns
+    >>> summary = lr.Premium().fit(tri).summary()
     """
 
     method:       str        = "ed"

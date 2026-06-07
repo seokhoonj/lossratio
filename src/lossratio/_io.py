@@ -40,7 +40,7 @@ def to_polars(df: Any) -> pl.DataFrame:
     return pl.from_pandas(df)
 
 
-def mirror_output(df_pl: pl.DataFrame, output_type: str):
+def mirror_output(df_pl: pl.DataFrame, output_type: str) -> "FrameLike":
     """Return df_pl in the format requested by ``output_type``."""
     if output_type == "pandas":
         return df_pl.to_pandas()

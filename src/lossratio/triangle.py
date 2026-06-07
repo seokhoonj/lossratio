@@ -24,6 +24,7 @@ from ._period import (
 
 if TYPE_CHECKING:
     from ._io import FrameLike
+    from ._types import RegimeArg
     from .calendar import Calendar
     from .link import Link
     from .regime import Regime
@@ -685,7 +686,7 @@ class Triangle:
         self,
         *,
         recent: int | None = None,
-        regime: Any = None,
+        regime: "RegimeArg" = None,
         holdout: int | None = None,
         switch: Any = None,
     ) -> "FrameLike":
@@ -753,7 +754,7 @@ class Triangle:
         *,
         x_axis: str = "dev",
         recent: int | None = None,
-        regime: Any = None,
+        regime: "RegimeArg" = None,
         holdout: int | None = None,
         switch: Any = None,
     ) -> Any:

@@ -545,14 +545,14 @@ def _refit_at_grain(fit: "RatioFit", g: str) -> "RatioFit | None":
         return fit
     try:
         tri_g = _coarsen_triangle(fit._triangle, g)
-    except Exception:
+    except (ValueError, pl.exceptions.PolarsError):
         return None
     # `Ratio.fit` only reads the estimator, but clone defensively so a
     # candidate re-fit can never perturb the caller's config.
     estimator = dataclasses.replace(fit._estimator)
     try:
         return estimator.fit(tri_g)
-    except Exception:
+    except (ValueError, pl.exceptions.PolarsError):
         return None
 
 

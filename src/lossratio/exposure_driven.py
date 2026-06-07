@@ -68,6 +68,27 @@ class ExposureDriven:
     conf_level:   float          = 0.95
     uncertainty:  UncertaintyArg = None
 
+    def __post_init__(self) -> None:
+        from ._recent import validate_recent as _validate_recent
+        from ._sigma import VALID_SIGMA_METHODS
+        from .tail import validate_tail
+
+        if self.sigma_method not in VALID_SIGMA_METHODS:
+            raise ValueError(
+                f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
+                f"got {self.sigma_method!r}"
+            )
+        if not (0.0 < self.conf_level < 1.0):
+            raise ValueError(
+                f"conf_level must be in (0, 1), got {self.conf_level!r}"
+            )
+        if self.alpha != 1.0:
+            raise NotImplementedError(
+                f"alpha={self.alpha} not yet implemented; only alpha=1 is supported"
+            )
+        _validate_recent(self.recent)
+        validate_tail(self.tail)
+
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the exposure-driven loss projection on a Triangle."""
         from .loss import Loss

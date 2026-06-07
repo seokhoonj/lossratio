@@ -374,8 +374,8 @@ def test_segment_borrowed_is_the_default_per_segment_treatment():
 def test_sa_segment_borrowed_coarse_grain_no_crash():
     """SA + segment_borrowed at a coarse grain must not crash on the
     per-segment diagonal concat. A short segment can yield an all-null
-    maturity column (Null dtype) that plain diagonal concat rejected against
-    another segment's Int64 -- fixed via diagonal_relaxed supertyping."""
+    `switch_from` column (Null dtype) that plain diagonal concat rejected
+    against another segment's Int64 -- fixed via diagonal_relaxed supertyping."""
     exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
     tri = lr.Triangle(exp, grain="H")
     r = lr.Regime.at(change="2024-07-01")

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ._types import RegimeArg, TailArg, UncertaintyArg
+    from ._types import RegimeArg, SwitchArg, TailArg, UncertaintyArg
     from .loss import LossFit
     from .triangle import Triangle
 
@@ -71,7 +71,7 @@ class StageAdaptive:
 
     alpha:        float          = 1.0
     sigma_method: str            = "locf"
-    switch:       Any            = None
+    switch:       SwitchArg      = None
     recent:       int | None     = None
     regime:       RegimeArg      = None
     tail:         TailArg        = False

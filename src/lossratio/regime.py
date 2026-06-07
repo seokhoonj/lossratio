@@ -763,12 +763,13 @@ def _build_feature_matrix(
         .sort("cohort")
     )
     eligible = counts.filter(pl.col("n") >= K)["cohort"].to_list()
+    eligible_set = set(eligible)
     # ``all_cohorts`` from the unfiltered frame: includes cohorts with
     # zero non-null target cells (which the filter above would drop).
     all_cohorts = (
         df["cohort"].unique().sort().to_list()
     )
-    dropped = [c for c in all_cohorts if c not in set(eligible)]
+    dropped = [c for c in all_cohorts if c not in eligible_set]
 
     if not eligible:
         raise ValueError(
@@ -816,8 +817,8 @@ def _cohort_level_scalar(
         Number of leading development periods that define the level. A cohort
         is kept only if it has at least ``window`` DISTINCT non-null ``dev``
         cells in ``1..window`` -- so the early trajectory is fully observed
-        and the level is comparable across cohorts (no maturity bias, no
-        ragged short cohorts leaking in).
+        and the level is comparable across cohorts (no incomplete-development
+        bias).
 
     Returns
     -------
@@ -1490,7 +1491,7 @@ class Regime:
             # Map the regime target -> a valid cumulative metric for the
             # ATA factor diagnostic (cumulative metrics only). Derived
             # targets fall back to "ratio".
-            _MAT_LOSS_MAP = {
+            _STABILITY_METRIC_MAP = {
                 "ratio": "ratio",
                 "loss": "loss",
                 "premium": "premium",
@@ -1498,7 +1499,7 @@ class Regime:
                 "incr_loss": "loss",
                 "incr_premium": "premium",
             }
-            mat_loss = _MAT_LOSS_MAP.get(target, "ratio")
+            stability_metric = _STABILITY_METRIC_MAP.get(target, "ratio")
 
             # Per-combo factor-stability point. Pooled detection (grp is
             # None) cannot tie a stability point back to combos, so skip.
@@ -1506,11 +1507,11 @@ class Regime:
             if grp is not None:
                 for combo in combos:
                     try:
-                        mat_obs, _, _ = _build_value_matrix(
-                            sub_by_combo[combo], value_col=mat_loss
+                        stab_obs, _, _ = _build_value_matrix(
+                            sub_by_combo[combo], value_col=stability_metric
                         )
                         stability_by_combo[combo] = _detect_stability_point(
-                            mat_obs
+                            stab_obs
                         )
                     except (ValueError, KeyError, RuntimeError):
                         # Degenerate input (no valid links, single-cohort,
@@ -1520,9 +1521,9 @@ class Regime:
             window_per_combo: list[int] = []
             for combo in combos:
                 # Factor-stability path (per-combo when grp is set).
-                mat_k = stability_by_combo.get(combo) if grp is not None else None
-                if mat_k is not None and mat_k >= 2:
-                    window_per_combo.append(mat_k)
+                stability_k = stability_by_combo.get(combo) if grp is not None else None
+                if stability_k is not None and stability_k >= 2:
+                    window_per_combo.append(stability_k)
                     continue
                 # Elbow fallback.
                 sub = sub_by_combo[combo]

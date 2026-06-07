@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from typing import Literal
 
     from .regime import Regime
+    from .switch_point import SwitchPoint
     from .tail import Tail
     from .triangle import Triangle
     from .uncertainty import Analytical, ParametricBootstrap, ResidualBootstrap
@@ -44,3 +45,7 @@ if TYPE_CHECKING:
     # Tail extrapolation: off (False), an explicit multiplicative factor,
     # or a Tail spec (True resolves to the default Tail()).
     TailArg = bool | float | Tail
+
+    # Stage-adaptive switch point: an explicit SwitchPoint, an integer dev,
+    # a lazy recipe, or None (auto-detect).
+    SwitchArg = SwitchPoint | int | Callable[[Triangle], SwitchPoint] | None

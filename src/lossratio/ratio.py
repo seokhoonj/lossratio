@@ -22,7 +22,7 @@ from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
     from ._io import FrameLike
-    from ._types import RegimeArg, TailArg, UncertaintyArg
+    from ._types import RegimeArg, SwitchArg, TailArg, UncertaintyArg
     from .curve import Curve
     from .triangle import Triangle
 
@@ -202,7 +202,7 @@ class Ratio:
     premium_regime: RegimeArg      = None
     sigma_method:   str            = "locf"
     recent:         int | None     = None
-    switch:         Any            = None
+    switch:         SwitchArg      = None
     se_method:      str            = "fixed"
     rho:            float          = 0.95
     conf_level:     float          = 0.95
