@@ -302,7 +302,7 @@ def _premium_long_df(
     ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
     ci_hi = np.where(both_finite, premium_proj + z_alpha * total_se, np.nan)
 
-    cohort_flat = [c for c in cohorts for _ in range(n_devs)]
+    cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_devs).tolist()
     dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
     total = n_cohorts * n_devs
 

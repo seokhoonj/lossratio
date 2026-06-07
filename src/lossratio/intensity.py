@@ -23,7 +23,7 @@ from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normaliz
 from ._mack import _mack_sigma2
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
-from ._mack import _build_value_matrix
+from ._mack import _build_value_matrices
 
 if TYPE_CHECKING:
     from ._io import FrameLike
@@ -227,8 +227,9 @@ class Intensity:
             )
 
         if groups is None:
-            loss_obs, _, _ = _build_value_matrix(tri_df, loss_col)
-            premium_obs, _, _ = _build_value_matrix(tri_df, premium_col)
+            (loss_obs, premium_obs), _, _ = _build_value_matrices(
+                tri_df, (loss_col, premium_col)
+            )
             result = _compute_intensity(
                 loss_obs,
                 premium_obs,
@@ -241,8 +242,9 @@ class Intensity:
         else:
             diag_parts: list[pl.DataFrame] = []
             for g, sub in _iter_group_frames(tri_df, groups):
-                loss_obs, _, _ = _build_value_matrix(sub, loss_col)
-                premium_obs, _, _ = _build_value_matrix(sub, premium_col)
+                (loss_obs, premium_obs), _, _ = _build_value_matrices(
+                    sub, (loss_col, premium_col)
+                )
                 result = _compute_intensity(
                     loss_obs,
                     premium_obs,

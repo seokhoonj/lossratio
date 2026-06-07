@@ -32,8 +32,7 @@ from ._io import (
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
 from ._mack import (
-    _build_loss_matrix,
-    _build_premium_matrix,
+    _build_value_matrices,
     _fit_ed,
     _fit_mack,
     _mack_f_var,
@@ -568,7 +567,7 @@ def _loss_long_df(
 
     switch_from = result.effective_switch_point
 
-    cohort_flat = [c for c in cohorts for _ in range(n_devs)]
+    cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_devs).tolist()
     dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
     total = n_cohorts * n_devs
 
@@ -897,8 +896,9 @@ class LossFit:
         pf_parts = None if groups is None else dict(_iter_group_frames(pf_df, groups))
         for g, sub in _iter_group_frames(tri_df, groups):
             pf_sub = pf_df if groups is None else pf_parts[g]
-            loss_obs, cohorts, _ = _build_loss_matrix(sub)
-            premium_obs, _, _ = _build_premium_matrix(sub)
+            (loss_obs, premium_obs), cohorts, _ = _build_value_matrices(
+                sub, ("loss", "premium")
+            )
             # premium_proj from PremiumFit (cohort, dev) -> value
             premium_proj_mat = _premium_proj_matrix(
                 pf_sub, cohorts, loss_obs.shape[1]
@@ -1278,8 +1278,9 @@ class LossFit:
         pf_parts = None if groups is None else dict(_iter_group_frames(pf_df, groups))
         for g, sub in _iter_group_frames(tri_df, groups):
             pf_sub = pf_df if groups is None else pf_parts[g]
-            loss_obs, cohorts, _ = _build_loss_matrix(sub)
-            premium_obs, _, _ = _build_premium_matrix(sub)
+            (loss_obs, premium_obs), cohorts, _ = _build_value_matrices(
+                sub, ("loss", "premium")
+            )
             premium_proj = _premium_proj_matrix(
                 pf_sub, cohorts, loss_obs.shape[1]
             )

@@ -280,12 +280,21 @@ def e_divisive(
     change_points: list[int] = []
     p_values: dict[int, float] = {}
 
+    # Cache each segment's best split: (start, end) -> (tau, q). D never
+    # changes, so a segment's best split is fixed once computed; on accept
+    # only the two new sub-segments need recomputation, not every open one.
+    split_cache: dict[tuple[int, int], tuple[int | None, float]] = {}
+
     while True:
         # For each open segment, find its best candidate split + Q-hat
         candidates: list[tuple[float, int, int, int]] = []
         for start, end in segments:
-            seg = np.arange(start, end)
-            tau, q = _best_split(D, seg, min_size)
+            cached = split_cache.get((start, end))
+            if cached is None:
+                seg = np.arange(start, end)
+                cached = _best_split(D, seg, min_size)
+                split_cache[(start, end)] = cached
+            tau, q = cached
             if tau is None:
                 continue
             candidates.append((q, start, end, tau))

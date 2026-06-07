@@ -848,6 +848,9 @@ def _curve_leg_cum_by_dev(
 
     cum = np.zeros(n_devs, dtype=float)
     any_term = False
+    # Curve value at each 1-indexed dev, evaluated once (vectorized) instead
+    # of per cohort x tail-dev; `ev_by_dev[k - 1]` mirrors `cr.evaluate(k)`.
+    ev_by_dev = cr.evaluate(np.arange(1, n_devs + 1, dtype=float))
     for i in range(len(cohorts)):
         finite = np.flatnonzero(np.isfinite(L[i]))
         if finite.size == 0:
@@ -868,7 +871,7 @@ def _curve_leg_cum_by_dev(
         # Tail: accumulate premium-weighted fitted intensity, dev by dev.
         for d in range(last + 1, n_devs + 1):
             k = d - 1  # from-dev of the link landing at dev d
-            ev = cr.evaluate(float(k))
+            ev = ev_by_dev[k - 1]
             pr = Pp[i, k - 1]
             if np.isfinite(ev) and np.isfinite(pr):
                 running += float(ev) * float(pr)

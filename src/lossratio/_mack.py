@@ -209,6 +209,38 @@ def _build_value_matrix(
     return mat, cohorts, max_dev
 
 
+def _build_value_matrices(
+    df: pl.DataFrame, value_cols: tuple[str, ...] = ("loss", "premium")
+) -> tuple[tuple[np.ndarray, ...], list, int]:
+    """Build several value matrices from a single-group Triangle subset.
+
+    Identical to calling :func:`_build_value_matrix` once per column, but the
+    sort + cohort-unique + cohort x dev cross-join + observed-cell left-join is
+    done a single time and each requested column is reshaped from the shared
+    filled grid. Returns ``(matrices, cohorts, max_dev)`` where ``matrices`` is
+    a tuple aligned with ``value_cols``.
+    """
+    df = df.sort(["cohort", "dev"])
+    cohorts_df = df.select("cohort").unique(maintain_order=True)
+    cohorts = cohorts_df["cohort"].to_list()
+    n_cohorts = len(cohorts)
+    max_dev = int(df["dev"].max())
+
+    grid = cohorts_df.join(
+        pl.DataFrame({"dev": list(range(1, max_dev + 1))}), how="cross"
+    )
+    filled = grid.join(
+        df.select(["cohort", "dev", *value_cols]),
+        on=["cohort", "dev"],
+        how="left",
+    )
+    matrices = tuple(
+        filled[col].cast(pl.Float64).to_numpy().reshape(n_cohorts, max_dev)
+        for col in value_cols
+    )
+    return matrices, cohorts, max_dev
+
+
 def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     """Build the loss value matrix for a single-group Triangle subset.
 

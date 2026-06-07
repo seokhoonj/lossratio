@@ -1474,26 +1474,30 @@ def _fwd_proj_sa(
     for j in range(1, n_dev):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
-        for i in range(n_coh):
-            lj = int(last_obs[i])
-            if lj < 0 or lj >= j:
-                continue  # upper triangle: keep
-            prev = cum[i, j - 1, :]
-            if k < 0:
-                cum[i, j, :] = prev
-                continue
-            mk = int(mat_k[i])
-            stage_cl = (mk != _NO_SWITCH) and (j >= mk)
-            if stage_cl:
-                f_b = f_star[k, :]
-                f_b = np.where(np.isfinite(f_b), f_b, 1.0)
-                cum[i, j, :] = f_b * prev
-            else:
-                g_b = g_star[k, :]
-                g_b = np.where(np.isfinite(g_b), g_b, 0.0)
-                p_prev = premium_proj[i, j - 1]
-                inc = g_b * p_prev if np.isfinite(p_prev) else 0.0
-                cum[i, j, :] = prev + inc
+        proj = (last_obs >= 0) & (last_obs < j)
+        if not proj.any():
+            continue
+        prev = cum[proj, j - 1, :]
+        if k < 0:
+            cum[proj, j, :] = prev
+            continue
+        # Per-cohort stage split among the projecting cohorts: CL when the
+        # switch is set and this to-dev has reached it, else ED. Masks keyed
+        # on mat_k mirror _fwd_proj_cl / _fwd_proj_ed.
+        cl_stage = (mat_k[proj] != _NO_SWITCH) & (j >= mat_k[proj])
+        out = np.empty_like(prev)
+        # CL step.
+        f_b = f_star[k, :][None, :]
+        f_b = np.where(np.isfinite(f_b), f_b, 1.0)
+        out[cl_stage, :] = f_b * prev[cl_stage, :]
+        # ED step.
+        ed_stage = ~cl_stage
+        g_b = g_star[k, :][None, :]
+        g_b = np.where(np.isfinite(g_b), g_b, 0.0)
+        p_prev = premium_proj[proj, j - 1][ed_stage][:, None]
+        inc = np.where(np.isfinite(p_prev), g_b * p_prev, 0.0)
+        out[ed_stage, :] = prev[ed_stage, :] + inc
+        cum[proj, j, :] = out
     neg = np.isfinite(cum) & (cum < 0.0)
     cum[neg] = 0.0
 
@@ -1588,12 +1592,12 @@ def _fwd_sim_cell_bulk(
         )
         place_mask = processed3 & both3
         contrib = np.where(place_mask, inc_sampled3, contrib)
-        csum = np.cumsum(contrib, axis=1)
+        csum = np.cumsum(contrib, axis=1, out=contrib)
         cum_sampled = np.where(place_mask, csum, cum_sampled)
         cum_sampled = np.where(processed3 & ~both3, np.nan, cum_sampled)
     else:
         contrib = np.where(processed3, inc_sampled3, contrib)
-        csum = np.cumsum(contrib, axis=1)
+        csum = np.cumsum(contrib, axis=1, out=contrib)
         cum_sampled = np.where(processed3, csum, cum_sampled)
     return cum_sampled
 
@@ -2142,12 +2146,11 @@ def _cumsum_mask(
     """
     n_coh, n_dev, n_replicates = cum.shape
     np.cumsum(cum, axis=1, out=cum)
-    for i in range(n_coh):
-        L = int(last_obs[i])
-        # `last_obs` is 0-indexed -- keep cells 0..L, mask L+1 onward.
-        # A cohort with no observation (L == -1) is masked from dev 0.
-        j_start = 0 if L < 0 else L + 1
-        cum[i, j_start:, :] = np.nan
+    # `last_obs` is 0-indexed -- keep cells 0..L, mask L+1 onward. A cohort
+    # with no observation (L == -1) masks every dev (j > -1 is always true).
+    dev_idx = np.arange(n_dev)
+    mask = dev_idx[None, :] > np.asarray(last_obs)[:, None]
+    cum[mask, :] = np.nan
 
 
 def _process_code(process: str) -> int:
@@ -2240,22 +2243,32 @@ def _boot_kernel_cl_link(
             s2_k = 0.0
         obs_to = loss_obs[:, to_col]
         sub    = pools.get(k)
-        for i in range(n_coh):
-            if not np.isfinite(obs_to[i]):
-                continue
+        # Cohorts updated at this link: observed at to-dev with at least one
+        # finite, positive predecessor replicate. The set is fixed at entry to
+        # link k (this k reads from_col, writes to_col != from_col), so the
+        # per-(k, i) rng.random(n_replicates) draws can be batched into one
+        # row-major draw -- bit-identical bit stream and consumption order.
+        upd_i = [
+            i for i in range(n_coh)
+            if np.isfinite(obs_to[i])
+            and (np.isfinite(cum[i, from_col, :]) & (cum[i, from_col, :] > 0.0)).any()
+        ]
+        draws = (
+            rng.random((len(upd_i), n_replicates))
+            if (sub is not None and sub.size and _injected_resample is None and upd_i)
+            else None
+        )
+        pos = 0
+        for i in upd_i:
             prev = cum[i, from_col, :]
             ok = np.isfinite(prev) & (prev > 0.0)
-            if not ok.any():
-                continue
             r_star = np.zeros(n_replicates, dtype=np.float64)
             if sub is not None and sub.size:
                 if _injected_resample is not None:
                     idx = np.clip(_injected_resample[k, :], 0, sub.size - 1)
                 else:
-                    idx = np.clip(
-                        (rng.random(n_replicates) * sub.size).astype(np.int64),
-                        0, sub.size - 1,
-                    )
+                    idx = np.clip((draws[pos] * sub.size).astype(np.int64), 0, sub.size - 1)
+                    pos += 1
                 r_star = sub[idx]
             new = (
                 f_k * prev + r_star * np.sqrt(s2_k * np.abs(prev))
@@ -2376,28 +2389,46 @@ def _boot_kernel_sa_cell(
 
     # Per-cell residual draw -- ED cells from pool_ed, CL cells from
     # pool_cl. The two pools stay disjoint (paradigm-tagged).
-    inc = np.zeros((mu_active.shape[0], n_replicates), dtype=np.float64)
+    n_active = mu_active.shape[0]
+    inc = np.zeros((n_active, n_replicates), dtype=np.float64)
     ed_sub = _pool_dev_subpools(pool_ed)
     cl_sub = _pool_dev_subpools(pool_cl)
 
-    for a in range(mu_active.shape[0]):
-        mu_a = mu_active[a]
-        if not np.isfinite(mu_a):
+    # Resolve each cell's sub-pool once; a cell draws only when it has a finite
+    # mean and a non-empty paradigm-tagged sub-pool (CL pool for CL cells, ED
+    # pool for ED cells).
+    finite = np.isfinite(mu_active)
+    subs: list[np.ndarray | None] = [
+        (cl_sub.get(int(gi.devs[a_j[a]])) if is_cl[a]
+         else ed_sub.get(int(gi.devs[a_j[a]])))
+        if finite[a] else None
+        for a in range(n_active)
+    ]
+    draw_rows = [a for a in range(n_active) if subs[a] is not None and subs[a].size]
+
+    # One RNG draw for all drawing cells at once -- bit-identical to the former
+    # per-cell rng.random(n_replicates) (same bit stream, row-major order).
+    draws = (
+        rng.random((len(draw_rows), n_replicates))
+        if _injected_resample is None and draw_rows
+        else None
+    )
+
+    pos = 0
+    for a in range(n_active):
+        if not finite[a]:
             inc[a, :] = np.nan
             continue
-        dev_a = int(gi.devs[a_j[a]])
-        sub = cl_sub.get(dev_a) if is_cl[a] else ed_sub.get(dev_a)
+        sub = subs[a]
         if sub is None or sub.size == 0:
-            inc[a, :] = mu_a
+            inc[a, :] = mu_active[a]
             continue
         if _injected_resample is not None:
             idx = np.clip(_injected_resample[a, :], 0, sub.size - 1)
         else:
-            idx = np.clip(
-                (rng.random(n_replicates) * sub.size).astype(np.int64),
-                0, sub.size - 1,
-            )
-        inc[a, :] = mu_a + sub[idx] * sqrt_active[a]
+            idx = np.clip((draws[pos] * sub.size).astype(np.int64), 0, sub.size - 1)
+            pos += 1
+        inc[a, :] = mu_active[a] + sub[idx] * sqrt_active[a]
 
     cum = _place_increments(inc, lin_all, n_coh, n_dev, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
