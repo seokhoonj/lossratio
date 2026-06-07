@@ -35,6 +35,17 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
+# Self-contained option enums, validated eagerly at construction (mirrors
+# the Tail / Curve __post_init__ convention). The cross-field coherence
+# checks (type/method-dependent, e.g. ED forbids link residuals) stay
+# authoritative in Bootstrap.__post_init__, since `method` is only known
+# at `_resolve` time.
+_RESIDUALS = ("cell", "link")
+_PROCESSES = ("gamma", "od_pois", "normal")
+_POOLINGS = ("pooled", "separated", "tail_pooled")
+_TAILS = ("auto", "maturity")
+
+
 @dataclass
 class Analytical:
     """Closed-form Mack / ED analytical SE (no resampling). The default.
@@ -136,6 +147,26 @@ class ResidualBootstrap:
     seed:         int | None = None
     quantile_ci:  bool       = False
 
+    def __post_init__(self) -> None:
+        if self.residual not in _RESIDUALS:
+            raise ValueError(
+                f"residual must be one of {_RESIDUALS}, got {self.residual!r}"
+            )
+        if self.process not in _PROCESSES:
+            raise ValueError(
+                f"process must be one of {_PROCESSES}, got {self.process!r}"
+            )
+        if self.pooling not in _POOLINGS:
+            raise ValueError(
+                f"pooling must be one of {_POOLINGS}, got {self.pooling!r}"
+            )
+        if self.tail not in _TAILS:
+            raise ValueError(f"tail must be one of {_TAILS}, got {self.tail!r}")
+        if not isinstance(self.n_replicates, int) or self.n_replicates < 1:
+            raise ValueError("`n_replicates` must be a positive integer.")
+        if not isinstance(self.min_pool, int) or self.min_pool < 1:
+            raise ValueError("`min_pool` must be a positive integer.")
+
     def _resolve(
         self, triangle: "Triangle", *, target: str, method: str
     ) -> "BootstrapTriangle":
@@ -190,6 +221,14 @@ class ParametricBootstrap:
     n_replicates: int        = 499
     seed:         int | None = None
     quantile_ci:  bool       = False
+
+    def __post_init__(self) -> None:
+        if self.process not in _PROCESSES:
+            raise ValueError(
+                f"process must be one of {_PROCESSES}, got {self.process!r}"
+            )
+        if not isinstance(self.n_replicates, int) or self.n_replicates < 1:
+            raise ValueError("`n_replicates` must be a positive integer.")
 
     def _resolve(
         self, triangle: "Triangle", *, target: str, method: str
