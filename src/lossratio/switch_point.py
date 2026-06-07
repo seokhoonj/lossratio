@@ -118,12 +118,26 @@ def _candidate_wape(
 def _select_switch(
     triangle: "Triangle",
     *,
+    alpha: float = 1.0,
+    sigma_method: str = "locf",
+    recent: int | None = None,
+    regime: Any = None,
     k_grid: list[int] | None = None,
     holdouts: list[int] | None = None,
     min_improve: float = _MIN_IMPROVE,
     min_eval: int = _MIN_EVAL,
-) -> dict[Any, int | None]:
-    """Per-group selected switch point: ``None`` (ED) / ``1`` (CL) / ``k``."""
+) -> dict[Any, tuple[int | None, str]]:
+    """Per-group ``(point, status)``.
+
+    ``point``: ``None`` (no switch) / ``1`` (CL) / ``k`` (mid switch).
+    ``status``: ``"ed"`` / ``"cl"`` / ``"switch"`` / ``"deferred"`` -- a
+    deferred group also carries ``point=None`` but is distinct from a
+    positively-validated ``"ed"`` (it means too few cells to decide).
+
+    The candidate models inherit the calling estimator's ``alpha`` /
+    ``sigma_method`` / ``recent`` / ``regime`` so the switch is selected
+    under the SAME filtering / regime-borrow regime it will be used in.
+    """
     from .chain_ladder import ChainLadder
     from .exposure_driven import ExposureDriven
     from .maturity import Maturity  # TEMP candidate builder (-> SwitchPoint.at in Stage 3)
@@ -136,9 +150,13 @@ def _select_switch(
     h_deep = holdouts[-1]
     h_guard = holdouts[-2] if len(holdouts) > 1 else holdouts[-1]
 
-    cands: dict[str, Any] = {"ED": ExposureDriven(), "CL": ChainLadder()}
+    cfg = dict(alpha=alpha, sigma_method=sigma_method, recent=recent, regime=regime)
+    cands: dict[str, Any] = {
+        "ED": ExposureDriven(**cfg),
+        "CL": ChainLadder(**cfg),
+    }
     for k in k_grid:
-        cands[f"k{k}"] = StageAdaptive(maturity=Maturity.at(k))
+        cands[f"k{k}"] = StageAdaptive(maturity=Maturity.at(k), **cfg)
 
     deep = _candidate_wape(triangle, cands, h_deep, gcols)
     guard = _candidate_wape(triangle, cands, h_guard, gcols)
@@ -153,11 +171,11 @@ def _select_switch(
         return bd <= ad * (1 - min_improve) and bg < ag
 
     groups = sorted({g for (g, _) in deep}, key=lambda x: (x is not None, str(x)))
-    out: dict[Any, int | None] = {}
+    out: dict[Any, tuple[int | None, str]] = {}
     for g in groups:
         ed_d, n = deep.get((g, "ED"), (None, 0))
         if ed_d is None or ed_d == 0 or n < min_eval:
-            out[g] = None  # defer / no auto-switch
+            out[g] = (None, "deferred")  # too few cells -> no auto-switch
             continue
         # pure baseline: better of ED / CL (CL only if robustly better)
         pure = "CL" if robust_better("CL", "ED", g) else "ED"
@@ -168,9 +186,12 @@ def _select_switch(
             bk = min(midk, key=lambda x: x[1])[0]
             if robust_better(f"k{bk}", pure, g):
                 chosen = f"k{bk}"
-        out[g] = (None if chosen == "ED"
-                  else 1 if chosen == "CL"
-                  else int(chosen[1:]))
+        if chosen == "ED":
+            out[g] = (None, "ed")
+        elif chosen == "CL":
+            out[g] = (1, "cl")
+        else:
+            out[g] = (int(chosen[1:]), "switch")
     return out
 
 
@@ -207,7 +228,7 @@ class SwitchPoint:
     @classmethod
     def _from_selection(
         cls,
-        selection: dict[Any, int | None],
+        selection: dict[Any, tuple[int | None, str]],
         groups: "str | Sequence[str] | None",
         output_type: str,
     ) -> "SwitchPoint":
@@ -216,6 +237,10 @@ class SwitchPoint:
         self._groups = groups if groups else None
         self._selection = selection
         return self
+
+    @staticmethod
+    def _status_for(point: int) -> str:
+        return "cl" if point == 1 else "switch"
 
     @classmethod
     def _manual(
@@ -226,6 +251,7 @@ class SwitchPoint:
     ) -> "SwitchPoint":
         self = cls.__new__(cls)
         self._output_type = "polars"
+        sel = [(p, cls._status_for(p)) for p in point]
         if groups:
             cols = list(groups)
             keys = (
@@ -233,10 +259,10 @@ class SwitchPoint:
                 else [tuple(vals) for vals in zip(*(groups[c] for c in cols))]
             )
             self._groups = cols[0] if len(cols) == 1 else cols
-            self._selection = dict(zip(keys, point))
+            self._selection = dict(zip(keys, sel))
         else:
             self._groups = None
-            self._selection = {None: point[0]}
+            self._selection = {None: sel[0]}
         return self
 
     @classmethod
@@ -277,6 +303,10 @@ class SwitchPoint:
     def detect(
         cls,
         *,
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+        recent: int | None = None,
+        regime: Any = None,
         k_grid: list[int] | None = None,
         holdouts: list[int] | None = None,
         min_improve: float = _MIN_IMPROVE,
@@ -288,10 +318,17 @@ class SwitchPoint:
         backtest selection on the triangle it is given -- inside a backtest
         this is the MASKED training triangle, so the switch never peeks at
         held-out cells.
+
+        ``alpha`` / ``sigma_method`` / ``recent`` / ``regime`` are applied to
+        every candidate model so the switch is selected under the same
+        filtering / regime-borrow regime the consuming estimator uses. When
+        used through ``StageAdaptive(switch=...)`` the estimator injects its
+        own settings here.
         """
         def _spec(tri: "Triangle") -> "SwitchPoint":
             sel = _select_switch(
-                tri, k_grid=k_grid, holdouts=holdouts,
+                tri, alpha=alpha, sigma_method=sigma_method, recent=recent,
+                regime=regime, k_grid=k_grid, holdouts=holdouts,
                 min_improve=min_improve, min_eval=min_eval,
             )
             return cls._from_selection(sel, tri._groups, tri._output_type)
@@ -302,23 +339,37 @@ class SwitchPoint:
     def point(self):
         """Selected switch point (``None`` / ``1`` / ``k``); see class doc."""
         if self._groups is None:
-            return self._selection.get(None)
-        return dict(self._selection)
+            return self._selection.get(None, (None, "deferred"))[0]
+        return {k: v[0] for k, v in self._selection.items()}
+
+    @property
+    def status(self):
+        """Selection status: ``"ed"`` / ``"cl"`` / ``"switch"`` / ``"deferred"``.
+
+        Distinguishes a positively-validated pure-ED choice (``"ed"``) from a
+        group that could not be decided for lack of evaluable held-out cells
+        (``"deferred"``) -- both carry ``point=None`` but mean different things.
+        """
+        if self._groups is None:
+            return self._selection.get(None, (None, "deferred"))[1]
+        return {k: v[1] for k, v in self._selection.items()}
 
     def summary(self):
-        """One-row-per-group frame ``[groups?, point]``."""
+        """One-row-per-group frame ``[groups?, point, status]``."""
         rows = []
         if self._groups is None:
-            rows.append({"point": self._selection.get(None)})
+            pt, st = self._selection.get(None, (None, "deferred"))
+            rows.append({"point": pt, "status": st})
         else:
-            for key, pt in self._selection.items():
+            for key, (pt, st) in self._selection.items():
                 row: dict[str, Any] = {}
                 set_group_values(row, self._groups, key)
                 row["point"] = pt
+                row["status"] = st
                 rows.append(row)
         return mirror_output(pl.DataFrame(rows), self._output_type)
 
     def __repr__(self) -> str:
         if self._groups is None:
-            return f"<SwitchPoint: point={self.point}>"
+            return f"<SwitchPoint: point={self.point} ({self.status})>"
         return f"<SwitchPoint: {len(self._selection)} groups>"

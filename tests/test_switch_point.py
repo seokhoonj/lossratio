@@ -17,12 +17,16 @@ def tri():
 
 
 def test_at_scalar():
-    assert lr.SwitchPoint.at(6).point == 6
+    sp = lr.SwitchPoint.at(6)
+    assert sp.point == 6
+    assert sp.status == "switch"
 
 
 def test_at_full_cl_sentinel():
     # point == 1 is the "pure CL" sentinel (ED before dev 1 = nothing).
-    assert lr.SwitchPoint.at(1).point == 1
+    sp = lr.SwitchPoint.at(1)
+    assert sp.point == 1
+    assert sp.status == "cl"
 
 
 def test_at_multi_group():
@@ -73,14 +77,28 @@ def test_point_keys_match_groups(tri):
 
 def test_summary_schema(tri):
     summ = lr.SwitchPoint.detect()(tri).summary()
-    assert summ.columns == ["coverage", "point"]
+    assert summ.columns == ["coverage", "point", "status"]
     assert summ.height == 4
 
 
+def test_status_values_are_valid(tri):
+    sp = lr.SwitchPoint.detect()(tri)
+    for st in sp.status.values():
+        assert st in {"ed", "cl", "switch", "deferred"}
+
+
 def test_conservative_min_eval_defers_when_too_few_cells(tri):
-    # An impossibly high min_eval -> every group defers to None (no auto-switch).
+    # An impossibly high min_eval -> every group defers (point None, status
+    # "deferred" -- distinct from a validated pure-ED choice).
     sp = lr.SwitchPoint.detect(min_eval=10_000)(tri)
     assert all(v is None for v in sp.point.values())
+    assert all(st == "deferred" for st in sp.status.values())
+
+
+def test_detect_accepts_estimator_config(tri):
+    # Candidate models inherit recent / regime / sigma_method without error.
+    sp = lr.SwitchPoint.detect(recent=24, sigma_method="min_last2")(tri)
+    assert set(sp.point) == {"CAN", "CI", "HOS", "SUR"}
 
 
 def test_ungrouped_triangle_returns_scalar_point():
