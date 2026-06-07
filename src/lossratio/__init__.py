@@ -26,6 +26,7 @@ from .maturity import Maturity
 from .premium import Premium, PremiumFit
 from .regime import Regime
 from .stage_adaptive import StageAdaptive
+from .switch_point import SwitchPoint
 from .tail import Tail
 from .total import Total
 from .triangle import Triangle, TriangleValidation
@@ -56,6 +57,7 @@ __all__ = [
     "Regime",
     "ResidualBootstrap",
     "StageAdaptive",
+    "SwitchPoint",
     "Tail",
     "Total",
     "Triangle",

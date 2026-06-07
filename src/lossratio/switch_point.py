@@ -1,0 +1,324 @@
+"""Backtest-selected ED->CL switch point.
+
+``SwitchPoint`` locates the development period at which the stage-adaptive
+loss model should hand off from the exposure-driven (ED) stage to the chain
+ladder (CL) stage. Unlike the deprecated CV/RSE stability heuristic, the
+switch is the BOUNDARY that minimises out-of-sample loss-projection error --
+"where CL starts to out-predict ED" -- found by calendar-diagonal
+backtesting COMPLETE ``SA(k)`` models (ED for ``dev < k``, CL for
+``dev >= k``), NOT a per-link CL-vs-ED error crossing.
+
+The selection is deliberately conservative (so a switch is only taken when
+the evidence is real, not a denominator-effect artifact):
+
+* pure ED and pure CL are baselines; CL replaces ED only if it beats it by
+  ``min_improve`` at the deep holdout AND also beats it at the guard holdout;
+* a mid-``k`` switch replaces the pure baseline only under the same
+  two-holdout test;
+* ties prefer the simpler pure model;
+* groups with too few evaluable held-out cells are DEFERRED (``point`` is
+  ``None`` -- no auto-switch; the caller should roll up to a coarser
+  aggregate or specify the switch by hand).
+
+``point`` mirrors :class:`~lossratio.Maturity` so the downstream switch
+plumbing is shared: ``None`` = no switch (pure ED), ``1`` = switch at the
+first link (pure CL), ``k >= 2`` = ED before ``k`` and CL from ``k`` on.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
+
+import polars as pl
+
+from ._io import mirror_output, normalize_groups, set_group_values
+
+if TYPE_CHECKING:
+    from .triangle import Triangle
+
+# Selection defaults.
+_MIN_IMPROVE = 0.05   # relative-WAPE noise floor for "robustly better"
+_MIN_EVAL = 30        # min common held-out cells to auto-select (else defer)
+_MAX_CANDS = 10       # cap on the mid-k candidate grid (cost control)
+
+
+# ---------------------------------------------------------------------------
+# Selection engine
+# ---------------------------------------------------------------------------
+
+
+def _default_grid(dev_max: int) -> list[int]:
+    """Strided mid-k candidate grid in ``[2, dev_max - 2]`` (<= _MAX_CANDS)."""
+    hi = max(2, dev_max - 2)
+    cand = list(range(2, hi + 1))
+    if len(cand) > _MAX_CANDS:
+        step = len(cand) / _MAX_CANDS
+        cand = sorted({cand[int(i * step)] for i in range(_MAX_CANDS)})
+    return cand
+
+
+def _default_holdouts(dev_max: int) -> list[int]:
+    """Two evaluation depths: a guard (shallow) and a deep (long horizon)."""
+    deep = max(3, dev_max // 3)
+    guard = max(2, dev_max // 5)
+    if guard >= deep:
+        guard = max(2, deep - 2)
+    return sorted({guard, deep}) or [deep]
+
+
+def _per_group_wape(
+    df_model: pl.DataFrame, common: pl.DataFrame, gcols: list[str]
+) -> dict[Any, tuple[float | None, int]]:
+    """WAPE = ``sum|A-E| / sum A`` per group on the common held-out cells."""
+    d = df_model.join(common, on=[*gcols, "cohort", "dev"], how="inner")
+    d = d.with_columns((pl.col("actual") - pl.col("expected")).abs().alias("_abs"))
+    if gcols:
+        agg = d.group_by(gcols).agg(
+            pl.len().alias("n"),
+            (pl.col("_abs").sum() / pl.col("actual").sum()).alias("wape"),
+        )
+        out: dict[Any, tuple[float | None, int]] = {}
+        for r in agg.iter_rows(named=True):
+            key = r[gcols[0]] if len(gcols) == 1 else tuple(r[c] for c in gcols)
+            out[key] = (r["wape"], r["n"])
+        return out
+    total = d["actual"].sum()
+    wape = (d["_abs"].sum() / total) if total else None
+    return {None: (wape, d.height)}
+
+
+def _candidate_wape(
+    triangle: "Triangle", cands: dict[str, Any], h: int, gcols: list[str]
+) -> dict[tuple[Any, str], tuple[float | None, int]]:
+    """Per-(group, candidate) WAPE at one holdout, on common-reachable cells."""
+    from .backtest import Backtest
+
+    tables: dict[str, pl.DataFrame] = {}
+    for name, est in cands.items():
+        ae = Backtest(estimator=est, holdout=h, target="loss").fit(triangle)
+        df = ae.to_polars() if hasattr(ae, "to_polars") else ae.ae_err
+        df = ae.ae_err if hasattr(ae, "ae_err") else df
+        tables[name] = df.select([*gcols, "cohort", "dev", "actual", "expected"])
+
+    common: pl.DataFrame | None = None
+    for df in tables.values():
+        keys = df.select([*gcols, "cohort", "dev"]).unique()
+        common = keys if common is None else common.join(
+            keys, on=[*gcols, "cohort", "dev"], how="inner"
+        )
+
+    per: dict[tuple[Any, str], tuple[float | None, int]] = {}
+    for name, df in tables.items():
+        for gkey, (w, n) in _per_group_wape(df, common, gcols).items():
+            per[(gkey, name)] = (w, n)
+    return per
+
+
+def _select_switch(
+    triangle: "Triangle",
+    *,
+    k_grid: list[int] | None = None,
+    holdouts: list[int] | None = None,
+    min_improve: float = _MIN_IMPROVE,
+    min_eval: int = _MIN_EVAL,
+) -> dict[Any, int | None]:
+    """Per-group selected switch point: ``None`` (ED) / ``1`` (CL) / ``k``."""
+    from .chain_ladder import ChainLadder
+    from .exposure_driven import ExposureDriven
+    from .maturity import Maturity  # TEMP candidate builder (-> SwitchPoint.at in Stage 3)
+    from .stage_adaptive import StageAdaptive
+
+    gcols = normalize_groups(triangle._groups)
+    dev_max = int(triangle._df["dev"].max())
+    k_grid = k_grid or _default_grid(dev_max)
+    holdouts = sorted(holdouts or _default_holdouts(dev_max))
+    h_deep = holdouts[-1]
+    h_guard = holdouts[-2] if len(holdouts) > 1 else holdouts[-1]
+
+    cands: dict[str, Any] = {"ED": ExposureDriven(), "CL": ChainLadder()}
+    for k in k_grid:
+        cands[f"k{k}"] = StageAdaptive(maturity=Maturity.at(k))
+
+    deep = _candidate_wape(triangle, cands, h_deep, gcols)
+    guard = _candidate_wape(triangle, cands, h_guard, gcols)
+
+    def robust_better(better: str, base: str, g: Any) -> bool:
+        bd = deep.get((g, better), (None,))[0]
+        ad = deep.get((g, base), (None,))[0]
+        bg = guard.get((g, better), (None,))[0]
+        ag = guard.get((g, base), (None,))[0]
+        if None in (bd, ad, bg, ag) or ad == 0:
+            return False
+        return bd <= ad * (1 - min_improve) and bg < ag
+
+    groups = sorted({g for (g, _) in deep}, key=lambda x: (x is not None, str(x)))
+    out: dict[Any, int | None] = {}
+    for g in groups:
+        ed_d, n = deep.get((g, "ED"), (None, 0))
+        if ed_d is None or ed_d == 0 or n < min_eval:
+            out[g] = None  # defer / no auto-switch
+            continue
+        # pure baseline: better of ED / CL (CL only if robustly better)
+        pure = "CL" if robust_better("CL", "ED", g) else "ED"
+        chosen = pure
+        midk = [(int(nm[1:]), deep[(g, nm)][0]) for nm in cands
+                if nm.startswith("k") and deep.get((g, nm), (None,))[0] is not None]
+        if midk:
+            bk = min(midk, key=lambda x: x[1])[0]
+            if robust_better(f"k{bk}", pure, g):
+                chosen = f"k{bk}"
+        out[g] = (None if chosen == "ED"
+                  else 1 if chosen == "CL"
+                  else int(chosen[1:]))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Public result class
+# ---------------------------------------------------------------------------
+
+
+_SP_COLS: tuple[str, ...] = ("point",)
+
+
+class SwitchPoint:
+    """Backtest-selected ED->CL switch point for the stage-adaptive model.
+
+    Build via :meth:`detect` (lazy, auto-selected by backtest on the
+    consumer's own triangle -- leakage-safe inside a backtest fold) or
+    :meth:`at` (eager, an explicit fixed switch).
+
+    Properties
+    ----------
+    point :
+        Selected switch. ``None`` (no groups) or ``dict[group, int | None]``
+        (groups set). Value semantics: ``None`` = no switch (pure ED),
+        ``1`` = switch at the first link (pure CL), ``k >= 2`` = ED before
+        ``k`` and CL from ``k`` on.
+    """
+
+    def __init__(self) -> None:
+        raise TypeError(
+            "SwitchPoint is produced by `SwitchPoint.detect()` / "
+            "`SwitchPoint.at()`, not a direct constructor."
+        )
+
+    @classmethod
+    def _from_selection(
+        cls,
+        selection: dict[Any, int | None],
+        groups: "str | Sequence[str] | None",
+        output_type: str,
+    ) -> "SwitchPoint":
+        self = cls.__new__(cls)
+        self._output_type = output_type
+        self._groups = groups if groups else None
+        self._selection = selection
+        return self
+
+    @classmethod
+    def _manual(
+        cls,
+        *,
+        point: list[int],
+        groups: Mapping[str, Sequence[Any]] | None,
+    ) -> "SwitchPoint":
+        self = cls.__new__(cls)
+        self._output_type = "polars"
+        if groups:
+            cols = list(groups)
+            keys = (
+                list(groups[cols[0]]) if len(cols) == 1
+                else [tuple(vals) for vals in zip(*(groups[c] for c in cols))]
+            )
+            self._groups = cols[0] if len(cols) == 1 else cols
+            self._selection = dict(zip(keys, point))
+        else:
+            self._groups = None
+            self._selection = {None: point[0]}
+        return self
+
+    @classmethod
+    def at(
+        cls,
+        point: int | Sequence[int],
+        *,
+        groups: Mapping[str, Sequence[Any]] | None = None,
+    ) -> "SwitchPoint":
+        """Build a :class:`SwitchPoint` from an explicit, fixed switch.
+
+        ``point`` semantics match :attr:`point`: ``1`` = pure CL,
+        ``k >= 2`` = ED before ``k`` / CL after. A single int (applied to
+        all groups) or a sequence aligned 1:1 with ``groups``.
+        """
+        if isinstance(point, int):
+            seq = [point]
+        elif isinstance(point, Sequence) and not isinstance(point, str):
+            seq = [int(v) for v in point]
+        else:
+            raise TypeError(
+                f"`point` must be int or Sequence[int], got {type(point).__name__}"
+            )
+        if not seq:
+            raise ValueError("`point` must have length >= 1")
+        groups = dict(groups) if groups else {}
+        for col, vals in groups.items():
+            if not isinstance(vals, Sequence) or isinstance(vals, str):
+                groups[col] = [vals]
+            if len(groups[col]) != len(seq):
+                raise ValueError(
+                    f"All arguments must have equal length; `point`={len(seq)} "
+                    f"but `groups[{col!r}]`={len(groups[col])}"
+                )
+        return cls._manual(point=seq, groups=groups or None)
+
+    @classmethod
+    def detect(
+        cls,
+        *,
+        k_grid: list[int] | None = None,
+        holdouts: list[int] | None = None,
+        min_improve: float = _MIN_IMPROVE,
+        min_eval: int = _MIN_EVAL,
+    ) -> Callable[["Triangle"], "SwitchPoint"]:
+        """Build a lazy switch-detection spec.
+
+        Returns a closure ``f(triangle) -> SwitchPoint`` that runs the
+        backtest selection on the triangle it is given -- inside a backtest
+        this is the MASKED training triangle, so the switch never peeks at
+        held-out cells.
+        """
+        def _spec(tri: "Triangle") -> "SwitchPoint":
+            sel = _select_switch(
+                tri, k_grid=k_grid, holdouts=holdouts,
+                min_improve=min_improve, min_eval=min_eval,
+            )
+            return cls._from_selection(sel, tri._groups, tri._output_type)
+
+        return _spec
+
+    @property
+    def point(self):
+        """Selected switch point (``None`` / ``1`` / ``k``); see class doc."""
+        if self._groups is None:
+            return self._selection.get(None)
+        return dict(self._selection)
+
+    def summary(self):
+        """One-row-per-group frame ``[groups?, point]``."""
+        rows = []
+        if self._groups is None:
+            rows.append({"point": self._selection.get(None)})
+        else:
+            for key, pt in self._selection.items():
+                row: dict[str, Any] = {}
+                set_group_values(row, self._groups, key)
+                row["point"] = pt
+                rows.append(row)
+        return mirror_output(pl.DataFrame(rows), self._output_type)
+
+    def __repr__(self) -> str:
+        if self._groups is None:
+            return f"<SwitchPoint: point={self.point}>"
+        return f"<SwitchPoint: {len(self._selection)} groups>"
