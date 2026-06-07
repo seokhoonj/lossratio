@@ -129,23 +129,23 @@ def test_regime_spec_forwards_method():
 
 
 def test_maturity_at_single_int():
-    m = lr.Maturity.at(change=6)
+    m = lr.Maturity.at(point=6)
     assert isinstance(m, lr.Maturity)
     assert m.point == 6
 
 
 def test_maturity_at_with_groups():
-    m = lr.Maturity.at(change=[6, 8], groups={"coverage": ["SUR", "CI"]})
+    m = lr.Maturity.at(point=[6, 8], groups={"coverage": ["SUR", "CI"]})
     assert m.point == {"SUR": 6, "CI": 8}
 
 
 def test_maturity_at_validation_errors():
     with pytest.raises(TypeError, match="must be int or Sequence"):
-        lr.Maturity.at(change="bogus")
+        lr.Maturity.at(point="bogus")
     with pytest.raises(ValueError, match="length"):
-        lr.Maturity.at(change=[])
+        lr.Maturity.at(point=[])
     with pytest.raises(ValueError, match="equal length"):
-        lr.Maturity.at(change=[6, 8], groups={"coverage": ["SUR"]})
+        lr.Maturity.at(point=[6, 8], groups={"coverage": ["SUR"]})
 
 
 # ---------------------------------------------------------------------------

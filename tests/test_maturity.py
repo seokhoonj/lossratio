@@ -261,7 +261,7 @@ def test_maturity_thresholds_stored():
 
 
 _R_SUMMARY_STAT_COLS = (
-    "dev_from", "change", "dev_link",
+    "dev_from", "point", "dev_link",
     "mean", "median", "wt", "cv",
     "f", "f_se", "rse", "sigma",
     "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio",
@@ -301,12 +301,12 @@ def test_summary_one_row_per_group_with_groups():
     assert set(smr["coverage"].to_list()) == {"A", "B"}
 
 
-def test_summary_change_matches_mat_k():
-    """`change` column in summary equals the `mat_k` property value."""
+def test_summary_point_matches_property():
+    """`point` column in summary equals the `point` property value."""
     tri = lr.Triangle(_polars_input())
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
-    change = mat.summary()["change"].to_list()[0]
-    assert int(change) == mat.point
+    point = mat.summary()["point"].to_list()[0]
+    assert int(point) == mat.point
 
 
 def test_summary_dev_link_string_format():
@@ -314,7 +314,7 @@ def test_summary_dev_link_string_format():
     tri = lr.Triangle(_stable_input())
     mat = tri.link().ata().maturity()
     row = mat.summary().row(0, named=True)
-    expected = f"{int(row['dev_from'])}-{int(row['change'])}"
+    expected = f"{int(row['dev_from'])}-{int(row['point'])}"
     assert row["dev_link"] == expected
 
 
@@ -396,7 +396,7 @@ def test_summary_no_detection_returns_nan_row():
     assert row["dev_link"] is None or (
         isinstance(row["dev_link"], float) and math.isnan(row["dev_link"])
     )
-    for col in ("dev_from", "change", "mean", "median",
+    for col in ("dev_from", "point", "mean", "median",
                 "wt", "cv", "f", "f_se", "rse", "sigma",
                 "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio"):
         v = row[col]
@@ -422,8 +422,8 @@ def test_summary_per_group_independence_both_detect():
     mat = tri.link().ata().maturity(max_cv=10.0, max_rse=10.0, min_run=2)
     smr = mat.summary().sort("coverage")
     assert smr.height == 2
-    # Both detected -- both rows have a non-NaN `change`.
-    for c in smr["change"].to_list():
+    # Both detected -- both rows have a non-NaN `point`.
+    for c in smr["point"].to_list():
         assert not math.isnan(c)
 
 
@@ -447,15 +447,15 @@ def test_summary_groups_column_preserved_in_pandas():
 
 
 def test_summary_manual_maturity_at_has_r_parity_schema():
-    """`maturity_at()` (manual) emits the same R column set with stat
+    """`Maturity.at()` (manual) emits the same column set with stat
     columns NaN-filled (no factor data backs a manual override).
     """
-    mat = lr.Maturity.at(change=4)
+    mat = lr.Maturity.at(point=4)
     smr = mat.summary()
     for col in _R_SUMMARY_STAT_COLS:
         assert col in smr.columns, f"missing column: {col}"
     row = smr.row(0, named=True)
-    assert int(row["change"]) == 4
+    assert int(row["point"]) == 4
     assert int(row["dev_from"]) == 3
     assert row["dev_link"] == "3-4"
     # Stat columns are NaN.

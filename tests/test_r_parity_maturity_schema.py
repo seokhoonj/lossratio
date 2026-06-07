@@ -5,7 +5,7 @@ The R sibling's ``detect_maturity()`` returns a one-row-per-group
 ``ata_link``; Python names the same axis columns ``dev_from`` /
 ``dev_link``, with the rest of the schema shared::
 
-    dev_from, change, dev_link, mean, median, wt, cv,
+    dev_from, point, dev_link, mean, median, wt, cv,
     f, f_se, rse, sigma,
     n_cohorts, n_valid, n_inf, n_nan, valid_ratio
 
@@ -35,7 +35,7 @@ ATOL = 1e-6
 RTOL = 1e-9
 
 _NUMERIC_COLS = (
-    "dev_from", "change",
+    "dev_from", "point",
     "mean", "median", "wt", "cv",
     "f", "f_se", "rse", "sigma",
     "n_cohorts", "n_valid", "n_inf", "n_nan", "valid_ratio",
@@ -44,7 +44,7 @@ _STRING_COLS = ("dev_link",)
 
 # The R fixtures key the link by R's ata_from / ata_link; align them to the
 # Python dev_from / dev_link names on load so the schema compare lines up.
-_R_TO_PY = {"ata_from": "dev_from", "ata_link": "dev_link"}
+_R_TO_PY = {"ata_from": "dev_from", "ata_link": "dev_link", "change": "point"}
 
 
 def _load(name: str) -> pl.DataFrame:
@@ -62,7 +62,7 @@ def test_maturity_full_schema_matches_r():
     """All 16 columns of the Maturity summary table match R bit-for-bit.
 
     Tighter than the existing ``test_ratio_sa_maturity_matches_r`` which
-    only checks the scalar ``change`` (= maturity dev). This test
+    only checks the scalar ``point`` (= maturity dev). This test
     exercises the per-link stats joined onto the matched row.
     """
     r = _load("maturity_schema").rename(_R_TO_PY)
@@ -98,8 +98,8 @@ def test_maturity_full_schema_matches_r():
         )
 
 
-def test_maturity_change_equals_mat_k():
-    """The ``change`` column on the summary table equals ``Maturity.point``.
+def test_maturity_point_column_equals_property():
+    """The ``point`` column on the summary table equals ``Maturity.point``.
 
     Cross-check of the two access paths into the same value. Catches
     drift if one of the two ever stops mirroring R.
@@ -107,13 +107,13 @@ def test_maturity_change_equals_mat_k():
     r = _load("maturity_schema").rename(_R_TO_PY)
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     mat = tri.detect_maturity(target="loss")
-    summary_change = mat.summary()["change"][0]
+    summary_point = mat.summary()["point"][0]
     mat_k_value = mat.point["surgery"]
-    r_change = r["change"][0]
+    r_point = r["point"][0]
 
-    assert int(summary_change) == int(mat_k_value), (
-        f"summary['change']={summary_change} != mat_k={mat_k_value}"
+    assert int(summary_point) == int(mat_k_value), (
+        f"summary['point']={summary_point} != point={mat_k_value}"
     )
-    assert int(mat_k_value) == int(r_change), (
-        f"mat_k={mat_k_value} != R fixture change={r_change}"
+    assert int(mat_k_value) == int(r_point), (
+        f"point={mat_k_value} != R fixture point={r_point}"
     )

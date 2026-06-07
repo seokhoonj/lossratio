@@ -1511,25 +1511,25 @@ class Regime:
                     gcols = normalize_groups(grp)
                     if (
                         all(g in mat_df.columns for g in gcols)
-                        and "change" in mat_df.columns
+                        and "point" in mat_df.columns
                     ):
-                        # Vectorised: per group key, change -> int, mapping
+                        # Vectorised: per group key, point -> int, mapping
                         # null / NaN to None (mirrors the per-row int(v)
                         # with the None / NaN guards). The key is a scalar
                         # for a str group, a tuple for a multi-column group
                         # (matching the `combos` entries).
-                        change_f = pl.col("change").cast(
+                        point_f = pl.col("point").cast(
                             pl.Float64, strict=False
                         )
                         mats = (
                             mat_df.select(
-                                pl.when(change_f.is_null() | change_f.is_nan())
+                                pl.when(point_f.is_null() | point_f.is_nan())
                                 .then(None)
                                 # non-strict: the `otherwise` branch is
                                 # evaluated for every row, so a strict cast
                                 # would still raise on the NaN rows the
                                 # `when` masks. Map NaN -> null instead.
-                                .otherwise(change_f.cast(pl.Int64, strict=False))
+                                .otherwise(point_f.cast(pl.Int64, strict=False))
                                 .alias("_mat")
                             )["_mat"].to_list()
                         )

@@ -196,7 +196,7 @@ def _compute_maturity(
 # Column order for the Maturity output.
 _R_STAT_COLS: tuple[str, ...] = (
     "dev_from",
-    "change",
+    "point",
     "dev_link",
     "mean",
     "median",
@@ -386,7 +386,7 @@ def _slice_first_stable_row(
     row: dict[str, Any] = {}
     set_group_values(row, groups, group_value)
     row["dev_from"] = float(matched["dev_from"])
-    row["change"] = float(matched["dev_to"])
+    row["point"] = float(matched["dev_to"])
     row["dev_link"] = matched["dev_link"]
     for col in ("mean", "median", "wt", "cv", "f", "f_se", "rse", "sigma"):
         v = matched.get(col)
@@ -459,9 +459,9 @@ class Maturity:
         ``triangle.link().ata().maturity(...)``.
 
         The output ``summary()`` is one row per group with columns
-        ``[groups?, dev_from, change, dev_link, mean, median, wt, cv,
+        ``[groups?, dev_from, point, dev_link, mean, median, wt, cv,
         f, f_se, rse, sigma, n_cohorts, n_valid, n_inf, n_nan,
-        valid_ratio]``. ``change`` is the maturity point (``dev_to`` of
+        valid_ratio]``. ``point`` is the maturity point (``dev_to`` of
         the first stable link). When no stable run is found for a
         group, the stat columns are filled with ``NaN``.
         """
@@ -500,7 +500,7 @@ class Maturity:
     def _manual(
         cls,
         *,
-        change: list[int],
+        point: list[int],
         groups: Mapping[str, Sequence[Any]] | None,
     ) -> "Maturity":
         """Construct a Maturity by hand (no auto-detection).
@@ -518,9 +518,9 @@ class Maturity:
         self._cohort = ""
         self._dev = ""
 
-        n = len(change)
-        dev_from = [c - 1 for c in change]
-        dev_link = [f"{f}-{t}" for f, t in zip(dev_from, change)]
+        n = len(point)
+        dev_from = [c - 1 for c in point]
+        dev_link = [f"{f}-{t}" for f, t in zip(dev_from, point)]
 
         cols: dict[str, list[Any]] = {}
         if groups:
@@ -530,7 +530,7 @@ class Maturity:
             group_col = None
 
         cols["dev_from"] = [float(v) for v in dev_from]
-        cols["change"] = [float(v) for v in change]
+        cols["point"] = [float(v) for v in point]
         cols["dev_link"] = dev_link
         for stat in (
             "mean", "median", "wt", "cv",
@@ -549,7 +549,7 @@ class Maturity:
     @classmethod
     def at(
         cls,
-        change: int | Sequence[int],
+        point: int | Sequence[int],
         *,
         groups: Mapping[str, Sequence[Any]] | None = None,
     ) -> "Maturity":
@@ -562,33 +562,33 @@ class Maturity:
 
         Parameters
         ----------
-        change
-            Maturity dev (the ``dev_to`` index). A single integer or, when
-            the Triangle is grouped and groups carry different maturities,
-            a sequence aligned 1:1 with ``groups``.
+        point
+            Maturity point ``k*`` (the ``dev_to`` index). A single integer
+            or, when the Triangle is grouped and groups carry different
+            maturities, a sequence aligned 1:1 with ``groups``.
         groups
             Optional mapping ``{column_name: [values]}`` of group columns
-            aligned 1:1 with ``change``.
+            aligned 1:1 with ``point``.
 
         Examples
         --------
-        >>> Maturity.at(change=6)
+        >>> Maturity.at(point=6)
         >>> Maturity.at(
-        ...     change=[6, 8],
+        ...     point=[6, 8],
         ...     groups={"coverage": ["SUR", "CI"]},
         ... )
         """
-        if isinstance(change, (int, np.integer)):
-            change_seq: list[int] = [int(change)]
-        elif isinstance(change, Sequence) and not isinstance(change, str):
-            change_seq = [int(v) for v in change]
+        if isinstance(point, (int, np.integer)):
+            point_seq: list[int] = [int(point)]
+        elif isinstance(point, Sequence) and not isinstance(point, str):
+            point_seq = [int(v) for v in point]
         else:
             raise TypeError(
-                f"`change` must be int or Sequence[int], got {type(change).__name__}"
+                f"`point` must be int or Sequence[int], got {type(point).__name__}"
             )
-        if not change_seq:
-            raise ValueError("`change` must have length >= 1")
-        n = len(change_seq)
+        if not point_seq:
+            raise ValueError("`point` must have length >= 1")
+        n = len(point_seq)
 
         groups = dict(groups) if groups else {}
         for col, vals in groups.items():
@@ -598,10 +598,10 @@ class Maturity:
             if len(vals) != n:
                 raise ValueError(
                     f"All arguments must have equal length; "
-                    f"`change`={n} but `groups[{col!r}]`={len(vals)}"
+                    f"`point`={n} but `groups[{col!r}]`={len(vals)}"
                 )
 
-        return cls._manual(change=change_seq, groups=groups or None)
+        return cls._manual(point=point_seq, groups=groups or None)
 
     @classmethod
     def detect(
@@ -652,7 +652,7 @@ class Maturity:
         def _coerce(v: Any) -> int | None:
             if v is None:
                 return None
-            # `change` is always a Float64 column -> v is float | None;
+            # `point` is always a Float64 column -> v is float | None;
             # `v != v` is the NaN test (no numpy dispatch needed).
             if isinstance(v, float) and v != v:
                 return None
@@ -660,7 +660,7 @@ class Maturity:
 
         if self._groups is None:
             row = self._mat_k_df.row(0, named=True)
-            return _coerce(row.get("change"))
+            return _coerce(row.get("point"))
         if isinstance(self._groups, str):
             keys = self._mat_k_df[self._groups].to_list()
         else:
@@ -673,7 +673,7 @@ class Maturity:
         return dict(
             zip(
                 keys,
-                [_coerce(v) for v in self._mat_k_df["change"].to_list()],
+                [_coerce(v) for v in self._mat_k_df["point"].to_list()],
             )
         )
 
@@ -682,12 +682,12 @@ class Maturity:
 
         Schema::
 
-            [groups?, dev_from, change, dev_link,
+            [groups?, dev_from, point, dev_link,
              mean, median, wt, cv,
              f, f_se, rse, sigma,
              n_cohorts, n_valid, n_inf, n_nan, valid_ratio]
 
-        ``change`` is the maturity point (i.e. ``dev_to`` of the first
+        ``point`` is the maturity point (i.e. ``dev_to`` of the first
         stable link). Groups with no stable run have ``NaN`` in every
         stat column.
         """
