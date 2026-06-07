@@ -254,7 +254,8 @@ def _compute_tail_factor_one(
 
     terms, steps, converged = _extrapolate_terms(a, b, cfg, grain, int(idx.max()) + 1)
     # Multiplicative tail factor = product of (1 + excess), via log-space.
-    factor = math.exp(sum(math.log1p(v) for v in terms))
+    # fsum keeps the running log-sum exact; terms are positive and decaying.
+    factor = math.exp(math.fsum(math.log1p(v) for v in terms))
     if not math.isfinite(factor):
         return _TailResult(1.0, cfg.family, b, steps, False, False, "overflow", a, rstd)
     reason = "converged" if converged else "horizon_capped"

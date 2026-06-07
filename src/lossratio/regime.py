@@ -2351,9 +2351,10 @@ def _resolve_regime(
 def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
     """Per-group ``(group_value, cutoff)`` table.
 
-    For ``latest_only`` treatment the cutoff is the **latest** change
-    point per group -- cohorts strictly before it are dropped. Returns
-    ``None`` when the regime has no change points to apply.
+    The cutoff is the **latest** change point per group -- cohorts
+    strictly before it are dropped (the drop-before-latest-change cohort
+    filter used by the usage heatmap). Returns ``None`` when the regime
+    has no change points to apply.
     """
     if not regime.change_points:
         return None

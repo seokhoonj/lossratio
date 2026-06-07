@@ -1458,6 +1458,9 @@ def _fwd_proj_ed(
             g_b = g_star[k, :][None, :]
             g_b = np.where(np.isfinite(g_b), g_b, 0.0)
             p_prev = premium_proj[proj, j - 1][:, None]
+            # NaN premium -> 0 increment is intentional: a cohort with no
+            # premium basis at this dev contributes a flat (zero-increment)
+            # cumulative, mirroring the CL path's f=1.0 carry-forward.
             inc = np.where(np.isfinite(p_prev), g_b * p_prev, 0.0)
             cum[proj, j, :] = prev + inc
     neg = np.isfinite(cum) & (cum < 0.0)
