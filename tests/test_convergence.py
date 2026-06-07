@@ -58,8 +58,12 @@ def _sur_triangle() -> lr.Triangle:
 
 
 def _converge(tri: lr.Triangle, **kwargs):
-    """Convergence via the fit method (default sa estimator), the public path."""
-    return lr.Ratio(method="sa").fit(tri).convergence(**kwargs)
+    """Convergence via the fit method (default sa estimator), the public path.
+
+    Uses the legacy ``maturity="auto"`` CV/RSE switch so the convergence
+    candidate fits reproduce the pre-SwitchPoint behaviour these tests pin.
+    """
+    return lr.Ratio(method="sa", maturity="auto").fit(tri).convergence(**kwargs)
 
 
 # ----- helper unit tests -----
@@ -252,7 +256,7 @@ def test_convergence_tail_converged_anchors_to_plateau():
 def test_convergence_tail_immature_flags_and_uses_factor_tail():
     """Bundled synthetic does not converge in-window -> immature + factor tail."""
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    ct = lr.Ratio(method="sa").fit(tri).convergence_tail()
+    ct = lr.Ratio(method="sa", maturity="auto").fit(tri).convergence_tail()
     ct = ct if isinstance(ct, pl.DataFrame) else pl.from_pandas(ct)
     row = ct.row(0, named=True)
     assert row["status"] == "immature"

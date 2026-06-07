@@ -202,11 +202,11 @@ def test_ratio_loss_and_premium_regime_independent():
     pr_reg = lr.Regime.at(change="2024-10-01")
 
     fit = lr.Ratio(
-        method="sa", loss_regime=ratio_reg, premium_regime=pr_reg
+        method="sa", maturity="auto", loss_regime=ratio_reg, premium_regime=pr_reg
     ).fit(tri)
     # Reference fit: same loss_regime, but premium uses the loss change.
     fit_same = lr.Ratio(
-        method="sa", loss_regime=ratio_reg, premium_regime=ratio_reg
+        method="sa", maturity="auto", loss_regime=ratio_reg, premium_regime=ratio_reg
     ).fit(tri)
 
     assert fit.loss_fit.regime is ratio_reg

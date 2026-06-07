@@ -139,10 +139,13 @@ def test_ratio_ed_method_matches_ed_fit():
 
 
 def test_ratio_sa_with_loose_thresholds_detects_mat_k_early():
-    """With loose thresholds, mat_k should be detected (e.g., 1)."""
-    fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    """With loose thresholds, mat_k should be detected (e.g., 1).
+
+    Exercises the deprecated CV/RSE switch via the legacy ``maturity="auto"``
+    path (the default is now ``switch=None``)."""
+    fit = lr.Ratio(
+        method="sa", maturity="auto", max_cv=10.0, max_rse=10.0, min_run=2
+    ).fit(lr.Triangle(_toy_triangle_input()))
     assert fit.maturity_point is not None
 
 
@@ -163,7 +166,9 @@ def test_ratio_sa_mat_k_two_matches_cl_projection():
     """With mat_k=2, every link's target dev (>= 2) lies in the CL
     region (target dev >= mat_k), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
-    sa_fit = lr.Ratio(method="sa", max_cv=10.0, max_rse=10.0, min_run=2).fit(tri)
+    sa_fit = lr.Ratio(
+        method="sa", maturity="auto", max_cv=10.0, max_rse=10.0, min_run=2
+    ).fit(tri)
     cl_fit = lr.ChainLadder().fit(tri)
 
     # The fixture + loose thresholds deterministically yield mat_k = 2.
@@ -319,14 +324,19 @@ def test_maturity_none_disables_sa_switch():
     assert fit.maturity_point is None
 
 
-def test_maturity_auto_is_sa_default():
-    """maturity defaults to 'auto'; loose thresholds detect a switch."""
+def test_no_switch_is_sa_default():
+    """The SA default is `switch=None` (no discretionary switch): the
+    general path then equals pure ED, and no maturity point is reported."""
     tri = lr.Triangle(_toy_triangle_input())
-    assert lr.StageAdaptive().maturity == "auto"
-    fit = lr.StageAdaptive(
-        max_cv=10.0, max_rse=10.0, min_run=2
-    ).fit(tri)
-    assert fit.maturity_point is not None
+    assert lr.StageAdaptive().switch is None
+    assert lr.StageAdaptive().maturity is None
+    sa = lr.StageAdaptive().fit(tri)
+    ed = lr.ExposureDriven().fit(tri)
+    assert sa.maturity_point is None
+    assert (
+        sa.to_polars().sort(["cohort", "dev"])["loss_proj"].to_list()
+        == ed.to_polars().sort(["cohort", "dev"])["loss_proj"].to_list()
+    )
 
 
 def test_maturity_object_overrides_auto_detect():

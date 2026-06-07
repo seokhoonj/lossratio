@@ -486,7 +486,7 @@ def test_sa_tail_post_maturity_cl_is_multiplicative(tri):
     # multiplicative factor applied to the last cumulative loss. Use a
     # group whose post-maturity factors actually converge (SUR; the
     # curve-aware guard diverges the slow-decaying groups to 1.0).
-    sa = lr.StageAdaptive(tail=True).fit(tri)
+    sa = lr.StageAdaptive(maturity="auto", tail=True).fit(tri)
     assert "loss_tail" in sa._df.columns
     assert all(v.mat_k is not None for v in sa._internals.values())
     assert sa.tail_factor["SUR"] > 1.0  # this group converges

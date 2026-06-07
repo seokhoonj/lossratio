@@ -201,10 +201,10 @@ def test_backtest_plot_triangle_usage_auto_regime_resolved(tri_multi):
 
 
 def test_backtest_plot_triangle_usage_auto_maturity_resolved(tri_multi):
-    # method='sa' carries `maturity='auto'` by default; the usage view
-    # resolves it via inline detect_maturity().
+    # The legacy `maturity='auto'` switch makes the usage view resolve the
+    # maturity inline via detect_maturity().
     bt = lr.Backtest(
-        estimator=lr.StageAdaptive(),
+        estimator=lr.StageAdaptive(maturity="auto"),
         holdout=4, target="loss",
     ).fit(tri_multi)
     assert bt._infer_maturity() == "auto"
