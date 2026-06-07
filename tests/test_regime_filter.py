@@ -551,25 +551,78 @@ def test_regime_at_rejects_unknown_treatment():
         lr.Regime.at(change="2024-07-01", treatment="not_a_mode")
 
 
-def test_tail_with_segment_borrowed_raises():
-    """`tail` + a segment-borrowed treatment is rejected, not silently
-    ignored. Each segment is already projected to full development via the
-    donor borrow, and a per-segment tail beyond full development is not yet
-    wired -- so the combination raises rather than dropping the tail
-    silently (which would mislead the user into thinking a tail was applied).
+def test_tail_with_segment_borrowed_extends_donor_factors():
+    """`tail` + a segment-borrowed treatment extends the recent segment's
+    DONOR-borrowed development factors beyond full development. The tail
+    machinery runs on each segment's augmented ``f_sel`` / ``g_sel`` (the
+    arrays that projected its late-dev / borrowed region), producing the
+    ``loss_tail`` / ``premium_tail`` companion columns exactly like the
+    non-regime path. tail=False stays byte-identical (no ``*_tail`` cols).
     """
     tri = _sur_triangle()
     r = lr.Regime.at(change="2024-07-01")  # default segment_borrowed
-    for est in (
-        lr.Ratio(loss_regime=r, tail=lr.Tail()),
-        lr.ChainLadder(regime=r, tail=lr.Tail()),
-        lr.Premium(regime=r, tail=lr.Tail()),
-    ):
-        with pytest.raises(NotImplementedError, match="tail.*not supported"):
-            est.fit(tri)
-    # segment_bridged_borrowed is rejected the same way.
+
+    # tail=False adds no tail columns (byte-identical no-tail path).
+    off = lr.Ratio(method="ed", loss_regime=r).fit(tri).loss_fit.to_polars()
+    assert not any(c.endswith("_tail") for c in off.columns)
+
+    # tail=exponential produces a real loss_tail + premium_tail.
+    on_fit = lr.Ratio(
+        method="ed", loss_regime=r, tail=lr.Tail(family="exponential")
+    ).fit(tri)
+    on = on_fit.loss_fit.to_polars()
+    assert "loss_tail" in on.columns
+    assert "premium_tail" in on.columns
+    tail_rows = on.filter(pl.col("loss_tail").is_not_null())
+    assert tail_rows.height > 0
+    # A real (heavier-than-observed) tail: loss_tail > loss_proj at dev_max.
+    assert (tail_rows["loss_tail"] > tail_rows["loss_proj"]).all()
+
+    # The non-tail columns are unchanged by turning the tail on.
+    common = [c for c in off.columns if c in on.columns]
+    keys = ["cohort", "dev"]
+    assert off.sort(keys).select(common).equals(on.sort(keys).select(common))
+
+    # segment_bridged_borrowed works the same way.
     rb = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    with pytest.raises(NotImplementedError):
-        lr.Ratio(loss_regime=rb, tail=lr.Tail()).fit(tri)
-    # No tail -> the segment fit runs normally.
-    assert lr.Ratio(loss_regime=r).fit(tri).to_polars().height > 0
+    bb = (
+        lr.Ratio(method="ed", loss_regime=rb, tail=lr.Tail(family="exponential"))
+        .fit(tri)
+        .loss_fit.to_polars()
+    )
+    assert "loss_tail" in bb.columns
+    assert bb.filter(pl.col("loss_tail").is_not_null()).height > 0
+
+    # CL + ChainLadder estimator + premium fit under regime also tail.
+    cl = lr.ChainLadder(regime=r, tail=lr.Tail(family="exponential")).fit(tri)
+    assert "loss_tail" in cl.to_polars().columns
+    pf = lr.Premium(regime=r, tail=lr.Tail(family="exponential")).fit(tri)
+    assert "premium_tail" in pf.to_polars().columns
+
+
+def test_tail_segment_borrowed_mass_is_grain_stable():
+    """The tail mass folded into a coarse (Q) display equals the tail mass
+    in the fine (M) summary -- the segment-borrowed tail is grain-stable.
+    (The residual body M-vs-Q gap is a pre-existing property of the
+    segment_borrowed `at_grain` reconstruction, present with tail OFF too.)
+    """
+    tri = _sur_triangle()
+    r = lr.Regime.at(change="2024-07-01")
+    on = lr.Ratio(
+        method="ed", loss_regime=r, tail=lr.Tail(family="exponential")
+    ).fit(tri)
+    off = lr.Ratio(method="ed", loss_regime=r).fit(tri)
+
+    def q_ult(fit, col):
+        q = fit.at_grain("Q")
+        u = (
+            q.sort(["cohort", "dev"])
+            .group_by(["cohort"])
+            .agg(pl.col(col).drop_nulls().last().alias("V"))
+        )
+        return u["V"].sum()
+
+    for col, role in (("loss_proj", "loss"), ("premium_proj", "premium")):
+        mass_M = on.summary()[col].sum() - off.summary()[col].sum()
+        mass_Q = q_ult(on, col) - q_ult(off, col)
+        assert mass_M == pytest.approx(mass_Q, rel=1e-9)

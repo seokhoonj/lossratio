@@ -457,14 +457,6 @@ class PremiumFit:
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
             and regime.change_points
         ):
-            if estimator.tail is not False:
-                raise NotImplementedError(
-                    f"`tail` is not supported with the {regime.treatment!r} "
-                    "regime treatment: each segment is already projected to "
-                    "full development via the donor borrow, and a per-segment "
-                    "tail beyond full development is not yet wired. Drop "
-                    "`tail`."
-                )
             return cls._segment_borrowed_fit(triangle, estimator, regime)
 
         triangle = _apply_regime_filter(triangle, regime)
@@ -572,6 +564,11 @@ class PremiumFit:
         """
         from ._segment import _expand_to_full_grid
         from .regime import _apply_regime_filter
+        from .tail import (
+            apply_tail_to_long_df,
+            compute_tail_factor,
+            maybe_warn_tail,
+        )
 
         masked = _apply_regime_filter(triangle, regime)
 
@@ -589,6 +586,22 @@ class PremiumFit:
 
         tri_df = masked._df
         groups = masked._groups
+        grain = triangle.grain
+
+        tail = estimator.tail
+        is_numeric = isinstance(tail, (int, float)) and not isinstance(tail, bool)
+        self.tail = tail
+        # The premium tail extrapolates the DONOR-augmented multiplicative
+        # factors `f_k` (the same arrays that drove the recent segment's
+        # late-dev / borrowed region) beyond the parent dev axis. Donor
+        # selection keys off the most-recent segment per group (largest id),
+        # whose augmented `f_k` is what projects that group's tail-most cohorts.
+        factor_map: dict[Any, float] = {}
+        diverged_map: dict[Any, bool] = {}
+        self._tail_results: dict[Any, Any] = {}
+        # Per-group augmented premium factors for the loss-side coupled ED
+        # walk (mirrors the non-segment path's `_premium_f_k`).
+        f_k_map: dict[Any, np.ndarray] = {}
 
         parts: list[pl.DataFrame] = []
         for g, sub in _iter_group_frames(tri_df, groups):
@@ -606,18 +619,46 @@ class PremiumFit:
                 premium_obs, seg_of_cohort, estimator.method,
                 estimator.sigma_method, estimator.recent,
             )
+            # Most-recent segment's augmented factors drive this group's tail.
+            f_k_map[g] = results[max(results)].f_k
             for s in sorted(results):
                 cohorts_s = [cohorts[i] for i in seg_rows[s]]
                 df_s = _premium_long_df(
                     results[s], cohorts_s, groups, g, estimator.conf_level
                 ).with_columns(pl.lit(s, dtype=pl.Int64).alias("segment_id"))
+                if tail is not False:
+                    # Each segment extrapolates its OWN augmented factors --
+                    # the donor borrow already aligns every segment to the
+                    # shared dev axis, so each carries the operative late-dev
+                    # shape for its cohorts. The companion `_tail` columns land
+                    # on the last-dev row of each cohort and survive the grid
+                    # expand below.
+                    res = compute_tail_factor(results[s].f_k, tail, grain)
+                    if not is_numeric:
+                        maybe_warn_tail(res, group=(g, s))
+                    factor_map[(g, s)] = res.factor
+                    diverged_map[(g, s)] = res.diverged
+                    self._tail_results[(g, s)] = res
+                    if res.factor > 1.0 and np.isfinite(res.factor):
+                        df_s = apply_tail_to_long_df(
+                            df_s, res.factor, groups, role="premium"
+                        )
                 parts.append(df_s)
+
+        self._premium_f_k = f_k_map
 
         combined = pl.concat(parts, how="diagonal_relaxed")
         # Expand to the full cohort × dev grid for the `$full` shape.
         self._df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort
         )
+
+        if tail is not False:
+            self.premium_tail_factor = factor_map
+            self.premium_tail_diverged = diverged_map
+        else:
+            self.premium_tail_factor = 1.0 if groups is None else {}
+            self.premium_tail_diverged = False if groups is None else {}
         return self
 
     @property

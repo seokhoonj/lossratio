@@ -830,15 +830,6 @@ class LossFit:
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
             and regime.change_points
         ):
-            if estimator.tail is not False:
-                raise NotImplementedError(
-                    f"`tail` is not supported with the {regime.treatment!r} "
-                    "regime treatment: each segment is already projected to "
-                    "full development via the donor borrow, and a per-segment "
-                    "convergence-gated tail beyond full development is not yet "
-                    "wired. Drop `tail`, or read the borrow-vs-curve tail "
-                    "uncertainty from RatioFit.segment_band()."
-                )
             return cls._segment_borrowed_fit(triangle, estimator, regime)
 
         triangle = _apply_regime_filter(triangle, regime)
@@ -1182,6 +1173,7 @@ class LossFit:
                 alpha=estimator.premium_alpha,
                 sigma_method=estimator.sigma_method,
                 recent=estimator.recent,
+                tail=estimator.tail,
                 conf_level=estimator.conf_level,
                 regime=regime,
             ).fit(triangle)
@@ -1190,6 +1182,78 @@ class LossFit:
         tri_df = masked._df
         groups = masked._groups
         mat_override = _resolve_maturity_override(estimator.maturity, masked)
+
+        # ----- Tail on the borrowed factors --------------------------------
+        # The tail extrapolates each segment's DONOR-AUGMENTED factors
+        # (`res.f_sel` / `res.g_sel` -- the very arrays that projected that
+        # segment's late-dev / borrowed region) beyond the parent dev axis.
+        # CL: product of f -> 1. ED: additive loss_proj + premium*Sum g,
+        # coupled with the group's augmented premium factors. The companion
+        # `_tail` columns land on each cohort's last-dev row (the parent
+        # edge) and survive the grid expand below, so summary() / at_grain
+        # pick them up unchanged. tail=False leaves df_s byte-identical.
+        from .tail import (
+            apply_ed_tail_to_long_df,
+            apply_tail_to_long_df,
+            compute_ed_tail_increment_coupled,
+            compute_tail_factor,
+            maybe_warn_tail,
+        )
+
+        tail = estimator.tail
+        grain = triangle.grain
+        method = estimator.method
+        is_numeric = isinstance(tail, (int, float)) and not isinstance(tail, bool)
+        tail_active = tail is not False
+        pf_fk_map = getattr(pf, "_premium_f_k", {})
+        tail_factor_map: dict[Any, float] = {}
+        tail_diverged_map: dict[Any, bool] = {}
+        tail_results: dict[Any, Any] = {}
+
+        def _seg_tail(res: _LossResult, df_s: pl.DataFrame, g: Any):
+            # A numeric tail is an explicit multiplicative factor (f_sel
+            # ignored); otherwise CL extrapolates f_sel, ED extrapolates
+            # g_sel coupled with the group's augmented premium, SA follows
+            # the stage active at the last dev column.
+            if is_numeric or method == "cl":
+                r = compute_tail_factor(res.f_sel, tail, grain)
+                if not is_numeric:
+                    maybe_warn_tail(r, group=g)
+                if r.factor > 1.0 and np.isfinite(r.factor):
+                    df_s = apply_tail_to_long_df(
+                        df_s, r.factor, groups=groups, role="loss"
+                    )
+                return r, df_s
+            if method == "ed":
+                r = compute_ed_tail_increment_coupled(
+                    res.g_sel, pf_fk_map.get(g), tail, grain
+                )
+                maybe_warn_tail(r, group=g)
+                if r.factor > 0.0 and np.isfinite(r.factor):
+                    df_s = apply_ed_tail_to_long_df(
+                        df_s, r.factor, groups=groups, role="loss"
+                    )
+                return r, df_s
+            # method == "sa": CL tail past maturity, else additive ED tail.
+            mat_k = res.mat_k
+            if mat_k is None:
+                r = compute_ed_tail_increment_coupled(
+                    res.g_sel, pf_fk_map.get(g), tail, grain
+                )
+                maybe_warn_tail(r, group=g)
+                if r.factor > 0.0 and np.isfinite(r.factor):
+                    df_s = apply_ed_tail_to_long_df(
+                        df_s, r.factor, groups=groups, role="loss"
+                    )
+                return r, df_s
+            f_post = res.f_sel[max(int(mat_k) - 2, 0):]
+            r = compute_tail_factor(f_post, tail, grain)
+            maybe_warn_tail(r, group=g)
+            if r.factor > 1.0 and np.isfinite(r.factor):
+                df_s = apply_tail_to_long_df(
+                    df_s, r.factor, groups=groups, role="loss"
+                )
+            return r, df_s
 
         long_parts: list[pl.DataFrame] = []
         mat_k_rows: list[dict[str, Any]] = []
@@ -1225,6 +1289,11 @@ class LossFit:
                 df_s = _loss_long_df(
                     res, cohorts_s, pf_sub, groups, g, estimator.conf_level
                 ).with_columns(pl.lit(s, dtype=pl.Int64).alias("segment_id"))
+                if tail_active:
+                    r, df_s = _seg_tail(res, df_s, g)
+                    tail_factor_map[(g, s)] = r.factor
+                    tail_diverged_map[(g, s)] = r.diverged
+                    tail_results[(g, s)] = r
                 long_parts.append(df_s)
                 row: dict[str, Any] = {
                     "segment_id": s,
@@ -1249,13 +1318,38 @@ class LossFit:
         self.recent = estimator.recent
         self.premium_fit = pf
         self._internals = internals_combined
+        self.tail = tail
+        self._tail_results = tail_results
         self.boots = None
         self.ci_type = "analytical"
+
+        if tail_active:
+            self.tail_factor = tail_factor_map
+            self.tail_diverged = tail_diverged_map
+        else:
+            no_tail = 0.0 if method == "ed" else 1.0
+            self.tail_factor = {k: no_tail for k in internals_combined}
+            self.tail_diverged = {k: False for k in internals_combined}
 
         combined = pl.concat(long_parts, how="diagonal_relaxed")
         full_df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort
         )
+
+        # Join the premium tail companion onto the loss frame so RatioFit can
+        # compose ratio_tail = loss_proj / premium_proj. The embedded
+        # PremiumFit was fit with the same `tail`, so it carries
+        # `premium_*_tail` columns on its last-dev rows.
+        if tail_active:
+            ptail_cols = [c for c in pf_df.columns if c.endswith("_tail")]
+            if ptail_cols:
+                join_keys = [*normalize_groups(groups), "cohort", "dev"]
+                full_df = full_df.join(
+                    pf_df.select([*join_keys, *ptail_cols]),
+                    on=join_keys,
+                    how="left",
+                )
+
         self._mat_k_df = (
             pl.DataFrame(mat_k_rows) if mat_k_rows else pl.DataFrame()
         )
