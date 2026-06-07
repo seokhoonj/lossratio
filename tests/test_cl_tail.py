@@ -532,6 +532,42 @@ def test_sa_tail_numeric_is_multiplicative(tri):
     assert all(v == pytest.approx(1.1) for v in sa.tail_factor.values())
 
 
+def test_borrowed_tail_follows_effective_switch_not_selected(tri):
+    """segment_bridged_borrowed + switch=None: a segment whose edge is forced
+    to donor-f_k CL past its own-data boundary gets the multiplicative CL
+    tail, even though no discretionary switch was selected (mat_k=None). The
+    prior code keyed the tail off the selected mat_k and wrongly applied the
+    additive ED tail to such a borrowed CL edge."""
+    reg = lr.Regime.at(
+        change="2024-07-01", treatment="segment_bridged_borrowed"
+    )
+    sa = lr.StageAdaptive(switch=None, tail=True, regime=reg).fit(tri)
+
+    # switch=None -> no discretionary switch was selected anywhere.
+    assert all(v.mat_k is None for v in sa._internals.values())
+
+    # A borrowed-edge segment: the effective switch is finite and within the
+    # dev range (the body capped the ED region at the donor-borrow boundary),
+    # so the last stage is CL.
+    borrowed = [
+        key for key, v in sa._internals.items()
+        if v.effective_switch is not None
+        and np.isfinite(v.effective_switch)
+        and v.effective_switch <= v.n_devs
+    ]
+    assert borrowed, "the borrow regime must create at least one CL-edge segment"
+
+    # Each borrowed segment's tail factor is the CL (multiplicative)
+    # computation on its augmented post-boundary factors -- NOT the additive
+    # ED increment the buggy mat_k-keyed path would have produced.
+    for key in borrowed:
+        v = sa._internals[key]
+        cl = compute_tail_factor(
+            v.f_sel[max(int(v.effective_switch) - 2, 0):], True, tri.grain
+        ).factor
+        assert sa.tail_factor[key] == pytest.approx(cl)
+
+
 # --- Premium(tail=...) : multiplicative tail on cum-premium factors -----
 
 

@@ -91,6 +91,13 @@ class _LossResult:
     f_var: np.ndarray
     last_obs: np.ndarray
     maturity_from: int | None
+    # The effective switch dev actually applied at the edge (= the maturity
+    # threshold the body used). In the segment-borrow path this is the
+    # boundary-capped value (`min(selected, boundary)`, or the boundary when
+    # no switch was selected), so the tail can follow the forced donor-f_k CL
+    # edge past a segment's own-data reach. `None` on the general path, where
+    # the tail reads `mat_k` directly.
+    effective_switch: float | None = None
 
 
 def _resolve_maturity_override(
@@ -573,6 +580,7 @@ def _borrowed_loss_group(
             premium_obs=po,
             premium_proj=pp,
             mat_k=mk,
+            effective_switch=maturity_threshold,
             g_sel=a["g_k"],
             g_sigma2=a["sigma2_g_k"],
             g_var=a["var_g_k"],
@@ -1314,9 +1322,18 @@ class LossFit:
                         df_s, r.factor, groups=groups, role="loss"
                     )
                 return r, df_s
-            # method == "sa": CL tail past maturity, else additive ED tail.
-            mat_k = res.mat_k
-            if mat_k is None:
+            # method == "sa": the tail follows the EFFECTIVE switch, not the
+            # selected mat_k. A borrowed segment's edge is forced to donor-f_k
+            # CL past its own-data boundary (the body capped the ED region
+            # there), so even with no discretionary switch (mat_k=None) the
+            # last stage is CL and the tail must be the multiplicative CL tail.
+            # Only when the effective switch lies beyond the last dev (the
+            # whole edge is still ED) does the additive ED tail apply.
+            eff = res.effective_switch
+            edge_is_cl = (
+                eff is not None and np.isfinite(eff) and eff <= res.n_devs
+            )
+            if not edge_is_cl:
                 r = compute_ed_tail_increment_coupled(
                     res.g_sel, pf_fk_map.get(g), tail, grain
                 )
@@ -1326,7 +1343,7 @@ class LossFit:
                         df_s, r.factor, groups=groups, role="loss"
                     )
                 return r, df_s
-            f_post = res.f_sel[max(int(mat_k) - 2, 0):]
+            f_post = res.f_sel[max(int(eff) - 2, 0):]
             r = compute_tail_factor(f_post, tail, grain)
             maybe_warn_tail(r, group=g)
             if r.factor > 1.0 and np.isfinite(r.factor):
