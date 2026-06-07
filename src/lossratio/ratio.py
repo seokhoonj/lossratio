@@ -21,6 +21,7 @@ from .loss import Loss, LossFit
 from .premium import Premium, PremiumFit
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from ._types import MaturityArg, RegimeArg, TailArg, UncertaintyArg
     from .curve import Curve
     from .triangle import Triangle
@@ -564,6 +565,88 @@ class RatioFit:
         from .convergence import convergence_tail_frame
 
         return convergence_tail_frame(self, **kwargs)
+
+    def at_grain(self, target_grain: str) -> "FrameLike":
+        """Display this fine-grain forecast aggregated to a COARSER grain.
+
+        Re-bins the fitted PROJECTED triangle up to ``target_grain``
+        (M -> Q / H / Y) by pure summation of the projected increments --
+        no re-fitting. The fine-grain forecast is reconstructed as
+        per-cell incremental loss / premium, re-binned through the
+        :class:`Triangle` constructor at ``target_grain``, and the
+        cumulative loss / premium / ratio are recomputed on the coarse
+        cells. This keeps an M-grain and a Q-grain DISPLAY consistent:
+        they are the same M forecast, just summed into coarser buckets.
+
+        Returns :attr:`df` unchanged when ``target_grain`` equals the
+        source grain. Raises if asked to REFINE (a coarser display cannot
+        be un-aggregated to a finer one).
+
+        Parameters
+        ----------
+        target_grain : str
+            One of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``, at least as
+            coarse as this fit's source grain.
+
+        Returns
+        -------
+        DataFrame
+            Long-format coarse-grain projection with columns
+            ``[groups?, cohort, dev, loss_proj, incr_loss_proj,
+            premium_proj, incr_premium_proj, ratio_proj, incr_ratio_proj]``.
+            ``*_proj`` are CUMULATIVE; ``incr_*_proj`` are the per-period
+            increments. Input mirroring is preserved.
+        """
+        from .regime import _GRAIN_MONTHS
+
+        if target_grain not in _GRAIN_MONTHS:
+            raise ValueError(f"unknown grain {target_grain!r}")
+        src = self._triangle.grain
+        if target_grain == src:
+            return self.df
+        if _GRAIN_MONTHS[target_grain] < _GRAIN_MONTHS[src]:
+            raise ValueError(
+                f"cannot refine grain {src!r} -> {target_grain!r} (coarsen only)"
+            )
+
+        mpp = _GRAIN_MONTHS[src]
+        groups = normalize_groups(self._groups)
+        # Per-cell projected increments (fully populated on the projected
+        # triangle: observed cells carry loss_proj == loss_obs, so the
+        # incr_*_proj diff is defined everywhere). calendar of cell
+        # (cohort, dev) = cohort + (dev - 1) source periods.
+        recon = self._df.select(
+            *groups,
+            pl.col("cohort"),
+            pl.col("cohort")
+            .dt.offset_by(pl.format("{}mo", (pl.col("dev") - 1) * mpp))
+            .alias("_calendar"),
+            pl.col("incr_loss_proj").alias("incr_loss"),
+            pl.col("incr_premium_proj").alias("incr_premium"),
+        )
+        from .triangle import Triangle
+
+        coarse = Triangle(
+            recon,
+            groups=self._groups,
+            cohort="cohort",
+            calendar="_calendar",
+            loss="incr_loss",
+            premium="incr_premium",
+            grain=target_grain,
+            cell_type="incremental",
+        )
+        keep = [*groups, "cohort", "dev"]
+        out = coarse._df.select(
+            *keep,
+            pl.col("loss").alias("loss_proj"),
+            pl.col("incr_loss").alias("incr_loss_proj"),
+            pl.col("premium").alias("premium_proj"),
+            pl.col("incr_premium").alias("incr_premium_proj"),
+            pl.col("ratio").alias("ratio_proj"),
+            pl.col("incr_ratio").alias("incr_ratio_proj"),
+        )
+        return mirror_output(out, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
