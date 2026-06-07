@@ -27,7 +27,8 @@ first link (pure CL), ``k >= 2`` = ED before ``k`` and CL from ``k`` on.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -303,37 +304,29 @@ class SwitchPoint:
     def detect(
         cls,
         *,
-        alpha: float = 1.0,
-        sigma_method: str = "locf",
-        recent: int | None = None,
-        regime: Any = None,
         k_grid: list[int] | None = None,
         holdouts: list[int] | None = None,
         min_improve: float = _MIN_IMPROVE,
         min_eval: int = _MIN_EVAL,
-    ) -> Callable[["Triangle"], "SwitchPoint"]:
-        """Build a lazy switch-detection spec.
+    ) -> "_SwitchSpec":
+        """Build a lazy switch-detection spec (selection parameters only).
 
-        Returns a closure ``f(triangle) -> SwitchPoint`` that runs the
-        backtest selection on the triangle it is given -- inside a backtest
-        this is the MASKED training triangle, so the switch never peeks at
-        held-out cells.
+        Returns a :class:`_SwitchSpec` -- a callable ``spec(triangle) ->
+        SwitchPoint`` that runs the backtest selection on the triangle it is
+        given (inside a backtest this is the MASKED training triangle, so the
+        switch never peeks at held-out cells).
 
-        ``alpha`` / ``sigma_method`` / ``recent`` / ``regime`` are applied to
-        every candidate model so the switch is selected under the same
-        filtering / regime-borrow regime the consuming estimator uses. When
-        used through ``StageAdaptive(switch=...)`` the estimator injects its
-        own settings here.
+        The spec holds only the SELECTION parameters (``k_grid`` / ``holdouts``
+        / ``min_improve`` / ``min_eval``). The candidate models' ``alpha`` /
+        ``sigma_method`` / ``recent`` / ``regime`` are injected by the
+        CONSUMER at resolution time -- ``StageAdaptive(switch=...)`` passes its
+        own settings; standalone callers may pass them as keyword arguments to
+        the spec (``spec(triangle, regime=...)``).
         """
-        def _spec(tri: "Triangle") -> "SwitchPoint":
-            sel = _select_switch(
-                tri, alpha=alpha, sigma_method=sigma_method, recent=recent,
-                regime=regime, k_grid=k_grid, holdouts=holdouts,
-                min_improve=min_improve, min_eval=min_eval,
-            )
-            return cls._from_selection(sel, tri._groups, tri._output_type)
-
-        return _spec
+        return _SwitchSpec(
+            k_grid=k_grid, holdouts=holdouts,
+            min_improve=min_improve, min_eval=min_eval,
+        )
 
     @property
     def point(self):
@@ -373,3 +366,37 @@ class SwitchPoint:
         if self._groups is None:
             return f"<SwitchPoint: point={self.point} ({self.status})>"
         return f"<SwitchPoint: {len(self._selection)} groups>"
+
+
+@dataclass(frozen=True)
+class _SwitchSpec:
+    """Lazy switch-detection spec produced by :meth:`SwitchPoint.detect`.
+
+    Holds only the selection parameters; the candidate models' modelling
+    config (``alpha`` / ``sigma_method`` / ``recent`` / ``regime``) is
+    supplied by the consumer when the spec is resolved, so the switch is
+    selected under the SAME regime / filtering the model will run in.
+    """
+
+    k_grid: list[int] | None = None
+    holdouts: list[int] | None = None
+    min_improve: float = _MIN_IMPROVE
+    min_eval: int = _MIN_EVAL
+
+    def __call__(
+        self,
+        triangle: "Triangle",
+        *,
+        alpha: float = 1.0,
+        sigma_method: str = "locf",
+        recent: int | None = None,
+        regime: Any = None,
+    ) -> "SwitchPoint":
+        sel = _select_switch(
+            triangle, alpha=alpha, sigma_method=sigma_method, recent=recent,
+            regime=regime, k_grid=self.k_grid, holdouts=self.holdouts,
+            min_improve=self.min_improve, min_eval=self.min_eval,
+        )
+        return SwitchPoint._from_selection(
+            sel, triangle._groups, triangle._output_type
+        )

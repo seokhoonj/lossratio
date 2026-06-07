@@ -95,10 +95,17 @@ def test_conservative_min_eval_defers_when_too_few_cells(tri):
     assert all(st == "deferred" for st in sp.status.values())
 
 
-def test_detect_accepts_estimator_config(tri):
-    # Candidate models inherit recent / regime / sigma_method without error.
-    sp = lr.SwitchPoint.detect(recent=24, sigma_method="min_last2")(tri)
+def test_detect_holds_selection_params_only(tri):
+    # detect() captures selection params; model config is injected at the
+    # spec call (the consumer supplies alpha/sigma_method/recent/regime).
+    spec = lr.SwitchPoint.detect(min_eval=20)
+    sp = spec(tri, recent=24, sigma_method="min_last2")
     assert set(sp.point) == {"CAN", "CI", "HOS", "SUR"}
+
+
+def test_detect_spec_default_config(tri):
+    sp = lr.SwitchPoint.detect()(tri)
+    assert isinstance(sp, lr.SwitchPoint)
 
 
 def test_ungrouped_triangle_returns_scalar_point():
