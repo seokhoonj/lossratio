@@ -1899,21 +1899,38 @@ def _resample_increment(
     inc = np.zeros((n_active, n_replicates), dtype=np.float64)
     subpools = _pool_dev_subpools(pool)
 
+    # Resolve each cell's sub-pool once; a cell draws residuals only when it
+    # has a finite mean and a non-empty sub-pool.
+    finite = np.isfinite(mu)
+    subs: list[np.ndarray | None] = [
+        subpools.get(int(dev[a])) if finite[a] else None for a in range(n_active)
+    ]
+    draw_rows = [a for a in range(n_active) if subs[a] is not None and subs[a].size]
+
+    # One RNG draw for all drawing cells at once -- bit-identical to the
+    # former per-cell rng.random(n_replicates) calls (same bit stream, same
+    # row-major consumption order), but a single call instead of one per cell.
+    draws = (
+        rng.random((len(draw_rows), n_replicates))
+        if _injected is None and draw_rows
+        else None
+    )
+
+    pos = 0
     for a in range(n_active):
-        mu_a = mu[a]
-        if not np.isfinite(mu_a):
+        if not finite[a]:
             inc[a, :] = np.nan
             continue
-        sub = subpools.get(int(dev[a]))
+        sub = subs[a]
         if sub is None or sub.size == 0:
-            inc[a, :] = mu_a
+            inc[a, :] = mu[a]
             continue
         if _injected is not None:
             idx = np.clip(_injected[a, :], 0, sub.size - 1)
         else:
-            idx = (rng.random(n_replicates) * sub.size).astype(np.int64)
-            idx = np.clip(idx, 0, sub.size - 1)
-        inc[a, :] = mu_a + sub[idx] * sqrt_term[a]
+            idx = np.clip((draws[pos] * sub.size).astype(np.int64), 0, sub.size - 1)
+            pos += 1
+        inc[a, :] = mu[a] + sub[idx] * sqrt_term[a]
     return inc
 
 
