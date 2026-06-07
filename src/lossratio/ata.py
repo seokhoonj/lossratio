@@ -25,6 +25,7 @@ from ._mack import _build_value_matrix, _fit_mack
 from .maturity import _compute_cv_rse
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from .link import Link
     from .maturity import Maturity
 
@@ -204,11 +205,11 @@ class ATA:
         return self
 
     @property
-    def df(self):
+    def df(self) -> "FrameLike":
         """Per-link diagnostic table in the original input format."""
         return mirror_output(self._df, self._output_type)
 
-    def summary(self):
+    def summary(self) -> "FrameLike":
         """Alias for :attr:`df` (parallel to :meth:`Intensity.summary`)."""
         return mirror_output(self._df, self._output_type)
 

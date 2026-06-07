@@ -26,6 +26,7 @@ from ._recent import validate_recent as _validate_recent
 from ._mack import _build_value_matrix
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from .link import Link
 
 
@@ -259,11 +260,11 @@ class Intensity:
         return self
 
     @property
-    def df(self):
+    def df(self) -> "FrameLike":
         """Per-link diagnostic table in the original input format."""
         return mirror_output(self._df, self._output_type)
 
-    def summary(self):
+    def summary(self) -> "FrameLike":
         """Alias for :attr:`df`. Provided for parity with
         :meth:`Maturity.summary`; ED has no separate ``mat_k``
         summary because there is no maturity concept."""

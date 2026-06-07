@@ -46,6 +46,7 @@ from .premium import Premium, PremiumFit
 from ._segment import _augment_segment_factors, _expand_to_full_grid
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from ._types import MaturityArg, RegimeArg, TailArg
     from .triangle import Triangle
 
@@ -1405,7 +1406,7 @@ class LossFit:
     def to_pandas(self):
         return self._df.to_pandas()
 
-    def summary(self) -> pl.DataFrame:
+    def summary(self) -> "FrameLike":
         """Per-cohort latest, ultimate loss, reserve, SE, and CV.
 
         Columns: ``[groups?, cohort, latest, loss_proj, reserve,

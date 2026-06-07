@@ -33,6 +33,7 @@ from ._mack import _mack_step_ed
 from ._mack import _build_premium_matrix
 
 if TYPE_CHECKING:
+    from ._io import FrameLike
     from ._types import RegimeArg, TailArg
     from .triangle import Triangle
 
@@ -689,7 +690,7 @@ class PremiumFit:
     def to_pandas(self):
         return self._df.to_pandas()
 
-    def summary(self) -> pl.DataFrame:
+    def summary(self) -> "FrameLike":
         """Per-cohort ultimate premium, SE, and CV.
 
         Columns are ``[groups?, cohort, premium_proj, premium_total_se,

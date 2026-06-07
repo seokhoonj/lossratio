@@ -790,7 +790,7 @@ class RatioFit:
     def to_pandas(self):
         return self._df.to_pandas()
 
-    def summary(self) -> pl.DataFrame:
+    def summary(self) -> "FrameLike":
         """Per-cohort ultimate loss, premium, and Ratio."""
         df = self._df
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]
@@ -919,7 +919,7 @@ class RatioFit:
         ).sort(keys)
         return mirror_output(out, self._output_type)
 
-    def segment_summary(self) -> pl.DataFrame:
+    def segment_summary(self) -> "FrameLike":
         """Ultimate loss ratio per regime SEGMENT, plus a total row.
 
         Splits :meth:`summary`'s per-cohort ultimates by the loss regime's

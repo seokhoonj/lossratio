@@ -88,11 +88,15 @@ class Total:
     def columns(self) -> list[str]:
         return self._df.columns
 
-    def summary(self) -> pl.DataFrame:
-        """Return rows sorted by descending ``ratio``."""
+    def summary(self) -> "FrameLike":
+        """Return rows sorted by descending ``ratio``.
+
+        Mirrors the input frame type (pandas in -> pandas out)."""
         if "ratio" not in self._df.columns:
-            return self._df
-        return self._df.sort("ratio", descending=True)
+            return mirror_output(self._df, self._output_type)
+        return mirror_output(
+            self._df.sort("ratio", descending=True), self._output_type
+        )
 
     def __repr__(self) -> str:
         bits = [f"{self._df.height:,} rows"]
