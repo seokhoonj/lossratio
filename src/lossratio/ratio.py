@@ -787,6 +787,23 @@ class RatioFit:
         # A fit can leave trailing null cells past a cohort's reach
         # (e.g. segment-bridged regimes), so "ultimate" must look at the
         # last non-null projection per cohort, not the last row.
+        #
+        # Tail cascade: when a tail is active the fit carries scalar
+        # companion columns `loss_tail` / `premium_tail` on each cohort's
+        # last-dev row (the tail-inclusive ultimate, vs `loss_proj` /
+        # `premium_proj` = the within-triangle cum to dev_max). The headline
+        # ULTIMATE must be tail-inclusive, so pull those through and fold
+        # them below. With no tail (the default) `*_tail` is absent and the
+        # behaviour is byte-identical to before.
+        has_tail = "loss_tail" in df.columns and "premium_tail" in df.columns
+        tail_agg = (
+            [
+                pl.col("loss_tail").drop_nulls().last().alias("loss_tail"),
+                pl.col("premium_tail").drop_nulls().last().alias("premium_tail"),
+            ]
+            if has_tail
+            else []
+        )
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
@@ -794,6 +811,7 @@ class RatioFit:
                 pl.col("loss_proj").drop_nulls().last().alias("loss_proj"),
                 pl.col("premium_proj").drop_nulls().last().alias("premium_proj"),
                 pl.col("ratio_proj").drop_nulls().last().alias("ratio_proj"),
+                *tail_agg,
                 # The columns below keep their own name -- last() preserves
                 # it, so no .alias() is needed.
                 pl.col("maturity_from").drop_nulls().last(),
@@ -807,6 +825,38 @@ class RatioFit:
                 pl.col("ratio_ci_hi").drop_nulls().last(),
             )
         )
+
+        # Fold the tail into the headline ultimate. Match the RatioFit /
+        # convergence tail composition: tail BOTH sides together or NEITHER
+        # -- never a tailed numerator over an untailed denominator. Where
+        # `*_tail` is missing for a cohort, fall both back to the untailed
+        # projection (exactly the `ratio_tail`-null case). `ratio_proj` is
+        # recomputed from the folded ultimate.
+        if has_tail:
+            both = (
+                pl.col("loss_tail").is_not_null()
+                & pl.col("premium_tail").is_not_null()
+                & (pl.col("premium_tail") != 0.0)
+            )
+            ultimate = ultimate.with_columns(
+                pl.when(both)
+                .then(pl.col("loss_tail"))
+                .otherwise(pl.col("loss_proj"))
+                .alias("loss_proj"),
+                pl.when(both)
+                .then(pl.col("premium_tail"))
+                .otherwise(pl.col("premium_proj"))
+                .alias("premium_proj"),
+            ).with_columns(
+                pl.when(
+                    pl.col("loss_proj").is_not_null()
+                    & pl.col("premium_proj").is_not_null()
+                    & (pl.col("premium_proj") != 0.0)
+                )
+                .then(pl.col("loss_proj") / pl.col("premium_proj"))
+                .otherwise(pl.col("ratio_proj"))
+                .alias("ratio_proj"),
+            ).drop("loss_tail", "premium_tail")
 
         out = observed.join(ultimate, on=keys, how="inner")
 
