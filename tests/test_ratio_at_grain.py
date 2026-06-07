@@ -209,52 +209,64 @@ def test_at_grain_tail_off_unchanged():
 
 
 def _summary_portfolio_ratio(summary_df) -> tuple[float, float, float]:
-    """Sum ``summary()``'s per-cohort ultimate loss / premium across the book."""
+    """Sum ``summary()``'s per-cohort ultimate loss / premium across the book.
+
+    Reads the tail-inclusive headline ``*_ultimate`` (= ``*_proj`` when no
+    tail is active); ``summary()`` keeps ``*_proj`` as the within-triangle
+    projection.
+    """
     s = (
         summary_df
         if isinstance(summary_df, pl.DataFrame)
         else pl.from_pandas(summary_df)
     )
-    loss = float(s["loss_proj"].sum())
-    prem = float(s["premium_proj"].sum())
+    loss = float(s["loss_ultimate"].sum())
+    prem = float(s["premium_ultimate"].sum())
     return loss, prem, loss / prem
 
 
 def test_summary_tail_inclusive_ultimate():
-    """``summary()``'s per-cohort ultimate must FOLD the tail when active.
+    """``summary()`` exposes the tail in a separate ``*_ultimate`` headline.
 
-    Each cohort's reported ``loss_proj`` / ``premium_proj`` becomes the
-    tail-inclusive ultimate (``*_tail`` on the last-dev row), so the
-    headline grows when a tail is turned on. The tail-off summary stays
-    the within-triangle ultimate.
+    ``loss_proj`` / ``premium_proj`` stay the WITHIN-TRIANGLE projection
+    (identical with the tail on or off); the tail-inclusive ultimate lives
+    in ``loss_ultimate`` / ``premium_ultimate``, which grows when a tail is
+    turned on.
     """
     off = _m_fit().summary()
     on = _m_fit_with_tail().summary()
     off = off if isinstance(off, pl.DataFrame) else pl.from_pandas(off)
     on = on if isinstance(on, pl.DataFrame) else pl.from_pandas(on)
 
-    # No `*_tail` columns leak into the summary schema either way.
+    # No `*_tail` companion columns leak into the summary schema either way.
     assert not [c for c in off.columns if c.endswith("_tail")]
     assert not [c for c in on.columns if c.endswith("_tail")]
 
-    j = off.select(["cohort", "loss_proj"]).rename(
-        {"loss_proj": "loss_off"}
+    j = off.select(["cohort", "loss_proj", "loss_ultimate"]).rename(
+        {"loss_proj": "proj_off", "loss_ultimate": "ult_off"}
     ).join(
-        on.select(["cohort", "loss_proj"]).rename({"loss_proj": "loss_on"}),
+        on.select(["cohort", "loss_proj", "loss_ultimate"]).rename(
+            {"loss_proj": "proj_on", "loss_ultimate": "ult_on"}
+        ),
         on="cohort",
     )
-    # tail-inclusive ultimate is never below the within-triangle one, and
-    # strictly above for at least one cohort (the tail adds real mass).
-    assert (j["loss_on"] >= j["loss_off"] - 1e-6).all()
-    assert (j["loss_on"] > j["loss_off"] + 1e-3).any()
+    # `loss_proj` is the within-triangle projection: identical tail on/off.
+    assert (j["proj_on"] - j["proj_off"]).abs().max() < 1e-6
+    # tail-off: ultimate == projection (no tail mass to fold).
+    assert (j["ult_off"] - j["proj_off"]).abs().max() < 1e-6
+    # tail-on: ultimate is never below the projection, and strictly above
+    # for at least one cohort (the tail adds real mass).
+    assert (j["ult_on"] >= j["proj_on"] - 1e-6).all()
+    assert (j["ult_on"] > j["proj_on"] + 1e-3).any()
 
 
 def test_summary_tail_matches_at_grain_q():
     """The cascade is M=Q-with-tail: ``summary()``'s portfolio ultimate
     ratio (M) equals ``at_grain('Q')``'s portfolio ultimate ratio (Q).
 
-    ``summary()`` now folds the tail; ``at_grain('Q')`` already does. Both
-    must land on the same tail-inclusive headline.
+    ``summary()`` carries the tail in its ``*_ultimate`` headline;
+    ``at_grain('Q')`` folds it into its coarse last-cell ``*_proj``. Both
+    name it differently but must land on the same tail-inclusive value.
     """
     fit = _m_fit_with_tail()
     m_loss, m_prem, m_ratio = _summary_portfolio_ratio(fit.summary())

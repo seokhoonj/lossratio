@@ -1407,13 +1407,15 @@ class LossFit:
         return self._df.to_pandas()
 
     def summary(self) -> "FrameLike":
-        """Per-cohort latest, ultimate loss, reserve, SE, and CV.
+        """Per-cohort latest, projected loss, reserve, SE, and CV.
 
-        Columns: ``[groups?, cohort, latest, loss_proj, reserve,
-        loss_proc_se, loss_param_se, loss_total_se, loss_total_cv]`` --
-        all from the last projected-dev row per cohort. ``latest`` is the
-        last observed cumulative loss, ``loss_proj`` the ultimate
-        projected loss, ``reserve = loss_proj - latest``.
+        Columns: ``[groups?, cohort, latest, loss_proj, loss_ultimate,
+        reserve, loss_proc_se, loss_param_se, loss_total_se,
+        loss_total_cv]`` -- all from the last projected-dev row per cohort.
+        ``latest`` is the last observed cumulative loss, ``loss_proj`` the
+        within-triangle projected loss, ``loss_ultimate`` the headline value
+        that folds in an active tail (else equal to ``loss_proj``), and
+        ``reserve = loss_proj - latest``.
         """
         df = self._df
         keys: list[str] = []
@@ -1433,17 +1435,41 @@ class LossFit:
         # RatioFit policy). drop_nulls() is a no-op when every cohort
         # projects to full development, and guards a fit that leaves
         # trailing null cells past a cohort's reach.
+        #
+        # Tail cascade: an active tail leaves a scalar `loss_tail` on each
+        # cohort's last-dev row. `loss_proj` stays the within-triangle
+        # projection; the tail-inclusive headline goes in `loss_ultimate`
+        # (= `loss_tail` where present, else `loss_proj`). With no tail
+        # `loss_ultimate` equals `loss_proj`.
+        has_tail = "loss_tail" in df.columns
+        tail_agg = (
+            [pl.col("loss_tail").drop_nulls().last().alias("loss_tail")]
+            if has_tail
+            else []
+        )
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").drop_nulls().last().alias("loss_proj"),
+                *tail_agg,
                 pl.col("loss_proc_se").drop_nulls().last().alias("loss_proc_se"),
                 pl.col("loss_param_se").drop_nulls().last().alias("loss_param_se"),
                 pl.col("loss_total_se").drop_nulls().last().alias("loss_total_se"),
                 pl.col("loss_total_cv").drop_nulls().last().alias("loss_total_cv"),
             )
         )
+        if has_tail:
+            ultimate = ultimate.with_columns(
+                pl.when(pl.col("loss_tail").is_not_null())
+                .then(pl.col("loss_tail"))
+                .otherwise(pl.col("loss_proj"))
+                .alias("loss_ultimate"),
+            ).drop("loss_tail")
+        else:
+            ultimate = ultimate.with_columns(
+                pl.col("loss_proj").alias("loss_ultimate")
+            )
 
         out = (
             observed.join(ultimate, on=keys, how="inner")
@@ -1455,6 +1481,7 @@ class LossFit:
                 + [
                     "latest",
                     "loss_proj",
+                    "loss_ultimate",
                     "reserve",
                     "loss_proc_se",
                     "loss_param_se",

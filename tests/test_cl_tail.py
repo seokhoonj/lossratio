@@ -312,6 +312,49 @@ def test_ratio_tail_attr_round_trip(tri):
     assert rf.tail == 1.05
 
 
+def test_summary_no_tail_ultimate_equals_proj(tri):
+    # With no tail every `*_ultimate` headline equals its `*_proj` (the
+    # `*_ultimate` columns are purely additive, byte-identical values).
+    rf = lr.Ratio(method="cl").fit(tri).summary()
+    assert rf["loss_ultimate"].equals(rf["loss_proj"])
+    assert rf["premium_ultimate"].equals(rf["premium_proj"])
+    assert rf["ratio_ultimate"].equals(rf["ratio_proj"])
+    lf = lr.ChainLadder().fit(tri).summary()
+    assert lf["loss_ultimate"].equals(lf["loss_proj"])
+    pf = lr.Premium().fit(tri).summary()
+    assert pf["premium_ultimate"].equals(pf["premium_proj"])
+
+
+def test_summary_ultimate_consistent_across_fits(tri):
+    # Regression: a numeric tail must move the SUMMARY headline `*_ultimate`
+    # identically across LossFit / PremiumFit / RatioFit, and must NOT
+    # overwrite the within-triangle `*_proj`. (RatioFit used to fold the tail
+    # into `loss_proj`, making the same column tail-inclusive for RatioFit
+    # but tail-exclusive for LossFit / PremiumFit.)
+    keys = ["coverage", "cohort"]
+    lf = lr.ChainLadder(tail=1.10).fit(tri).summary().sort(keys)
+    pf = lr.Premium(tail=1.10).fit(tri).summary().sort(keys)
+    rf = lr.Ratio(method="cl", tail=1.10).fit(tri).summary().sort(keys)
+
+    # `*_proj` is the within-triangle projection in every class.
+    assert rf["loss_proj"].equals(lf["loss_proj"])
+    assert rf["premium_proj"].equals(pf["premium_proj"])
+
+    # `*_ultimate` is the tail-inclusive headline, consistent across classes.
+    assert rf["loss_ultimate"].equals(lf["loss_ultimate"])
+    assert rf["premium_ultimate"].equals(pf["premium_ultimate"])
+
+    # A numeric tail is exactly 1.10x the within-triangle projection, and
+    # `ratio_ultimate` is composed from the folded loss/premium ultimate.
+    lu, lp = lf["loss_ultimate"].to_numpy(), lf["loss_proj"].to_numpy()
+    mask = np.isfinite(lu) & np.isfinite(lp) & (lp != 0.0)
+    assert np.allclose(lu[mask], 1.10 * lp[mask])
+    ru = rf["ratio_ultimate"].to_numpy()
+    rc = (rf["loss_ultimate"] / rf["premium_ultimate"]).to_numpy()
+    m2 = np.isfinite(ru) & np.isfinite(rc)
+    assert np.allclose(ru[m2], rc[m2])
+
+
 # --- ExposureDriven(tail=...) : additive g->0 tail ----------------------
 
 

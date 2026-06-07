@@ -622,7 +622,13 @@ def test_tail_segment_borrowed_mass_is_grain_stable():
         )
         return u["V"].sum()
 
-    for col, role in (("loss_proj", "loss"), ("premium_proj", "premium")):
-        mass_M = on.summary()[col].sum() - off.summary()[col].sum()
-        mass_Q = q_ult(on, col) - q_ult(off, col)
+    # `summary()` carries the tail in its `*_ultimate` headline; `at_grain`
+    # folds it into the coarse last-cell `*_proj`. Same value, different
+    # column name across the two surfaces.
+    for scol, qcol in (
+        ("loss_ultimate", "loss_proj"),
+        ("premium_ultimate", "premium_proj"),
+    ):
+        mass_M = on.summary()[scol].sum() - off.summary()[scol].sum()
+        mass_Q = q_ult(on, qcol) - q_ult(off, qcol)
         assert mass_M == pytest.approx(mass_Q, rel=1e-9)

@@ -791,7 +791,15 @@ class RatioFit:
         return self._df.to_pandas()
 
     def summary(self) -> "FrameLike":
-        """Per-cohort ultimate loss, premium, and Ratio."""
+        """Per-cohort projected loss, premium, and ratio.
+
+        `loss_proj` / `premium_proj` / `ratio_proj` are the within-triangle
+        projections (cumulative to the last development). `loss_ultimate` /
+        `premium_ultimate` / `ratio_ultimate` are the headline values that
+        fold in an active tail (the tail-extrapolated value when present for
+        both loss and premium, else the projection); with no tail they equal
+        the `*_proj` columns.
+        """
         df = self._df
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]
 
@@ -815,10 +823,12 @@ class RatioFit:
         # Tail cascade: when a tail is active the fit carries scalar
         # companion columns `loss_tail` / `premium_tail` on each cohort's
         # last-dev row (the tail-inclusive ultimate, vs `loss_proj` /
-        # `premium_proj` = the within-triangle cum to dev_max). The headline
-        # ULTIMATE must be tail-inclusive, so pull those through and fold
-        # them below. With no tail (the default) `*_tail` is absent and the
-        # behaviour is byte-identical to before.
+        # `premium_proj` = the within-triangle cum to dev_max). Pull those
+        # through and expose them as a SEPARATE `*_ultimate` headline below;
+        # `*_proj` is LEFT as the within-triangle projection so the column
+        # means the same thing here and in `LossFit` / `PremiumFit` summaries.
+        # With no tail (the default) `*_tail` is absent and each `*_ultimate`
+        # equals its `*_proj`.
         has_tail = "loss_tail" in df.columns and "premium_tail" in df.columns
         tail_agg = (
             [
@@ -850,12 +860,13 @@ class RatioFit:
             )
         )
 
-        # Fold the tail into the headline ultimate. Match the RatioFit /
-        # convergence tail composition: tail BOTH sides together or NEITHER
-        # -- never a tailed numerator over an untailed denominator. Where
-        # `*_tail` is missing for a cohort, fall both back to the untailed
-        # projection (exactly the `ratio_tail`-null case). `ratio_proj` is
-        # recomputed from the folded ultimate.
+        # Build the headline `*_ultimate`. Match the RatioFit / convergence
+        # tail composition: tail BOTH sides together or NEITHER -- never a
+        # tailed numerator over an untailed denominator. Where `*_tail` is
+        # missing for a cohort, fall both back to the within-triangle
+        # projection (exactly the `ratio_tail`-null case). `ratio_ultimate`
+        # is recomposed from the folded loss/premium ultimate. The `*_proj`
+        # columns are NOT overwritten.
         if has_tail:
             both = (
                 pl.col("loss_tail").is_not_null()
@@ -866,21 +877,27 @@ class RatioFit:
                 pl.when(both)
                 .then(pl.col("loss_tail"))
                 .otherwise(pl.col("loss_proj"))
-                .alias("loss_proj"),
+                .alias("loss_ultimate"),
                 pl.when(both)
                 .then(pl.col("premium_tail"))
                 .otherwise(pl.col("premium_proj"))
-                .alias("premium_proj"),
+                .alias("premium_ultimate"),
             ).with_columns(
                 pl.when(
-                    pl.col("loss_proj").is_not_null()
-                    & pl.col("premium_proj").is_not_null()
-                    & (pl.col("premium_proj") != 0.0)
+                    pl.col("loss_ultimate").is_not_null()
+                    & pl.col("premium_ultimate").is_not_null()
+                    & (pl.col("premium_ultimate") != 0.0)
                 )
-                .then(pl.col("loss_proj") / pl.col("premium_proj"))
+                .then(pl.col("loss_ultimate") / pl.col("premium_ultimate"))
                 .otherwise(pl.col("ratio_proj"))
-                .alias("ratio_proj"),
+                .alias("ratio_ultimate"),
             ).drop("loss_tail", "premium_tail")
+        else:
+            ultimate = ultimate.with_columns(
+                pl.col("loss_proj").alias("loss_ultimate"),
+                pl.col("premium_proj").alias("premium_ultimate"),
+                pl.col("ratio_proj").alias("ratio_ultimate"),
+            )
 
         out = observed.join(ultimate, on=keys, how="inner")
 
@@ -902,10 +919,13 @@ class RatioFit:
             + [
                 "latest",
                 "loss_proj",
+                "loss_ultimate",
                 "reserve",
                 "premium_proj",
+                "premium_ultimate",
                 "ratio_latest",
                 "ratio_proj",
+                "ratio_ultimate",
                 "maturity_from",
                 "loss_proc_se",
                 "loss_param_se",

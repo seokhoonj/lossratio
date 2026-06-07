@@ -691,10 +691,13 @@ class PremiumFit:
         return self._df.to_pandas()
 
     def summary(self) -> "FrameLike":
-        """Per-cohort ultimate premium, SE, and CV.
+        """Per-cohort projected premium, SE, and CV.
 
-        Columns are ``[groups?, cohort, premium_proj, premium_total_se,
-        premium_total_cv]`` -- the last projected-dev row per cohort.
+        Columns are ``[groups?, cohort, premium_proj, premium_ultimate,
+        premium_total_se, premium_total_cv]`` -- the last projected-dev row
+        per cohort. ``premium_proj`` is the within-triangle projection;
+        ``premium_ultimate`` is the headline value that folds in an active
+        tail (else equal to ``premium_proj``).
         """
         df = self._df
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]
@@ -702,16 +705,47 @@ class PremiumFit:
         # Ultimate per cohort = last *non-null* projection (matches the
         # RatioFit policy; no-op when every cohort projects to full
         # development).
+        #
+        # Tail cascade: an active tail leaves a scalar `premium_tail` on each
+        # cohort's last-dev row. `premium_proj` stays the within-triangle
+        # projection; the tail-inclusive headline goes in `premium_ultimate`
+        # (= `premium_tail` where present, else `premium_proj`).
+        has_tail = "premium_tail" in df.columns
+        tail_agg = (
+            [pl.col("premium_tail").drop_nulls().last().alias("premium_tail")]
+            if has_tail
+            else []
+        )
         ultimate = (
             df.sort(keys + ["dev"])
             .group_by(keys)
             .agg(
                 pl.col("premium_proj").drop_nulls().last().alias("premium_proj"),
+                *tail_agg,
                 pl.col("premium_total_se").drop_nulls().last().alias("premium_total_se"),
                 pl.col("premium_total_cv").drop_nulls().last().alias("premium_total_cv"),
             )
-            .sort(keys)
         )
+        if has_tail:
+            ultimate = ultimate.with_columns(
+                pl.when(pl.col("premium_tail").is_not_null())
+                .then(pl.col("premium_tail"))
+                .otherwise(pl.col("premium_proj"))
+                .alias("premium_ultimate"),
+            ).drop("premium_tail")
+        else:
+            ultimate = ultimate.with_columns(
+                pl.col("premium_proj").alias("premium_ultimate")
+            )
+        ultimate = ultimate.select(
+            keys
+            + [
+                "premium_proj",
+                "premium_ultimate",
+                "premium_total_se",
+                "premium_total_cv",
+            ]
+        ).sort(keys)
         return mirror_output(ultimate, self._output_type)
 
     @property
