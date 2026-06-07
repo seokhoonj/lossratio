@@ -1,4 +1,4 @@
-"""Smoke tests for ``LossFit.plot(kind='projection' | 'reserve')``.
+"""Smoke tests for ``LossFit.plot(kind='projection' | 'remaining')``.
 
 Mirrors the R sibling's ``plot.CLFit`` two-type dispatcher
 (``R/cl-vis.R``). Plot bit-parity is not in scope; these tests assert
@@ -89,15 +89,15 @@ def test_cl_projection_bootstrap_caption(tri_single):
         _close(fig)
 
 
-# --- type='reserve' ------------------------------------------------------
+# --- kind='remaining' ----------------------------------------------------
 
 
-def test_cl_reserve_renders(tri_single):
+def test_cl_remaining_renders(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(kind="reserve")
+    fig = cf.plot(kind="remaining")
     try:
         assert isinstance(fig, plt.Figure)
-        assert "Reserve" in fig._suptitle.get_text()
+        assert "Remaining" in fig._suptitle.get_text()
         # at least one horizontal bar
         for ax in fig.axes:
             if not ax.get_visible():
@@ -108,9 +108,9 @@ def test_cl_reserve_renders(tri_single):
         _close(fig)
 
 
-def test_cl_reserve_multi_group(tri_multi):
+def test_cl_remaining_multi_group(tri_multi):
     cf = lr.ChainLadder().fit(tri_multi)
-    fig = cf.plot(kind="reserve")
+    fig = cf.plot(kind="remaining")
     try:
         assert isinstance(fig, plt.Figure)
         n_groups = cf._df["coverage"].n_unique()
@@ -120,9 +120,9 @@ def test_cl_reserve_multi_group(tri_multi):
         _close(fig)
 
 
-def test_cl_reserve_show_interval_false(tri_single):
+def test_cl_remaining_show_interval_false(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(kind="reserve", show_interval=False)
+    fig = cf.plot(kind="remaining", show_interval=False)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert not captions
@@ -130,9 +130,9 @@ def test_cl_reserve_show_interval_false(tri_single):
         _close(fig)
 
 
-def test_cl_reserve_show_interval_true_has_caption(tri_single):
+def test_cl_remaining_show_interval_true_has_caption(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
-    fig = cf.plot(kind="reserve", show_interval=True)
+    fig = cf.plot(kind="remaining", show_interval=True)
     try:
         captions = [t.get_text() for t in fig.texts if "Interval" in t.get_text()]
         assert captions
@@ -152,4 +152,4 @@ def test_cl_plot_invalid_type(tri_single):
 def test_cl_plot_invalid_divisor(tri_single):
     cf = lr.ChainLadder().fit(tri_single)
     with pytest.raises(ValueError, match="amount_divisor"):
-        cf.plot(kind="reserve", amount_divisor="too-much")
+        cf.plot(kind="remaining", amount_divisor="too-much")

@@ -382,11 +382,12 @@ def test_ratio_sa_summary_matches_r():
     Python (no projection) vs 0 in R; `_compare_numeric` skips those.
     """
     # R names the summary endpoint columns loss_ult / premium_ult /
-    # ratio_ult; Python uses loss_proj / premium_proj / ratio_proj. Align
-    # the R fixture on load so the numeric compare lines up.
+    # ratio_ult / reserve; Python uses loss_proj / premium_proj /
+    # ratio_proj / loss_proj_remaining. Align the R fixture on load so the
+    # numeric compare lines up.
     r = _load("ratio_sa_summary").rename(
         {"loss_ult": "loss_proj", "premium_ult": "premium_proj",
-         "ratio_ult": "ratio_proj"}
+         "ratio_ult": "ratio_proj", "reserve": "loss_proj_remaining"}
     ).sort(["cohort"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     ratio_fit = lr.Ratio(method="sa").fit(tri)
@@ -395,7 +396,7 @@ def test_ratio_sa_summary_matches_r():
     _compare_numeric(
         py, r,
         cols=[
-            "latest", "loss_proj", "reserve", "premium_proj",
+            "latest", "loss_proj", "loss_proj_remaining", "premium_proj",
             "ratio_latest", "ratio_proj", "maturity_from",
             "loss_proc_se", "loss_param_se", "loss_total_se",
             "loss_total_cv", "ratio_se", "ratio_cv",

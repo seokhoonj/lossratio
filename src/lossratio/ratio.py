@@ -901,10 +901,11 @@ class RatioFit:
 
         out = observed.join(ultimate, on=keys, how="inner")
 
-        # `reserve` = ultimate projected loss - last observed cumulative
-        # loss; `ratio_latest` = last observed loss / premium (guarded).
+        # `loss_proj_remaining` = within-triangle projected loss - last
+        # observed cumulative loss (the unobserved remaining development);
+        # `ratio_latest` = last observed loss / premium (guarded).
         out = out.with_columns(
-            (pl.col("loss_proj") - pl.col("latest")).alias("reserve"),
+            (pl.col("loss_proj") - pl.col("latest")).alias("loss_proj_remaining"),
             pl.when(
                 pl.col("_premium_latest").is_not_null()
                 & (pl.col("_premium_latest") != 0.0)
@@ -920,7 +921,7 @@ class RatioFit:
                 "latest",
                 "loss_proj",
                 "loss_ultimate",
-                "reserve",
+                "loss_proj_remaining",
                 "premium_proj",
                 "premium_ultimate",
                 "ratio_latest",

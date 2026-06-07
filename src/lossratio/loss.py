@@ -1407,15 +1407,16 @@ class LossFit:
         return self._df.to_pandas()
 
     def summary(self) -> "FrameLike":
-        """Per-cohort latest, projected loss, reserve, SE, and CV.
+        """Per-cohort latest, projected loss, remaining, SE, and CV.
 
         Columns: ``[groups?, cohort, latest, loss_proj, loss_ultimate,
-        reserve, loss_proc_se, loss_param_se, loss_total_se,
+        loss_proj_remaining, loss_proc_se, loss_param_se, loss_total_se,
         loss_total_cv]`` -- all from the last projected-dev row per cohort.
         ``latest`` is the last observed cumulative loss, ``loss_proj`` the
         within-triangle projected loss, ``loss_ultimate`` the headline value
         that folds in an active tail (else equal to ``loss_proj``), and
-        ``reserve = loss_proj - latest``.
+        ``loss_proj_remaining = loss_proj - latest`` (the unobserved
+        remaining development).
         """
         df = self._df
         keys: list[str] = []
@@ -1474,7 +1475,9 @@ class LossFit:
         out = (
             observed.join(ultimate, on=keys, how="inner")
             .with_columns(
-                (pl.col("loss_proj") - pl.col("latest")).alias("reserve")
+                (pl.col("loss_proj") - pl.col("latest")).alias(
+                    "loss_proj_remaining"
+                )
             )
             .select(
                 keys
@@ -1482,7 +1485,7 @@ class LossFit:
                     "latest",
                     "loss_proj",
                     "loss_ultimate",
-                    "reserve",
+                    "loss_proj_remaining",
                     "loss_proc_se",
                     "loss_param_se",
                     "loss_total_se",
@@ -1512,19 +1515,20 @@ class LossFit:
         Parameters
         ----------
         kind
-            ``"projection"`` (default) or ``"reserve"``.
+            ``"projection"`` (default) or ``"remaining"``.
 
             * ``"projection"`` -- per-cohort cumulative observed loss
               (solid) -> bridge -> projected loss (dashed), with an
               optional analytical / bootstrap confidence ribbon when
               ``show_interval=True`` and ``loss_total_se`` is available.
-            * ``"reserve"`` -- per-cohort reserve bar chart with optional
-              normal-approximation error bars from ``loss_total_se``.
+            * ``"remaining"`` -- per-cohort projected-remaining bar chart
+              (``loss_proj - latest``) with optional normal-approximation
+              error bars from ``loss_total_se``.
         conf_level
             Override the fit's stored ``conf_level`` for the interval.
         show_interval
             Draw the confidence ribbon (``projection``) or error bars
-            (``reserve``). No-op if the fit has no per-cell SE.
+            (``remaining``). No-op if the fit has no per-cell SE.
         amount_divisor
             ``"auto"`` (default) auto-selects the y-axis scale.
         nrow, ncol
@@ -1536,13 +1540,13 @@ class LossFit:
         -------
         matplotlib.figure.Figure
         """
-        if kind not in ("projection", "reserve"):
+        if kind not in ("projection", "remaining"):
             raise ValueError(
-                f"`kind` must be 'projection' or 'reserve'; got {kind!r}."
+                f"`kind` must be 'projection' or 'remaining'; got {kind!r}."
             )
-        if kind == "reserve":
-            from ._cl_vis import plot_cl_reserve
-            return plot_cl_reserve(
+        if kind == "remaining":
+            from ._cl_vis import plot_cl_remaining
+            return plot_cl_remaining(
                 self,
                 conf_level=conf_level if conf_level is not None else 0.95,
                 show_interval=show_interval,
