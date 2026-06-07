@@ -18,12 +18,33 @@ extensions = [
     "myst_parser",
     "sphinx_design",
     "sphinx_copybutton",
+    "sphinxcontrib.mermaid",
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "matplotlib.sphinxext.plot_directive",
 ]
+
+# mermaid flowcharts (process / pipeline diagrams in the tutorial).
+mermaid_init_config = {
+    "startOnLoad": False,
+    "securityLevel": "loose",
+    "flowchart": {
+        "curve": "basis",
+        "nodeSpacing": 24,
+        "rankSpacing": 34,
+        "padding": 8,
+        "htmlLabels": True,
+    },
+    "themeVariables": {
+        "fontSize": "14px",
+        "primaryColor": "#f4f7fa",
+        "primaryTextColor": "#24313a",
+        "primaryBorderColor": "#9aa9b5",
+        "lineColor": "#788a97",
+    },
+}
 
 # matplotlib plot_directive -- run tutorial plot code at build time and
 # embed the resulting figure. Keeps code and figures in lockstep so no

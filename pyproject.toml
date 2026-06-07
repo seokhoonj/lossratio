@@ -58,6 +58,7 @@ docs = [
   "myst-parser>=2.0",
   "sphinx-design",
   "sphinx-copybutton",
+  "sphinxcontrib-mermaid",
 ]
 
 [project.urls]
