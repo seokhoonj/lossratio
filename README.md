@@ -110,17 +110,17 @@ ata.maturity(max_cv=0.15, max_rse=0.05, min_run=2).point
 # 3. Project loss ratios with the stage-adaptive method (ED before the
 #    maturity point, CL after). `lr.Ratio()` defaults to method="ed".
 fit = lr.Ratio(method="sa").fit(tri)
-fit.summary().select(["coverage", "cohort", "ratio_ult", "ratio_se", "ratio_cv"]).head(3)
+fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se", "ratio_cv"]).head(3)
 #> shape: (3, 5)
-#> ┌──────────┬────────────┬───────────┬──────────┬──────────┐
-#> │ coverage ┆ cohort     ┆ ratio_ult ┆ ratio_se ┆ ratio_cv │
-#> │ ---      ┆ ---        ┆ ---       ┆ ---      ┆ ---      │
-#> │ str      ┆ date       ┆ f64       ┆ f64      ┆ f64      │
-#> ╞══════════╪════════════╪═══════════╪══════════╪══════════╡
-#> │ SUR      ┆ 2023-01-01 ┆ 1.509562  ┆ null     ┆ null     │
-#> │ SUR      ┆ 2023-02-01 ┆ 1.508976  ┆ 0.004335 ┆ 0.002873 │
-#> │ SUR      ┆ 2023-03-01 ┆ 1.522523  ┆ 0.00836  ┆ 0.005491 │
-#> └──────────┴────────────┴───────────┴──────────┴──────────┘
+#> ┌──────────┬────────────┬────────────┬──────────┬──────────┐
+#> │ coverage ┆ cohort     ┆ ratio_proj ┆ ratio_se ┆ ratio_cv │
+#> │ ---      ┆ ---        ┆ ---        ┆ ---      ┆ ---      │
+#> │ str      ┆ date       ┆ f64        ┆ f64      ┆ f64      │
+#> ╞══════════╪════════════╪════════════╪══════════╪══════════╡
+#> │ SUR      ┆ 2023-01-01 ┆ 1.509562   ┆ null     ┆ null     │
+#> │ SUR      ┆ 2023-02-01 ┆ 1.508976   ┆ 0.004335 ┆ 0.002873 │
+#> │ SUR      ┆ 2023-03-01 ┆ 1.522523   ┆ 0.00836  ┆ 0.005491 │
+#> └──────────┴────────────┴────────────┴──────────┴──────────┘
 
 # 4. Detect cohort regime shifts (E-Divisive over the cohort ratio path).
 reg = tri.detect_regime(target="ratio", window=12)
