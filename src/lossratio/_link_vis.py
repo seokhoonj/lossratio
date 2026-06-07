@@ -71,7 +71,7 @@ def _plot_link_ata(
     link: Link,
     kind: str = "cv",
     alpha: float = 1.0,
-    show_maturity: bool = True,
+    show_factor_stability: bool = True,
     max_cv: float = 0.15,
     max_rse: float = 0.05,
     min_run: int = 1,
@@ -89,11 +89,11 @@ def _plot_link_ata(
     cells = link._df
     summary = _ata_summary(cells, groups)
 
-    # Maturity overlay (per-group dev_from where CV / RSE drop below
-    # thresholds and stay there for `min_run` consecutive links).
-    maturity = _detect_maturity_overlay(
+    # Factor-stability overlay (per-group dev_from where CV / RSE drop
+    # below thresholds and stay there for `min_run` consecutive links).
+    factor_stability = _detect_factor_stability_overlay(
         summary, groups, max_cv=max_cv, max_rse=max_rse, min_run=min_run
-    ) if show_maturity else None
+    ) if show_factor_stability else None
 
     if kind == "cv":
         return _plot_per_link_scalar(
@@ -103,7 +103,7 @@ def _plot_link_ata(
             y_label="CV",
             title="Coefficient of Variation of ATA Factors",
             hline=max_cv,
-            maturity=maturity,
+            factor_stability=factor_stability,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     if kind == "rse":
@@ -114,7 +114,7 @@ def _plot_link_ata(
             y_label="RSE",
             title="Relative Standard Error of ATA Factors",
             hline=max_rse,
-            maturity=maturity,
+            factor_stability=factor_stability,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     if kind == "summary":
@@ -125,7 +125,7 @@ def _plot_link_ata(
             y_label="factor",
             title="Summary of ATA Factors",
             hline=1.0,
-            maturity=maturity,
+            factor_stability=factor_stability,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     if kind == "box":
@@ -137,7 +137,7 @@ def _plot_link_ata(
             y_label="factor",
             title="Box Plot of ATA Factors",
             hline=1.0,
-            maturity=maturity,
+            factor_stability=factor_stability,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     # point
@@ -149,7 +149,7 @@ def _plot_link_ata(
         y_label="factor",
         title="Distribution of ATA Factors",
         hline=1.0,
-        maturity=maturity,
+        factor_stability=factor_stability,
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
 
@@ -184,7 +184,7 @@ def _plot_link_ed(
             y_label="intensity",
             title="Summary of Incremental Loss Intensity (g)",
             hline=0.0,
-            maturity=None,
+            factor_stability=None,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     if kind == "box":
@@ -196,7 +196,7 @@ def _plot_link_ed(
             y_label="intensity",
             title="Box Plot of Incremental Loss Intensity (g)",
             hline=0.0,
-            maturity=None,
+            factor_stability=None,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     return _plot_per_link_distribution(
@@ -207,7 +207,7 @@ def _plot_link_ed(
         y_label="intensity",
         title="Distribution of Incremental Loss Intensity (g)",
         hline=0.0,
-        maturity=None,
+        factor_stability=None,
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
 
@@ -289,7 +289,7 @@ def _ed_summary(
     return agg.sort(by)
 
 
-def _detect_maturity_overlay(
+def _detect_factor_stability_overlay(
     summary: pl.DataFrame,
     groups: str | list[str] | None,
     *,
@@ -344,7 +344,7 @@ def _plot_per_link_scalar(
     y_label: str,
     title: str,
     hline: float | None,
-    maturity: pl.DataFrame | None,
+    factor_stability: pl.DataFrame | None,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
@@ -365,7 +365,7 @@ def _plot_per_link_scalar(
             ax.plot(x[m], y[m], color="C0", linewidth=1.2, marker="o")
         if hline is not None:
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
-        _apply_maturity_overlay(ax, maturity, group_value, groups, y_max=hline)
+        _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=hline)
         _set_link_xticks(ax, x, link_labels)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
@@ -385,7 +385,7 @@ def _plot_summary_lines(
     y_label: str,
     title: str,
     hline: float | None,
-    maturity: pl.DataFrame | None,
+    factor_stability: pl.DataFrame | None,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
@@ -413,7 +413,7 @@ def _plot_summary_lines(
                 )
         if hline is not None:
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
-        _apply_maturity_overlay(ax, maturity, group_value, groups, y_max=None)
+        _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=None)
         _set_link_xticks(ax, x, link_labels)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
@@ -435,7 +435,7 @@ def _plot_per_link_distribution(
     y_label: str,
     title: str,
     hline: float | None,
-    maturity: pl.DataFrame | None,
+    factor_stability: pl.DataFrame | None,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
@@ -492,7 +492,7 @@ def _plot_per_link_distribution(
 
         if hline is not None:
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
-        _apply_maturity_overlay(ax, maturity, group_value, groups, y_max=None)
+        _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=None)
         _set_link_xticks(ax, dev_from_vals, link_labels)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
@@ -572,24 +572,24 @@ def _set_link_xticks(
                        rotation=90, fontsize=8)
 
 
-def _apply_maturity_overlay(
+def _apply_factor_stability_overlay(
     ax,
-    maturity: pl.DataFrame | None,
+    factor_stability: pl.DataFrame | None,
     group_value: Any,
     groups: str | list[str] | None,
     y_max: float | None,
 ) -> None:
-    if maturity is None or maturity.height == 0:
+    if factor_stability is None or factor_stability.height == 0:
         return
     if groups is not None:
-        sub = maturity.filter(group_eq(groups, group_value))
+        sub = factor_stability.filter(group_eq(groups, group_value))
     else:
-        sub = maturity
+        sub = factor_stability
     if sub.height == 0:
         return
     dev_from = int(sub["dev_from"][0])
     ax.axvline(dev_from, color="grey", linestyle=(0, (5, 4)), linewidth=0.8)
-    # shaded band from maturity onwards
+    # shaded band from factor_stability onwards
     xlim = ax.get_xlim()
     ax.axvspan(
         dev_from, xlim[1],
@@ -599,7 +599,7 @@ def _apply_maturity_overlay(
     cv = sub["cv"][0] if "cv" in sub.columns else None
     rse = sub["rse"][0] if "rse" in sub.columns else None
     dev_to = int(sub["dev_to"][0])
-    parts = [f"maturity: {dev_from}-{dev_to}"]
+    parts = [f"factor stable: {dev_from}-{dev_to}"]
     if cv is not None:
         parts.append(f"cv: {cv:.3f}")
     if rse is not None:

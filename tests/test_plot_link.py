@@ -112,9 +112,9 @@ def test_link_ata_cv_has_threshold_line(tri_multi):
         _close(fig)
 
 
-def test_link_ata_show_maturity_false(tri_multi):
+def test_link_ata_show_factor_stability_false(tri_multi):
     link = tri_multi.link()
-    fig = link.plot(model="ata", kind="cv", show_maturity=False)
+    fig = link.plot(model="ata", kind="cv", show_factor_stability=False)
     try:
         # no axvspan / axvline overlays (only the axhline)
         for ax in fig.axes:

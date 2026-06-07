@@ -253,7 +253,7 @@ class ATA:
         Delegates to :meth:`Link.plot` with ``model='ata'`` on the
         underlying :class:`Link`. Accepts the same kwargs as
         ``Link.plot(model='ata', ...)``: ``kind``, ``alpha``,
-        ``show_maturity``, ``max_cv``, ``max_rse``, ``min_run``,
+        ``show_factor_stability``, ``max_cv``, ``max_rse``, ``min_run``,
         ``nrow``, ``ncol``, ``figsize``.
         """
         from ._link_vis import plot_link

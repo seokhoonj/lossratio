@@ -343,7 +343,7 @@ class Link:
 
         For ``model="ata"`` accepts:
         ``kind in {"cv","rse","summary","box","point"}``,
-        ``alpha``, ``show_maturity``, ``max_cv``, ``max_rse``,
+        ``alpha``, ``show_factor_stability``, ``max_cv``, ``max_rse``,
         ``min_run``, ``nrow``, ``ncol``, ``figsize``.
 
         For ``model="ed"`` accepts:
