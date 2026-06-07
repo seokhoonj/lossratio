@@ -646,7 +646,119 @@ class RatioFit:
             pl.col("ratio").alias("ratio_proj"),
             pl.col("incr_ratio").alias("incr_ratio_proj"),
         )
+
+        # 2) Fold any active tail mass into the coarse ultimate -----------
+        # When a tail is active, the tail's extra ultimate mass lives as a
+        # scalar companion column (`loss_tail` / `premium_tail`) on each
+        # fine cohort's last-dev row -- NOT in `incr_*_proj`. The pure
+        # re-binning above is therefore tail-blind. Fold the per-fine-cohort
+        # tail mass (`<role>_tail - <role>_proj` at its last dev) into the
+        # coarse cohort's last-dev cumulative so the coarse ultimate matches
+        # the tail-inclusive fine ultimate. When no tail is active (columns
+        # absent or all null), this is a no-op and `out` is byte-identical.
+        out = self._fold_tail_into_coarse(out, target_grain, groups)
+
         return mirror_output(out, self._output_type)
+
+    def _fold_tail_into_coarse(
+        self,
+        out: pl.DataFrame,
+        target_grain: str,
+        groups: list[str],
+    ) -> pl.DataFrame:
+        """Add per-coarse-cohort tail mass to the coarse last-dev ultimate.
+
+        No-op (returns ``out`` unchanged) when no ``*_tail`` columns are
+        present or every tail value is null.
+        """
+        from ._period import floor_to_period
+
+        roles = [
+            r
+            for r in ("loss", "premium")
+            if f"{r}_tail" in self._df.columns
+        ]
+        if not roles:
+            return out
+
+        # Per fine cohort, the tail mass = <role>_tail - <role>_proj on the
+        # rows where <role>_tail is non-null (precisely the last-dev rows).
+        tail_mass_exprs = [
+            (pl.col(f"{r}_tail") - pl.col(f"{r}_proj")).alias(f"_{r}_tail_mass")
+            for r in roles
+        ]
+        any_tail = pl.any_horizontal(
+            *[pl.col(f"{r}_tail").is_not_null() for r in roles]
+        )
+        fine_mass = (
+            self._df.filter(any_tail)
+            .with_columns(*tail_mass_exprs)
+            .select(
+                *groups,
+                floor_to_period(pl.col("cohort"), target_grain).alias("cohort"),
+                *[pl.col(f"_{r}_tail_mass") for r in roles],
+            )
+        )
+        if fine_mass.height == 0:
+            return out
+
+        keys = [*groups, "cohort"]
+        coarse_mass = fine_mass.group_by(keys).agg(
+            *[
+                pl.col(f"_{r}_tail_mass").sum().alias(f"_{r}_tail_mass")
+                for r in roles
+            ]
+        )
+
+        # Identify each coarse cohort's last-dev row.
+        marked = out.with_columns(
+            pl.col("dev")
+            .rank(method="dense", descending=True)
+            .over(keys)
+            .alias("_dev_rank")
+        )
+        merged = marked.join(coarse_mass, on=keys, how="left")
+        is_last = pl.col("_dev_rank") == 1
+
+        add_exprs: list[pl.Expr] = []
+        for r in roles:
+            mass = pl.col(f"_{r}_tail_mass").fill_null(0.0)
+            add_exprs.append(
+                pl.when(is_last)
+                .then(pl.col(f"{r}_proj") + mass)
+                .otherwise(pl.col(f"{r}_proj"))
+                .alias(f"{r}_proj")
+            )
+            add_exprs.append(
+                pl.when(is_last)
+                .then(pl.col(f"incr_{r}_proj") + mass)
+                .otherwise(pl.col(f"incr_{r}_proj"))
+                .alias(f"incr_{r}_proj")
+            )
+        merged = merged.with_columns(*add_exprs)
+
+        # Recompute the ratios on the (now tail-inclusive) coarse cells.
+        merged = merged.with_columns(
+            pl.when(
+                pl.col("loss_proj").is_not_null()
+                & pl.col("premium_proj").is_not_null()
+                & (pl.col("premium_proj") != 0.0)
+            )
+            .then(pl.col("loss_proj") / pl.col("premium_proj"))
+            .otherwise(None)
+            .alias("ratio_proj"),
+            pl.when(
+                pl.col("incr_loss_proj").is_not_null()
+                & pl.col("incr_premium_proj").is_not_null()
+                & (pl.col("incr_premium_proj") > 0.0)
+            )
+            .then(pl.col("incr_loss_proj") / pl.col("incr_premium_proj"))
+            .otherwise(None)
+            .alias("incr_ratio_proj"),
+        )
+
+        drop_cols = ["_dev_rank", *[f"_{r}_tail_mass" for r in roles]]
+        return merged.drop(drop_cols).select(out.columns)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
