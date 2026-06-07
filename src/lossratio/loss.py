@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "cl", "sa")
+_VALID_METHODS = ("ed", "sa", "cl")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 
 # Map the internal method label to the public model name carried on
@@ -777,7 +777,7 @@ class LossFit:
         incr_premium_proj, maturity_from, loss_proc_se, loss_param_se,
         loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
-        ``"ed"``, ``"cl"``, or ``"sa"``.
+        ``"ed"``, ``"sa"``, or ``"cl"``.
     maturity_point :
         Detected maturity for ``"sa"`` (None elsewhere).
     premium_fit :

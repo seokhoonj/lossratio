@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "cl", "sa")
+_VALID_METHODS = ("ed", "sa", "cl")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 _VALID_SE_METHODS = ("fixed", "delta")
 
@@ -274,7 +274,7 @@ class RatioFit:
         ratio_ci_lo, ratio_ci_hi]`` (plus ``premium_total_se`` /
         ``premium_total_cv`` when ``se_method="delta"``).
     method : str
-        ``"ed"``, ``"cl"``, or ``"sa"``.
+        ``"ed"``, ``"sa"``, or ``"cl"``.
     maturity_point :
         Detected maturity for ``"sa"`` (single value or dict per group).
     loss_fit, premium_fit :
