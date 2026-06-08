@@ -23,12 +23,6 @@ lossratio는 장기 건강보험의 **손해율(loss ratio)**, 곧
 웹 애플리케이션입니다. lossratio 자체는 데모가 아니라, 그 계산을 맡는 Python
 라이브러리입니다.
 
-```{button-ref} getting-started
-:color: secondary
-:shadow:
-시작하기
-```
-
 ::::{grid} 1 2 2 4
 :gutter: 3
 
