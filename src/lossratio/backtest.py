@@ -608,12 +608,21 @@ class BacktestFit:
         return getattr(est, "regime", None)
 
     def _infer_switch(self) -> Any:
-        """Extract the SA ``switch`` from `self.estimator`, if any.
+        """Switch boundary for the usage overlay.
 
-        ``lr.StageAdaptive`` / ``lr.Ratio`` carry a ``switch`` slot (a
-        :class:`SwitchPoint`, an int, or ``None``). ChainLadder /
-        ExposureDriven have no switch concept and return ``None``.
+        Prefer the switch the REFIT model actually used -- the effective
+        ``switch_point`` of the masked / holdout-fold fit -- so the overlay
+        reflects the fold, not a re-run of the original estimator's
+        ``SwitchPoint.detect()`` spec on the full (unmasked) triangle. Fall
+        back to the estimator's configured ``switch`` (an int / SwitchPoint;
+        a detect() spec would re-resolve on full data -- last resort).
+        ChainLadder / ExposureDriven have no switch and yield ``None``.
         """
+        refit = getattr(self, "_refit", None)
+        if refit is not None:
+            sp = getattr(refit, "switch_point", None)
+            if sp is not None:
+                return sp
         return getattr(self.estimator, "switch", None)
 
     def __repr__(self) -> str:

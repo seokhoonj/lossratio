@@ -375,7 +375,7 @@ def _plot_per_link_scalar(
         ax.grid(True, linewidth=0.3, alpha=0.5)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
-        title=title, x_label="ata link", y_label=y_label,
+        title=title, x_label="duration link", y_label=y_label,
     )
     return fig
 
@@ -424,7 +424,7 @@ def _plot_summary_lines(
         ax.grid(True, linewidth=0.3, alpha=0.5)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
-        title=title, x_label="ata link", y_label=y_label,
+        title=title, x_label="duration link", y_label=y_label,
     )
     return fig
 
@@ -502,7 +502,7 @@ def _plot_per_link_distribution(
         ax.grid(True, linewidth=0.3, alpha=0.5)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
-        title=title, x_label="ata link", y_label=y_label,
+        title=title, x_label="duration link", y_label=y_label,
     )
     return fig
 

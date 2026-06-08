@@ -396,19 +396,22 @@ def _threshold_color(v: float, threshold: float, when: str) -> str:
 def _resolve_switch_k(
     switch: Any,
     triangle: Triangle | None = None,
-) -> int | None:
-    """Resolve the ``switch`` overlay arg to an integer switch duration or ``None``.
+) -> "int | dict | None":
+    """Resolve the ``switch`` overlay arg to a per-group switch map.
 
     ``None``: no switch, no overlay, no hybrid threshold.
-    ``int``: scalar switch duration, used directly.
-    A :class:`SwitchPoint`: read its ``point``, collapsing a per-group
-    result to a single scalar via ``max`` (the per-group fallback used by
-    the SA fitter).
-    Callable: invoked with ``triangle`` (when supplied) and the result is
-    re-resolved.
+    ``int``: a scalar switch duration applied to every group.
+    A :class:`SwitchPoint`: read its ``point`` -- a scalar (applied to all
+    groups) or a ``{group: switch}`` dict, kept PER GROUP (not collapsed) so
+    each facet draws and filters on its own switch.
+    Callable: invoked with ``triangle`` (when supplied) and re-resolved.
     """
     if switch is None:
         return None
+    if isinstance(switch, dict):
+        # An already-resolved per-group switch map (e.g. from a fit's
+        # `switch_point`); drop groups with no switch (None).
+        return {k: int(v) for k, v in switch.items() if v is not None}
     if isinstance(switch, (int, np.integer)) and not isinstance(switch, bool):
         if int(switch) < 1:
             raise ValueError(
@@ -418,8 +421,8 @@ def _resolve_switch_k(
     point = getattr(switch, "point", None)
     if point is not None:
         if isinstance(point, dict):
-            vals = [v for v in point.values() if v is not None]
-            return int(max(vals)) if vals else None
+            # Keep the per-group map; drop groups with no switch (None).
+            return {k: int(v) for k, v in point.items() if v is not None}
         return int(point)
     if callable(switch):
         if triangle is None:
@@ -673,13 +676,39 @@ def _compute_triangle_usage(
     else:
         change_pass_expr = pl.lit(True)
 
-    if switch_k is not None:
-        switch_k_geq = pl.col("duration") >= switch_k
-        switch_k_lt = pl.col("duration") < switch_k
+    # Build a per-row `_switch_k` so a grouped switch filters each group on
+    # its OWN boundary (a scalar applies to every group); a group with no
+    # switch (null) behaves as ED throughout (geq=False, lt=True).
+    has_switch_k = switch_k is not None
+    if isinstance(switch_k, dict):
+        keys = list(switch_k.keys())
+        vals = list(switch_k.values())
+        if len(grp_cols) == 1 and keys:
+            sw_df = pl.DataFrame({grp_cols[0]: keys, "_switch_k": vals})
+        elif len(grp_cols) > 1 and keys:
+            data = {
+                col: [k[i] for k in keys] for i, col in enumerate(grp_cols)
+            }
+            data["_switch_k"] = vals
+            sw_df = pl.DataFrame(data)
+        else:
+            sw_df = None  # ungrouped cannot carry a per-group dict
+        if sw_df is not None:
+            expanded = expanded.join(sw_df, on=grp_cols, how="left")
+        else:
+            has_switch_k = False
+    elif switch_k is not None:
+        expanded = expanded.with_columns(
+            pl.lit(int(switch_k)).alias("_switch_k")
+        )
+
+    if has_switch_k:
+        sw_col = pl.col("_switch_k")
+        switch_k_geq = sw_col.is_not_null() & (pl.col("duration") >= sw_col)
+        switch_k_lt = sw_col.is_null() | (pl.col("duration") < sw_col)
     else:
         switch_k_geq = pl.lit(False)
         switch_k_lt = pl.lit(True)
-    has_switch_k = switch_k is not None
 
     if has_recent and has_change:
         if has_switch_k:
@@ -704,6 +733,8 @@ def _compute_triangle_usage(
 
     if cd_df is not None:
         expanded = expanded.drop("_cd_join")
+    if "_switch_k" in expanded.columns:
+        expanded = expanded.drop("_switch_k")
 
     # 8. is_fit_data, is_excluded, status.
     expanded = expanded.with_columns(
@@ -971,19 +1002,24 @@ def _plot_triangle_usage(
         ax.set_yticks(range(ny))
         ax.set_yticklabels(y_levels, fontsize=8)
 
-        # Switch boundary at duration = switch_k. On the duration axis this is a single
-        # vertical line; on the calendar axis it is a stepped diagonal,
-        # since each cohort reaches duration = switch_k at its own calendar period.
-        if switch_k is not None:
+        # Switch boundary at duration = switch. On the duration axis this is a
+        # single vertical line; on the calendar axis it is a stepped diagonal,
+        # since each cohort reaches the switch at its own calendar period. A
+        # grouped switch draws each facet on its OWN group switch.
+        facet_switch = (
+            switch_k.get(group_value) if isinstance(switch_k, dict)
+            else switch_k
+        )
+        if facet_switch is not None:
             if x_axis == "calendar":
                 _draw_switch_staircase(
-                    ax, switch_k, step, cohort_values_desc, x_levels
+                    ax, facet_switch, step, cohort_values_desc, x_levels
                 )
             else:
                 ax.axvline(
-                    x_idx_get(x_idx, switch_k) - 0.5
-                    if switch_k in x_idx
-                    else switch_k - 1.5,
+                    x_idx_get(x_idx, facet_switch) - 0.5
+                    if facet_switch in x_idx
+                    else facet_switch - 1.5,
                     linestyle="--", color="black", linewidth=0.6,
                 )
 
@@ -1044,10 +1080,16 @@ def _plot_triangle_usage(
     )
     fig.suptitle(title_txt, fontsize=12, fontweight="bold")
 
-    if switch_k is not None:
+    if switch_k:
+        if isinstance(switch_k, dict):
+            sw_txt = "switch per group: " + ", ".join(
+                f"{k}={v}" for k, v in switch_k.items()
+            )
+        else:
+            sw_txt = f"switch = {switch_k}"
         fig.text(
             0.5, 0.925,
-            f"hybrid mode: switch = {switch_k}",
+            f"hybrid mode ({sw_txt})",
             ha="center", va="top", fontsize=9, style="italic",
         )
 
