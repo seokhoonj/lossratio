@@ -34,10 +34,28 @@ _VALID_ATA_TYPES = ("cv", "rse", "summary", "box", "point")
 _VALID_ED_TYPES = ("summary", "box", "point")
 _SUMMARY_STATS = ("mean", "median", "weighted")
 _STAT_COLORS = {
-    "mean":     "C0",
-    "median":   "C1",
-    "weighted": "C2",
+    "mean":     "#F8766D",  # ggplot hue palette (salmon / green / blue)
+    "median":   "#00BA38",
+    "weighted": "#619CFF",
 }
+
+
+def _style_ggplot(ax: Any) -> None:
+    """Give an Axes a clean ggplot-like (theme_minimal) look.
+
+    Drops the top/right box, softens the remaining spines, lays a light
+    grey grid behind the data, and removes the heavy tick marks -- so the
+    matplotlib default reads closer to the R/ggplot diagnostics.
+    """
+    ax.set_facecolor("white")
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#c9c9c9")
+        ax.spines[side].set_linewidth(0.8)
+    ax.grid(True, color="#ebebeb", linewidth=0.7)
+    ax.set_axisbelow(True)
+    ax.tick_params(length=0, labelsize=8, colors="#555555")
 
 
 def plot_link(
@@ -372,7 +390,7 @@ def _plot_per_link_scalar(
         _set_link_xticks(ax, x, link_labels)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
-        ax.grid(True, linewidth=0.3, alpha=0.5)
+        _style_ggplot(ax)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
         title=title, x_label="duration link", y_label=y_label,
@@ -421,7 +439,7 @@ def _plot_summary_lines(
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
         ax.legend(loc="best", fontsize=8, frameon=False)
-        ax.grid(True, linewidth=0.3, alpha=0.5)
+        _style_ggplot(ax)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
         title=title, x_label="duration link", y_label=y_label,
@@ -499,7 +517,7 @@ def _plot_per_link_distribution(
         _set_link_xticks(ax, duration_from_vals, link_labels)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
-        ax.grid(True, linewidth=0.3, alpha=0.5)
+        _style_ggplot(ax)
     _finalize_facet_grid(
         fig, axes_grid, n_used=len(facets),
         title=title, x_label="duration link", y_label=y_label,
