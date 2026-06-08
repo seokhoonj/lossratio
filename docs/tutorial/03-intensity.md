@@ -199,19 +199,19 @@ ED입니다. 대신 손해 자체의 진전 패턴(곱셈식 증가)은 chain la
    import lossratio as lr
 
    df = lr.load_experience().filter(pl.col("coverage") == "SUR")
-   tri = lr.Triangle(df, groups="coverage", grain="Q")
+   tri = lr.Triangle(df, groups="coverage", grain="M")
    link = tri.link(target="loss", exposure="premium")
 
 .. plot::
    :context: close-figs
-   :caption: 수술담보의 경과별 강도(분기 단위). 초기에 보험료 대비 손해가 가장 많이 나고, 경과가 길어질수록 한 기간이 더하는 손해가 0에 가까워진다.
+   :caption: 수술담보의 경과별 강도(월 단위). 초기에 보험료 대비 손해가 가장 많이 나고, 경과가 길어질수록 한 기간이 더하는 손해가 0에 가까워진다.
 
    link.plot(model="ed", kind="summary")
 ```
 
-경과 1의 강도는 1.95로 가장 큽니다 — 보장 초기에 손해가 몰리는 장기
-건강보험의 특성이 그대로 드러납니다. 경과가 길어질수록 강도는 0.80, 0.51,
-0.38처럼 점점 작아집니다. **강도가 0에 가깝다는 것은 겉보기에 그 기간에
+경과 1의 강도는 1.25로 가장 큽니다 — 보장 초기에 손해가 몰리는 장기
+건강보험의 특성이 그대로 드러납니다. 경과가 길어질수록 강도는 0.63, 0.42,
+0.33처럼 점점 작아집니다. **강도가 0에 가깝다는 것은 겉보기에 그 기간에
 새로 더해지는 손해가 거의 없다**는 뜻처럼 보입니다 — ATA 인자가 1에
 가까워지는 것과 같은 신호를 노출의 언어로 말한 듯합니다. 그런데 여기에는
 함정이 하나 있습니다.
