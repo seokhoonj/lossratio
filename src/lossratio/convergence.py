@@ -27,7 +27,7 @@ def _compute_dispersion(
     triangle: "Triangle",
     min_n_cohorts: int = 5,
 ) -> pl.DataFrame:
-    """Robust cross-cohort dispersion of incremental Ratio per (group, duration).
+    """Robust cross-cohort dispersion of the cumulative Ratio per (group, duration).
 
     Returns a polars DataFrame with columns ``[groups?, duration,
     n_cohorts, ratio_median, ratio_mad, dispersion, flag]``.
@@ -317,15 +317,23 @@ def detect_convergence(
     # candidate's own finite Ratio. With `start=2` this matters where the old
     # factor-stability floor used to keep early candidates out.
     finite_ratio = np.isfinite(ratio_arr)
+    # A near-zero projected Ratio (e.g. a no-claims coverage whose loss is ~0,
+    # so ED projects an exactly-0 Ratio) is *trivially* stable -- drift / slope
+    # vanish and dispersion floors out -- and would be reported as "converged"
+    # even though there is no meaningful loss-ratio level to read. Exclude it.
+    nonzero_ratio = np.abs(ratio_arr) >= _NEAR_ZERO_FLOOR
     pass_d = np.isfinite(dispersion) & (dispersion < max_dispersion)
     pass_window = (
-        np.isfinite(drift_window) & (drift_window < max_drift) & pass_d & finite_ratio
+        np.isfinite(drift_window) & (drift_window < max_drift)
+        & pass_d & finite_ratio & nonzero_ratio
     )
     pass_tail = (
-        np.isfinite(drift_tail) & (drift_tail < max_drift) & pass_d & finite_ratio
+        np.isfinite(drift_tail) & (drift_tail < max_drift)
+        & pass_d & finite_ratio & nonzero_ratio
     )
     pass_slope = (
-        np.isfinite(slope_arr) & (np.abs(slope_arr) < max_slope) & pass_d & finite_ratio
+        np.isfinite(slope_arr) & (np.abs(slope_arr) < max_slope)
+        & pass_d & finite_ratio & nonzero_ratio
     )
     pass_all = pass_window & pass_tail & pass_slope
 
