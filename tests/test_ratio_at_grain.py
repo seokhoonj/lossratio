@@ -51,7 +51,7 @@ def test_at_grain_portfolio_ultimate_is_grain_invariant():
 
 
 def _regime_m_fit():
-    """An M-grain REGIME (segment_borrowed) Ratio fit on the SUR book.
+    """An M-grain REGIME (segment_borrowed) Ratio fit on the SURGERY book.
 
     On the regime path the stored ``incr_loss_proj`` column is NULL at
     duration 1 for every cohort, so summing that column would drop the duration-1

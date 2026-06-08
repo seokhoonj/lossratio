@@ -53,7 +53,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _exp_sur() -> pl.DataFrame:
-    """SUR-only experience slice -- the data the R fixtures were built on."""
+    """SURGERY-only experience slice -- the data the R fixtures were built on."""
     return pl.read_csv(
         FIXTURES / "experience.csv", try_parse_dates=True
     ).filter(pl.col("coverage") == "surgery")

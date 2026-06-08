@@ -289,7 +289,7 @@ def test_triangle_share_columns_sum_to_one():
     """loss_share / premium_share are within-(cohort, duration) proportions:
     they sum to 1.0 across groups within each (cohort, duration) cell.
 
-    Two groups (SUR + CAN) so the shares are non-trivial; with a single
+    Two groups (SURGERY + CANCER) so the shares are non-trivial; with a single
     group every share is trivially 1.0.
     """
     sur = _exp_input().with_columns(pl.lit("SURGERY").alias("coverage"))

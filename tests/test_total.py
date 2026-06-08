@@ -30,7 +30,7 @@ def test_total_schema_grouped():
         "loss_share", "premium_share",
     }
     assert set(tot.columns) == expected
-    assert tot.height == 2  # SUR + CI
+    assert tot.height == 2  # SURGERY + CI
 
 
 def test_total_schema_no_group():

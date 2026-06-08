@@ -1793,7 +1793,7 @@ class Regime:
         >>> Regime.at(change="2024-07-01")
         >>> Regime.at(
         ...     change=["2024-07-01", "2024-10-01"],
-        ...     groups={"coverage": ["SUR", "CI"]},
+        ...     groups={"coverage": ["SURGERY", "CI"]},
         ... )
         """
         if treatment not in _VALID_TREATMENTS:

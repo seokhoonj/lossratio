@@ -68,7 +68,7 @@ def _sur_triangle() -> "lr.Triangle":
 def test_window_auto_resolves_to_sweep_elbow():
     """``window='auto'`` must run the sweep and store an integer window.
 
-    The synthetic SUR data has a single regime change at 2024-07-01;
+    The synthetic SURGERY data has a single regime change at 2024-07-01;
     the change-count curve is constant 1 across small windows and
     drops to 0 once the window exceeds the post-change cohort run.
     The elbow lands at that drop -- somewhere in 2..24.

@@ -66,7 +66,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["ratio_sa"] = _frame(lr.Ratio(method="sa").fit(tri))
     out["ratio_ed_delta"] = _frame(lr.Ratio(method="ed", se_method="delta").fit(tri))
 
-    # --- convergence (SUR) ---
+    # --- convergence (SURGERY) ---
     conv = lr.Ratio(method="sa").fit(sur).convergence()
     out["convergence"] = _frame(conv)
     out["convergence_point"] = pl.DataFrame(

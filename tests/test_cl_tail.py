@@ -484,7 +484,7 @@ def test_sa_default_no_tail_columns(tri):
 def test_sa_tail_post_switch_cl_is_multiplicative(tri):
     # With a switch the last stage is CL -> the tail is the
     # multiplicative factor applied to the last cumulative loss. Use a
-    # group whose post-switch factors actually converge (SUR; the
+    # group whose post-switch factors actually converge (SURGERY; the
     # curve-aware guard diverges the slow-decaying groups to 1.0).
     sa = lr.StageAdaptive(switch=2, tail=True).fit(tri)
     assert "loss_tail" in sa._df.columns

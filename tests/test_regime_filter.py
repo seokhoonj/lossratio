@@ -412,7 +412,7 @@ def test_segment_bridged_borrowed_with_auto_detection():
     spec = lr.Regime.detect(window=12, treatment="segment_bridged_borrowed")
     fit = lr.Ratio(method="cl", loss_regime=spec).fit(tri)
     df = fit.to_polars()
-    # Auto-detect on SUR (window=12) deterministically finds the planted
+    # Auto-detect on SURGERY (window=12) deterministically finds the planted
     # regime change, so the per-segment path must fire and emit segment_id.
     assert fit.loss_fit.regime is not None
     assert fit.loss_fit.regime.change_points

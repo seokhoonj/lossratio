@@ -36,7 +36,7 @@ def _experience_triangle() -> "lr.Triangle":
 
 
 def _regime_fit() -> "lr.RatioFit":
-    """An SA ratio fit with an auto-detected loss regime (SUR has a change)."""
+    """An SA ratio fit with an auto-detected loss regime (SURGERY has a change)."""
     return lr.Ratio(method="sa", loss_regime="auto").fit(_experience_triangle())
 
 
@@ -125,7 +125,7 @@ def test_borrow_leg_byte_equal():
     seg = fit.segment_summary()
 
     # Recent-segment rows of segment_summary: change_from non-null and the
-    # max change date per group. For SUR that is the single segment "1".
+    # max change date per group. For SURGERY that is the single segment "1".
     seg_recent = seg.filter(pl.col("change_from").is_not_null())
 
     joined = band.join(
@@ -151,9 +151,9 @@ def test_borrow_leg_byte_equal():
 
 
 def test_band_legs_present_when_mature():
-    """Both legs land on the SUR recent segment, agree, and earn "narrow".
+    """Both legs land on the SURGERY recent segment, agree, and earn "narrow".
 
-    The two tail methods (borrow / curve) land close on the mature-ish SUR
+    The two tail methods (borrow / curve) land close on the mature-ish SURGERY
     recent segment, and the curve fit is data-sufficient (n_points >= the
     floor), so the agreement is genuine -- the status is the spread-driven
     ``"narrow"``. (The curve's own divergence / alt-law swing are reported
@@ -164,7 +164,7 @@ def test_band_legs_present_when_mature():
     band = fit.segment_band().filter(pl.col("coverage") == "SURGERY")
     assert band.height == 1
     row = band.row(0, named=True)
-    # Both legs land on the mature-ish SUR recent segment.
+    # Both legs land on the mature-ish SURGERY recent segment.
     assert row["ratio_proj_borrow"] is not None
     assert row["ratio_proj_curve"] is not None
     assert row["curve_reason"] == "ok"
@@ -442,7 +442,7 @@ def test_ratio_proj_mean_is_midpoint():
     fit = _regime_fit()
     band = fit.segment_band().filter(pl.col("coverage") == "SURGERY")
     row = band.row(0, named=True)
-    assert row["ratio_proj_curve"] is not None  # SUR curve is well-defined
+    assert row["ratio_proj_curve"] is not None  # SURGERY curve is well-defined
     assert row["ratio_proj_mean"] == pytest.approx(
         (row["ratio_proj_borrow"] + row["ratio_proj_curve"]) / 2.0
     )
@@ -470,7 +470,7 @@ def test_no_regime_graceful():
 
 
 def test_only_regime_groups_present():
-    """Groups without a change are absent; SUR (with a change) is present."""
+    """Groups without a change are absent; SURGERY (with a change) is present."""
     fit = _regime_fit()
     band = fit.segment_band()
     covs = set(band["coverage"].to_list())
@@ -615,7 +615,7 @@ def test_auto_grain_off_byte_identical():
 def test_auto_grain_selects_coarse_when_fine_diverges():
     """The fine grain's divergent curve is vetoed; a coarser grain is picked.
 
-    On the bundled experience data the SUR recent segment is immature at the
+    On the bundled experience data the SURGERY recent segment is immature at the
     monthly display grain -- its curve slope is above the convergence
     boundary (``curve_diverged=True``), an unphysical tail, even though the
     monthly two-leg spread is small. Signal (a) (slope physicality) vetoes

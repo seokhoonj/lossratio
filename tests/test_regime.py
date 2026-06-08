@@ -379,9 +379,9 @@ def test_detect_regime_candidates_carries_assess():
     assert "level_shift" not in reg.changes.columns
     # candidates is a superset of accepted changes.
     assert cand.height >= reg.changes.height
-    # the planted synthetic SUR regime is a clean step.
+    # the planted synthetic SURGERY regime is a clean step.
     sur = cand.filter(pl.col("coverage") == "SURGERY")
-    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur.height >= 1                      # planted SURGERY regime must surface
     assert sur["kind"][0] == "step"
     assert sur["step_p"][0] < 0.05
 
@@ -404,9 +404,9 @@ def test_detect_regime_window_sweep_stability():
     if sub.height:
         assert sub["window_stability"].min() > 0.0
         assert sub["window_stability"].max() <= 1.0
-    # the planted synthetic SUR regime recurs across windows (robust).
+    # the planted synthetic SURGERY regime recurs across windows (robust).
     sur = cand.filter(pl.col("coverage") == "SURGERY")
-    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur.height >= 1                      # planted SURGERY regime must surface
     assert sur["window_stability"][0] >= 0.5
     assert sur["kind"][0] == "step"
 
@@ -444,9 +444,9 @@ def test_detect_regime_grain_sweep():
     assert "grain" in cand.columns
     assert "grain_stability" in cand.columns
     assert cand["grain_stability"].min() >= 1
-    # the planted SUR regime is detected at >= 1 grain and is a step.
+    # the planted SURGERY regime is detected at >= 1 grain and is a step.
     sur = cand.filter(pl.col("coverage") == "SURGERY")
-    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur.height >= 1                      # planted SURGERY regime must surface
     assert sur["kind"][0] == "step"
     assert sur["grain_stability"][0] >= 2       # detected at >= 2 grains (M and Q)
 
@@ -481,9 +481,9 @@ def test_evaluate_action_regime_or_none():
     acted = ev.filter(pl.col("action") == "regime")
     if acted.height:
         assert (acted["confidence"] > 0.0).all()
-    # the planted SUR step is a regime, not still-moving.
+    # the planted SURGERY step is a regime, not still-moving.
     sur = ev.filter(pl.col("coverage") == "SURGERY")
-    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur.height >= 1                      # planted SURGERY regime must surface
     assert sur["action"][0] == "regime"
     assert not sur["still_moving"][0]
     assert sur["confidence"][0] > 0.5
@@ -506,7 +506,7 @@ def test_accepted_with_no_detected_candidates_returns_empty_regime():
     ``accepted()`` return an empty (no-filter) Regime instead of crashing on
     the missing ``"action"`` column -- the empty evaluate frame carries no
     schema. Single-config detect on the bundled data yields zero candidates
-    (the planted SUR regime only surfaces under the grain/window sweep)."""
+    (the planted SURGERY regime only surfaces under the grain/window sweep)."""
     tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "CANCER"))
     reg = tri.detect_regime()
     assert reg.candidates.height == 0
@@ -543,9 +543,9 @@ def test_grain_sweep_per_grain_kind_profile():
             assert "step" not in kinds
         elif row["change_type"] == "transition":
             assert "step" in kinds and "drift" in kinds
-    # the planted SUR regime is a clean step across its detected grains.
+    # the planted SURGERY regime is a clean step across its detected grains.
     sur = cand.filter(pl.col("coverage") == "SURGERY")
-    assert sur.height >= 1                      # planted SUR regime must surface
+    assert sur.height >= 1                      # planted SURGERY regime must surface
     assert sur["change_type"][0] == "step"
 
 
@@ -562,7 +562,7 @@ def test_accepted_drives_the_fit():
     n_regime = ev.filter(pl.col("action") == "regime").height
     assert acc.changes.height == n_regime
     # and they actually drive a fit -- the cut changes the projection vs
-    # fitting all cohorts (SUR carries a planted regime).
+    # fitting all cohorts (SURGERY carries a planted regime).
     f0 = lr.Ratio().fit(tri)
     f1 = lr.Ratio(loss_regime=acc).fit(tri)
 
@@ -731,7 +731,7 @@ def test_changes_at_matches_segment_start():
     from lossratio._band import _recent_segment_cohorts
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    # SUR has a detectable regime; pin a mid-quarter change to force a snap.
+    # SURGERY has a detectable regime; pin a mid-quarter change to force a snap.
     reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SURGERY"]})
     snapped = reg.changes_at("Q")
     snapped = snapped if isinstance(snapped, pl.DataFrame) else pl.from_pandas(snapped)

@@ -40,7 +40,7 @@ def _load(name: str) -> pl.DataFrame:
 
 
 def _exp_sur() -> pl.DataFrame:
-    """Same SUR-only slice the R fixtures were built from."""
+    """Same SURGERY-only slice the R fixtures were built from."""
     return _load("experience").filter(pl.col("coverage") == "surgery")
 
 
