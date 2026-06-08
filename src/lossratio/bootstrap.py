@@ -2895,7 +2895,10 @@ class Bootstrap:
                 durations     = durations,
                 anchor   = anchor,
                 target   = target,
-                mat_k    = switch_map.get(g),
+                # A scalar switch is stored under the None key and applies to
+                # every group (mirroring the Loss body); a per-group dict keys
+                # by group value. Fall back to the scalar default.
+                mat_k    = switch_map.get(g, switch_map.get(None)),
                 rng      = rng,
             )
             stage1.cohorts = cohorts
@@ -3008,7 +3011,10 @@ class Bootstrap:
         if point is not None:
             if isinstance(point, dict):
                 return point
-            return {None: point} if groups is None else {}
+            # A scalar switch point applies to every group -- store it under
+            # the None key (the per-group consumer falls back to it). This
+            # mirrors the Loss body, where a scalar switch hits all groups.
+            return {None: point}
 
         if isinstance(sw, dict):
             return sw

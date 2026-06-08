@@ -442,7 +442,7 @@ class RatioFit:
         # itself method-consistent, stands).
         boots = resolve_uncertainty(
             estimator.uncertainty, triangle, target="loss",
-            method=estimator.method,
+            method=estimator.method, switch=estimator.switch,
         )
         if boots is None:
             return full

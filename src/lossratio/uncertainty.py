@@ -91,7 +91,8 @@ class Analytical:
             )
 
     def _resolve(
-        self, triangle: "Triangle", *, target: str, method: str
+        self, triangle: "Triangle", *, target: str, method: str,
+        switch: Any = None,
     ) -> "BootstrapTriangle | None":
         if not self.simulate:
             # Closed-form: the fit's built-in analytical SE is the answer.
@@ -100,7 +101,7 @@ class Analytical:
 
         # Simulated Mack factor draw. The analytical paradigm is CL-only
         # (no factor recursion for additive ED / composite SA), so it is
-        # always a CL band regardless of the headline `method`.
+        # always a CL band regardless of the headline `method` / `switch`.
         return Bootstrap(
             type         = "analytical",
             method       = "cl",
@@ -174,13 +175,15 @@ class ResidualBootstrap:
             raise ValueError("`min_pool` must be a positive integer.")
 
     def _resolve(
-        self, triangle: "Triangle", *, target: str, method: str
+        self, triangle: "Triangle", *, target: str, method: str,
+        switch: Any = None,
     ) -> "BootstrapTriangle":
         from .bootstrap import Bootstrap
 
         return Bootstrap(
             type         = "nonparametric",
             method       = method,
+            switch       = switch,
             residual     = self.residual,
             process      = self.process,
             pooling      = self.pooling,
@@ -237,16 +240,18 @@ class ParametricBootstrap:
             raise ValueError("`n_replicates` must be a positive integer.")
 
     def _resolve(
-        self, triangle: "Triangle", *, target: str, method: str
+        self, triangle: "Triangle", *, target: str, method: str,
+        switch: Any = None,
     ) -> "BootstrapTriangle":
         from .bootstrap import Bootstrap
 
-        # Follows the headline `method` (ED -> ED, CL -> CL, SA -> SA): the
-        # predictive dispersion is centred on the same projection that
-        # drives the point estimate.
+        # Follows the headline `method` (ED -> ED, CL -> CL, SA -> SA) and
+        # the SA `switch`: the predictive dispersion is centred on the same
+        # projection that drives the point estimate.
         return Bootstrap(
             type         = "parametric",
             method       = method,
+            switch       = switch,
             process      = self.process,
             hat_adj      = self.hat_adj,
             n_replicates = self.n_replicates,
@@ -261,6 +266,7 @@ def resolve_uncertainty(
     *,
     target: str,
     method: str,
+    switch: Any = None,
 ) -> "BootstrapTriangle | None":
     """Resolve an ``uncertainty=`` argument to a result or ``None``.
 
@@ -279,10 +285,13 @@ def resolve_uncertainty(
     if uncertainty is None:
         return None
     if isinstance(uncertainty, (Analytical, ResidualBootstrap, ParametricBootstrap)):
-        return uncertainty._resolve(triangle, target=target, method=method)
+        return uncertainty._resolve(
+            triangle, target=target, method=method, switch=switch
+        )
     if callable(uncertainty):
         return resolve_uncertainty(
-            uncertainty(triangle), triangle, target=target, method=method
+            uncertainty(triangle), triangle, target=target, method=method,
+            switch=switch,
         )
     raise TypeError(
         "`uncertainty` must be None, an Analytical / ResidualBootstrap / "

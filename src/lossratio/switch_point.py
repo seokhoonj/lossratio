@@ -277,18 +277,34 @@ class SwitchPoint:
         ``k >= 2`` = ED before ``k`` / CL after. A single int (applied to
         all groups) or a sequence aligned 1:1 with ``groups``.
         """
+        def _check(v: Any) -> int:
+            # `point` semantics: 1 = pure CL, k >= 2 = switch. Reject bools
+            # (a bool is an int subclass) and anything below 1.
+            if isinstance(v, bool):
+                raise TypeError("`point` must not be a bool")
+            if not isinstance(v, int):
+                raise TypeError(
+                    f"`point` must be int, got {type(v).__name__}"
+                )
+            if v < 1:
+                raise ValueError(
+                    f"`point` must be >= 1 (1 = pure CL, k >= 2 = switch), "
+                    f"got {v}"
+                )
+            return int(v)
+
         if isinstance(point, bool):
-            raise TypeError("point must not be a bool")
+            raise TypeError("`point` must not be a bool")
         if isinstance(point, int):
-            seq = [int(point)]
+            seq = [_check(point)]
         elif isinstance(point, Sequence) and not isinstance(point, str):
-            seq = [int(v) for v in point]
+            if not point:
+                raise ValueError("`point` must have length >= 1")
+            seq = [_check(v) for v in point]
         else:
             raise TypeError(
                 f"`point` must be int or Sequence[int], got {type(point).__name__}"
             )
-        if not seq:
-            raise ValueError("`point` must have length >= 1")
         groups = dict(groups) if groups else {}
         for col, vals in groups.items():
             if not isinstance(vals, Sequence) or isinstance(vals, str):

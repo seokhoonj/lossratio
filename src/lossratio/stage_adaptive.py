@@ -93,10 +93,14 @@ class StageAdaptive:
         from .loss import Loss
         from .uncertainty import resolve_uncertainty
 
-        # The loss SE overlay always uses the analytical-CL (Mack) bootstrap
-        # paradigm regardless of model; resolve against method="cl".
+        # The bootstrap SE follows the SA model and its switch so the
+        # dispersion is centred on the same projection the point estimate
+        # uses (Analytical(simulate) stays CL-only by its own nature). A
+        # distribution-based ResidualBootstrap is rejected upstream; only
+        # ParametricBootstrap / the analytical SE reach here.
         boots = resolve_uncertainty(
-            self.uncertainty, triangle, target="loss", method="cl",
+            self.uncertainty, triangle, target="loss", method="sa",
+            switch=self.switch,
         )
         return Loss(
             method       = "sa",
