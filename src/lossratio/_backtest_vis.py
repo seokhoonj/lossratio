@@ -141,11 +141,14 @@ def plot_triangle_backtest(
     work = dt.with_columns(pl.Series(name="_y_lab", values=coh_labels))
     # Coherent axes:
     # x = dev (numeric)
-    # y = cohort labels, oldest at top (matches plot_triangle.<other>).
+    # y = cohort labels, oldest at top / newest at the bottom -- the same
+    #     orientation as the triangle value heatmap.
     dev_levels = sorted(work["dev"].unique().to_list())
-    # raw cohort sorted ascending; reverse so oldest sits at top.
+    # Cohort ascending (oldest -> newest). With `invert_yaxis()` below, the
+    # oldest cohort sits at the top and the most recent cohort lands at the
+    # bottom, matching plot_triangle.
     raw_sorted = work.select(["cohort", "_y_lab"]).unique().sort("cohort")
-    y_levels_top_to_bottom = list(reversed(raw_sorted["_y_lab"].to_list()))
+    y_levels_top_to_bottom = raw_sorted["_y_lab"].to_list()
 
     # Color limits: symmetric around 0.
     err = work[ae_err_col].to_numpy()
