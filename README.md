@@ -72,27 +72,27 @@ Working components:
 import polars as pl
 import lossratio as lr
 
-# Built-in synthetic experience: four coverages (CI / CAN / HOS / SUR),
+# Built-in synthetic experience: four coverages (CI / CANCER / INPATIENT / SURGERY),
 # monthly cohorts up to 36 duration months, with the full M/Q/H/Y grain
-# enrichment. SUR carries one regime shift at 2024-07; we focus on SUR
+# enrichment. SURGERY carries one regime shift at 2024-07; we focus on SURGERY
 # for this walk-through.
 df = lr.load_experience()
 df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"]).head(3)
 #> shape: (3, 6)
-#> ┌──────────┬────────────┬────────────┬───────┬───────────┬──────────────┐
+#> ┌──────────┬────────────┬────────────┬────────────┬───────────┬──────────────┐
 #> │ coverage ┆ uy_m       ┆ cy_m       ┆ duration_m ┆ incr_loss ┆ incr_premium │
-#> │ ---      ┆ ---        ┆ ---        ┆ ---   ┆ ---       ┆ ---          │
-#> │ str      ┆ date       ┆ date       ┆ i64   ┆ i64       ┆ i64          │
-#> ╞══════════╪════════════╪════════════╪═══════╪═══════════╪══════════════╡
-#> │ CI       ┆ 2023-01-01 ┆ 2023-01-01 ┆ 1     ┆ 1418956   ┆ 1356200      │
-#> │ CI       ┆ 2023-01-01 ┆ 2023-02-01 ┆ 2     ┆ 73602     ┆ 1274360      │
-#> │ CI       ┆ 2023-01-01 ┆ 2023-03-01 ┆ 3     ┆ 420092    ┆ 1384735      │
-#> └──────────┴────────────┴────────────┴───────┴───────────┴──────────────┘
+#> │ ---      ┆ ---        ┆ ---        ┆ ---        ┆ ---       ┆ ---          │
+#> │ str      ┆ date       ┆ date       ┆ i64        ┆ i64       ┆ i64          │
+#> ╞══════════╪════════════╪════════════╪════════════╪═══════════╪══════════════╡
+#> │ CI       ┆ 2023-01-01 ┆ 2023-01-01 ┆ 1          ┆ 1418956   ┆ 1356200      │
+#> │ CI       ┆ 2023-01-01 ┆ 2023-02-01 ┆ 2          ┆ 73602     ┆ 1274360      │
+#> │ CI       ┆ 2023-01-01 ┆ 2023-03-01 ┆ 3          ┆ 420092    ┆ 1384735      │
+#> └──────────┴────────────┴────────────┴────────────┴───────────┴──────────────┘
 
-# 1. Subset to SUR (the coverage with the planted regime shift), then
+# 1. Subset to SURGERY (the coverage with the planted regime shift), then
 #    build the cohort x duration triangle. Triangle's constructor validates
 #    schema and adds derived period columns inline.
-df_sur = df.filter(pl.col("coverage") == "SUR")
+df_sur = df.filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df_sur, groups="coverage")
 
 # 2. Factor-level diagnostics via the link chain. Build the link table
@@ -104,15 +104,15 @@ link
 ata = link.ata()
 ata.df.head(3)
 #> shape: (3, 7)
-#> ┌──────────┬─────┬──────────┬───────────────┬──────────┬──────────┬───────────┐
+#> ┌──────────┬──────────┬──────────┬───────────────┬──────────┬──────────┬───────────┐
 #> │ coverage ┆ duration ┆ f        ┆ sigma2        ┆ cv       ┆ rse      ┆ n_cohorts │
-#> │ ---      ┆ --- ┆ ---      ┆ ---           ┆ ---      ┆ ---      ┆ ---       │
-#> │ str      ┆ i64 ┆ f64      ┆ f64           ┆ f64      ┆ f64      ┆ i64       │
-#> ╞══════════╪═════╪══════════╪═══════════════╪══════════╪══════════╪═══════════╡
-#> │ SUR      ┆ 1   ┆ 6.028946 ┆ 2.1518e6      ┆ 0.100402 ┆ 0.016999 ┆ 35        │
-#> │ SUR      ┆ 2   ┆ 1.833769 ┆ 272394.766984 ┆ 0.044927 ┆ 0.008143 ┆ 34        │
-#> │ SUR      ┆ 3   ┆ 1.448392 ┆ 111593.578463 ┆ 0.029951 ┆ 0.004935 ┆ 33        │
-#> └──────────┴─────┴──────────┴───────────────┴──────────┴──────────┴───────────┘
+#> │ ---      ┆ ---      ┆ ---      ┆ ---           ┆ ---      ┆ ---      ┆ ---       │
+#> │ str      ┆ i64      ┆ f64      ┆ f64           ┆ f64      ┆ f64      ┆ i64       │
+#> ╞══════════╪══════════╪══════════╪═══════════════╪══════════╪══════════╪═══════════╡
+#> │ SURGERY  ┆ 1        ┆ 6.028946 ┆ 2.1518e6      ┆ 0.100402 ┆ 0.016999 ┆ 35        │
+#> │ SURGERY  ┆ 2        ┆ 1.833769 ┆ 272394.766984 ┆ 0.044927 ┆ 0.008143 ┆ 34        │
+#> │ SURGERY  ┆ 3        ┆ 1.448392 ┆ 111593.578463 ┆ 0.029951 ┆ 0.004935 ┆ 33        │
+#> └──────────┴──────────┴──────────┴───────────────┴──────────┴──────────┴───────────┘
 
 # 3. Project loss ratios. `lr.Ratio()` defaults to method="ed" — the
 #    exposure-driven, safe baseline.
@@ -123,7 +123,7 @@ fit = lr.Ratio(method="ed").fit(tri)
 #    backtesting. Here the switch is fixed at duration 12.
 fit = lr.Ratio(method="sa", switch=12).fit(tri)
 fit.switch_point
-#> {'SUR': 12}
+#> {'SURGERY': 12}
 fit.summary().select(["coverage", "cohort", "ratio_proj", "switch_from"]).head(3)
 #> shape: (3, 4)
 #> ┌──────────┬────────────┬────────────┬─────────────┐
@@ -131,9 +131,9 @@ fit.summary().select(["coverage", "cohort", "ratio_proj", "switch_from"]).head(3
 #> │ ---      ┆ ---        ┆ ---        ┆ ---         │
 #> │ str      ┆ date       ┆ f64        ┆ i64         │
 #> ╞══════════╪════════════╪════════════╪═════════════╡
-#> │ SUR      ┆ 2023-01-01 ┆ 1.509562   ┆ 12          │
-#> │ SUR      ┆ 2023-02-01 ┆ 1.508976   ┆ 12          │
-#> │ SUR      ┆ 2023-03-01 ┆ 1.522523   ┆ 12          │
+#> │ SURGERY  ┆ 2023-01-01 ┆ 1.509562   ┆ 12          │
+#> │ SURGERY  ┆ 2023-02-01 ┆ 1.508976   ┆ 12          │
+#> │ SURGERY  ┆ 2023-03-01 ┆ 1.522523   ┆ 12          │
 #> └──────────┴────────────┴────────────┴─────────────┘
 
 # 4. Detect cohort regime shifts (E-Divisive over the cohort ratio path).
@@ -155,9 +155,9 @@ bt.diag_summary.select(
 #> │ ---      ┆ ---     ┆ --- ┆ ---         ┆ ---        ┆ ---       │
 #> │ str      ┆ i64     ┆ u32 ┆ f64         ┆ f64        ┆ f64       │
 #> ╞══════════╪═════════╪═════╪═════════════╪════════════╪═══════════╡
-#> │ SUR      ┆ 31      ┆ 29  ┆ -0.038762   ┆ -0.004586  ┆ -0.026285 │
-#> │ SUR      ┆ 32      ┆ 28  ┆ -0.060688   ┆ -0.011492  ┆ -0.04627  │
-#> │ SUR      ┆ 33      ┆ 27  ┆ -0.08139    ┆ -0.010749  ┆ -0.065249 │
+#> │ SURGERY  ┆ 31      ┆ 29  ┆ -0.038762   ┆ -0.004586  ┆ -0.026285 │
+#> │ SURGERY  ┆ 32      ┆ 28  ┆ -0.060688   ┆ -0.011492  ┆ -0.04627  │
+#> │ SURGERY  ┆ 33      ┆ 27  ┆ -0.08139    ┆ -0.010749  ┆ -0.065249 │
 #> └──────────┴─────────┴─────┴─────────────┴────────────┴───────────┘
 ```
 
