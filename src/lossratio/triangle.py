@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 
 # Triangle-specific: standard duration column name per grain code.
-_GRAIN_TO_DEV_COL = {
+_GRAIN_TO_DURATION_COL = {
     "M": "duration_m",
     "Q": "duration_q",
     "H": "duration_h",
@@ -323,7 +323,7 @@ class Triangle:
         self._loss = loss
         self._premium = premium
         self._grain = grain
-        self._duration = _GRAIN_TO_DEV_COL[grain]
+        self._duration = _GRAIN_TO_DURATION_COL[grain]
 
     @property
     def df(self):
