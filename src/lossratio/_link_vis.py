@@ -362,7 +362,10 @@ def _plot_per_link_scalar(
         link_labels = _link_label_lookup(sub_sorted)
         m = np.isfinite(y)
         if m.any():
-            ax.plot(x[m], y[m], color="C0", linewidth=1.2, marker="o")
+            ax.plot(
+                x[m], y[m], color="C0", linewidth=1.0,
+                marker="o", markersize=3.2, markeredgewidth=0,
+            )
         if hline is not None:
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
         _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=hline)
@@ -407,8 +410,8 @@ def _plot_summary_lines(
                 ax.plot(
                     x[m], y[m],
                     color=_STAT_COLORS.get(stat, "C0"),
-                    linewidth=1.2,
-                    marker="o",
+                    linewidth=1.0,
+                    marker="o", markersize=3.2, markeredgewidth=0,
                     label=stat,
                 )
         if hline is not None:
@@ -487,7 +490,7 @@ def _plot_per_link_distribution(
             ax.plot(
                 means["duration_from"].to_numpy(),
                 means["_mean"].to_numpy(),
-                color="C0", linewidth=1.2,
+                color="C0", linewidth=1.0,
             )
 
         if hline is not None:
