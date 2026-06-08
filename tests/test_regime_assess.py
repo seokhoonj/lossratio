@@ -27,18 +27,18 @@ from lossratio.regime import (
 # ---------------------------------------------------------------------------
 
 
-def _long(levels, window=3, n_dev=None):
-    """One cohort per level; flat trajectory at that level over dev 1..n_dev."""
-    n_dev = n_dev or window
-    rows = {"cohort": [], "dev": [], "ratio": []}
+def _long(levels, window=3, n_duration=None):
+    """One cohort per level; flat trajectory at that level over duration 1..n_duration."""
+    n_duration = n_duration or window
+    rows = {"cohort": [], "duration": [], "ratio": []}
     for ci, lvl in enumerate(levels):
         coh = dt.date(2023, 1, 1) + dt.timedelta(days=400 * ci)
-        for d in range(1, n_dev + 1):
+        for d in range(1, n_duration + 1):
             rows["cohort"].append(coh)
-            rows["dev"].append(d)
+            rows["duration"].append(d)
             rows["ratio"].append(float(lvl))
     return pl.DataFrame(rows).with_columns(
-        pl.col("cohort").cast(pl.Date), pl.col("dev").cast(pl.Int64)
+        pl.col("cohort").cast(pl.Date), pl.col("duration").cast(pl.Int64)
     )
 
 
@@ -51,15 +51,15 @@ def test_scalar_is_window_mean_and_list():
 
 
 def test_scalar_only_leading_window():
-    df = _long([0.0], window=3, n_dev=5).with_columns(
-        pl.when(pl.col("dev") <= 3).then(2.0).otherwise(100.0).alias("ratio")
+    df = _long([0.0], window=3, n_duration=5).with_columns(
+        pl.when(pl.col("duration") <= 3).then(2.0).otherwise(100.0).alias("ratio")
     )
     _, scalar = _cohort_level_scalar(df, "ratio", window=3)
-    np.testing.assert_allclose(scalar, [2.0])     # dev 4,5 ignored
+    np.testing.assert_allclose(scalar, [2.0])     # duration 4,5 ignored
 
 
 def test_scalar_drops_short_cohort():
-    df = pl.concat([_long([10.0], window=3, n_dev=2), _long([20.0], window=3, n_dev=3)
+    df = pl.concat([_long([10.0], window=3, n_duration=2), _long([20.0], window=3, n_duration=3)
                     .with_columns(pl.col("cohort") + pl.duration(days=800))])
     cohorts, scalar = _cohort_level_scalar(df, "ratio", window=3)
     assert len(cohorts) == 1
@@ -67,19 +67,19 @@ def test_scalar_drops_short_cohort():
 
 
 def test_scalar_null_inside_window_drops_cohort():
-    df = _long([5.0], window=3, n_dev=3).with_columns(
-        pl.when(pl.col("dev") == 2).then(None).otherwise(pl.col("ratio")).alias("ratio")
+    df = _long([5.0], window=3, n_duration=3).with_columns(
+        pl.when(pl.col("duration") == 2).then(None).otherwise(pl.col("ratio")).alias("ratio")
     )
     cohorts, _ = _cohort_level_scalar(df, "ratio", window=3)
     assert len(cohorts) == 0
 
 
-def test_scalar_duplicate_dev_not_counted():
+def test_scalar_duplicate_duration_not_counted():
     df = pl.DataFrame(
-        {"cohort": [dt.date(2023, 1, 1)] * 2, "dev": [1, 1], "ratio": [3.0, 9.0]}
-    ).with_columns(pl.col("cohort").cast(pl.Date), pl.col("dev").cast(pl.Int64))
+        {"cohort": [dt.date(2023, 1, 1)] * 2, "duration": [1, 1], "ratio": [3.0, 9.0]}
+    ).with_columns(pl.col("cohort").cast(pl.Date), pl.col("duration").cast(pl.Int64))
     cohorts, _ = _cohort_level_scalar(df, "ratio", window=2)
-    assert len(cohorts) == 0                       # only 1 distinct dev
+    assert len(cohorts) == 0                       # only 1 distinct duration
 
 
 def test_scalar_bad_window_and_missing_col():

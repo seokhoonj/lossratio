@@ -5,8 +5,8 @@ loss model should hand off from the exposure-driven (ED) stage to the chain
 ladder (CL) stage. Unlike the deprecated CV/RSE stability heuristic, the
 switch is the BOUNDARY that minimises out-of-sample loss-projection error --
 "where CL starts to out-predict ED" -- found by calendar-diagonal
-backtesting COMPLETE ``SA(k)`` models (ED for ``dev < k``, CL for
-``dev >= k``), NOT a per-link CL-vs-ED error crossing.
+backtesting COMPLETE ``SA(k)`` models (ED for ``duration < k``, CL for
+``duration >= k``), NOT a per-link CL-vs-ED error crossing.
 
 The selection is deliberately conservative (so a switch is only taken when
 the evidence is real, not a denominator-effect artifact):
@@ -49,9 +49,9 @@ _MAX_CANDS = 10       # cap on the mid-k candidate grid (cost control)
 # ---------------------------------------------------------------------------
 
 
-def _default_grid(dev_max: int) -> list[int]:
-    """Strided mid-k candidate grid in ``[2, dev_max - 2]`` (<= _MAX_CANDS)."""
-    hi = max(2, dev_max - 2)
+def _default_grid(duration_max: int) -> list[int]:
+    """Strided mid-k candidate grid in ``[2, duration_max - 2]`` (<= _MAX_CANDS)."""
+    hi = max(2, duration_max - 2)
     cand = list(range(2, hi + 1))
     if len(cand) > _MAX_CANDS:
         step = len(cand) / _MAX_CANDS
@@ -59,10 +59,10 @@ def _default_grid(dev_max: int) -> list[int]:
     return cand
 
 
-def _default_holdouts(dev_max: int) -> list[int]:
+def _default_holdouts(duration_max: int) -> list[int]:
     """Two evaluation depths: a guard (shallow) and a deep (long horizon)."""
-    deep = max(3, dev_max // 3)
-    guard = max(2, dev_max // 5)
+    deep = max(3, duration_max // 3)
+    guard = max(2, duration_max // 5)
     if guard >= deep:
         guard = max(2, deep - 2)
     return sorted({guard, deep}) or [deep]
@@ -72,7 +72,7 @@ def _per_group_wape(
     df_model: pl.DataFrame, common: pl.DataFrame, gcols: list[str]
 ) -> dict[Any, tuple[float | None, int]]:
     """WAPE = ``sum|A-E| / sum A`` per group on the common held-out cells."""
-    d = df_model.join(common, on=[*gcols, "cohort", "dev"], how="inner")
+    d = df_model.join(common, on=[*gcols, "cohort", "duration"], how="inner")
     d = d.with_columns((pl.col("actual") - pl.col("expected")).abs().alias("_abs"))
     if gcols:
         agg = d.group_by(gcols).agg(
@@ -99,13 +99,13 @@ def _candidate_wape(
     for name, est in cands.items():
         ae = Backtest(estimator=est, holdout=h, target="loss").fit(triangle)
         df = ae.ae_err
-        tables[name] = df.select([*gcols, "cohort", "dev", "actual", "expected"])
+        tables[name] = df.select([*gcols, "cohort", "duration", "actual", "expected"])
 
     common: pl.DataFrame | None = None
     for df in tables.values():
-        keys = df.select([*gcols, "cohort", "dev"]).unique()
+        keys = df.select([*gcols, "cohort", "duration"]).unique()
         common = keys if common is None else common.join(
-            keys, on=[*gcols, "cohort", "dev"], how="inner"
+            keys, on=[*gcols, "cohort", "duration"], how="inner"
         )
 
     per: dict[tuple[Any, str], tuple[float | None, int]] = {}
@@ -143,9 +143,9 @@ def _select_switch(
     from .stage_adaptive import StageAdaptive
 
     gcols = normalize_groups(triangle._groups)
-    dev_max = int(triangle._df["dev"].max())
-    k_grid = k_grid or _default_grid(dev_max)
-    holdouts = sorted(holdouts or _default_holdouts(dev_max))
+    duration_max = int(triangle._df["duration"].max())
+    k_grid = k_grid or _default_grid(duration_max)
+    holdouts = sorted(holdouts or _default_holdouts(duration_max))
     h_deep = holdouts[-1]
     h_guard = holdouts[-2] if len(holdouts) > 1 else holdouts[-1]
 

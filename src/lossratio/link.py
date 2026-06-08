@@ -1,4 +1,4 @@
-"""Link table — per (cohort, adjacent dev pair) intermediate.
+"""Link table — per (cohort, adjacent duration pair) intermediate.
 
 Built via :meth:`Triangle.link`. Carries per-cell age-to-age
 factors and (when an ``exposure`` column is supplied) the
@@ -46,7 +46,7 @@ def _build_link_df(
     """
     sort_keys: list[str] = []
     sort_keys.extend(normalize_groups(groups))
-    sort_keys.extend(["cohort", "dev"])
+    sort_keys.extend(["cohort", "duration"])
     df = tri_df.sort(sort_keys)
 
     over_keys: list[str] = []
@@ -59,8 +59,8 @@ def _build_link_df(
     base_cols.extend(
         [
             pl.col("cohort"),
-            pl.col("dev").alias("dev_from"),
-            pl.col("dev").shift(-1).over(over_keys).alias("dev_to"),
+            pl.col("duration").alias("duration_from"),
+            pl.col("duration").shift(-1).over(over_keys).alias("duration_to"),
             pl.col(target).alias("loss_from"),
             pl.col(target).shift(-1).over(over_keys).alias("loss_to"),
         ]
@@ -75,13 +75,13 @@ def _build_link_df(
     if weight is not None:
         base_cols.append(pl.col(weight).alias("weight"))
 
-    out = df.select(base_cols).filter(pl.col("dev_to").is_not_null())
+    out = df.select(base_cols).filter(pl.col("duration_to").is_not_null())
 
     out = out.with_columns(
         [
             pl.format(
-                "{}-{}", pl.col("dev_from"), pl.col("dev_to")
-            ).alias("dev_link"),
+                "{}-{}", pl.col("duration_from"), pl.col("duration_to")
+            ).alias("duration_link"),
             (pl.col("loss_to") - pl.col("loss_from")).alias("loss_delta"),
             pl.when(pl.col("loss_from") > min_denom)
             .then(pl.col("loss_to") / pl.col("loss_from"))
@@ -117,9 +117,9 @@ def _build_link_df(
     col_order.extend(
         [
             "cohort",
-            "dev_from",
-            "dev_to",
-            "dev_link",
+            "duration_from",
+            "duration_to",
+            "duration_link",
             "loss_from",
             "loss_to",
             "loss_delta",
@@ -145,7 +145,7 @@ def _validate_target_arg(name: str, value: str) -> str:
 
 
 class Link:
-    """Long-format link table — one row per (cohort, adjacent dev pair).
+    """Long-format link table — one row per (cohort, adjacent duration pair).
 
     Built via :meth:`Triangle.link`. Stores the per-cell ATA factor
     and, in dual mode, the per-cell ED intensity. Methods
@@ -158,7 +158,7 @@ class Link:
         Long-format link table:
 
         - Always:
-          ``[groups?, cohort, dev_from, dev_to, dev_link,
+          ``[groups?, cohort, duration_from, duration_to, duration_link,
           loss_from, loss_to, loss_delta, ata]``.
         - When ``exposure`` is set:
           ``[premium_from, premium_to, premium_delta, intensity]``.
@@ -195,7 +195,7 @@ class Link:
         self._output_type = triangle._output_type
         self._groups = triangle._groups
         self._cohort = triangle._cohort
-        self._dev = triangle._dev
+        self._duration = triangle._duration
 
         tri_df = triangle._df
 

@@ -71,7 +71,7 @@ def plot_ratio_fit(
     df = fit._df
     groups = fit._groups
     coh = fit._cohort
-    dev = fit._dev
+    duration = fit._duration
     conf = float(conf_level) if conf_level is not None else float(fit.conf_level)
     ci_type = getattr(fit, "ci_type", "analytical")
 
@@ -170,7 +170,7 @@ def plot_ratio_fit(
         else None
     )
 
-    x_label = _pretty_var_label(dev)
+    x_label = _pretty_var_label(duration)
     y_label = "ratio" if is_ratio else _get_role_label(fit, metric)
 
     if per_group and groups is not None:
@@ -240,7 +240,7 @@ def plot_projection_fit(
     df = fit._df
     groups = fit._groups
     coh = fit._cohort
-    dev = fit._dev
+    duration = fit._duration
     conf = float(
         conf_level if conf_level is not None
         else getattr(fit, "conf_level", 0.95)
@@ -311,7 +311,7 @@ def plot_projection_fit(
         y_axis_kind="amount",
         hline=0.0,
         title=title,
-        x_label=_pretty_var_label(dev),
+        x_label=_pretty_var_label(duration),
         y_label=role,
         caption=caption,
         nrow=nrow,
@@ -439,8 +439,8 @@ def _draw_panel(
     hline: float | None,
 ) -> None:
     """One panel: obs line + bridge + proj dashed + (optional) CI ribbon."""
-    sub = sub.sort("dev")
-    dev_vals = sub["dev"].to_numpy()
+    sub = sub.sort("duration")
+    duration_vals = sub["duration"].to_numpy()
     y_vals = sub["_y"].to_numpy()
     is_obs = sub["_is_obs"].to_numpy()
 
@@ -461,7 +461,7 @@ def _draw_panel(
         rib_mask = proj_mask & np.isfinite(lo) & np.isfinite(hi)
         if rib_mask.any():
             ax.fill_between(
-                dev_vals[rib_mask], lo[rib_mask], hi[rib_mask],
+                duration_vals[rib_mask], lo[rib_mask], hi[rib_mask],
                 alpha=0.15, color="C0", linewidth=0,
             )
 
@@ -470,7 +470,7 @@ def _draw_panel(
         last_obs_idx = np.flatnonzero(obs_mask)[-1]
         first_proj_idx = np.flatnonzero(proj_mask)[0]
         ax.plot(
-            [dev_vals[last_obs_idx], dev_vals[first_proj_idx]],
+            [duration_vals[last_obs_idx], duration_vals[first_proj_idx]],
             [y_vals[last_obs_idx], y_vals[first_proj_idx]],
             color="C0", linewidth=1.2, solid_capstyle="round",
         )
@@ -478,24 +478,24 @@ def _draw_panel(
     # Observed: solid line (>=2 points) or point (single).
     if obs_mask.sum() >= 2:
         ax.plot(
-            dev_vals[obs_mask], y_vals[obs_mask],
+            duration_vals[obs_mask], y_vals[obs_mask],
             color="C0", linewidth=1.2,
         )
     elif obs_mask.sum() == 1:
         ax.scatter(
-            dev_vals[obs_mask], y_vals[obs_mask],
+            duration_vals[obs_mask], y_vals[obs_mask],
             color="C0", s=22,
         )
 
     # Projected: dashed line (>=2 points) or hollow point (single).
     if proj_mask.sum() >= 2:
         ax.plot(
-            dev_vals[proj_mask], y_vals[proj_mask],
+            duration_vals[proj_mask], y_vals[proj_mask],
             color="C0", linewidth=1.2, linestyle="--",
         )
     elif proj_mask.sum() == 1:
         ax.scatter(
-            dev_vals[proj_mask], y_vals[proj_mask],
+            duration_vals[proj_mask], y_vals[proj_mask],
             facecolors="none", edgecolors="C0", s=22,
         )
 

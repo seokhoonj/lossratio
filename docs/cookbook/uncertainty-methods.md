@@ -70,7 +70,7 @@ lossratio는 이 지형을 세 전략 클래스로 노출합니다 (모델의 `u
 세 방법을 같은 토대 위에서 비교하기 위해 작은 누적손해 삼각형을 씁니다.
 
 ```text
-누적손해      dev1   dev2   dev3
+누적손해      duration1   duration2   duration3
 cohort1       100    150    165      <- 완전 발달
 cohort2       150    240     ?
 cohort3       200     ?      ?
@@ -79,17 +79,17 @@ cohort3       200     ?      ?
 체인 사다리(CL) 적합:
 
 - **인자**: $f_1 = (150+240)/(100+150) = 1.56$, $f_2 = 165/150 = 1.10$
-- **투영**: c2.dev3 $= 240 \times 1.10 = 264$, c3.dev2 $= 200 \times 1.56 = 312$,
-  c3.dev3 $= 312 \times 1.10 = 343.2$
+- **투영**: c2.duration3 $= 240 \times 1.10 = 264$, c3.duration2 $= 200 \times 1.56 = 312$,
+  c3.duration3 $= 312 \times 1.10 = 343.2$
 - **궁극치**: $[165,\ 264,\ 343.2]$, 합 $= 772.2$
 
 Mack 분산(alpha = 1):
 
 - $\sigma^2_1 = 0.60$, $\operatorname{Var}(\hat f_1) = \sigma^2_1 / \sum_i C_{i,1}
   = 0.60/250 = 0.0024$, $\operatorname{SE}(f_1) = 0.049$
-- dev2는 링크가 하나뿐이라 $\sigma^2_2$를 직접 못 구함 -> LOCF로
+- duration2는 링크가 하나뿐이라 $\sigma^2_2$를 직접 못 구함 -> LOCF로
   $\sigma^2_2 = 0.60$, $\operatorname{Var}(\hat f_2) = 0.60/150 = 0.004$
-- **표준화 잔차 풀**(dev1): cohort1 $= -0.7746$, cohort2 $= +0.6325$
+- **표준화 잔차 풀**(duration1): cohort1 $= -0.7746$, cohort2 $= +0.6325$
 
 772.2는 *점추정 하나*입니다. 세 방법은 "이 값이 얼마나 흔들리나"를 서로 다르게
 시뮬레이션합니다. (아래 draw 값은 모두 *예시*입니다.)
@@ -103,8 +103,8 @@ Mack 분산(alpha = 1):
 
 뽑은 인자로 관측 최신 대각선을 전개 (재적합 없음):
 
-- c2.dev3$^\ast = 240 \times 1.08 = 259.2$
-- c3.dev2$^\ast = 200 \times 1.60 = 320 \to$ c3.dev3$^\ast = 320 \times 1.08 = 345.6$
+- c2.duration3$^\ast = 240 \times 1.08 = 259.2$
+- c3.duration2$^\ast = 200 \times 1.60 = 320 \to$ c3.duration3$^\ast = 320 \times 1.08 = 345.6$
 - 이 replicate의 궁극 합 $= 165 + 259.2 + 345.6 = 769.8$
 
 궁극치가 뽑은 인자들의 *곱*이라 분포가 오른쪽으로 치우칩니다(skew). "추정값을
@@ -135,7 +135,7 @@ $\{-0.7746,\ +0.6325\}$.
 
   $$C^\ast_{i,k+1} = f_k C_{i,k} + r^\ast \cdot \sigma_k\sqrt{C_{i,k}}$$
 
-  예: cohort1 dev1->2에서 $r^\ast=+0.6325$ -> $1.56\times100 +
+  예: cohort1 duration1->2에서 $r^\ast=+0.6325$ -> $1.56\times100 +
   0.6325\times0.7746\times10 = 160.9$. 이 pseudo 과거삼각형에 CL 재적합.
 - **Stage 2 (과정오차)**: 3.2와 동일(gamma 미래 노이즈).
 

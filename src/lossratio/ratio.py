@@ -150,7 +150,7 @@ class Ratio:
     switch
         ED->CL switch specification for ``method="sa"``: ``None``
         (default, no discretionary switch — SA falls back to ED), an
-        ``int`` (fixed switch dev), a :class:`~lossratio.SwitchPoint`,
+        ``int`` (fixed switch duration), a :class:`~lossratio.SwitchPoint`,
         or a ``SwitchPoint.detect()`` spec. Forwarded to the inner
         :class:`Loss`. Consulted only when ``method="sa"``.
     premium_regime
@@ -261,7 +261,7 @@ class RatioFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns ``[groups?, cohort, dev,
+        Long-format triangle with columns ``[groups?, cohort, duration,
         loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
         incr_premium_proj, switch_from, loss_*_se, loss_total_cv,
         loss_ci_*, ratio_proj, incr_ratio_proj, ratio_se, ratio_cv,
@@ -270,7 +270,7 @@ class RatioFit:
     method : str
         ``"ed"``, ``"sa"``, or ``"cl"``.
     switch_point :
-        Effective ED->CL switch dev for ``"sa"`` (single value or dict
+        Effective ED->CL switch duration for ``"sa"`` (single value or dict
         per group).
     loss_fit, premium_fit :
         The embedded :class:`LossFit` and :class:`PremiumFit`.
@@ -293,7 +293,7 @@ class RatioFit:
         self._output_type = triangle._output_type
         self._groups = triangle._groups
         self._cohort = triangle._cohort
-        self._dev = triangle._dev
+        self._duration = triangle._duration
         self.method = estimator.method
         self.loss_alpha = estimator.loss_alpha
         self.premium_alpha = estimator.premium_alpha
@@ -351,7 +351,7 @@ class RatioFit:
         # 3) join premium SE columns for delta method ----------------------
         if estimator.se_method == "delta":
             pf_df = self.premium_fit._df
-            keys = [*normalize_groups(self._groups), "cohort", "dev"]
+            keys = [*normalize_groups(self._groups), "cohort", "duration"]
             pf_keep = pf_df.select(
                 keys + ["premium_total_se", "premium_total_cv"]
             )
@@ -380,7 +380,7 @@ class RatioFit:
         # 4b) Ratio tail = the tailed ultimate loss / tailed ultimate premium.
         # Both sides are developed with the same tail (loss runoff and the
         # cumulative-premium runoff), so ratio_tail = loss_proj / premium_proj
-        # on the last-dev row -- consistent rather than freezing premium.
+        # on the last-duration row -- consistent rather than freezing premium.
         if "loss_tail" in full.columns and "premium_tail" in full.columns:
             full = full.with_columns(
                 pl.when(
@@ -448,7 +448,7 @@ class RatioFit:
             return full
 
         groups = self._groups
-        keys = [*normalize_groups(groups), "cohort", "dev"]
+        keys = [*normalize_groups(groups), "cohort", "duration"]
         full = _apply_bootstrap_overlay(
             full, boots,
             role    = "loss",
@@ -497,7 +497,7 @@ class RatioFit:
 
     @property
     def switch_point(self):
-        """Effective ED->CL switch dev for SA (delegated to LossFit)."""
+        """Effective ED->CL switch duration for SA (delegated to LossFit)."""
         return self.loss_fit.switch_point
 
     def convergence(self, **kwargs: Any) -> "Convergence":
@@ -506,7 +506,7 @@ class RatioFit:
         Re-drives a calendar-diagonal hold-out backtest over candidate
         development periods on the source triangle, using this fit's own
         estimator config (pass ``estimator=`` to override), and flags the
-        first dev at which the projected loss ratio stabilises (drift /
+        first duration at which the projected loss ratio stabilises (drift /
         slope / dispersion criteria). Returns a :class:`Convergence`.
 
         Extra keyword arguments (``method`` / ``max_drift`` / ``max_slope``
@@ -584,7 +584,7 @@ class RatioFit:
         -------
         DataFrame
             Long-format coarse-grain projection with columns
-            ``[groups?, cohort, dev, loss_proj, incr_loss_proj,
+            ``[groups?, cohort, duration, loss_proj, incr_loss_proj,
             premium_proj, incr_premium_proj, ratio_proj, incr_ratio_proj]``.
             ``*_proj`` are CUMULATIVE; ``incr_*_proj`` are the per-period
             increments. Input mirroring is preserved.
@@ -606,17 +606,17 @@ class RatioFit:
         # Per-cell projected increments derived from the CUMULATIVE
         # projection (`loss_proj` / `premium_proj`). The cumulative columns
         # are complete (no nulls) on every fit path, whereas the stored
-        # `incr_*_proj` column is NULL at dev 1 on the regime
+        # `incr_*_proj` column is NULL at duration 1 on the regime
         # (segment_borrowed) path -- so re-binning from the cumulative is
-        # the only source that captures the dev-1 mass for every fit. Per
-        # (groups, cohort) sorted by dev, the increment is `<role>_proj -
-        # <role>_proj.shift(1)` with dev0 = 0 (fill_value=0.0), so the first
+        # the only source that captures the duration-1 mass for every fit. Per
+        # (groups, cohort) sorted by duration, the increment is `<role>_proj -
+        # <role>_proj.shift(1)` with duration0 = 0 (fill_value=0.0), so the first
         # increment = the first cumulative -- matching `_nan_skip_diff`
         # semantics used by the non-regime `_from_triangle` builder.
-        # calendar of cell (cohort, dev) = cohort + (dev - 1) source periods.
+        # calendar of cell (cohort, duration) = cohort + (duration - 1) source periods.
         diff_keys = [*groups, "cohort"]
         recon = (
-            self._df.sort([*diff_keys, "dev"])
+            self._df.sort([*diff_keys, "duration"])
             .with_columns(
                 (
                     pl.col("loss_proj")
@@ -633,7 +633,7 @@ class RatioFit:
                 *groups,
                 pl.col("cohort"),
                 pl.col("cohort")
-                .dt.offset_by(pl.format("{}mo", (pl.col("dev") - 1) * mpp))
+                .dt.offset_by(pl.format("{}mo", (pl.col("duration") - 1) * mpp))
                 .alias("_calendar"),
                 pl.col("incr_loss"),
                 pl.col("incr_premium"),
@@ -651,7 +651,7 @@ class RatioFit:
             grain=target_grain,
             cell_type="incremental",
         )
-        keep = [*groups, "cohort", "dev"]
+        keep = [*groups, "cohort", "duration"]
         out = coarse._df.select(
             *keep,
             pl.col("loss").alias("loss_proj"),
@@ -665,10 +665,10 @@ class RatioFit:
         # 2) Fold any active tail mass into the coarse ultimate -----------
         # When a tail is active, the tail's extra ultimate mass lives as a
         # scalar companion column (`loss_tail` / `premium_tail`) on each
-        # fine cohort's last-dev row -- NOT in `incr_*_proj`. The pure
+        # fine cohort's last-duration row -- NOT in `incr_*_proj`. The pure
         # re-binning above is therefore tail-blind. Fold the per-fine-cohort
-        # tail mass (`<role>_tail - <role>_proj` at its last dev) into the
-        # coarse cohort's last-dev cumulative so the coarse ultimate matches
+        # tail mass (`<role>_tail - <role>_proj` at its last duration) into the
+        # coarse cohort's last-duration cumulative so the coarse ultimate matches
         # the tail-inclusive fine ultimate. When no tail is active (columns
         # absent or all null), this is a no-op and `out` is byte-identical.
         out = self._fold_tail_into_coarse(out, target_grain, groups)
@@ -681,7 +681,7 @@ class RatioFit:
         target_grain: str,
         groups: list[str],
     ) -> pl.DataFrame:
-        """Add per-coarse-cohort tail mass to the coarse last-dev ultimate.
+        """Add per-coarse-cohort tail mass to the coarse last-duration ultimate.
 
         No-op (returns ``out`` unchanged) when no ``*_tail`` columns are
         present or every tail value is null.
@@ -697,7 +697,7 @@ class RatioFit:
             return out
 
         # Per fine cohort, the tail mass = <role>_tail - <role>_proj on the
-        # rows where <role>_tail is non-null (precisely the last-dev rows).
+        # rows where <role>_tail is non-null (precisely the last-duration rows).
         tail_mass_exprs = [
             (pl.col(f"{r}_tail") - pl.col(f"{r}_proj")).alias(f"_{r}_tail_mass")
             for r in roles
@@ -725,15 +725,15 @@ class RatioFit:
             ]
         )
 
-        # Identify each coarse cohort's last-dev row.
+        # Identify each coarse cohort's last-duration row.
         marked = out.with_columns(
-            pl.col("dev")
+            pl.col("duration")
             .rank(method="dense", descending=True)
             .over(keys)
-            .alias("_dev_rank")
+            .alias("_duration_rank")
         )
         merged = marked.join(coarse_mass, on=keys, how="left")
-        is_last = pl.col("_dev_rank") == 1
+        is_last = pl.col("_duration_rank") == 1
 
         add_exprs: list[pl.Expr] = []
         for r in roles:
@@ -772,7 +772,7 @@ class RatioFit:
             .alias("incr_ratio_proj"),
         )
 
-        drop_cols = ["_dev_rank", *[f"_{r}_tail_mass" for r in roles]]
+        drop_cols = ["_duration_rank", *[f"_{r}_tail_mass" for r in roles]]
         return merged.drop(drop_cols).select(out.columns)
 
     def to_polars(self) -> pl.DataFrame:
@@ -795,11 +795,11 @@ class RatioFit:
         keys: list[str] = [*normalize_groups(self._groups), "cohort"]
 
         # `latest` / `ratio_latest` are the last *observed* cumulative
-        # loss and observed loss ratio (sorted by dev, not the dev
+        # loss and observed loss ratio (sorted by duration, not the duration
         # index).
         observed = (
             df.filter(pl.col("loss_obs").is_not_null())
-            .sort(keys + ["dev"])
+            .sort(keys + ["duration"])
             .group_by(keys)
             .agg(
                 pl.col("loss_obs").last().alias("latest"),
@@ -813,8 +813,8 @@ class RatioFit:
         #
         # Tail cascade: when a tail is active the fit carries scalar
         # companion columns `loss_tail` / `premium_tail` on each cohort's
-        # last-dev row (the tail-inclusive ultimate, vs `loss_proj` /
-        # `premium_proj` = the within-triangle cum to dev_max). Pull those
+        # last-duration row (the tail-inclusive ultimate, vs `loss_proj` /
+        # `premium_proj` = the within-triangle cum to duration_max). Pull those
         # through and expose them as a SEPARATE `*_ultimate` headline below;
         # `*_proj` is LEFT as the within-triangle projection so the column
         # means the same thing here and in `LossFit` / `PremiumFit` summaries.
@@ -830,7 +830,7 @@ class RatioFit:
             else []
         )
         ultimate = (
-            df.sort(keys + ["dev"])
+            df.sort(keys + ["duration"])
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").drop_nulls().last().alias("loss_proj"),
@@ -1074,7 +1074,7 @@ class RatioFit:
 
         See Also
         --------
-        segment_path : the dev-by-dev developing trajectory of the same two
+        segment_path : the duration-by-duration developing trajectory of the same two
             legs (and the band around them), for charting rather than just the
             ultimate headline.
         """
@@ -1096,7 +1096,7 @@ class RatioFit:
     ) -> pl.DataFrame:
         """Developing path of the recent segment's go-forward loss ratio.
 
-        The dev-by-dev companion to :meth:`segment_band`. Where
+        The duration-by-duration companion to :meth:`segment_band`. Where
         ``segment_band`` reports the recent segment's ULTIMATE loss ratio two
         ways (the donor-shape *borrow leg* and the own-intensity *curve leg*)
         and their spread, this returns the same two legs AS A DEVELOPING PATH:
@@ -1113,14 +1113,14 @@ class RatioFit:
         The observed region is always at the fit's display grain -- it keeps
         the real period-to-period dynamics and is grain-invariant. There the
         path shows the single data-anchored borrow trajectory with the band
-        collapsed onto it; the band fans open at the dev where the segment as a
+        collapsed onto it; the band fans open at the duration where the segment as a
         whole runs out of data (so a chart reads as a solid certain line that
         opens into a shaded tail). By construction the last (ultimate) row of
         each leg equals ``segment_band``'s reported ultimate for that leg
         (``ratio_borrow`` <-> ``ratio_proj_borrow``, ``ratio_curve`` <->
         ``ratio_proj_curve``, ``ratio_mean`` <-> ``ratio_proj_mean``). With
         ``auto_grain=True`` the horizon is the selected coarse grain's
-        ultimate, so the dev index can run a few display periods past the fit's
+        ultimate, so the duration index can run a few display periods past the fit's
         own projection grid to reach that grain's fully-developed point.
 
         The method is fully additive: it reads the fit and re-fits coarsened
@@ -1141,7 +1141,7 @@ class RatioFit:
             tail -- is at the fit's display grain. When ``True`` the
             unobserved tail is extrapolated at the per-group selected coarse
             grain (the same grain :meth:`segment_band` would pick) and then
-            INTERPOLATED back onto the display-grain dev positions, so a
+            INTERPOLATED back onto the display-grain duration positions, so a
             fresh regime's tail is drawn from a mature, convergent grain
             without re-binning the observed period-to-period detail.
             Interpolation introduces no new extrapolation error. The result
@@ -1152,8 +1152,8 @@ class RatioFit:
         Returns
         -------
         DataFrame
-            One row per ``group x dev`` of the recent segment, with columns
-            ``dev``, ``ratio_borrow``, ``ratio_curve`` (null when the curve
+            One row per ``group x duration`` of the recent segment, with columns
+            ``duration``, ``ratio_borrow``, ``ratio_curve`` (null when the curve
             leg is unavailable), ``ratio_mean``, ``band_lo`` / ``band_hi``
             (the two-leg spread; null in the observed region's collapsed band
             only when the curve is unavailable), and ``observed`` (``True``
@@ -1192,7 +1192,7 @@ class RatioFit:
         Notes
         -----
         * The numerator is *pre-tail* -- the bootstrap develops to the
-          last observed dev, not through the deterministic tail factor;
+          last observed duration, not through the deterministic tail factor;
           and the loss-side overlay is the CL (Mack) bootstrap regardless
           of the loss ``method``, so the distribution is CL-centred even
           when the headline point estimate is ED / SA.
@@ -1215,7 +1215,7 @@ class RatioFit:
         # (loss-only bootstrap). Last non-null projection per cohort,
         # summed over cohorts (mirrors `summary`'s ultimate aggregation).
         premium_coh = (
-            self._df.sort([*gcols, "cohort", "dev"])
+            self._df.sort([*gcols, "cohort", "duration"])
             .group_by([*gcols, "cohort"], maintain_order=True)
             .agg(pl.col("premium_proj").drop_nulls().last().alias("_p"))
         )

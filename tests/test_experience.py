@@ -108,7 +108,7 @@ def test_derive_grain_columns_pandas_returns_pandas():
 
 
 def test_derive_grain_columns_columns_present():
-    """Derived columns are uy/cy/dev x M/Q/H/Y (12 columns total).
+    """Derived columns are uy/cy/duration x M/Q/H/Y (12 columns total).
 
     Yearly underwriting / calendar columns are bare (``uy`` / ``cy``).
     """
@@ -117,30 +117,30 @@ def test_derive_grain_columns_columns_present():
     assert {
         "uy", "uy_h", "uy_q", "uy_m",
         "cy", "cy_h", "cy_q", "cy_m",
-        "dev_y", "dev_h", "dev_q", "dev_m",
+        "duration_y", "duration_h", "duration_q", "duration_m",
     } <= cols
 
 
-def test_derive_grain_columns_dev_m_calc():
-    """dev_m = (cy_m_year - uy_m_year) * 12 + (cy_m_month - uy_m_month) + 1."""
+def test_derive_grain_columns_duration_m_calc():
+    """duration_m = (cy_m_year - uy_m_year) * 12 + (cy_m_month - uy_m_month) + 1."""
     out = lr.derive_grain_columns(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    # Row 0: uy_m = 2024-01, cy_m = 2024-03 -> dev_m = 0*12 + (3 - 1) + 1 = 3
-    # Row 1: uy_m = 2024-04, cy_m = 2024-06 -> dev_m = 0*12 + (6 - 4) + 1 = 3
-    # Row 2: uy_m = 2024-07, cy_m = 2024-09 -> dev_m = 0*12 + (9 - 7) + 1 = 3
-    assert out["dev_m"].to_list() == [3, 3, 3]
+    # Row 0: uy_m = 2024-01, cy_m = 2024-03 -> duration_m = 0*12 + (3 - 1) + 1 = 3
+    # Row 1: uy_m = 2024-04, cy_m = 2024-06 -> duration_m = 0*12 + (6 - 4) + 1 = 3
+    # Row 2: uy_m = 2024-07, cy_m = 2024-09 -> duration_m = 0*12 + (9 - 7) + 1 = 3
+    assert out["duration_m"].to_list() == [3, 3, 3]
 
 
-def test_derive_grain_columns_dev_q_calc():
+def test_derive_grain_columns_duration_q_calc():
     """Quarter elapsed: same calendar-anchored logic."""
     out = lr.derive_grain_columns(_period_input())
     if not isinstance(out, pl.DataFrame):
         out = pl.from_pandas(out)
-    # Row 0: uy_m = 2024-01 (Q1), cy_m = 2024-03 (Q1) -> dev_q = 1
-    # Row 1: uy_m = 2024-04 (Q2), cy_m = 2024-06 (Q2) -> dev_q = 1
-    # Row 2: uy_m = 2024-07 (Q3), cy_m = 2024-09 (Q3) -> dev_q = 1
-    assert out["dev_q"].to_list() == [1, 1, 1]
+    # Row 0: uy_m = 2024-01 (Q1), cy_m = 2024-03 (Q1) -> duration_q = 1
+    # Row 1: uy_m = 2024-04 (Q2), cy_m = 2024-06 (Q2) -> duration_q = 1
+    # Row 2: uy_m = 2024-07 (Q3), cy_m = 2024-09 (Q3) -> duration_q = 1
+    assert out["duration_q"].to_list() == [1, 1, 1]
 
 
 def test_derive_grain_columns_uy_first_of_year():

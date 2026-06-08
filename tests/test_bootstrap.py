@@ -38,7 +38,7 @@ from lossratio.bootstrap import (
     _cell_residuals_ed,
     _fitted_grid_cl,
     _link_residuals_cl,
-    _pool_dev_subpools,
+    _pool_duration_subpools,
     _resolve_bootstrap,
 )
 from lossratio.link import _build_link_df
@@ -103,8 +103,8 @@ def test_bootstrap_anchor_matches_r():
     tri = _tri()
     bt = Bootstrap(type="analytical", method="cl", n_replicates=8, seed=1).fit(tri)
 
-    f_anchor = bt.f_anchor.sort(["dev_from"])
-    sigma2_anchor = bt.sigma2_anchor.sort(["dev_from"])
+    f_anchor = bt.f_anchor.sort(["duration_from"])
+    sigma2_anchor = bt.sigma2_anchor.sort(["duration_from"])
 
     assert f_anchor.height == r.height
     assert sigma2_anchor.height == r.height
@@ -126,16 +126,16 @@ def test_bootstrap_anchor_matches_r():
 def test_boot_summary_decompose_unit():
     """Hand-built ``(cum_mean, cum_sampled)`` pair with known statistics.
 
-    1 cohort x 2 devs x 4 replicates. Dev 0 is observed (cum_mean ==
+    1 cohort x 2 durations x 4 replicates. Dev 0 is observed (cum_mean ==
     cum_sampled, no spread). Dev 1 is projected with deliberately
     distinct mean/sampled spreads so every output is hand-checkable.
     """
-    # cum_mean: dev0 constant 100; dev1 = [10, 20, 30, 40]
+    # cum_mean: duration0 constant 100; duration1 = [10, 20, 30, 40]
     cum_mean = np.array(
         [[[100.0, 100.0, 100.0, 100.0],
           [10.0, 20.0, 30.0, 40.0]]]
     )
-    # cum_sampled: dev0 == cum_mean; dev1 = [12, 18, 33, 37]
+    # cum_sampled: duration0 == cum_mean; duration1 = [12, 18, 33, 37]
     cum_sampled = np.array(
         [[[100.0, 100.0, 100.0, 100.0],
           [12.0, 18.0, 33.0, 37.0]]]
@@ -143,22 +143,22 @@ def test_boot_summary_decompose_unit():
 
     out = _boot_summary_decompose(cum_mean, cum_sampled, quantile_ci=True)
 
-    # Flatten order is column-major (cohort fastest); 1 cohort x 2 devs
-    # -> index 0 = (cohort 0, dev 0), index 1 = (cohort 0, dev 1).
+    # Flatten order is column-major (cohort fastest); 1 cohort x 2 durations
+    # -> index 0 = (cohort 0, duration 0), index 1 = (cohort 0, duration 1).
     mean_proj = out["mean_proj"]
     param_se = out["param_se"]
     proc_se = out["proc_se"]
     total_se = out["total_se"]
     total_cv = out["total_cv"]
 
-    # ---- dev 0: constant -> mean 100, both SEs 0 ----
+    # ---- duration 0: constant -> mean 100, both SEs 0 ----
     assert mean_proj[0] == pytest.approx(100.0)
     assert param_se[0] == pytest.approx(0.0, abs=1e-12)
     assert total_se[0] == pytest.approx(0.0, abs=1e-12)
     assert proc_se[0] == pytest.approx(0.0, abs=1e-12)
     assert total_cv[0] == pytest.approx(0.0, abs=1e-12)
 
-    # ---- dev 1: hand-computed ----
+    # ---- duration 1: hand-computed ----
     m = [10.0, 20.0, 30.0, 40.0]
     s = [12.0, 18.0, 33.0, 37.0]
     exp_mean = float(np.mean(m))                       # 25.0
@@ -173,7 +173,7 @@ def test_boot_summary_decompose_unit():
     assert proc_se[1] == pytest.approx(exp_proc, rel=1e-12)
     assert total_cv[1] == pytest.approx(exp_cv, rel=1e-12)
 
-    # ---- inverted_cdf (R type=1) quantiles of cum_sampled at dev 1 ----
+    # ---- inverted_cdf (R type=1) quantiles of cum_sampled at duration 1 ----
     q = np.quantile(s, (0.025, 0.975), method="inverted_cdf")
     assert out["ci_lo"][1] == pytest.approx(q[0], rel=1e-12)
     assert out["ci_hi"][1] == pytest.approx(q[-1], rel=1e-12)
@@ -182,7 +182,7 @@ def test_boot_summary_decompose_unit():
 def test_boot_summary_decompose_edge_cases():
     """``n < 2 -> NaN`` and ``mean_proj <= 0 -> total_cv NaN`` branches."""
     # ---- n < 2: only one finite replicate-pair -> all-NaN cell ----
-    cum_mean = np.array([[[5.0, np.nan, np.nan]]])      # 1 cohort, 1 dev, n_replicates=3
+    cum_mean = np.array([[[5.0, np.nan, np.nan]]])      # 1 cohort, 1 duration, n_replicates=3
     cum_sampled = np.array([[[6.0, np.nan, np.nan]]])
     out = _boot_summary_decompose(cum_mean, cum_sampled)
     assert np.isnan(out["mean_proj"][0])
@@ -204,8 +204,8 @@ def test_boot_kernel_injected_fstar_deterministic():
     """With ``_injected_fstar`` supplied the Stage-1 projection is pure
     arithmetic -- two calls are byte-identical and one cell is
     hand-verifiable."""
-    # 2 cohorts x 3 devs. Cohort 0 fully observed; cohort 1 observed to
-    # dev 1 only, so dev 2 must be projected.
+    # 2 cohorts x 3 durations. Cohort 0 fully observed; cohort 1 observed to
+    # duration 1 only, so duration 2 must be projected.
     loss_obs = np.array([
         [100.0, 150.0, 210.0],
         [120.0, 168.0, np.nan],
@@ -215,8 +215,8 @@ def test_boot_kernel_injected_fstar_deterministic():
     n_links = loss_obs.shape[1] - 1
     # Deterministic per-link factors, distinct per replicate.
     f_star = np.array([
-        [1.10, 1.20, 1.30, 1.40, 1.50],   # link 0 (dev 1 -> dev 2)
-        [1.05, 1.15, 1.25, 1.35, 1.45],   # link 1 (dev 2 -> dev 3)
+        [1.10, 1.20, 1.30, 1.40, 1.50],   # link 0 (duration 1 -> duration 2)
+        [1.05, 1.15, 1.25, 1.35, 1.45],   # link 1 (duration 2 -> duration 3)
     ])
     assert f_star.shape == (n_links, n_replicates)
 
@@ -235,7 +235,7 @@ def test_boot_kernel_injected_fstar_deterministic():
     )
 
     # ---- hand-check the one projected cell ----
-    # Cohort 1, dev index 2 (last_obs = 1). link index k = 1.
+    # Cohort 1, duration index 2 (last_obs = 1). link index k = 1.
     # cum_mean[1, 2, b] = f_star[1, b] * cum_mean[1, 1, b]
     #                   = f_star[1, b] * 168.0  (observed cell unchanged)
     for b in range(n_replicates):
@@ -299,14 +299,14 @@ def test_bootstrap_converges_to_mack_analytical():
     closed form, so at large B its projected-cell ``total_se`` must
     track the analytical Mack ``loss_total_se`` up to Monte-Carlo
     noise."""
-    r = _load("cl_mack_analytical_se").sort(["cohort", "dev"])
+    r = _load("cl_mack_analytical_se").sort(["cohort", "duration"])
     tri = _tri()
     bt = Bootstrap(
         type="analytical", method="cl", n_replicates=4000, seed=20260522
     ).fit(tri)
-    py = bt.summary.sort(["cohort", "dev"])
+    py = bt.summary.sort(["cohort", "duration"])
 
-    keys = ["cohort", "dev"]
+    keys = ["cohort", "duration"]
     py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
 
@@ -329,14 +329,14 @@ def test_bootstrap_summary_statistically_close_to_r():
     difference of ``total_se`` over projected cells is small, NOT
     cell-by-cell equality.
     """
-    r = _load("boot_cl_analytical_summary").sort(["cohort", "dev"])
+    r = _load("boot_cl_analytical_summary").sort(["cohort", "duration"])
     tri = _tri()
     bt = Bootstrap(
         type="analytical", method="cl", n_replicates=4000, seed=20260522
     ).fit(tri)
-    py = bt.summary.sort(["cohort", "dev"])
+    py = bt.summary.sort(["cohort", "duration"])
 
-    keys = ["cohort", "dev"]
+    keys = ["cohort", "duration"]
     py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
 
@@ -352,15 +352,15 @@ def test_bootstrap_summary_statistically_close_to_r():
 def test_bootstrap_B_convergence():
     """Monte-Carlo error shrinks with B: a large-B run is on average
     closer to the analytical Mack reference than a small-B run."""
-    r = _load("cl_mack_analytical_se").sort(["cohort", "dev"])
+    r = _load("cl_mack_analytical_se").sort(["cohort", "duration"])
     tri = _tri()
-    keys = ["cohort", "dev"]
+    keys = ["cohort", "duration"]
 
     def _mrd_for_B(n_replicates: int, seed: int) -> float:
         bt = Bootstrap(
             type="analytical", method="cl", n_replicates=n_replicates, seed=seed
         ).fit(tri)
-        py = bt.summary.sort(["cohort", "dev"])
+        py = bt.summary.sort(["cohort", "duration"])
         py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
         r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
         return _median_rel_diff(
@@ -394,8 +394,8 @@ def test_cl_bootstrap_overlay():
     assert boot.ci_type == "bootstrap"
     assert isinstance(boot.boots, BootstrapTriangle)
 
-    p = plain.to_polars().sort(["cohort", "dev"])
-    b = boot.to_polars().sort(["cohort", "dev"])
+    p = plain.to_polars().sort(["cohort", "duration"])
+    b = boot.to_polars().sort(["cohort", "duration"])
     assert p.height == b.height
 
     # loss_proj is the analytical point estimate -- never overlaid.
@@ -504,7 +504,7 @@ def test_bootstrap_triangle_conversion():
     assert isinstance(pan, pd.DataFrame)
     assert pol.height == len(pan)
     expected = {
-        "coverage", "cohort", "dev",
+        "coverage", "cohort", "duration",
         "mean_proj", "param_se", "proc_se", "total_se", "total_cv",
     }
     assert expected <= set(pol.columns)
@@ -568,7 +568,7 @@ def test_bootstrap_keep_pseudo():
     keep = Bootstrap(n_replicates=10, seed=1, keep_pseudo=True).fit(tri)
     ps = keep.pseudo_triangles
     assert ps is not None
-    # 36 cohorts x 36 devs x n_replicates=10 replicates for the single surgery group.
+    # 36 cohorts x 36 durations x n_replicates=10 replicates for the single surgery group.
     n_cells = keep.summary.height
     assert ps.height == n_cells * 10
 
@@ -597,25 +597,25 @@ def test_bootstrap_keep_pseudo():
 
 
 def _sur_obs_matrix(target: str = "loss") -> tuple[np.ndarray, list, list]:
-    """Observed cumulative ``(n_coh, n_dev)`` matrix for the surgery group.
+    """Observed cumulative ``(n_coh, n_duration)`` matrix for the surgery group.
 
     Mirrors the per-group matrix build the kernels use -- rows are
-    cohorts (sorted ascending), columns dev (sorted ascending), with
+    cohorts (sorted ascending), columns duration (sorted ascending), with
     ``np.nan`` on unobserved cells.
     """
     sub = _tri()._df.filter(pl.col("coverage") == "surgery").sort(
-        ["cohort", "dev"]
+        ["cohort", "duration"]
     )
     cohorts = sorted(sub["cohort"].unique().to_list())
-    devs = sorted(sub["dev"].unique().to_list())
+    durations = sorted(sub["duration"].unique().to_list())
     coh_pos = {c: i for i, c in enumerate(cohorts)}
-    dev_pos = {d: j for j, d in enumerate(devs)}
-    mat = np.full((len(cohorts), len(devs)), np.nan, dtype=np.float64)
+    duration_pos = {d: j for j, d in enumerate(durations)}
+    mat = np.full((len(cohorts), len(durations)), np.nan, dtype=np.float64)
     for row in sub.iter_rows(named=True):
         v = row[target]
         if v is not None:
-            mat[coh_pos[row["cohort"]], dev_pos[row["dev"]]] = float(v)
-    return mat, cohorts, devs
+            mat[coh_pos[row["cohort"]], duration_pos[row["duration"]]] = float(v)
+    return mat, cohorts, durations
 
 
 def _sur_sub() -> pl.DataFrame:
@@ -682,17 +682,17 @@ def test_phase2_resid_pool_cl_cell_hat_matches_r():
     closed-form function of the triangle, so it must bit-match R.
 
     R and Python emit the pool in different row order, so the comparison
-    JOINs on ``(cohort, dev)``.
+    JOINs on ``(cohort, duration)``.
     """
-    mat, cohorts, devs = _sur_obs_matrix("loss")
+    mat, cohorts, durations = _sur_obs_matrix("loss")
     anchor = _boot_anchor_cl(mat)
     cell = _cell_residuals_cl(_sur_sub(), anchor, target="loss", hat_adj=True)
     pool = _build_pool_cell(cell, pooling="pooled")
 
-    py = _pool_to_df(pool, "dev")
+    py = _pool_to_df(pool, "duration")
     r = _load("boot_resid_cl_cell")
     n, mrd = _max_rel_diff_on_join(
-        py, r, ["cohort", "dev"], "py_residual", "residual"
+        py, r, ["cohort", "duration"], "py_residual", "residual"
     )
     assert n == r.height == py.height, (
         f"pool / fixture row counts must agree: py={py.height} "
@@ -705,15 +705,15 @@ def test_phase2_resid_pool_cl_cell_nohat_matches_r():
     """CL cell residual pool (``hat_adj=False``) -- the simple
     degrees-of-freedom correction instead of the hat adjustment.
     Bit-parity with R."""
-    mat, cohorts, devs = _sur_obs_matrix("loss")
+    mat, cohorts, durations = _sur_obs_matrix("loss")
     anchor = _boot_anchor_cl(mat)
     cell = _cell_residuals_cl(_sur_sub(), anchor, target="loss", hat_adj=False)
     pool = _build_pool_cell(cell, pooling="pooled")
 
-    py = _pool_to_df(pool, "dev")
+    py = _pool_to_df(pool, "duration")
     r = _load("boot_resid_cl_cell_nohat")
     n, mrd = _max_rel_diff_on_join(
-        py, r, ["cohort", "dev"], "py_residual", "residual"
+        py, r, ["cohort", "duration"], "py_residual", "residual"
     )
     assert n == r.height == py.height
     assert mrd < 1e-7, (
@@ -730,10 +730,10 @@ def test_phase2_resid_pool_ed_cell_matches_r():
     cell = _cell_residuals_ed(link_df)
     pool = _build_pool_cell(cell, pooling="pooled")
 
-    py = _pool_to_df(pool, "dev")
+    py = _pool_to_df(pool, "duration")
     r = _load("boot_resid_ed_cell")
     n, mrd = _max_rel_diff_on_join(
-        py, r, ["cohort", "dev"], "py_residual", "residual"
+        py, r, ["cohort", "duration"], "py_residual", "residual"
     )
     assert n == r.height == py.height
     assert mrd < 1e-7, f"ed-cell residual pool max rel diff = {mrd:.2e}"
@@ -743,7 +743,7 @@ def test_phase2_resid_pool_cl_link_matches_r():
     """CL link residual pool -- Mack standardized link residuals
     (Pinheiro et al. 2003). The link key carries ``(ata_from, ata_to)``,
     so the JOIN keys on the full link triple."""
-    mat, cohorts, devs = _sur_obs_matrix("loss")
+    mat, cohorts, durations = _sur_obs_matrix("loss")
     anchor = _boot_anchor_cl(mat)
     link_df = _build_link_df(
         _sur_sub(), None, "loss", None, None, drop_invalid=True
@@ -751,21 +751,21 @@ def test_phase2_resid_pool_cl_link_matches_r():
     link_res = _link_residuals_cl(link_df, anchor)
 
     # _LinkResiduals carries the full triple; build the comparison frame
-    # directly (the pool's `key` is dev_to only).
+    # directly (the pool's `key` is duration_to only).
     fin = np.isfinite(link_res.residual)
     py = pl.DataFrame(
         {
             "cohort":      _cohort_date_series(link_res.cohort[fin]),
-            "dev_from":    link_res.dev_from[fin],
-            "dev_to":      link_res.dev_to[fin],
+            "duration_from":    link_res.duration_from[fin],
+            "duration_to":      link_res.duration_to[fin],
             "py_residual": link_res.residual[fin],
         }
     )
     # The R fixture keys the link by R's ata_from/ata_to; align to the
-    # Python dev_from/dev_to names before the join.
-    r = _load("boot_resid_cl_link").rename({"ata_from": "dev_from", "ata_to": "dev_to"})
+    # Python duration_from/duration_to names before the join.
+    r = _load("boot_resid_cl_link").rename({"ata_from": "duration_from", "ata_to": "duration_to"})
     n, mrd = _max_rel_diff_on_join(
-        py, r, ["cohort", "dev_from", "dev_to"], "py_residual", "residual"
+        py, r, ["cohort", "duration_from", "duration_to"], "py_residual", "residual"
     )
     assert n == r.height == py.height
     assert mrd < 1e-7, f"cl-link residual pool max rel diff = {mrd:.2e}"
@@ -787,7 +787,7 @@ def test_phase2_phi_matches_r():
         for row in _load("boot_phi").iter_rows(named=True)
     }
 
-    mat, cohorts, devs = _sur_obs_matrix("loss")
+    mat, cohorts, durations = _sur_obs_matrix("loss")
     anchor = _boot_anchor_cl(mat)
     phi_cl_hat = _cell_residuals_cl(
         _sur_sub(), anchor, target="loss", hat_adj=True
@@ -817,17 +817,17 @@ def test_phase2_injected_resample_deterministic():
     is pure arithmetic -- two runs with different RNG seeds produce a
     byte-identical ``cum_mean``, and one Stage-1 pseudo cell is
     hand-verifiable as ``mu_hat + r_star * sqrt(|mu_hat|)``."""
-    mat, cohorts, devs = _sur_obs_matrix("loss")
+    mat, cohorts, durations = _sur_obs_matrix("loss")
     anchor = _boot_anchor_cl(mat)
-    gi = _build_group_inputs(mat, anchor, cohorts, devs)
-    mu_grid = _fitted_grid_cl(mat, gi.last_obs, anchor, devs)
+    gi = _build_group_inputs(mat, anchor, cohorts, durations)
+    mu_grid = _fitted_grid_cl(mat, gi.last_obs, anchor, durations)
     cell = _cell_residuals_cl(_sur_sub(), anchor, target="loss", hat_adj=True)
     pool = _build_pool_cell(cell, pooling="pooled")
 
     # Active upper cells -- the cells that get a resampled increment.
     from lossratio.bootstrap import _active_upper_cells
 
-    coh_idx, dev_idx, lin = _active_upper_cells(gi.last_obs, mu_grid)
+    coh_idx, duration_idx, lin = _active_upper_cells(gi.last_obs, mu_grid)
     n_active = lin.size
     n_replicates = 12
     # Inject a fixed index array -- always pull pool element 0.
@@ -850,16 +850,16 @@ def test_phase2_injected_resample_deterministic():
     ), "injected resample must make Stage-1 cum_mean byte-identical"
 
     # ---- hand-verify one Stage-1 pseudo cell -----------------------------
-    # Active cell a=0 sits at dev `devs[dev_idx[0]]`. Its pseudo increment
-    # is `mu_hat + r_star * sqrt(|mu_hat|)` with `r_star` the dev's pool
-    # element 0 (injected index 0). When that cell is at dev index 0 the
+    # Active cell a=0 sits at duration `durations[duration_idx[0]]`. Its pseudo increment
+    # is `mu_hat + r_star * sqrt(|mu_hat|)` with `r_star` the duration's pool
+    # element 0 (injected index 0). When that cell is at duration index 0 the
     # cumulative equals the increment itself.
     mu_active = mu_grid.flatten(order="F")[lin]
-    subpools = _pool_dev_subpools(pool)
-    dev0 = int(devs[dev_idx[0]])
-    r_star = subpools[dev0][0]
+    subpools = _pool_duration_subpools(pool)
+    duration0 = int(durations[duration_idx[0]])
+    r_star = subpools[duration0][0]
     expect_inc = mu_active[0] + r_star * np.sqrt(abs(mu_active[0]))
-    if dev_idx[0] == 0:
+    if duration_idx[0] == 0:
         coh0 = coh_idx[0]
         for b in range(n_replicates):
             assert r1.cum_mean[coh0, 0, b] == pytest.approx(
@@ -926,12 +926,12 @@ def test_phase2_summary_statistically_close_to_r(fixture, config):
     the *median* relative difference of ``total_se`` over projected cells
     must be small (< 6%).
     """
-    r = _load(fixture).sort(["cohort", "dev"])
+    r = _load(fixture).sort(["cohort", "duration"])
     tri = _tri()
     bt = Bootstrap(n_replicates=4000, seed=20260522, **config).fit(tri)
-    py = bt.summary.sort(["cohort", "dev"])
+    py = bt.summary.sort(["cohort", "duration"])
 
-    keys = ["cohort", "dev"]
+    keys = ["cohort", "duration"]
     py_c = py.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_c = r.join(py.select(keys), on=keys, how="inner").sort(keys)
 
@@ -1038,8 +1038,8 @@ def test_phase2_loss_bootstrap_overlay(method):
     assert boot.boots.meta["method"] == "cl"
     assert boot.boots.meta["type"] == "analytical"
 
-    p = plain.to_polars().sort(["coverage", "cohort", "dev"])
-    b = boot.to_polars().sort(["coverage", "cohort", "dev"])
+    p = plain.to_polars().sort(["coverage", "cohort", "duration"])
+    b = boot.to_polars().sort(["coverage", "cohort", "duration"])
     assert p.height == b.height
 
     # loss_proj is the analytical point estimate -- never overlaid.
@@ -1143,8 +1143,8 @@ def test_phase3_ratio_bootstrap_overlay(method):
     assert boot.boots.meta["type"] == "analytical"
     assert boot.boots.meta["target"] == "loss"
 
-    p = plain.to_polars().sort(["coverage", "cohort", "dev"])
-    b = boot.to_polars().sort(["coverage", "cohort", "dev"])
+    p = plain.to_polars().sort(["coverage", "cohort", "duration"])
+    b = boot.to_polars().sort(["coverage", "cohort", "duration"])
     assert p.height == b.height
 
     # ratio_proj is the analytical point estimate -- never overlaid.
@@ -1195,8 +1195,8 @@ def test_phase3_ratio_no_bootstrap_unchanged():
     assert fit.boots is None
 
     fresh = lr.Ratio(method="sa").fit(tri)
-    a = fit.to_polars().sort(["coverage", "cohort", "dev"])
-    b = fresh.to_polars().sort(["coverage", "cohort", "dev"])
+    a = fit.to_polars().sort(["coverage", "cohort", "duration"])
+    b = fresh.to_polars().sort(["coverage", "cohort", "duration"])
     assert a.columns == b.columns
     assert a.equals(b), "no-bootstrap Ratio fit must be byte-reproducible"
 
@@ -1352,8 +1352,8 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
         target="ratio",
     ).fit(tri)
 
-    a = analytic.ae_err.sort(["coverage", "cohort", "dev"])
-    b = booted.ae_err.sort(["coverage", "cohort", "dev"])
+    a = analytic.ae_err.sort(["coverage", "cohort", "duration"])
+    b = booted.ae_err.sort(["coverage", "cohort", "duration"])
     assert a.height == b.height > 0
     # the point projection -- and therefore every A/E quantity -- is
     # byte-identical regardless of the bootstrap overlay.
@@ -1362,9 +1362,9 @@ def test_phase5_backtest_ae_err_bootstrap_independent():
             f"backtest {col!r} must be bootstrap-independent (the overlay "
             f"touches SE/CI only, never the point projection)"
         )
-    # the dev / diagonal summaries inherit the same invariance.
-    assert analytic.col_summary.sort(["coverage", "dev"]).equals(
-        booted.col_summary.sort(["coverage", "dev"])
+    # the duration / diagonal summaries inherit the same invariance.
+    assert analytic.col_summary.sort(["coverage", "duration"]).equals(
+        booted.col_summary.sort(["coverage", "duration"])
     ), "col_summary must be bootstrap-independent"
     assert analytic.diag_summary.sort(["coverage", "cal_idx"]).equals(
         booted.diag_summary.sort(["coverage", "cal_idx"])

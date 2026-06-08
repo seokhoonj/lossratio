@@ -21,7 +21,7 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
 
 lossratio에는 시연용 합성 경험 데이터가 들어 있습니다. 네 개의
 담보(CI / CAN / HOS / SUR)에 대해 인수월 코호트별 손해·보험료가
-경과월(`dev_m`)을 따라 기록된 long-format 표입니다. 이 가운데
+경과월(`duration_m`)을 따라 기록된 long-format 표입니다. 이 가운데
 SUR 담보에는 2024년 7월에 한 번의 구조 변화(regime)가 심어져 있어,
 이 빠른 시작에서는 SUR에 집중합니다.
 
@@ -30,10 +30,10 @@ import polars as pl
 import lossratio as lr
 
 df = lr.load_experience()
-df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).head(3)
+df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"]).head(3)
 #> shape: (3, 6)
 #> ┌──────────┬────────────┬────────────┬───────┬───────────┬──────────────┐
-#> │ coverage ┆ uy_m       ┆ cy_m       ┆ dev_m ┆ incr_loss ┆ incr_premium │
+#> │ coverage ┆ uy_m       ┆ cy_m       ┆ duration_m ┆ incr_loss ┆ incr_premium │
 #> │ ---      ┆ ---        ┆ ---        ┆ ---   ┆ ---       ┆ ---          │
 #> │ str      ┆ date       ┆ date       ┆ i64   ┆ i64       ┆ i64          │
 #> ╞══════════╪════════════╪════════════╪═══════╪═══════════╪══════════════╡

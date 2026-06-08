@@ -4,7 +4,7 @@
 :class: tip
 
 - 손해율이 무엇이고, 장기 건강보험에서 왜 측정하기 어려운가
-- 분모효과와 관성 — 누적 손해율이 경과에 따라 저절로 변하는 현상
+- 분모효과와 관성 — 누적 손해율이 경과만으로(실제 위험 변화 없이) 흘러가는 현상
 - 경험 데이터의 구조와 코호트라는 개념
 - 코호트 x 경과 삼각형을 만드는 `Triangle`
 - 누적값과 증분값, 그리고 삼각형을 들여다보는 법
@@ -78,9 +78,10 @@ $$
 ## 1.2 분모효과와 관성
 
 장기 건강보험에서 손해율을 다룰 때 가장 먼저 마주치는 함정은,
-시간이 지나면 손해율이 **저절로** 움직인다는 점입니다. 한 코호트의
-누적 손해율이 경과에 따라 어떻게 변하는지 직접 보겠습니다 (수치는
-뒤에서 데이터를 불러와 확인합니다).
+**경과가 쌓이는 것만으로도 — 실제 위험이 나빠지지 않았는데도 — 누적
+손해율 숫자가 변한다**는 점입니다. 한 코호트의 누적 손해율이 경과에 따라
+어떻게 흘러가는지 직접 보겠습니다 (수치는 뒤에서 데이터를 불러와
+확인합니다).
 
 | 경과월 | 누적 손해 | 누적 보험료 | 누적 손해율 |
 |---|---|---|---|
@@ -99,7 +100,7 @@ $$
 :class: important
 
 **분모효과(denominator effect)** — 누적 손해율의 분모인 누적
-보험료가 경과에 따라 저절로 자라면서, 분자의 변화를 희석해 신호를
+보험료가 시간이 경과하면서 계속 불어나, 분자의 변화를 희석해 신호를
 무디게 만드는 현상.
 
 **관성(inertia)** — 그렇게 누적값이 커질수록 최근 기간에 일어난
@@ -124,10 +125,10 @@ import polars as pl
 import lossratio as lr
 
 df = lr.load_experience()
-df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).head(3)
+df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"]).head(3)
 #> shape: (3, 6)
 #> ┌──────────┬────────────┬────────────┬───────┬───────────┬──────────────┐
-#> │ coverage ┆ uy_m       ┆ cy_m       ┆ dev_m ┆ incr_loss ┆ incr_premium │
+#> │ coverage ┆ uy_m       ┆ cy_m       ┆ duration_m ┆ incr_loss ┆ incr_premium │
 #> │ ---      ┆ ---        ┆ ---        ┆ ---   ┆ ---       ┆ ---          │
 #> │ str      ┆ date       ┆ date       ┆ i64   ┆ i64       ┆ i64          │
 #> ╞══════════╪════════════╪════════════╪═══════╪═══════════╪══════════════╡
@@ -151,8 +152,8 @@ df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).he
   - 인수 연월 (underwriting year-month) — **코호트**를 정의
 * - `cy_m`
   - 달력 연월 (calendar year-month) — 실제로 손해가 난 시점
-* - `dev_m`
-  - 경과월 (development month) — 인수 후 몇 번째 달인가
+* - `duration_m`
+  - 경과월 (duration (months)) — 인수 후 몇 번째 달인가
 * - `incr_loss`
   - 그 기간 동안의 손해액 (증분, incremental loss)
 * - `incr_premium`
@@ -161,7 +162,7 @@ df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).he
 
 여기서 **코호트(cohort)**는 같은 시점에 인수된 계약들의 묶음입니다.
 2023년 1월에 인수된 계약들이 하나의 코호트, 2월에 인수된 계약들이
-또 다른 코호트입니다. 코호트를 고정해 두고 경과월(`dev_m`)을 따라가면,
+또 다른 코호트입니다. 코호트를 고정해 두고 경과월(`duration_m`)을 따라가면,
 그 계약 집단의 손해가 시간에 따라 어떻게 발전하는지를 볼 수 있습니다.
 
 이 데이터에는 월(M) 외에 분기(Q)·반기(H)·연(Y) 단위의 기간 열도 함께
@@ -181,7 +182,7 @@ df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).he
 df_sur = df.filter(pl.col("coverage") == "SUR")
 tri = lr.Triangle(df_sur, groups="coverage")
 tri
-#> <Triangle: 666 rows, 1 groups, 36 cohorts x 36 devs (M)>
+#> <Triangle: 666 rows, 1 groups, 36 cohorts x 36 durations (M)>
 ```
 
 `groups` 인자에는 그룹을 나누는 열을 넘깁니다. 여러 담보를 한꺼번에
@@ -212,10 +213,10 @@ lossratio는 **누적값을 기본**으로 삼고, 기간별 증분값에는 `in
 접두사를 붙입니다.
 
 ```python
-tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).head(4)
+tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]).head(4)
 #> shape: (4, 6)
 #> ┌────────────┬─────┬─────────────┬──────────────┬──────────┬────────────┐
-#> │ cohort     ┆ dev ┆ incr_loss   ┆ loss         ┆ ratio    ┆ incr_ratio │
+#> │ cohort     ┆ duration ┆ incr_loss   ┆ loss         ┆ ratio    ┆ incr_ratio │
 #> │ ---        ┆ --- ┆ ---         ┆ ---          ┆ ---      ┆ ---        │
 #> │ date       ┆ i64 ┆ f64         ┆ f64          ┆ f64      ┆ f64        │
 #> ╞════════════╪═════╪═════════════╪══════════════╪══════════╪════════════╡
@@ -249,12 +250,12 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
 그림), 코호트마다 출발점이 어긋난 **계단 모양**이 나옵니다. 각 코호트는 자기
 인수 시점에서 시작해 달력을 따라 오른쪽 아래로 흘러갑니다.
 
-같은 데이터를 **경과기간**(`dev = cy_m - uy_m`, 인수 후 몇 번째 달인가)에
+같은 데이터를 **경과기간**(`duration = cy_m - uy_m`, 인수 후 몇 번째 달인가)에
 맞춰 다시 정렬하면(아래 둘째 그림), 모든 코호트의 출발점이 경과 1로
 끌려오면서 계단이 왼쪽으로 모여 **직각삼각형**이 됩니다. 이렇게 정렬해야
 서로 다른 코호트를 같은 경과 시점에서 세로로 비교할 수 있습니다.
 
-도식으로 보면 — 위는 달력(`cy`) 축의 계단 배치, 아래는 경과(`dev = cy - uy`)로
+도식으로 보면 — 위는 달력(`cy`) 축의 계단 배치, 아래는 경과(`duration = cy - uy`)로
 당겨 모든 코호트의 출발을 경과 1 에 맞춘 직각삼각형이다 (`X` = 관측 셀,
 `.` = 미관측 = 예측 대상):
 
@@ -267,10 +268,10 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
   3 |         X   X  |
   4 |             X  |
     +----------------+
-        |   realign by  dev = cy - uy
+        |   realign by  duration = cy - uy
         v
-  dev-aligned (right triangle)
-   dev -> 1   2   3   4
+  duration-aligned (right triangle)
+   duration -> 1   2   3   4
  uy +----------------+
   1 | X   X   X   X  |
   2 | X   X   X   .  |
@@ -302,7 +303,7 @@ tri.df.select(["cohort", "dev", "incr_loss", "loss", "ratio", "incr_ratio"]).hea
    :context: close-figs
    :caption: 경과기간에 맞춰 정렬한 분기별 손해율. 출발점이 경과 1로 모여 직각삼각형이 된다.
 
-   tri.plot_triangle(metric="ratio", x_axis="dev")
+   tri.plot_triangle(metric="ratio", x_axis="duration")
 ```
 
 오른쪽 아래가 비어 있는 것은 최근에 인수된 코호트일수록 아직 경과 기간이 짧아

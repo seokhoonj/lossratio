@@ -78,14 +78,14 @@ def _compare_numeric(
 def test_mask_cells_match_r(holdout: int):
     """Cell-by-cell parity between R ``mask_triangle`` and Python ``Triangle.mask``.
 
-    For each holdout value the masked Triangle's per-(cohort, dev) loss /
+    For each holdout value the masked Triangle's per-(cohort, duration) loss /
     premium / ratio totals must match R bit-for-bit. Holdout = 0 is the
     no-op identity case (full Triangle).
     """
-    r = _load(f"mask_holdout{holdout}").sort(["cohort", "dev"])
+    r = _load(f"mask_holdout{holdout}").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     masked = tri.mask(holdout=holdout)
-    py = masked.to_polars().sort(["cohort", "dev"])
+    py = masked.to_polars().sort(["cohort", "duration"])
 
     # Keep this row-count assertion separate from numeric compare so the
     # failure message points clearly at the mask-shape bug if R and
@@ -102,7 +102,7 @@ def test_mask_preserves_cohort_set(holdout: int):
 
     R's mask drops *cells*, not entire cohorts, so the unique cohort
     values should be identical. Catches subtle off-by-one errors in
-    the `cohort_rank + dev - 1` calendar-diagonal index.
+    the `cohort_rank + duration - 1` calendar-diagonal index.
     """
     r = _load(f"mask_holdout{holdout}").sort(["cohort"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")

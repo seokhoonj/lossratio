@@ -1,6 +1,6 @@
 """Backtest result visualisation -- matplotlib backend.
 
-Implements ``BacktestFit.plot(kind=...)`` (per-dev / per-diagonal /
+Implements ``BacktestFit.plot(kind=...)`` (per-duration / per-diagonal /
 per-cell A/E error aggregates) and ``BacktestFit.plot_triangle()``
 (diverging red/blue heatmap of A/E error on the held-out wedge).
 """
@@ -69,8 +69,8 @@ def plot_backtest(
         return _plot_aggregated_lines(
             fit._col_summary,
             groups=fit._groups,
-            x_col="dev",
-            x_label=_pretty_var_label(fit._dev),
+            x_col="duration",
+            x_label=_pretty_var_label(fit._duration),
             stat_cols=stat_cols,
             title=f"Backtest A/E Error by development period ({mode_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
@@ -90,7 +90,7 @@ def plot_backtest(
         fit._ae_err,
         groups=fit._groups,
         ae_err_col=ae_err_col,
-        x_label=_pretty_var_label(fit._dev),
+        x_label=_pretty_var_label(fit._duration),
         title=f"Backtest A/E Error per held-out cell ({mode_word})",
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
@@ -129,7 +129,7 @@ def plot_triangle_backtest(
     dt = fit._ae_err
     groups = fit._groups
     coh = fit._cohort
-    dev = fit._dev
+    duration = fit._duration
     grain = getattr(fit._triangle, "_grain", None) if hasattr(fit, "_triangle") else None
     coh_type = _get_period_type(coh, grain=grain)
 
@@ -140,10 +140,10 @@ def plot_triangle_backtest(
 
     work = dt.with_columns(pl.Series(name="_y_lab", values=coh_labels))
     # Coherent axes:
-    # x = dev (numeric)
+    # x = duration (numeric)
     # y = cohort labels, oldest at top / newest at the bottom -- the same
     #     orientation as the triangle value heatmap.
-    dev_levels = sorted(work["dev"].unique().to_list())
+    duration_levels = sorted(work["duration"].unique().to_list())
     # Cohort ascending (oldest -> newest). With `invert_yaxis()` below, the
     # oldest cohort sits at the top and the most recent cohort lands at the
     # bottom, matching plot_triangle.
@@ -170,14 +170,14 @@ def plot_triangle_backtest(
     if figsize is None:
         cell_w = 0.5
         cell_h = 0.35
-        fig_w = max(5.0, cell_w * len(dev_levels) * ncol + 1.5)
+        fig_w = max(5.0, cell_w * len(duration_levels) * ncol + 1.5)
         fig_h = max(3.5, cell_h * len(y_levels_top_to_bottom) * nrow + 2.0)
         figsize = (fig_w, fig_h)
 
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
-    x_idx = {d: i for i, d in enumerate(dev_levels)}
+    x_idx = {d: i for i, d in enumerate(duration_levels)}
     y_idx = {lbl: i for i, lbl in enumerate(y_levels_top_to_bottom)}
 
     last_drawn = None
@@ -185,7 +185,7 @@ def plot_triangle_backtest(
         r, c = divmod(idx, ncol)
         ax = axes[r][c]
         for row in sub.iter_rows(named=True):
-            xi = x_idx.get(int(row["dev"]))
+            xi = x_idx.get(int(row["duration"]))
             yi = y_idx.get(row["_y_lab"])
             if xi is None or yi is None:
                 continue
@@ -202,10 +202,10 @@ def plot_triangle_backtest(
                     color="black",
                 )
 
-        ax.set_xlim(-0.5, len(dev_levels) - 0.5)
+        ax.set_xlim(-0.5, len(duration_levels) - 0.5)
         ax.set_ylim(-0.5, len(y_levels_top_to_bottom) - 0.5)
-        ax.set_xticks(range(len(dev_levels)))
-        ax.set_xticklabels([str(d) for d in dev_levels], fontsize=8)
+        ax.set_xticks(range(len(duration_levels)))
+        ax.set_xticklabels([str(d) for d in duration_levels], fontsize=8)
         ax.set_yticks(range(len(y_levels_top_to_bottom)))
         ax.set_yticklabels(y_levels_top_to_bottom, fontsize=8)
         ax.invert_yaxis()
@@ -224,7 +224,7 @@ def plot_triangle_backtest(
         f"Backtest A/E Error -- held-out cells ({mode_word})",
         fontsize=12, fontweight="bold",
     )
-    fig.supxlabel(_pretty_var_label(dev), fontsize=10)
+    fig.supxlabel(_pretty_var_label(duration), fontsize=10)
     fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
     if last_drawn is not None:
         from matplotlib.cm import ScalarMappable
@@ -319,7 +319,7 @@ def _plot_cell_curves(
     ncol: int | None,
     figsize: tuple[float, float] | None,
 ) -> Any:
-    """cell plot: one line per cohort across dev, faceted by group."""
+    """cell plot: one line per cohort across duration, faceted by group."""
     import matplotlib.pyplot as plt
     from matplotlib import colormaps
     from matplotlib.colors import Normalize
@@ -357,8 +357,8 @@ def _plot_cell_curves(
         cmap = colormaps["viridis"]
 
         for ci, coh in enumerate(cohorts):
-            cdata = sub.filter(pl.col("cohort") == coh).sort("dev")
-            x = cdata["dev"].to_numpy()
+            cdata = sub.filter(pl.col("cohort") == coh).sort("duration")
+            x = cdata["duration"].to_numpy()
             y = cdata[ae_err_col].to_numpy()
             m = np.isfinite(y)
             if not m.any():

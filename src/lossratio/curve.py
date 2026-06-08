@@ -259,8 +259,8 @@ class CurveResult:
     alt_slope:        float | None
     alt_diverged:     bool | None
 
-    def evaluate(self, dev: "int | np.ndarray") -> "float | np.ndarray":
-        """Value of the fitted law at 1-indexed position(s) ``dev``.
+    def evaluate(self, duration: "int | np.ndarray") -> "float | np.ndarray":
+        """Value of the fitted law at 1-indexed position(s) ``duration``.
 
         Returns the value in the *consumer scale*: ``g_k`` for
         ``target="intensity"``, ``f_k = 1 + law`` for ``target="ata"``.
@@ -268,13 +268,13 @@ class CurveResult:
         arrays. When no fit was possible (``slope is None``) returns
         ``nan`` (scalar input) / all-``nan`` (array input).
         """
-        is_array = isinstance(dev, np.ndarray)
+        is_array = isinstance(duration, np.ndarray)
         if self.slope is None or self.intercept is None:
             if is_array:
-                return np.full(np.asarray(dev).shape, np.nan, dtype=float)
+                return np.full(np.asarray(duration).shape, np.nan, dtype=float)
             return float("nan")
 
-        i = np.asarray(dev, dtype=float)
+        i = np.asarray(duration, dtype=float)
         if self.family == "exponential":
             value = np.exp(self.intercept + self.slope * i)
         else:  # inverse_power

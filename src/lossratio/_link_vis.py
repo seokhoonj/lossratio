@@ -89,7 +89,7 @@ def _plot_link_ata(
     cells = link._df
     summary = _ata_summary(cells, groups)
 
-    # Factor-stability overlay (per-group dev_from where CV / RSE drop
+    # Factor-stability overlay (per-group duration_from where CV / RSE drop
     # below thresholds and stay there for `min_run` consecutive links).
     factor_stability = _detect_factor_stability_overlay(
         summary, groups, max_cv=max_cv, max_rse=max_rse, min_run=min_run
@@ -227,7 +227,7 @@ def _ata_summary(
     coefficient of variation of the per-cell ``ata`` values; RSE is
     ``SE(f) / f`` derived from the cross-cohort variance.
     """
-    by = [*normalize_groups(groups), "dev_from", "dev_to"]
+    by = [*normalize_groups(groups), "duration_from", "duration_to"]
     valid = cells.filter(
         pl.col("ata").is_finite() & pl.col("loss_from").is_finite()
     )
@@ -273,7 +273,7 @@ def _ed_summary(
     cells: pl.DataFrame, groups: str | list[str] | None
 ) -> pl.DataFrame:
     """Per-link ED intensity summary -- mean, median, weighted g."""
-    by = [*normalize_groups(groups), "dev_from", "dev_to"]
+    by = [*normalize_groups(groups), "duration_from", "duration_to"]
     valid = cells.filter(
         pl.col("intensity").is_finite() & pl.col("premium_from").is_finite()
     )
@@ -297,17 +297,17 @@ def _detect_factor_stability_overlay(
     max_rse: float,
     min_run: int,
 ) -> pl.DataFrame:
-    """Locate the first dev_from where CV<max_cv AND RSE<max_rse for
+    """Locate the first duration_from where CV<max_cv AND RSE<max_rse for
     ``min_run`` consecutive links (per group). Returns one row per
-    group, with columns ``[groups?, dev_from, dev_to, cv, rse]``.
+    group, with columns ``[groups?, duration_from, duration_to, cv, rse]``.
     """
     out_rows: list[dict[str, Any]] = []
     for value, sub in _iter_group_frames(summary, groups):
-        sub = sub.sort("dev_from")
+        sub = sub.sort("duration_from")
         cv = sub["cv"].to_numpy()
         rse = sub["rse"].to_numpy()
-        dev_from = sub["dev_from"].to_numpy()
-        dev_to = sub["dev_to"].to_numpy()
+        duration_from = sub["duration_from"].to_numpy()
+        duration_to = sub["duration_to"].to_numpy()
         stable = (
             np.isfinite(cv) & np.isfinite(rse)
             & (cv < max_cv) & (rse < max_rse)
@@ -323,8 +323,8 @@ def _detect_factor_stability_overlay(
             continue
         row: dict[str, Any] = {}
         set_group_values(row, groups, value)
-        row["dev_from"] = int(dev_from[hit_idx])
-        row["dev_to"] = int(dev_to[hit_idx])
+        row["duration_from"] = int(duration_from[hit_idx])
+        row["duration_to"] = int(duration_to[hit_idx])
         row["cv"] = float(cv[hit_idx])
         row["rse"] = float(rse[hit_idx])
         out_rows.append(row)
@@ -356,8 +356,8 @@ def _plot_per_link_scalar(
     )
     for idx, (group_value, sub) in enumerate(facets):
         ax = axes_grid[idx]
-        sub_sorted = sub.sort("dev_from")
-        x = sub_sorted["dev_from"].to_numpy()
+        sub_sorted = sub.sort("duration_from")
+        x = sub_sorted["duration_from"].to_numpy()
         y = sub_sorted[y_col].to_numpy()
         link_labels = _link_label_lookup(sub_sorted)
         m = np.isfinite(y)
@@ -397,8 +397,8 @@ def _plot_summary_lines(
     )
     for idx, (group_value, sub) in enumerate(facets):
         ax = axes_grid[idx]
-        sub_sorted = sub.sort("dev_from")
-        x = sub_sorted["dev_from"].to_numpy()
+        sub_sorted = sub.sort("duration_from")
+        x = sub_sorted["duration_from"].to_numpy()
         link_labels = _link_label_lookup(sub_sorted)
         for stat in value_cols:
             y = sub_sorted[stat].to_numpy()
@@ -453,39 +453,39 @@ def _plot_per_link_distribution(
                     transform=ax.transAxes)
             continue
         link_keys = (
-            sub_valid.select(["dev_from", "dev_to"])
+            sub_valid.select(["duration_from", "duration_to"])
             .unique(maintain_order=True)
-            .sort("dev_from")
+            .sort("duration_from")
         )
-        dev_from_vals = link_keys["dev_from"].to_numpy()
+        duration_from_vals = link_keys["duration_from"].to_numpy()
         link_labels = _link_label_lookup(link_keys)
 
         if kind == "box":
             datasets = []
-            for k in dev_from_vals:
+            for k in duration_from_vals:
                 arr = (
-                    sub_valid.filter(pl.col("dev_from") == k)[y_col]
+                    sub_valid.filter(pl.col("duration_from") == k)[y_col]
                     .to_numpy()
                 )
                 datasets.append(arr[np.isfinite(arr)])
             ax.boxplot(
                 datasets,
-                positions=dev_from_vals,
+                positions=duration_from_vals,
                 widths=0.6,
                 showfliers=True,
             )
         else:  # point
-            xs = sub_valid["dev_from"].to_numpy()
+            xs = sub_valid["duration_from"].to_numpy()
             ys = sub_valid[y_col].to_numpy()
             ax.scatter(xs, ys, s=14, color="C0", alpha=0.7)
             # mean-line overlay
             means = (
-                sub_valid.group_by("dev_from", maintain_order=True)
+                sub_valid.group_by("duration_from", maintain_order=True)
                 .agg(pl.col(y_col).mean().alias("_mean"))
-                .sort("dev_from")
+                .sort("duration_from")
             )
             ax.plot(
-                means["dev_from"].to_numpy(),
+                means["duration_from"].to_numpy(),
                 means["_mean"].to_numpy(),
                 color="C0", linewidth=1.2,
             )
@@ -493,7 +493,7 @@ def _plot_per_link_distribution(
         if hline is not None:
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
         _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=None)
-        _set_link_xticks(ax, dev_from_vals, link_labels)
+        _set_link_xticks(ax, duration_from_vals, link_labels)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
         ax.grid(True, linewidth=0.3, alpha=0.5)
@@ -556,10 +556,10 @@ def _finalize_facet_grid(
 
 
 def _link_label_lookup(df: pl.DataFrame) -> dict[int, str]:
-    """Build ``{dev_from: 'k-(k+1)'}`` lookup from a sorted slice."""
+    """Build ``{duration_from: 'k-(k+1)'}`` lookup from a sorted slice."""
     lookup: dict[int, str] = {}
-    for dev_from, dev_to in df.select(["dev_from", "dev_to"]).iter_rows():
-        lookup[int(dev_from)] = f"{int(dev_from)}-{int(dev_to)}"
+    for duration_from, duration_to in df.select(["duration_from", "duration_to"]).iter_rows():
+        lookup[int(duration_from)] = f"{int(duration_from)}-{int(duration_to)}"
     return lookup
 
 
@@ -587,19 +587,19 @@ def _apply_factor_stability_overlay(
         sub = factor_stability
     if sub.height == 0:
         return
-    dev_from = int(sub["dev_from"][0])
-    ax.axvline(dev_from, color="grey", linestyle=(0, (5, 4)), linewidth=0.8)
+    duration_from = int(sub["duration_from"][0])
+    ax.axvline(duration_from, color="grey", linestyle=(0, (5, 4)), linewidth=0.8)
     # shaded band from factor_stability onwards
     xlim = ax.get_xlim()
     ax.axvspan(
-        dev_from, xlim[1],
+        duration_from, xlim[1],
         facecolor="#AED6F1", alpha=0.25, zorder=0,
     )
     # annotation
     cv = sub["cv"][0] if "cv" in sub.columns else None
     rse = sub["rse"][0] if "rse" in sub.columns else None
-    dev_to = int(sub["dev_to"][0])
-    parts = [f"factor stable: {dev_from}-{dev_to}"]
+    duration_to = int(sub["duration_to"][0])
+    parts = [f"factor stable: {duration_from}-{duration_to}"]
     if cv is not None:
         parts.append(f"cv: {cv:.3f}")
     if rse is not None:

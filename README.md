@@ -6,7 +6,7 @@ exposure-driven and stage-adaptive projection, regime detection, and
 backtest validation on long-format experience data. The
 exposure-driven (ED) model is the default, safe baseline; a
 stage-adaptive (SA) fit can opt in to an ED->CL switch that hands off
-to chain ladder (CL) past a chosen development period.
+to chain ladder (CL) past a chosen duration.
 
 This Python implementation is in active development; install from GitHub
 (see below). The PyPI build is an earlier, now-discarded methodology.
@@ -27,10 +27,10 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
 
 Working components:
 
-- `Triangle` — cohort × dev aggregation. Accepts a long-format
-  experience frame (`uy_m`, `cy_m`, `dev_m`, `incr_loss`,
+- `Triangle` — cohort × duration aggregation. Accepts a long-format
+  experience frame (`uy_m`, `cy_m`, `duration_m`, `incr_loss`,
   `incr_premium`) and validates schema + adds derived period columns
-  inline. (`dev_m` is auto-derived from `uy_m` and `cy_m` if absent.) Cumulative is
+  inline. (`duration_m` is auto-derived from `uy_m` and `cy_m` if absent.) Cumulative is
   the unmarked default (`loss`, `premium`, `ratio`); per-period values
   carry an `incr_` prefix (`incr_loss`, `incr_premium`, `incr_ratio`).
 - `ChainLadder`, `ExposureDriven`, `StageAdaptive`, `Ratio` —
@@ -49,7 +49,7 @@ Working components:
   conservative — on thin or quarterly data it usually defers to a pure
   ED fit (the safe baseline).
 - `Triangle.link()` — builds the long-format `Link` table (one row
-  per cohort × adjacent dev pair). Method chain `tri.link().ata()` /
+  per cohort × adjacent duration pair). Method chain `tri.link().ata()` /
   `tri.link().intensity()` returns paired factor-level diagnostics
   (multiplicative ATA factors with per-link `f` / `cv` / `rse`,
   additive ED intensities).
@@ -57,13 +57,13 @@ Working components:
   cohort sequence via E-Divisive or Ward hierarchical clustering
   (returns a `Regime` result).
 - `Backtest` — calendar-diagonal hold-out backtest of any of the
-  above estimators (returns a `BacktestFit` with per-cell, by-dev,
+  above estimators (returns a `BacktestFit` with per-cell, by-duration,
   and by-diagonal A/E Error summaries — `ae_err = actual /
   predicted - 1`).
 
 - `Calendar` / `Total` — calendar-year and portfolio-total
   aggregations of a Triangle. `RatioFit.convergence()` returns a
-  `Convergence` diagnostic (the development period at which the
+  `Convergence` diagnostic (the duration at which the
   projected loss ratio stabilises).
 
 ## Quick Start
@@ -73,14 +73,14 @@ import polars as pl
 import lossratio as lr
 
 # Built-in synthetic experience: four coverages (CI / CAN / HOS / SUR),
-# monthly cohorts up to 36 dev months, with the full M/Q/H/Y grain
+# monthly cohorts up to 36 duration months, with the full M/Q/H/Y grain
 # enrichment. SUR carries one regime shift at 2024-07; we focus on SUR
 # for this walk-through.
 df = lr.load_experience()
-df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).head(3)
+df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"]).head(3)
 #> shape: (3, 6)
 #> ┌──────────┬────────────┬────────────┬───────┬───────────┬──────────────┐
-#> │ coverage ┆ uy_m       ┆ cy_m       ┆ dev_m ┆ incr_loss ┆ incr_premium │
+#> │ coverage ┆ uy_m       ┆ cy_m       ┆ duration_m ┆ incr_loss ┆ incr_premium │
 #> │ ---      ┆ ---        ┆ ---        ┆ ---   ┆ ---       ┆ ---          │
 #> │ str      ┆ date       ┆ date       ┆ i64   ┆ i64       ┆ i64          │
 #> ╞══════════╪════════════╪════════════╪═══════╪═══════════╪══════════════╡
@@ -90,7 +90,7 @@ df.select(["coverage", "uy_m", "cy_m", "dev_m", "incr_loss", "incr_premium"]).he
 #> └──────────┴────────────┴────────────┴───────┴───────────┴──────────────┘
 
 # 1. Subset to SUR (the coverage with the planted regime shift), then
-#    build the cohort x dev triangle. Triangle's constructor validates
+#    build the cohort x duration triangle. Triangle's constructor validates
 #    schema and adds derived period columns inline.
 df_sur = df.filter(pl.col("coverage") == "SUR")
 tri = lr.Triangle(df_sur, groups="coverage")
@@ -105,7 +105,7 @@ ata = link.ata()
 ata.df.head(3)
 #> shape: (3, 7)
 #> ┌──────────┬─────┬──────────┬───────────────┬──────────┬──────────┬───────────┐
-#> │ coverage ┆ dev ┆ f        ┆ sigma2        ┆ cv       ┆ rse      ┆ n_cohorts │
+#> │ coverage ┆ duration ┆ f        ┆ sigma2        ┆ cv       ┆ rse      ┆ n_cohorts │
 #> │ ---      ┆ --- ┆ ---      ┆ ---           ┆ ---      ┆ ---      ┆ ---       │
 #> │ str      ┆ i64 ┆ f64      ┆ f64           ┆ f64      ┆ f64      ┆ i64       │
 #> ╞══════════╪═════╪══════════╪═══════════════╪══════════╪══════════╪═══════════╡
@@ -119,8 +119,8 @@ ata.df.head(3)
 fit = lr.Ratio(method="ed").fit(tri)
 
 #    To opt into a stage-adaptive ED->CL switch, pass a `switch=` — an
-#    int fixes the handoff dev, `lr.SwitchPoint.detect()` selects it by
-#    backtesting. Here the switch is fixed at dev 12.
+#    int fixes the handoff duration, `lr.SwitchPoint.detect()` selects it by
+#    backtesting. Here the switch is fixed at duration 12.
 fit = lr.Ratio(method="sa", switch=12).fit(tri)
 fit.switch_point
 #> {'SUR': 12}
@@ -175,17 +175,17 @@ columns and pass it to `lr.Triangle(df, groups=...)`:
 
 - `uy_m` (date) — underwriting year-month (cohort)
 - `cy_m` (date) — calendar year-month
-- `dev_m` (int, optional) — development month; auto-derived from
+- `duration_m` (int, optional) — duration (months); auto-derived from
   `uy_m` and `cy_m` if absent
 - `incr_loss` (numeric) — per-period claim amount
 - `incr_premium` (numeric) — per-period premium
 
 The shipped `lr.load_experience()` dataset includes the full
-12-column M/Q/H/Y grain enrichment. Coarser granularities (`dev_q`,
-`dev_h`, `dev_y` — quarterly, half-yearly, yearly) can also be
+12-column M/Q/H/Y grain enrichment. Coarser granularities (`duration_q`,
+`duration_h`, `duration_y` — quarterly, half-yearly, yearly) can also be
 derived from a bare monthly frame via `derive_grain_columns(df)`,
 which produces `uy/uy_h/uy_q/uy_m`, `cy/cy_h/cy_q/cy_m`,
-`dev_y/dev_h/dev_q/dev_m`. Pass `grain="Q"` / `"H"` / `"Y"` to
+`duration_y/duration_h/duration_q/duration_m`. Pass `grain="Q"` / `"H"` / `"Y"` to
 `Triangle()` to aggregate at a coarser grain (default `"auto"`
 detects from data spacing).
 

@@ -28,12 +28,12 @@ def _expand_to_full_grid(
     cohort_col: str,
 ) -> pl.DataFrame:
     """Expand a segment_wise fit output onto the parent triangle's full
-    ``(groups?, cohort, dev)`` projection grid.
+    ``(groups?, cohort, duration)`` projection grid.
 
     Three concerns the join handles:
 
     1. **Grid shape**: the Cartesian product of every cohort and every
-       dev seen in the parent triangle. Cells outside any segment's
+       duration seen in the parent triangle. Cells outside any segment's
        reach stay null on projection columns -- the "segment cannot
        project here" outcome.
 
@@ -50,15 +50,15 @@ def _expand_to_full_grid(
        ``cumulative - cumulative.shift(1)``. The per-segment fits
        produced increments only within each mini-triangle's reach,
        which gives the wrong "first cell" value for cohorts whose
-       mini-triangle starts at a non-1 dev.
+       mini-triangle starts at a non-1 duration.
     """
     tri_df = triangle.to_polars()
     cohorts_df = tri_df.select("cohort").unique().sort("cohort")
-    devs_df = (
-        tri_df.select("dev")
+    durations_df = (
+        tri_df.select("duration")
         .unique()
-        .sort("dev")
-        .with_columns(pl.col("dev").cast(pl.Int64))
+        .sort("duration")
+        .with_columns(pl.col("duration").cast(pl.Int64))
     )
 
     group_cols = normalize_groups(groups)
@@ -66,17 +66,17 @@ def _expand_to_full_grid(
         groups_df = tri_df.select(group_cols).unique().sort(group_cols)
         full_grid = (
             groups_df.join(cohorts_df, how="cross")
-            .join(devs_df, how="cross")
-            .sort([*group_cols, "cohort", "dev"])
+            .join(durations_df, how="cross")
+            .sort([*group_cols, "cohort", "duration"])
         )
-        keys = [*group_cols, "cohort", "dev"]
+        keys = [*group_cols, "cohort", "duration"]
     else:
-        full_grid = cohorts_df.join(devs_df, how="cross").sort(["cohort", "dev"])
-        keys = ["cohort", "dev"]
+        full_grid = cohorts_df.join(durations_df, how="cross").sort(["cohort", "duration"])
+        keys = ["cohort", "duration"]
 
-    # Cast df.dev to match grid for clean join
-    if "dev" in df.columns and df.schema["dev"] != pl.Int64:
-        df = df.with_columns(pl.col("dev").cast(pl.Int64))
+    # Cast df.duration to match grid for clean join
+    if "duration" in df.columns and df.schema["duration"] != pl.Int64:
+        df = df.with_columns(pl.col("duration").cast(pl.Int64))
 
     out = full_grid.join(df, on=keys, how="left").sort(keys)
 
@@ -86,7 +86,7 @@ def _expand_to_full_grid(
     # need no projection).
     parent_keep = [c for c in ("loss", "premium", "ratio") if c in tri_df.columns]
     parent_view = tri_df.select(keys + parent_keep).with_columns(
-        pl.col("dev").cast(pl.Int64)
+        pl.col("duration").cast(pl.Int64)
     )
     out = out.join(parent_view, on=keys, how="left", suffix="_parent")
 
@@ -153,7 +153,7 @@ def _augment_segment_factors(
     ``seg_arrays`` maps ``segment_id -> {factor_name: array(n_links)}``,
     all arrays indexed by the SAME absolute development axis (the borrow
     builds one full-range matrix and subsets rows per segment, so a link
-    index means the same dev across segments). A NaN at link ``k`` means
+    index means the same duration across segments). A NaN at link ``k`` means
     the segment never developed that far.
 
     For each link the donor is the segment with the LARGEST id whose

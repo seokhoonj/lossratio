@@ -7,7 +7,7 @@ import lossratio as lr
 
 
 def _toy_triangle_input() -> pl.DataFrame:
-    """5-cohort, 5-dev experience data."""
+    """5-cohort, 5-duration experience data."""
     return pl.DataFrame(
         {
             "cy_m": [
@@ -78,7 +78,7 @@ def test_backtest_ae_err_columns():
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.ae_err.columns) >= {
-        "cohort", "dev", "cal_idx", "actual", "expected", "ae_err",
+        "cohort", "duration", "cal_idx", "actual", "expected", "ae_err",
     }
 
 
@@ -86,10 +86,10 @@ def test_backtest_ae_err_size_holdout_one():
     """holdout=1 masks the most recent diagonal (5 cells in a 5x5
     triangular Triangle). Two effects shrink the reachable set:
 
-    1. Cohort 5 (dev 1 only) loses its single anchor when dev 1 is
+    1. Cohort 5 (duration 1 only) loses its single anchor when duration 1 is
        masked, so its single masked cell has no projection.
-    2. The deepest link (dev 4 -> 5) has no fit data on the masked
-       triangle, so the masked fit returns NaN for cohort 1 at dev 5;
+    2. The deepest link (duration 4 -> 5) has no fit data on the masked
+       triangle, so the masked fit returns NaN for cohort 1 at duration 5;
        that cell is dropped too.
 
     Reachable: 3 cells.
@@ -124,10 +124,10 @@ def test_backtest_ae_err_actual_matches_original_loss():
     bt = lr.Backtest(estimator=lr.ChainLadder(), holdout=1, target="loss").fit(tri)
     ae_err = bt.ae_err
 
-    # Inner join on (cohort, dev) — actual should equal loss
+    # Inner join on (cohort, duration) — actual should equal loss
     joined = ae_err.join(
-        orig.select(["cohort", "dev", "loss"]),
-        on=["cohort", "dev"],
+        orig.select(["cohort", "duration", "loss"]),
+        on=["cohort", "duration"],
         how="inner",
     )
     for actual, loss in zip(joined["actual"].to_list(), joined["loss"].to_list()):
@@ -169,7 +169,7 @@ def test_backtest_col_summary_columns():
         lr.Triangle(_toy_triangle_input())
     )
     assert set(bt.col_summary.columns) >= {
-        "dev", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
+        "duration", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 
@@ -248,8 +248,8 @@ def test_backtest_per_group_independent():
     tri = lr.Triangle(df_grouped, groups="coverage")
     bt = lr.Backtest(estimator=lr.ChainLadder(), holdout=1, target="loss").fit(tri)
     ae_err = bt.ae_err
-    a_err = ae_err.filter(pl.col("coverage") == "A").sort(["cohort", "dev"])
-    b_err = ae_err.filter(pl.col("coverage") == "B").sort(["cohort", "dev"])
+    a_err = ae_err.filter(pl.col("coverage") == "A").sort(["cohort", "duration"])
+    b_err = ae_err.filter(pl.col("coverage") == "B").sort(["cohort", "duration"])
     assert a_err["ae_err"].to_list() == b_err["ae_err"].to_list()
 
 

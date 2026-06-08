@@ -15,7 +15,7 @@ def test_load_experience_shape():
         "coverage", "age_band", "channel",
         "uy", "uy_h", "uy_q", "uy_m",
         "cy", "cy_h", "cy_q", "cy_m",
-        "dev_y", "dev_h", "dev_q", "dev_m",
+        "duration_y", "duration_h", "duration_q", "duration_m",
         "incr_loss", "incr_premium",
     ]
     assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]

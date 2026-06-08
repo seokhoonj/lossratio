@@ -90,10 +90,10 @@ _TITLES: dict[str, str] = {
 }
 
 _PRETTY_VAR_LABEL: dict[str, str] = {
-    "dev_m": "development months",
-    "dev_q": "development quarters",
-    "dev_h": "development halves",
-    "dev_y": "development years",
+    "duration_m": "development months",
+    "duration_q": "development quarters",
+    "duration_h": "development halves",
+    "duration_y": "development years",
     "uy_m":  "underwriting months",
     "uy_q":  "underwriting quarters",
     "uy_h":  "underwriting halves",

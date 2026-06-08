@@ -130,10 +130,10 @@ tri = lr.Triangle(toy, cohort="uy_m", calendar="cy_m",
                   loss="loss", premium="premium", cell_type="cumulative")
 
 tri.link(target="loss", exposure="premium").intensity().df.select(
-    ["dev", "g", "n_cohorts"])
+    ["duration", "g", "n_cohorts"])
 #> shape: (2, 3)
 #> ┌─────┬───────┬───────────┐
-#> │ dev ┆ g     ┆ n_cohorts │
+#> │ duration ┆ g     ┆ n_cohorts │
 #> │ --- ┆ ---   ┆ ---       │
 #> │ i64 ┆ f64   ┆ i64       │
 #> ╞═════╪═══════╪═══════════╡

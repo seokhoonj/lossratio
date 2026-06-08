@@ -44,19 +44,19 @@ def _synthetic_young_regime():
     """A tiny synthetic triangle whose recent segment is short (young).
 
     Two coverages, monthly cohorts. The recent segment (cohorts on/after a
-    manual change) has only a couple of developed devs, so its own
+    manual change) has only a couple of developed durations, so its own
     intensity series is short -> under-determined curve fit.
     """
     rng = np.random.default_rng(7)
     rows: list[dict] = []
     # 12 monthly cohorts; change at month 10 -> recent segment = 3 cohorts.
     cohorts = [dt.date(2023, m, 1) for m in range(1, 13)]
-    max_dev = 12
+    max_duration = 12
     for cov in ("A", "B"):
         base_lr = 0.5 if cov == "A" else 0.6
         for ci, coh in enumerate(cohorts):
-            # younger cohorts observe fewer devs (right-triangle).
-            n_obs = max_dev - ci
+            # younger cohorts observe fewer durations (right-triangle).
+            n_obs = max_duration - ci
             prem_step = 1_000.0
             cum_loss = 0.0
             cum_prem = 0.0
@@ -65,7 +65,7 @@ def _synthetic_young_regime():
                 cal_y = coh.year + (cal_m - 1) // 12
                 cal_m = (cal_m - 1) % 12 + 1
                 cum_prem += prem_step
-                # additive intensity decaying with dev
+                # additive intensity decaying with duration
                 g = base_lr * np.exp(-0.2 * d) + 0.01
                 cum_loss += g * (cum_prem - (cum_prem - prem_step))
                 rows.append(
@@ -185,7 +185,7 @@ def _synthetic_mature_regime():
 
     Two coverages, monthly cohorts. The change is placed early (month 13)
     so the recent segment carries many cohorts, the earliest observing
-    ~24 devs -> a long, over-determined own intensity series. The recent
+    ~24 durations -> a long, over-determined own intensity series. The recent
     segment decays steeply (slope safely below the ``-1`` divergence
     boundary, so the curve does not flag diverged), while the donor (old)
     segment decays more slowly. The two development shapes differ enough
@@ -198,13 +198,13 @@ def _synthetic_mature_regime():
         dt.date(2021 + (m - 1) // 12, (m - 1) % 12 + 1, 1) for m in range(1, 37)
     ]
     change = dt.date(2022, 1, 1)  # month 13 -> recent segment = 24 cohorts.
-    max_dev = 36
+    max_duration = 36
     old_decay, new_decay = 1.3, 2.0
     for cov in ("A", "B"):
         base_lr = 0.5 if cov == "A" else 0.6
         for ci, coh in enumerate(cohorts):
             decay = new_decay if coh >= change else old_decay
-            n_obs = max_dev - ci
+            n_obs = max_duration - ci
             prem_step = 1_000.0
             for d in range(1, n_obs + 1):
                 cal_index = (coh.year - 2021) * 12 + (coh.month - 1) + (d - 1)
@@ -265,7 +265,7 @@ def _synthetic_divergent_regime():
     """A regime whose two tail legs DISAGREE on a data-sufficient curve.
 
     The recent segment is young enough to need a tail (its oldest cohort
-    reaches ~12 of 36 devs) but carries enough cohorts that its own
+    reaches ~12 of 36 durations) but carries enough cohorts that its own
     intensity series is over-determined (not under-determined). Its own
     intensity decays *shallowly* (slope ~ -0.7), so the curve leg
     extrapolates a heavy tail -> a high curve ultimate; the donor decays
@@ -280,13 +280,13 @@ def _synthetic_divergent_regime():
         dt.date(2021 + (m - 1) // 12, (m - 1) % 12 + 1, 1) for m in range(1, 37)
     ]
     change = dt.date(2023, 1, 1)  # month 25 -> recent segment = 12 cohorts.
-    max_dev = 36
+    max_duration = 36
     old_decay, new_decay = 2.5, 0.7  # donor steep (small tail), recent shallow
     for cov in ("A", "B"):
         base_lr = 0.6 if cov == "A" else 0.7
         for ci, coh in enumerate(cohorts):
             decay = new_decay if coh >= change else old_decay
-            n_obs = max_dev - ci
+            n_obs = max_duration - ci
             prem_step = 1_000.0
             for d in range(1, n_obs + 1):
                 cal_index = (coh.year - 2021) * 12 + (coh.month - 1) + (d - 1)
@@ -677,7 +677,7 @@ def test_auto_grain_observed_lr_grain_invariant():
             (pl.col("coverage") == "SUR")
             & (pl.col("cohort") >= change_from)
         )
-        latest = sub.sort("dev").group_by("cohort").agg(
+        latest = sub.sort("duration").group_by("cohort").agg(
             pl.col("loss_obs").drop_nulls().last().alias("loss"),
             pl.col("premium_obs").drop_nulls().last().alias("premium"),
         )
@@ -806,11 +806,11 @@ def test_auto_grain_determinism():
 
 
 # ---------------------------------------------------------------------------
-# 8. Developing path (segment_path) -- the dev-by-dev companion to the band
+# 8. Developing path (segment_path) -- the duration-by-duration companion to the band
 # ---------------------------------------------------------------------------
 
 _PATH_COLS = [
-    "dev",
+    "duration",
     "ratio_borrow",
     "ratio_curve",
     "ratio_mean",
@@ -876,7 +876,7 @@ def test_segment_path_deterministic():
 def test_segment_path_ultimate_matches_band(auto):
     """The last path row of each leg equals segment_band's reported ultimate.
 
-    Both reduce to ``sum loss_proj / sum premium_proj`` at the ultimate dev,
+    Both reduce to ``sum loss_proj / sum premium_proj`` at the ultimate duration,
     so the developing path and the headline band can never disagree.
     """
     fit = _regime_fit()
@@ -887,7 +887,7 @@ def test_segment_path_ultimate_matches_band(auto):
         b = band.filter(pl.col("coverage") == cov).row(0, named=True)
         last = (
             path.filter(pl.col("coverage") == cov)
-            .sort("dev")
+            .sort("duration")
             .tail(1)
             .row(0, named=True)
         )
@@ -914,18 +914,18 @@ def test_segment_path_observed_region_grain_invariant():
     change = fit._regime._changes_df.row(0, named=True)["change"]
     recent = df.filter(pl.col("cohort") >= change)
     agg = (
-        recent.group_by("dev")
+        recent.group_by("duration")
         .agg(
             (pl.col("loss_proj").sum() / pl.col("premium_proj").sum()).alias(
                 "r"
             )
         )
-        .sort("dev")
+        .sort("duration")
     )
     obs = path.filter(
         (pl.col("coverage") == "SUR") & pl.col("observed")
-    ).select(["dev", "ratio_borrow"])
-    chk = obs.join(agg, on="dev")
+    ).select(["duration", "ratio_borrow"])
+    chk = obs.join(agg, on="duration")
     assert chk.height == obs.height
     assert (chk["ratio_borrow"] - chk["r"]).abs().max() == pytest.approx(0.0)
 
@@ -945,7 +945,7 @@ def test_segment_path_observed_then_tail_structure():
     assert (tail["band_lo"] <= tail["ratio_mean"] + 1e-9).all()
     assert (tail["ratio_mean"] <= tail["band_hi"] + 1e-9).all()
     # The observed flag is a single contiguous prefix (no holes).
-    flags = p.sort("dev")["observed"].to_list()
+    flags = p.sort("duration")["observed"].to_list()
     assert flags == sorted(flags, reverse=True)
 
 
@@ -1009,10 +1009,10 @@ def test_segment_path_mirror_output_pandas():
 
 
 def test_segment_path_dtypes_and_band_ordering():
-    """``dev``/``observed`` dtypes and ``band_lo <= band_hi`` everywhere."""
+    """``duration``/``observed`` dtypes and ``band_lo <= band_hi`` everywhere."""
     fit = _regime_fit()
     p = fit.segment_path(auto_grain=True)
-    assert p.schema["dev"] == pl.Int64
+    assert p.schema["duration"] == pl.Int64
     assert p.schema["observed"] == pl.Boolean
     both = p.filter(
         pl.col("band_lo").is_not_null() & pl.col("band_hi").is_not_null()

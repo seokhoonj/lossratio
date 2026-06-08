@@ -2,7 +2,7 @@
 
 Implements ``Convergence.plot()``: 5-panel stacked column showing
 ``ratio`` / ``drift_window`` / ``drift_tail`` / ``|slope|`` /
-``dispersion`` series across candidate dev cutoffs, with threshold
+``dispersion`` series across candidate duration cutoffs, with threshold
 hlines, a candidate-floor (``start``) reference vline, and the detected
 convergence point (``convergence_point``) vline.
 """
@@ -42,7 +42,7 @@ def plot_convergence(
     )
     axes = [row[0] for row in axes]
 
-    x = np.array(conv.dev_cand, dtype=float)
+    x = np.array(conv.duration_cand, dtype=float)
 
     for ax, (name, values, threshold, y_label) in zip(axes, panels):
         m = np.isfinite(values)
@@ -61,7 +61,7 @@ def plot_convergence(
         ax.set_ylabel(y_label, fontsize=8)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
-    axes[-1].set_xlabel("dev candidate", fontsize=9)
+    axes[-1].set_xlabel("duration candidate", fontsize=9)
 
     conv_k_str = (
         str(conv.point)

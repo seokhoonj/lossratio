@@ -75,7 +75,7 @@ def plot_triangle(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
     *,
-    x_axis: str = "dev",
+    x_axis: str = "duration",
     recent: int | None = None,
     regime: Any = None,
     holdout: int | None = None,
@@ -88,9 +88,9 @@ def plot_triangle(
 
     if kind not in ("value", "usage"):
         raise ValueError(f"`kind` must be 'value' or 'usage', got {kind!r}.")
-    if x_axis not in ("dev", "calendar"):
+    if x_axis not in ("duration", "calendar"):
         raise ValueError(
-            f"`x_axis` must be 'dev' or 'calendar', got {x_axis!r}."
+            f"`x_axis` must be 'duration' or 'calendar', got {x_axis!r}."
         )
 
     if kind == "usage":
@@ -121,7 +121,7 @@ def plot_triangle(
     df = triangle.df  # polars
     grp = triangle.groups
     coh = triangle.cohort
-    dev = triangle.dev
+    duration = triangle.duration
     grain = triangle.grain
 
     # Resolve divisor against the values the labels will display.
@@ -158,11 +158,11 @@ def plot_triangle(
     y_levels = [lbl for _, lbl in coh_pairs]   # cohort, oldest -> newest
 
     if x_axis == "calendar":
-        # calendar period of each cell = cohort + (dev - 1) at the grain.
+        # calendar period of each cell = cohort + (duration - 1) at the grain.
         step = {"M": 1, "Q": 3, "H": 6, "Y": 12}[grain]
         cal_series = df.select(
             pl.col("cohort")
-            .dt.offset_by(((pl.col("dev") - 1) * step).cast(pl.Utf8) + "mo")
+            .dt.offset_by(((pl.col("duration") - 1) * step).cast(pl.Utf8) + "mo")
             .alias("_cal")
         )["_cal"]
         x_values = cal_series.to_list()
@@ -173,10 +173,10 @@ def plot_triangle(
             else "calendar"
         )
     else:
-        dev_type = _get_period_type(dev)  # dev_m / dev_q / ... aren't dates
-        x_values = df["dev"].to_list()
-        x_labels = _format_axis(df["dev"], dev_type)
-        x_axis_label = _pretty_var_label(dev)
+        duration_type = _get_period_type(duration)  # duration_m / duration_q / ... aren't dates
+        x_values = df["duration"].to_list()
+        x_labels = _format_axis(df["duration"], duration_type)
+        x_axis_label = _pretty_var_label(duration)
 
     # Ordered unique levels.
     x_pairs = sorted(set(zip(x_values, x_labels)), key=lambda p: p[0])
@@ -397,10 +397,10 @@ def _resolve_switch_k(
     switch: Any,
     triangle: Triangle | None = None,
 ) -> int | None:
-    """Resolve the ``switch`` overlay arg to an integer switch dev or ``None``.
+    """Resolve the ``switch`` overlay arg to an integer switch duration or ``None``.
 
     ``None``: no switch, no overlay, no hybrid threshold.
-    ``int``: scalar switch dev, used directly.
+    ``int``: scalar switch duration, used directly.
     A :class:`SwitchPoint`: read its ``point``, collapsing a per-group
     result to a single scalar via ``max`` (the per-group fallback used by
     the SA fitter).
@@ -467,13 +467,13 @@ def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
     )
 
 
-def _seg_dev_min(
+def _seg_duration_min(
     grp_rows: pl.DataFrame,
     cd_vec: list,
     group_cols: list[str],
     bridge: bool = False,
 ) -> pl.DataFrame:
-    """Compute per-cell ``dev_min`` for the segment_wise mini-triangle.
+    """Compute per-cell ``duration_min`` for the segment_wise mini-triangle.
 
     For each cell in ``grp_rows``, classify its cohort into a segment
     via ``np.searchsorted(cd_vec, cohort, side='right') + 1`` (mapping
@@ -483,8 +483,8 @@ def _seg_dev_min(
     the calendar-diagonal bridge (segment_wise_bridged treatment);
     when ``False`` only the natural wall applies.
 
-    The returned frame has columns ``[*group_cols, cohort, dev,
-    _seg_dev_min]`` that the caller joins back onto the expanded grid
+    The returned frame has columns ``[*group_cols, cohort, duration,
+    _seg_duration_min]`` that the caller joins back onto the expanded grid
     to override ``is_fit_data``.
     """
     from .regime import _compute_segment_mini_tri_bounds
@@ -499,15 +499,15 @@ def _seg_dev_min(
     coh_ranks = grp_rows["_coh_rank"].to_numpy()
     max_cal = int(grp_rows["_max_cal"][0])
 
-    dev_min_arr = _compute_segment_mini_tri_bounds(
+    duration_min_arr = _compute_segment_mini_tri_bounds(
         coh_ranks=coh_ranks,
         seg_ids=seg_id,
         max_cal=max_cal,
         bridge=bridge,
     )
 
-    work = grp_rows.with_columns(pl.Series("_seg_dev_min", dev_min_arr))
-    keep_cols = list(group_cols) + ["cohort", "dev", "_seg_dev_min"]
+    work = grp_rows.with_columns(pl.Series("_seg_duration_min", duration_min_arr))
+    keep_cols = list(group_cols) + ["cohort", "duration", "_seg_duration_min"]
     return work.select(keep_cols)
 
 
@@ -521,7 +521,7 @@ def _compute_triangle_usage(
     """Build the per-cell status grid driving the usage heatmap.
 
     Returns a polars DataFrame with columns ``groups`` (when present),
-    ``cohort``, ``dev``, ``status`` (one of ``"unused" | "used" |
+    ``cohort``, ``duration``, ``status`` (one of ``"unused" | "used" |
     "holdout" | "future"``).
 
     ``segment_wise`` regimes carve out a mini-triangle per segment
@@ -550,29 +550,29 @@ def _compute_triangle_usage(
     grp = triangle.groups
     grp_cols: list[str] = normalize_groups(grp)
 
-    # 1. Build the full (group x cohort x dev) grid.
+    # 1. Build the full (group x cohort x duration) grid.
     if grp_cols:
-        full = obs.select(grp_cols + ["cohort", "dev"])
+        full = obs.select(grp_cols + ["cohort", "duration"])
         parts: list[pl.DataFrame] = []
         for g_val, sub in full.group_by(grp_cols):
             cohorts = sub["cohort"].unique().sort()
-            devs = sub["dev"].unique().sort()
-            grid = cohorts.to_frame().join(devs.to_frame(), how="cross")
+            durations = sub["duration"].unique().sort()
+            grid = cohorts.to_frame().join(durations.to_frame(), how="cross")
             for col, v in zip(grp_cols, g_val):
                 grid = grid.with_columns(pl.lit(v).alias(col))
-            parts.append(grid.select(grp_cols + ["cohort", "dev"]))
+            parts.append(grid.select(grp_cols + ["cohort", "duration"]))
         expanded = pl.concat(parts, how="vertical_relaxed")
     else:
         cohorts = obs["cohort"].unique().sort()
-        devs = obs["dev"].unique().sort()
-        expanded = cohorts.to_frame().join(devs.to_frame(), how="cross")
+        durations = obs["duration"].unique().sort()
+        expanded = cohorts.to_frame().join(durations.to_frame(), how="cross")
 
     # 2. Tag rows actually present in input (vs filled-in by the grid).
-    obs_marker = obs.select(grp_cols + ["cohort", "dev"]).with_columns(
+    obs_marker = obs.select(grp_cols + ["cohort", "duration"]).with_columns(
         pl.lit(True).alias("_data_present")
     )
     expanded = expanded.join(
-        obs_marker, on=grp_cols + ["cohort", "dev"], how="left"
+        obs_marker, on=grp_cols + ["cohort", "duration"], how="left"
     ).with_columns(pl.col("_data_present").fill_null(False))
 
     # 3. Cohort rank + calendar index, optionally per group.
@@ -585,7 +585,7 @@ def _compute_triangle_usage(
             pl.col("cohort").rank(method="dense").cast(pl.Int64).alias("_coh_rank")
         )
     expanded = expanded.with_columns(
-        (pl.col("_coh_rank") + pl.col("dev") - 1).alias("_cal_idx")
+        (pl.col("_coh_rank") + pl.col("duration") - 1).alias("_cal_idx")
     )
 
     # max_cal among data-present cells (not the full grid).
@@ -674,8 +674,8 @@ def _compute_triangle_usage(
         change_pass_expr = pl.lit(True)
 
     if switch_k is not None:
-        switch_k_geq = pl.col("dev") >= switch_k
-        switch_k_lt = pl.col("dev") < switch_k
+        switch_k_geq = pl.col("duration") >= switch_k
+        switch_k_lt = pl.col("duration") < switch_k
     else:
         switch_k_geq = pl.lit(False)
         switch_k_lt = pl.lit(True)
@@ -717,7 +717,7 @@ def _compute_triangle_usage(
     # 8b. segment_wise mini-triangle override. Each regime segment carves
     # out its own mini-triangle anchored on the latest cal diagonal:
     #
-    #   dev_min(segment) = max_cal - seg_last_cohort_rank + 1
+    #   duration_min(segment) = max_cal - seg_last_cohort_rank + 1
     #
     # Cells in an affected group but outside their segment's
     # mini-triangle drop from `used` to `unused`. The switch (`switch_k`) does
@@ -735,7 +735,7 @@ def _compute_triangle_usage(
                 g in expanded.columns for g in reg_grp_cols
             ):
                 # per-group segments
-                dev_min_parts: list[pl.DataFrame] = []
+                duration_min_parts: list[pl.DataFrame] = []
                 for g_val, grp_changes in _iter_group_frames(
                     bp.sort([*reg_grp_cols, "change"]), reg_groups
                 ):
@@ -743,39 +743,39 @@ def _compute_triangle_usage(
                     grp_rows = expanded.filter(group_eq(reg_groups, g_val))
                     if grp_rows.height == 0 or not cd_vec:
                         continue
-                    dev_min_parts.append(
-                        _seg_dev_min(
+                    duration_min_parts.append(
+                        _seg_duration_min(
                             grp_rows, cd_vec, reg_grp_cols,
                             bridge=is_bridged,
                         )
                     )
-                if dev_min_parts:
-                    dev_min_df = pl.concat(dev_min_parts)
+                if duration_min_parts:
+                    duration_min_df = pl.concat(duration_min_parts)
                     expanded = expanded.join(
-                        dev_min_df,
-                        on=[*reg_grp_cols, "cohort", "dev"],
+                        duration_min_df,
+                        on=[*reg_grp_cols, "cohort", "duration"],
                         how="left",
                     ).with_columns(
-                        pl.when(pl.col("_seg_dev_min").is_not_null())
-                        .then(pl.col("is_fit_data") & (pl.col("dev") >= pl.col("_seg_dev_min")))
+                        pl.when(pl.col("_seg_duration_min").is_not_null())
+                        .then(pl.col("is_fit_data") & (pl.col("duration") >= pl.col("_seg_duration_min")))
                         .otherwise(pl.col("is_fit_data"))
                         .alias("is_fit_data")
-                    ).drop("_seg_dev_min")
+                    ).drop("_seg_duration_min")
             else:
                 # pooled segments
                 cd_vec = bp.sort("change")["change"].to_list()
                 if cd_vec:
-                    dev_min_df = _seg_dev_min(
+                    duration_min_df = _seg_duration_min(
                         expanded, cd_vec, [], bridge=is_bridged,
                     )
                     expanded = expanded.join(
-                        dev_min_df, on=["cohort", "dev"], how="left",
+                        duration_min_df, on=["cohort", "duration"], how="left",
                     ).with_columns(
-                        pl.when(pl.col("_seg_dev_min").is_not_null())
-                        .then(pl.col("is_fit_data") & (pl.col("dev") >= pl.col("_seg_dev_min")))
+                        pl.when(pl.col("_seg_duration_min").is_not_null())
+                        .then(pl.col("is_fit_data") & (pl.col("duration") >= pl.col("_seg_duration_min")))
                         .otherwise(pl.col("is_fit_data"))
                         .alias("is_fit_data")
-                    ).drop("_seg_dev_min")
+                    ).drop("_seg_duration_min")
 
     expanded = expanded.with_columns(
         (
@@ -793,11 +793,11 @@ def _compute_triangle_usage(
         .alias("status")
     )
 
-    keep = grp_cols + ["cohort", "dev", "status"]
+    keep = grp_cols + ["cohort", "duration", "status"]
     # Deterministic order: the per-group grid is built via a `group_by`
     # fan-out (unordered in polars), so sort before returning -- the public
     # `Triangle.usage()` hands this frame straight to the caller.
-    return expanded.select(keep).sort(grp_cols + ["cohort", "dev"])
+    return expanded.select(keep).sort(grp_cols + ["cohort", "duration"])
 
 
 def _first_post_change_idx(
@@ -830,7 +830,7 @@ def _plot_triangle_usage(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-    x_axis: str = "dev",
+    x_axis: str = "duration",
 ) -> Any:
     """Categorical status heatmap; see ``plot_triangle.Triangle(kind="usage")``."""
     import matplotlib.pyplot as plt
@@ -849,7 +849,7 @@ def _plot_triangle_usage(
 
     grp = triangle.groups
     coh = triangle.cohort
-    dev = triangle.dev
+    duration = triangle.duration
     grain = triangle.grain
     coh_type = _get_period_type(coh, grain=grain)
 
@@ -875,7 +875,7 @@ def _plot_triangle_usage(
     if x_axis == "calendar":
         usage_df = usage_df.with_columns(
             pl.col("cohort")
-            .dt.offset_by(((pl.col("dev") - 1) * step).cast(pl.Utf8) + "mo")
+            .dt.offset_by(((pl.col("duration") - 1) * step).cast(pl.Utf8) + "mo")
             .alias("_xcal")
         )
         xkey = "_xcal"
@@ -889,10 +889,10 @@ def _plot_triangle_usage(
             else "calendar"
         )
     else:
-        xkey = "dev"
-        x_levels = sorted(set(usage_df["dev"].to_list()))
+        xkey = "duration"
+        x_levels = sorted(set(usage_df["duration"].to_list()))
         x_labels = [str(d) for d in x_levels]
-        x_axis_label = _pretty_var_label(dev)
+        x_axis_label = _pretty_var_label(duration)
 
     facets = list(_iter_group_frames(usage_df, grp))
 
@@ -971,9 +971,9 @@ def _plot_triangle_usage(
         ax.set_yticks(range(ny))
         ax.set_yticklabels(y_levels, fontsize=8)
 
-        # Switch boundary at dev = switch_k. On the dev axis this is a single
+        # Switch boundary at duration = switch_k. On the duration axis this is a single
         # vertical line; on the calendar axis it is a stepped diagonal,
-        # since each cohort reaches dev = switch_k at its own calendar period.
+        # since each cohort reaches duration = switch_k at its own calendar period.
         if switch_k is not None:
             if x_axis == "calendar":
                 _draw_switch_staircase(
@@ -1078,9 +1078,9 @@ def _draw_switch_staircase(
     cohort_values_desc: list,
     x_levels: list,
 ) -> None:
-    """Draw the dev = ``switch_k`` boundary on a calendar x-axis.
+    """Draw the duration = ``switch_k`` boundary on a calendar x-axis.
 
-    On the calendar axis each cohort reaches ``dev = switch_k`` at its own
+    On the calendar axis each cohort reaches ``duration = switch_k`` at its own
     calendar period (``cohort + (switch_k - 1)`` at the grain), so the
     boundary is a stepped diagonal rather than a single vertical line.
     Rows run newest-cohort-first (``yi = 0`` at the top), so the step
@@ -1108,8 +1108,8 @@ def _draw_switch_staircase(
 
 
 def x_idx_get(x_idx: dict, key: int) -> int:
-    """Lookup with fall-back for off-grid switch values (past max dev or
-    before min dev). The fallback positions the vline just past the
+    """Lookup with fall-back for off-grid switch values (past max duration or
+    before min duration). The fallback positions the vline just past the
     boundary so it still reads as an overlay."""
     if key in x_idx:
         return x_idx[key]
@@ -1127,8 +1127,8 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
                        hline):
     """Per-cohort trajectories (+ optional summary overlay) on one facet."""
     for g in sub.partition_by("cohort", maintain_order=True):
-        gg = g.sort("dev")
-        x = gg["dev"].to_list()
+        gg = g.sort("duration")
+        x = gg["duration"].to_list()
         y = gg[metric].to_list()
         if summary:
             ax.plot(x, y, color="0.7", alpha=0.5, linewidth=0.6, zorder=1)
@@ -1145,15 +1145,15 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
     # Mean / Median / Weighted summary lines, masked where too few cohorts.
     lcol, pcol = (("loss", "premium") if metric == "ratio"
                   else ("incr_loss", "incr_premium"))
-    agg = (sub.group_by("dev")
+    agg = (sub.group_by("duration")
               .agg(mean=pl.col(metric).mean(),
                    median=pl.col(metric).median(),
                    wl=pl.col(lcol).sum(),
                    wp=pl.col(pcol).sum(),
                    n=pl.len())
-              .sort("dev")
+              .sort("duration")
               .with_columns(weighted=pl.col("wl") / pl.col("wp")))
-    xd = np.asarray(agg["dev"].to_list(), dtype=float)
+    xd = np.asarray(agg["duration"].to_list(), dtype=float)
     n = np.asarray(agg["n"].to_list())
     masked = summary_min_n is not None and np.isfinite(summary_min_n)
     mask = n < summary_min_n if masked else np.zeros(len(n), dtype=bool)
@@ -1204,7 +1204,7 @@ def plot(
     df = triangle.to_polars()
     grp = triangle.groups
     coh = triangle.cohort
-    dev = triangle.dev
+    duration = triangle.duration
     grain = triangle.grain
 
     if metric in _AMOUNT_METRICS:
@@ -1287,7 +1287,7 @@ def plot(
 
     fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
                  ha="left")
-    fig.supxlabel(_pretty_var_label(dev), fontsize=11)
+    fig.supxlabel(_pretty_var_label(duration), fontsize=11)
     fig.supylabel(metric, fontsize=11)
     if meta.caption:
         fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",

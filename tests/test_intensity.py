@@ -9,7 +9,7 @@ import lossratio as lr
 
 
 def _toy_input() -> pl.DataFrame:
-    """5-cohort, 5-dev experience data with finite premium."""
+    """5-cohort, 5-duration experience data with finite premium."""
     return pl.DataFrame(
         {
             "cy_m": [
@@ -79,22 +79,22 @@ def test_intensity_repr_grouped():
 
 def test_intensity_df_columns_no_group():
     intensity = _tri().link().intensity()
-    assert set(intensity.df.columns) >= {"dev", "g", "g_se", "sigma2", "n_cohorts"}
+    assert set(intensity.df.columns) >= {"duration", "g", "g_se", "sigma2", "n_cohorts"}
 
 
 def test_intensity_df_columns_with_group():
     intensity = _tri_grouped().link().intensity()
     assert set(intensity.df.columns) >= {
-        "coverage", "dev", "g", "g_se", "sigma2", "n_cohorts",
+        "coverage", "duration", "g", "g_se", "sigma2", "n_cohorts",
     }
 
 
-def test_intensity_df_n_links_equals_n_devs_minus_one():
+def test_intensity_df_n_links_equals_n_durations_minus_one():
     intensity = _tri().link().intensity()
     df = intensity.df
-    # toy input has 5 dev periods → 4 links
+    # toy input has 5 duration periods → 4 links
     assert df.shape[0] == 4
-    assert sorted(df["dev"].to_list()) == [1, 2, 3, 4]
+    assert sorted(df["duration"].to_list()) == [1, 2, 3, 4]
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ def test_intensity_g_is_finite_for_nontrivial_links():
     intensity = _tri().link().intensity()
     df = intensity.df
     # links 1..3 have at least 2 cohorts contributing → g should be finite
-    for k, g in zip(df["dev"].to_list(), df["g"].to_list()):
+    for k, g in zip(df["duration"].to_list(), df["g"].to_list()):
         if k <= 3:
             assert g is not None
 
@@ -123,12 +123,12 @@ def test_intensity_sigma2_nonneg_when_present():
         assert v is None or v >= 0.0
 
 
-def test_intensity_n_obs_decreasing_with_dev():
-    """As dev grows, fewer cohorts contribute (triangular structure)."""
+def test_intensity_n_obs_decreasing_with_duration():
+    """As duration grows, fewer cohorts contribute (triangular structure)."""
     intensity = _tri().link().intensity()
-    df = intensity.df.sort("dev")
+    df = intensity.df.sort("duration")
     counts = df["n_cohorts"].to_list()
-    # toy: dev=1 has 4 links, dev=2 has 3, dev=3 has 2, dev=4 has 1
+    # toy: duration=1 has 4 links, duration=2 has 3, duration=3 has 2, duration=4 has 1
     assert counts == [4, 3, 2, 1]
 
 
@@ -161,6 +161,6 @@ def test_intensity_per_group_independent():
     tri = lr.Triangle(df_grouped, groups="coverage")
     intensity = tri.link().intensity()
     df = intensity.df
-    a_g = df.filter(pl.col("coverage") == "A").sort("dev")["g"].to_list()
-    b_g = df.filter(pl.col("coverage") == "B").sort("dev")["g"].to_list()
+    a_g = df.filter(pl.col("coverage") == "A").sort("duration")["g"].to_list()
+    b_g = df.filter(pl.col("coverage") == "B").sort("duration")["g"].to_list()
     assert a_g == b_g

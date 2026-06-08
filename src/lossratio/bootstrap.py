@@ -55,13 +55,13 @@ if TYPE_CHECKING:
 class _Anchor:
     """Per-link Mack anchor for a single-group triangle.
 
-    All arrays have length ``n_links = n_devs - 1`` and are indexed by
-    ``k = 0..n_links - 1`` -- the link from dev ``k + 1`` to dev
+    All arrays have length ``n_links = n_durations - 1`` and are indexed by
+    ``k = 0..n_links - 1`` -- the link from duration ``k + 1`` to duration
     ``k + 2``.
 
     Attributes
     ----------
-    dev_from, dev_to
+    duration_from, duration_to
         1-indexed source / destination development period of each link.
     f_hat
         Volume-weighted chain ladder factor ``sum(loss_to)/sum(loss_from)``.
@@ -76,8 +76,8 @@ class _Anchor:
         ``sum(loss_from)`` over the contributing cohorts.
     """
 
-    dev_from:  np.ndarray
-    dev_to:    np.ndarray
+    duration_from:  np.ndarray
+    duration_to:    np.ndarray
     f_hat:     np.ndarray
     sigma2:    np.ndarray
     f_var:     np.ndarray
@@ -86,7 +86,7 @@ class _Anchor:
 
 
 def _boot_fill_sigma2(s2: np.ndarray) -> np.ndarray:
-    """Mack tail-rule fill for ``sigma^2`` (LOCF, ordered by ``dev_from``).
+    """Mack tail-rule fill for ``sigma^2`` (LOCF, ordered by ``duration_from``).
 
     When a link's ``sigma^2`` is NaN (the last link has only one
     contributing cohort, ``n = 1``), carry forward the previous finite
@@ -105,7 +105,7 @@ def _boot_fill_sigma2(s2: np.ndarray) -> np.ndarray:
 def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
     """Compute the per-link Mack anchor from an observed cumulative matrix.
 
-    Single group. For each link ``k`` (dev ``k + 1`` -> dev ``k + 2``),
+    Single group. For each link ``k`` (duration ``k + 1`` -> duration ``k + 2``),
     over the cohorts where both
     ``loss_from`` and ``loss_to`` are finite and ``loss_from > 0``:
 
@@ -117,14 +117,14 @@ def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
     Parameters
     ----------
     loss_obs
-        ``(n_cohorts, n_devs)`` observed cumulative loss matrix
+        ``(n_cohorts, n_durations)`` observed cumulative loss matrix
         (``np.nan`` where unobserved).
     """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = max(n_devs - 1, 0)
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = max(n_durations - 1, 0)
 
-    dev_from  = np.arange(1, n_links + 1, dtype=np.int64)
-    dev_to    = np.arange(2, n_links + 2, dtype=np.int64)
+    duration_from  = np.arange(1, n_links + 1, dtype=np.int64)
+    duration_to    = np.arange(2, n_links + 2, dtype=np.int64)
     f_hat     = np.full(n_links, np.nan, dtype=np.float64)
     sigma2    = np.full(n_links, np.nan, dtype=np.float64)
     n_cohort  = np.zeros(n_links, dtype=np.int64)
@@ -161,8 +161,8 @@ def _boot_anchor_cl(loss_obs: np.ndarray) -> _Anchor:
     f_var = _mack_factor_var(sigma2, sum_from)
 
     return _Anchor(
-        dev_from  = dev_from,
-        dev_to    = dev_to,
+        duration_from  = duration_from,
+        duration_to    = duration_to,
         f_hat     = f_hat,
         sigma2    = sigma2,
         f_var     = f_var,
@@ -183,26 +183,26 @@ class _Stage1Result:
     Attributes
     ----------
     cum_mean
-        ``(n_cohorts, n_devs, n_replicates)`` Stage 1 array -- forward projection
+        ``(n_cohorts, n_durations, n_replicates)`` Stage 1 array -- forward projection
         means; observed cells equal the observed cumulative.
     cum_sampled
-        ``(n_cohorts, n_devs, n_replicates)`` Stage 1 + Stage 2 array -- chain-Markov
+        ``(n_cohorts, n_durations, n_replicates)`` Stage 1 + Stage 2 array -- chain-Markov
         noisy simulation; observed cells equal the observed cumulative.
     cohorts
         Cohort identifiers (length ``n_cohorts``).
-    devs
-        Development period values (length ``n_devs``).
+    durations
+        Development period values (length ``n_durations``).
     """
 
     cum_mean:    np.ndarray
     cum_sampled: np.ndarray
     cohorts:     list
-    devs:        list
+    durations:        list
 
 
 _PROCESS_CODES = {"gamma": 1, "od_pois": 2, "normal": 3}
 
-# Switch sentinel: a cohort whose switch dev is this never enters the CL
+# Switch sentinel: a cohort whose switch duration is this never enters the CL
 # stage (the "no switch" marker -- the largest representable int).
 _NO_SWITCH = np.iinfo(np.int64).max
 
@@ -242,7 +242,7 @@ def _boot_kernel_cl_analytical(
     Parameters
     ----------
     loss_obs
-        ``(n_cohorts, n_devs)`` observed cumulative loss matrix.
+        ``(n_cohorts, n_durations)`` observed cumulative loss matrix.
     anchor
         Per-link Mack anchor from :func:`_boot_anchor_cl`.
     n_replicates
@@ -271,15 +271,15 @@ def _boot_kernel_cl_analytical(
             f"for type='analytical'"
         )
 
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = max(n_devs - 1, 0)
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = max(n_durations - 1, 0)
 
-    # Last observed dev index per cohort (0-indexed; -1 if no observation).
+    # Last observed duration index per cohort (0-indexed; -1 if no observation).
     obs_mask = np.isfinite(loss_obs)
     has_obs  = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs,
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
 
@@ -307,18 +307,18 @@ def _boot_kernel_cl_analytical(
                 f_star[k, :] = f_hat
 
     # ----- Stage 1 -- cum_mean: observed cells fixed, lower triangle proj ---
-    # Layout (n_cohorts, n_devs, n_replicates); observed cells broadcast across n_replicates.
-    cum_mean = np.full((n_cohorts, n_devs, n_replicates), np.nan, dtype=np.float64)
-    for j in range(n_devs):
+    # Layout (n_cohorts, n_durations, n_replicates); observed cells broadcast across n_replicates.
+    cum_mean = np.full((n_cohorts, n_durations, n_replicates), np.nan, dtype=np.float64)
+    for j in range(n_durations):
         col = loss_obs[:, j]
         # A cell is observed when last_obs[i] >= j.
         observed_col = (last_obs >= j) & np.isfinite(col)
         if observed_col.any():
             cum_mean[observed_col, j, :] = col[observed_col, None]
 
-    # Forward project the lower triangle dev by dev.
-    for j in range(1, n_devs):
-        k = j - 1  # link index for dev (j) -> destination dev (j + 1)
+    # Forward project the lower triangle duration by duration.
+    for j in range(1, n_durations):
+        k = j - 1  # link index for duration (j) -> destination duration (j + 1)
         proj_rows = (last_obs >= 0) & (last_obs < j)
         if not proj_rows.any():
             continue
@@ -331,13 +331,13 @@ def _boot_kernel_cl_analytical(
     cum_mean[neg] = 0.0
 
     # ----- Stage 2 -- cum_sampled: chain-Markov noisy recursion ------------
-    # Vectorised across cohorts at each dev step (loop-carry stays within
-    # the dev axis -- prev[:, :] feeds into the next j). RNG draws happen
-    # in dev-major order rather than cohort-major; statistical properties
+    # Vectorised across cohorts at each duration step (loop-carry stays within
+    # the duration axis -- prev[:, :] feeds into the next j). RNG draws happen
+    # in duration-major order rather than cohort-major; statistical properties
     # are unchanged but bit-exact seed-output mapping differs from any
     # pre-vectorisation snapshot.
     cum_sampled = cum_mean.copy()
-    for j in range(1, n_devs):
+    for j in range(1, n_durations):
         k = j - 1
         active = (last_obs >= 0) & (last_obs < j)
         if not active.any():
@@ -369,7 +369,7 @@ def _boot_kernel_cl_analytical(
         cum_mean    = cum_mean,
         cum_sampled = cum_sampled,
         cohorts     = [],   # filled by the caller
-        devs        = [],   # filled by the caller
+        durations        = [],   # filled by the caller
     )
 
 
@@ -388,7 +388,7 @@ def _boot_summary_decompose(
 ) -> dict[str, np.ndarray]:
     """Per-cell Pythagorean SE decomposition from the array pair.
 
-    Pure numpy. For each ``(cohort, dev)`` cell, over the replicates
+    Pure numpy. For each ``(cohort, duration)`` cell, over the replicates
     ``b`` where
     *both* ``cum_mean`` and ``cum_sampled`` are finite (``n >= 2``,
     else all NaN):
@@ -406,21 +406,21 @@ def _boot_summary_decompose(
     Parameters
     ----------
     cum_mean, cum_sampled
-        ``(n_cohorts, n_devs, n_replicates)`` array pair from the Stage 1 kernel.
+        ``(n_cohorts, n_durations, n_replicates)`` array pair from the Stage 1 kernel.
     quantile_ci
         Whether to also compute empirical percentile CI columns.
 
     Returns
     -------
     dict
-        Flattened ``(n_cohorts * n_devs,)`` arrays keyed by output name.
+        Flattened ``(n_cohorts * n_durations,)`` arrays keyed by output name.
         Cohort is the fastest-varying axis (column-major over the
-        ``(cohort, dev)`` grid).
+        ``(cohort, duration)`` grid).
     """
-    n_cohorts, n_devs, n_replicates = cum_mean.shape
+    n_cohorts, n_durations, n_replicates = cum_mean.shape
 
     both_finite = np.isfinite(cum_mean) & np.isfinite(cum_sampled)
-    n_valid = both_finite.sum(axis=2)               # (n_cohorts, n_devs)
+    n_valid = both_finite.sum(axis=2)               # (n_cohorts, n_durations)
 
     # Masked arrays -- non-finite-pair replicates contribute nothing.
     m_masked = np.where(both_finite, cum_mean, np.nan)
@@ -509,10 +509,10 @@ class _CellResiduals:
 
     Attributes
     ----------
-    cohort, dev
-        1-d arrays of equal length -- the ``(cohort, dev)`` cell key of
-        each residual. ``dev`` is the destination dev of the perturbed
-        increment (for ED this equals the link ``dev_to``).
+    cohort, duration
+        1-d arrays of equal length -- the ``(cohort, duration)`` cell key of
+        each residual. ``duration`` is the destination duration of the perturbed
+        increment (for ED this equals the link ``duration_to``).
     residual
         The *adjusted* Pearson residual (post hat / DF correction).
         ``np.nan`` for cells excluded by the corner-drop rule.
@@ -528,7 +528,7 @@ class _CellResiduals:
     """
 
     cohort:   np.ndarray
-    dev:      np.ndarray
+    duration:      np.ndarray
     residual: np.ndarray
     mu_hat:   np.ndarray
     phi:      float
@@ -544,8 +544,8 @@ class _LinkResiduals:
     ----------
     cohort
         Cohort identifier of each link row.
-    dev_from, dev_to
-        1-indexed source / destination dev of each link.
+    duration_from, duration_to
+        1-indexed source / destination duration of each link.
     residual
         Mack standardized residual
         ``(loss_to - f_hat_k loss_from) / sqrt(sigma2_k loss_from)``;
@@ -553,8 +553,8 @@ class _LinkResiduals:
     """
 
     cohort:    np.ndarray
-    dev_from:  np.ndarray
-    dev_to:    np.ndarray
+    duration_from:  np.ndarray
+    duration_to:    np.ndarray
     residual:  np.ndarray
 
 
@@ -571,14 +571,14 @@ class _ResidualPool:
     cohort
         Cohort identifier of each pooled residual.
     key
-        For cell pools the destination ``dev``; for link pools the
-        ``dev_to`` -- the per-link axis the pool may be split on.
+        For cell pools the destination ``duration``; for link pools the
+        ``duration_to`` -- the per-link axis the pool may be split on.
     residual
         The pooled residual value (per-group de-meaned when
         ``demean=True``).
     pool_id
         String pool membership label. ``"separated"`` -> one id per
-        link/dev, ``"pooled"`` -> one id per group, ``"tail_pooled"``
+        link/duration, ``"pooled"`` -> one id per group, ``"tail_pooled"``
         -> per-link ids before the cut, a single ``"...|POST"`` id
         after.
     """
@@ -596,8 +596,8 @@ def _boot_steps_cl(f_by_to: np.ndarray):
     """Multiplicative CL step closures for :func:`_boot_fitted_grid`.
 
     ``f_by_to[j]`` is the chain-ladder factor applied at the link
-    ``(dev j-1 -> dev j)`` -- i.e. indexed by
-    *destination* dev (0-indexed). The forward step multiplies; the
+    ``(duration j-1 -> duration j)`` -- i.e. indexed by
+    *destination* duration (0-indexed). The forward step multiplies; the
     backward step divides (skipping non-finite / non-positive factors,
     leaving ``cur`` unchanged).
 
@@ -628,7 +628,7 @@ def _boot_fitted_grid(
 ) -> np.ndarray:
     """Chain-anchored fitted incremental backbone ``mu_hat_ij``.
 
-    For each cohort ``i`` with last observed dev index
+    For each cohort ``i`` with last observed duration index
     ``last_j = last_obs_idx[i]``:
 
     1. Anchor the fitted *cumulative* at the observed cumulative:
@@ -645,10 +645,10 @@ def _boot_fitted_grid(
     Parameters
     ----------
     mat_obs
-        ``(n_coh, n_dev)`` observed *cumulative* matrix (``np.nan`` where
+        ``(n_coh, n_duration)`` observed *cumulative* matrix (``np.nan`` where
         unobserved).
     last_obs_idx
-        ``(n_coh,)`` 0-indexed last observed dev per cohort; ``-1`` for a
+        ``(n_coh,)`` 0-indexed last observed duration per cohort; ``-1`` for a
         cohort with no observation.
     step_fwd, step_bwd
         Paradigm-specific step closures, e.g. from :func:`_boot_steps_cl`.
@@ -656,10 +656,10 @@ def _boot_fitted_grid(
     Returns
     -------
     np.ndarray
-        ``(n_coh, n_dev)`` fitted incremental matrix.
+        ``(n_coh, n_duration)`` fitted incremental matrix.
     """
-    n_coh, n_dev = mat_obs.shape
-    c_hat = np.full((n_coh, n_dev), np.nan, dtype=np.float64)
+    n_coh, n_duration = mat_obs.shape
+    c_hat = np.full((n_coh, n_duration), np.nan, dtype=np.float64)
 
     for i in range(n_coh):
         last_j = int(last_obs_idx[i])
@@ -669,9 +669,9 @@ def _boot_fitted_grid(
         if not np.isfinite(base):
             continue
         c_hat[i, last_j] = base
-        if last_j < n_dev - 1:
+        if last_j < n_duration - 1:
             cur = float(base)
-            for j in range(last_j + 1, n_dev):
+            for j in range(last_j + 1, n_duration):
                 cur = step_fwd(cur, i, j)
                 c_hat[i, j] = cur
         if last_j > 0:
@@ -680,10 +680,10 @@ def _boot_fitted_grid(
                 cur = step_bwd(cur, i, j)
                 c_hat[i, j] = cur
 
-    mu_hat = np.full((n_coh, n_dev), np.nan, dtype=np.float64)
+    mu_hat = np.full((n_coh, n_duration), np.nan, dtype=np.float64)
     mu_hat[:, 0] = c_hat[:, 0]
-    if n_dev >= 2:
-        for j in range(1, n_dev):
+    if n_duration >= 2:
+        for j in range(1, n_duration):
             mu_hat[:, j] = c_hat[:, j] - c_hat[:, j - 1]
     return mu_hat
 
@@ -691,17 +691,17 @@ def _boot_fitted_grid(
 def _boot_hat_diag_cl(
     mu_hat_obs: np.ndarray,
     coh_idx:    np.ndarray,
-    dev_idx:    np.ndarray,
+    duration_idx:    np.ndarray,
     n_coh:      int,
-    n_dev:      int,
+    n_duration:      int,
 ) -> np.ndarray:
     """ODP-GLM hat-matrix diagonal ``h_ii`` via QR.
 
     The ODP GLM design encodes
     ``log(mu_ij) = alpha_i + beta_j`` with the corner constraint
-    ``beta_1 = 0`` (the dev-1 indicator is dropped). The design has
-    ``p = n_coh + n_dev - 1`` columns: ``n_coh`` cohort indicators
-    followed by ``n_dev - 1`` dev indicators (dev ``2..n_dev``).
+    ``beta_1 = 0`` (the duration-1 indicator is dropped). The design has
+    ``p = n_coh + n_duration - 1`` columns: ``n_coh`` cohort indicators
+    followed by ``n_duration - 1`` duration indicators (duration ``2..n_duration``).
 
     With weight ``W = diag(mu_hat)``, the hat diagonal is
     ``h = diag(W^{1/2} X (X' W X)^{-1} X' W^{1/2})``. It is computed
@@ -709,7 +709,7 @@ def _boot_hat_diag_cl(
     using only the leading ``rank`` columns of ``Q`` (rank-deficiency
     guard).
 
-    When ``n_dev < 2`` the design degenerates (no dev indicators) and
+    When ``n_duration < 2`` the design degenerates (no duration indicators) and
     every cell gets ``h = 1`` -- the caller's corner-drop then excludes
     everything and falls back to the DF correction.
 
@@ -717,9 +717,9 @@ def _boot_hat_diag_cl(
     ----------
     mu_hat_obs
         ``(n,)`` fitted incremental means of the observed cells.
-    coh_idx, dev_idx
-        ``(n,)`` 1-indexed cohort / dev position of each observed cell.
-    n_coh, n_dev
+    coh_idx, duration_idx
+        ``(n,)`` 1-indexed cohort / duration position of each observed cell.
+    n_coh, n_duration
         Triangle dimensions.
 
     Returns
@@ -730,14 +730,14 @@ def _boot_hat_diag_cl(
     n = int(mu_hat_obs.shape[0])
     if n == 0:
         return np.empty(0, dtype=np.float64)
-    if n_dev < 2:
+    if n_duration < 2:
         return np.ones(n, dtype=np.float64)
 
-    p = n_coh + n_dev - 1
+    p = n_coh + n_duration - 1
     X = np.zeros((n, p), dtype=np.float64)
     for k in range(n):
         X[k, int(coh_idx[k]) - 1] = 1.0
-        d = int(dev_idx[k])
+        d = int(duration_idx[k])
         if d >= 2:
             X[k, n_coh + d - 2] = 1.0
 
@@ -759,38 +759,38 @@ def _build_obs_matrix_from_df(
     df:     pl.DataFrame,
     target: str,
 ) -> tuple[np.ndarray, list, list]:
-    """Build a ``(n_coh, n_dev)`` observed cumulative matrix.
+    """Build a ``(n_coh, n_duration)`` observed cumulative matrix.
 
-    Rows are cohorts (sorted ascending), columns dev (sorted ascending);
+    Rows are cohorts (sorted ascending), columns duration (sorted ascending);
     unobserved cells are ``np.nan``. Shared scaffolding for the cell
     residual helpers (the per-group ``mat_obs`` build).
     """
-    df = df.sort(["cohort", "dev"])
+    df = df.sort(["cohort", "duration"])
     cohorts = sorted(df["cohort"].unique().to_list())
-    devs    = sorted(df["dev"].unique().to_list())
-    n_coh, n_dev = len(cohorts), len(devs)
+    durations    = sorted(df["duration"].unique().to_list())
+    n_coh, n_duration = len(cohorts), len(durations)
 
-    # Left-join observed cells onto the full (cohort x dev) grid; the cross
+    # Left-join observed cells onto the full (cohort x duration) grid; the cross
     # join is cohort-major so a row-major reshape lands each value at
-    # mat[cohort_i, dev_j]. Missing cells stay null -> NaN.
+    # mat[cohort_i, duration_j]. Missing cells stay null -> NaN.
     grid = pl.DataFrame({"cohort": cohorts}).join(
-        pl.DataFrame({"dev": devs}), how="cross"
+        pl.DataFrame({"duration": durations}), how="cross"
     )
     filled = grid.join(
-        df.select(["cohort", "dev", target]), on=["cohort", "dev"], how="left"
+        df.select(["cohort", "duration", target]), on=["cohort", "duration"], how="left"
     )
-    mat = filled[target].cast(pl.Float64).to_numpy().reshape(n_coh, n_dev)
-    return mat, cohorts, devs
+    mat = filled[target].cast(pl.Float64).to_numpy().reshape(n_coh, n_duration)
+    return mat, cohorts, durations
 
 
 def _last_obs_idx(mat_obs: np.ndarray) -> np.ndarray:
-    """0-indexed last observed dev per cohort row (``-1`` if none)."""
+    """0-indexed last observed duration per cohort row (``-1`` if none)."""
     finite = np.isfinite(mat_obs)
     has = finite.any(axis=1)
-    n_dev = mat_obs.shape[1]
+    n_duration = mat_obs.shape[1]
     last = np.where(
         has,
-        n_dev - 1 - finite[:, ::-1].argmax(axis=1),
+        n_duration - 1 - finite[:, ::-1].argmax(axis=1),
         -1,
     )
     return last.astype(np.int64)
@@ -816,7 +816,7 @@ def _cell_residuals_cl(
 
     set to ``np.nan`` where non-finite or ``mu_hat <= 0``. The ODP
     dispersion ``phi = sum(r_raw^2) / (n_obs - p)`` (``p = n_coh +
-    n_dev - 1``) is taken from these *raw* residuals -- it is invariant
+    n_duration - 1``) is taken from these *raw* residuals -- it is invariant
     to the stage-correction choice.
 
     Exactly one stage correction is then applied:
@@ -831,10 +831,10 @@ def _cell_residuals_cl(
     ----------
     triangle_df
         Single-group Triangle DataFrame -- carries the cumulative
-        ``target`` column plus ``cohort`` / ``dev``.
+        ``target`` column plus ``cohort`` / ``duration``.
     anchor
         Per-link Mack anchor from :func:`_boot_anchor_cl` (only
-        ``f_hat`` / ``dev_to`` are read).
+        ``f_hat`` / ``duration_to`` are read).
     target
         Cumulative metric column, ``"loss"`` or ``"premium"``.
     hat_adj
@@ -845,15 +845,15 @@ def _cell_residuals_cl(
     _CellResiduals
         Per-cell adjusted residuals + ODP dispersion ``phi``.
     """
-    mat_obs, cohorts, devs = _build_obs_matrix_from_df(triangle_df, target)
-    n_coh, n_dev = mat_obs.shape
+    mat_obs, cohorts, durations = _build_obs_matrix_from_df(triangle_df, target)
+    n_coh, n_duration = mat_obs.shape
     last_obs = _last_obs_idx(mat_obs)
 
-    # f indexed by 0-indexed destination dev.
-    f_by_to = np.full(n_dev, np.nan, dtype=np.float64)
-    dev_pos = {d: j for j, d in enumerate(devs)}
-    for k in range(len(anchor.dev_to)):
-        j = dev_pos.get(int(anchor.dev_to[k]))
+    # f indexed by 0-indexed destination duration.
+    f_by_to = np.full(n_duration, np.nan, dtype=np.float64)
+    duration_pos = {d: j for j, d in enumerate(durations)}
+    for k in range(len(anchor.duration_to)):
+        j = duration_pos.get(int(anchor.duration_to[k]))
         if j is not None:
             f_by_to[j] = anchor.f_hat[k]
 
@@ -861,29 +861,29 @@ def _cell_residuals_cl(
     mu_hat_grid = _boot_fitted_grid(mat_obs, last_obs, fwd, bwd)
 
     # Observed incrementals X_ij.
-    x_inc = np.full((n_coh, n_dev), np.nan, dtype=np.float64)
+    x_inc = np.full((n_coh, n_duration), np.nan, dtype=np.float64)
     x_inc[:, 0] = mat_obs[:, 0]
-    if n_dev >= 2:
-        for j in range(1, n_dev):
+    if n_duration >= 2:
+        for j in range(1, n_duration):
             x_inc[:, j] = mat_obs[:, j] - mat_obs[:, j - 1]
 
     obs_mask = np.isfinite(mat_obs) & np.isfinite(mu_hat_grid)
     if not obs_mask.any():
         return _CellResiduals(
             cohort   = np.array([], dtype=object),
-            dev      = np.array([], dtype=np.int64),
+            duration      = np.array([], dtype=np.int64),
             residual = np.array([], dtype=np.float64),
             mu_hat   = np.array([], dtype=np.float64),
             phi      = np.nan,
             n_obs    = 0,
-            p        = n_coh + n_dev - 1,
+            p        = n_coh + n_duration - 1,
         )
 
     # The output ordering only needs to be self-consistent here;
-    # row-major is fine since coh/dev are carried per residual.
-    coh_pos, dev_pos_arr = np.where(obs_mask)
+    # row-major is fine since coh/duration are carried per residual.
+    coh_pos, duration_pos_arr = np.where(obs_mask)
     coh_idx = coh_pos + 1            # 1-indexed for the hat design
-    dev_idx = dev_pos_arr + 1
+    duration_idx = duration_pos_arr + 1
     mu_obs  = mu_hat_grid[obs_mask]
     x_obs   = x_inc[obs_mask]
 
@@ -894,14 +894,14 @@ def _cell_residuals_cl(
     r_raw = np.where(bad, np.nan, r_raw)
 
     n_obs_phi = int(np.isfinite(r_raw).sum())
-    p_phi     = n_coh + n_dev - 1
+    p_phi     = n_coh + n_duration - 1
     df_phi    = n_obs_phi - p_phi
     phi_val   = (
         float(np.nansum(r_raw ** 2) / df_phi) if df_phi > 0 else np.nan
     )
 
     if hat_adj:
-        h = _boot_hat_diag_cl(mu_obs, coh_idx, dev_idx, n_coh, n_dev)
+        h = _boot_hat_diag_cl(mu_obs, coh_idx, duration_idx, n_coh, n_duration)
         eps = 1e-10
         drop = ~np.isfinite(h) | (h >= 1.0 - eps)
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -913,7 +913,7 @@ def _cell_residuals_cl(
 
     return _CellResiduals(
         cohort   = np.array([cohorts[i] for i in coh_pos], dtype=object),
-        dev      = np.array([devs[j] for j in dev_pos_arr], dtype=np.int64),
+        duration      = np.array([durations[j] for j in duration_pos_arr], dtype=np.int64),
         residual = r_adj.astype(np.float64),
         mu_hat   = mu_obs.astype(np.float64),
         phi      = phi_val,
@@ -928,7 +928,7 @@ def _cell_residuals_ed(
 ) -> _CellResiduals:
     """ED-paradigm Pearson cell residuals (single group).
 
-    For each link cell ``(cohort, dev_to)`` of a dual-variable Link
+    For each link cell ``(cohort, duration_to)`` of a dual-variable Link
     table:
 
         ``g_hat  = sum(loss_delta) / sum(premium_from)``   (per link)
@@ -944,8 +944,8 @@ def _cell_residuals_ed(
     (the ED design differs from the ODP GLM; the raw Pearson residual is
     used directly).
 
-    The output uses the shared cell schema: ``dev = dev_to`` (the
-    increment's own destination dev) and ``mu_hat = mu_ed``.
+    The output uses the shared cell schema: ``duration = duration_to`` (the
+    increment's own destination duration) and ``mu_hat = mu_ed``.
 
     Parameters
     ----------
@@ -970,11 +970,11 @@ def _cell_residuals_ed(
         )
 
     df = link_df.select(
-        ["cohort", "dev_to", "loss_delta", from_col]
+        ["cohort", "duration_to", "loss_delta", from_col]
     ).rename({from_col: "premium_from"})
 
     cohort       = df["cohort"].to_numpy()
-    dev_to       = df["dev_to"].to_numpy().astype(np.float64)
+    duration_to       = df["duration_to"].to_numpy().astype(np.float64)
     loss_delta   = df["loss_delta"].to_numpy().astype(np.float64)
     premium_from = df["premium_from"].to_numpy().astype(np.float64)
 
@@ -985,12 +985,12 @@ def _cell_residuals_ed(
         & (premium_from > 0.0)
     )
     g_hat = np.full(loss_delta.shape, np.nan, dtype=np.float64)
-    uniq_links = np.unique(dev_to[np.isfinite(dev_to)])
+    uniq_links = np.unique(duration_to[np.isfinite(duration_to)])
     for lk in uniq_links:
-        sel = g_ok & (dev_to == lk)
+        sel = g_ok & (duration_to == lk)
         s_from = premium_from[sel].sum()
         if s_from > 0.0:
-            g_hat[dev_to == lk] = loss_delta[sel].sum() / s_from
+            g_hat[duration_to == lk] = loss_delta[sel].sum() / s_from
 
     mu_ed = g_hat * premium_from
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -1000,7 +1000,7 @@ def _cell_residuals_ed(
 
     fin = np.isfinite(residual)
     n_obs   = int(fin.sum())
-    n_links = int(np.unique(dev_to[fin]).size) if n_obs else 0
+    n_links = int(np.unique(duration_to[fin]).size) if n_obs else 0
     phi_val = (
         float(np.nansum(residual[fin] ** 2) / (n_obs - n_links))
         if n_obs > n_links
@@ -1009,7 +1009,7 @@ def _cell_residuals_ed(
 
     return _CellResiduals(
         cohort   = cohort,
-        dev      = dev_to.astype(np.int64),
+        duration      = duration_to.astype(np.int64),
         residual = residual.astype(np.float64),
         mu_hat   = mu_ed.astype(np.float64),
         phi      = phi_val,
@@ -1026,7 +1026,7 @@ def _link_residuals_cl(
 
     Pinheiro et al. 2003. For each Link row, with the per-link Mack
     anchor ``f_hat_k`` /
-    ``sigma2_k`` looked up by ``dev_from`` / ``dev_to``:
+    ``sigma2_k`` looked up by ``duration_from`` / ``duration_to``:
 
         ``r_ik = (loss_to - f_hat_k loss_from)
                  / sqrt(sigma2_k loss_from)``
@@ -1037,8 +1037,8 @@ def _link_residuals_cl(
     Parameters
     ----------
     link_df
-        Single-group Link DataFrame -- carries ``cohort`` / ``dev_from``
-        / ``dev_to`` / ``loss_from`` / ``loss_to``.
+        Single-group Link DataFrame -- carries ``cohort`` / ``duration_from``
+        / ``duration_to`` / ``loss_from`` / ``loss_to``.
     anchor
         Per-link Mack anchor from :func:`_boot_anchor_cl`.
 
@@ -1048,22 +1048,22 @@ def _link_residuals_cl(
         Per-row standardized link residuals.
     """
     cohort    = link_df["cohort"].to_numpy()
-    dev_from  = link_df["dev_from"].to_numpy().astype(np.int64)
-    dev_to    = link_df["dev_to"].to_numpy().astype(np.int64)
+    duration_from  = link_df["duration_from"].to_numpy().astype(np.int64)
+    duration_to    = link_df["duration_to"].to_numpy().astype(np.int64)
     loss_from = link_df["loss_from"].to_numpy().astype(np.float64)
     loss_to   = link_df["loss_to"].to_numpy().astype(np.float64)
 
-    # Anchor lookup keyed by (dev_from, dev_to): encode the pair as a
+    # Anchor lookup keyed by (duration_from, duration_to): encode the pair as a
     # single integer key and map each link row onto the sorted anchor
     # keys via searchsorted (anchor links are unique per (from, to)).
-    anc_from = anchor.dev_from.astype(np.int64)
-    anc_to   = anchor.dev_to.astype(np.int64)
+    anc_from = anchor.duration_from.astype(np.int64)
+    anc_to   = anchor.duration_to.astype(np.int64)
     f_row  = np.full(cohort.shape, np.nan, dtype=np.float64)
     s2_row = np.full(cohort.shape, np.nan, dtype=np.float64)
-    if anc_from.size and dev_to.size:
-        scale   = int(max(anc_to.max(), dev_to.max())) + 1
+    if anc_from.size and duration_to.size:
+        scale   = int(max(anc_to.max(), duration_to.max())) + 1
         anc_key = anc_from * scale + anc_to
-        row_key = dev_from * scale + dev_to
+        row_key = duration_from * scale + duration_to
         order      = np.argsort(anc_key, kind="stable")
         sorted_key = anc_key[order]
         pos      = np.clip(np.searchsorted(sorted_key, row_key),
@@ -1084,8 +1084,8 @@ def _link_residuals_cl(
 
     return _LinkResiduals(
         cohort   = cohort,
-        dev_from = dev_from,
-        dev_to   = dev_to,
+        duration_from = duration_from,
+        duration_to   = duration_to,
         residual = residual.astype(np.float64),
     )
 
@@ -1118,7 +1118,7 @@ def _assign_pool_id(
     prefix is empty -- ``""``):
 
     * ``"pooled"``      -> every residual gets ``"all"``.
-    * ``"separated"``   -> ``"|<key>"`` per link/dev.
+    * ``"separated"``   -> ``"|<key>"`` per link/duration.
     * ``"tail_pooled"`` -> ``"|<key>"`` before ``cut``, ``"|POST"`` at
       or after ``cut`` (when ``cut`` is finite).
     """
@@ -1155,10 +1155,10 @@ def _build_pool_cell(
     2. **De-mean** (when ``demean=True``): subtract the residual mean so
        the pool is zero-mean (Shapland 2010 discusses this as one
        option).
-    3. **Assign ``pool_id``** per ``pooling`` -- keyed on ``dev``:
-       ``"pooled"`` (one pool), ``"separated"`` (per-dev), or
-       ``"tail_pooled"`` (per-dev before a cut, single ``"POST"``
-       after). The cut is the smallest ``dev`` with count ``< min_pool``
+    3. **Assign ``pool_id``** per ``pooling`` -- keyed on ``duration``:
+       ``"pooled"`` (one pool), ``"separated"`` (per-duration), or
+       ``"tail_pooled"`` (per-duration before a cut, single ``"POST"``
+       after). The cut is the smallest ``duration`` with count ``< min_pool``
        (``tail="auto"``).
 
     Parameters
@@ -1171,7 +1171,7 @@ def _build_pool_cell(
     tail
         Tail-cut rule for ``pooling="tail_pooled"``.
     min_pool
-        Minimum per-dev pool count for ``tail="auto"``.
+        Minimum per-duration pool count for ``tail="auto"``.
     demean
         Whether to subtract the per-group residual mean.
 
@@ -1182,7 +1182,7 @@ def _build_pool_cell(
     """
     keep = np.isfinite(cell.residual) & (cell.residual != 0.0)
     cohort = cell.cohort[keep]
-    dev    = cell.dev[keep].astype(np.float64)
+    duration    = cell.duration[keep].astype(np.float64)
     resid  = cell.residual[keep].astype(np.float64)
 
     if demean and resid.size:
@@ -1190,13 +1190,13 @@ def _build_pool_cell(
 
     cut = np.nan
     if pooling == "tail_pooled":
-        cut = _tail_cut_auto(dev, int(min_pool))
+        cut = _tail_cut_auto(duration, int(min_pool))
 
-    pool_id = _assign_pool_id(dev, pooling, cut=cut)
+    pool_id = _assign_pool_id(duration, pooling, cut=cut)
 
     return _ResidualPool(
         cohort   = cohort,
-        key      = dev.astype(np.int64),
+        key      = duration.astype(np.int64),
         residual = resid,
         pool_id  = pool_id,
     )
@@ -1215,10 +1215,10 @@ def _build_pool_link(
     1. **Drop** non-finite residuals. (Link residuals do not get the
        exact-zero drop -- only the cell path has corner zeros; the link
        path filters on finiteness only.)
-    2. **Assign ``pool_id``** per ``pooling`` -- keyed on ``dev_to``:
+    2. **Assign ``pool_id``** per ``pooling`` -- keyed on ``duration_to``:
        ``"pooled"`` (one pool), ``"separated"`` (per-link), or
        ``"tail_pooled"`` (per-link before a cut, single ``"POST"``
-       after). The cut is the smallest ``dev_to`` with count
+       after). The cut is the smallest ``duration_to`` with count
        ``< min_pool`` (``tail="auto"``).
 
     Link residuals are *not* de-meaned (``demean`` applies only to the
@@ -1229,7 +1229,7 @@ def _build_pool_link(
     link
         Link residuals from :func:`_link_residuals_cl`.
     pooling, tail, min_pool
-        As for :func:`_build_pool_cell`, keyed on ``dev_to``.
+        As for :func:`_build_pool_cell`, keyed on ``duration_to``.
 
     Returns
     -------
@@ -1238,18 +1238,18 @@ def _build_pool_link(
     """
     keep = np.isfinite(link.residual)
     cohort = link.cohort[keep]
-    dev_to = link.dev_to[keep].astype(np.float64)
+    duration_to = link.duration_to[keep].astype(np.float64)
     resid  = link.residual[keep].astype(np.float64)
 
     cut = np.nan
     if pooling == "tail_pooled":
-        cut = _tail_cut_auto(dev_to, int(min_pool))
+        cut = _tail_cut_auto(duration_to, int(min_pool))
 
-    pool_id = _assign_pool_id(dev_to, pooling, cut=cut)
+    pool_id = _assign_pool_id(duration_to, pooling, cut=cut)
 
     return _ResidualPool(
         cohort   = cohort,
-        key      = dev_to.astype(np.int64),
+        key      = duration_to.astype(np.int64),
         residual = resid,
         pool_id  = pool_id,
     )
@@ -1263,14 +1263,14 @@ def _build_pool_link(
 # SA cell / parametric):
 #
 #   (a) place a perturbed / parametric increment in the upper triangle
-#   (b) cumsum along dev per cohort x replicate
+#   (b) cumsum along duration per cohort x replicate
 #   (c) mask the lower triangle to NaN
 #   (d) refit f*/g* per link per replicate (BOTH cells finite; anchor
 #       fallback on a non-positive denominator)
 #   (e) deterministic forward-projection of the lower triangle -> cum_mean
 #   (f) noisy forward simulation of the lower triangle -> cum_sampled
 #
-# They are vectorised over the n_replicates axis with numpy; the per-dev
+# They are vectorised over the n_replicates axis with numpy; the per-duration
 # chain recursion runs a sequential loop.
 #
 # References:
@@ -1291,16 +1291,16 @@ def _refit_fstar(
     For each link ``k``,
     ``f_star[k, b] = sum(cum_to) / sum(cum_from)`` over the cohorts
     whose pseudo cumulative is finite at *both* endpoints (the lower
-    triangle has already been masked to NaN). When the destination dev
+    triangle has already been masked to NaN). When the destination duration
     is undefined or the denominator sum is non-positive, the factor
     falls back to the anchor ``f_hat[k]``.
 
     Parameters
     ----------
     cum
-        ``(n_coh, n_dev, n_replicates)`` masked pseudo cumulative array.
+        ``(n_coh, n_duration, n_replicates)`` masked pseudo cumulative array.
     link_to_idx
-        ``(n_links,)`` 1-indexed destination dev column of each link.
+        ``(n_links,)`` 1-indexed destination duration column of each link.
     f_hat
         ``(n_links,)`` anchor chain-ladder factors.
 
@@ -1309,7 +1309,7 @@ def _refit_fstar(
     np.ndarray
         ``(n_links, n_replicates)`` per-replicate refit factors.
     """
-    n_coh, n_dev, n_replicates = cum.shape
+    n_coh, n_duration, n_replicates = cum.shape
     n_links = link_to_idx.shape[0]
     f_star = np.empty((n_links, n_replicates), dtype=np.float64)
     for k in range(n_links):
@@ -1348,11 +1348,11 @@ def _refit_gstar(
     Parameters
     ----------
     cum
-        ``(n_coh, n_dev, n_replicates)`` masked pseudo cumulative array.
+        ``(n_coh, n_duration, n_replicates)`` masked pseudo cumulative array.
     premium_proj
-        ``(n_coh, n_dev)`` fixed projected premium matrix.
+        ``(n_coh, n_duration)`` fixed projected premium matrix.
     link_to_idx
-        ``(n_links,)`` 1-indexed destination dev column of each link.
+        ``(n_links,)`` 1-indexed destination duration column of each link.
     g_hat
         ``(n_links,)`` anchor ED intensities.
 
@@ -1361,7 +1361,7 @@ def _refit_gstar(
     np.ndarray
         ``(n_links, n_replicates)`` per-replicate refit intensities.
     """
-    n_coh, n_dev, n_replicates = cum.shape
+    n_coh, n_duration, n_replicates = cum.shape
     n_links = link_to_idx.shape[0]
     g_star = np.empty((n_links, n_replicates), dtype=np.float64)
     for k in range(n_links):
@@ -1395,13 +1395,13 @@ def _fwd_proj_cl(
 ) -> None:
     """Multiplicative CL lower-triangle projection (in place).
 
-    For each dev ``j``,
+    For each duration ``j``,
     cohorts with ``last_obs[i] < j`` get ``cum[i, j] = f_star[k] *
     cum[i, j-1]`` where ``k = k_idx_by_j[j] - 1`` (``-1`` -> carry the
-    previous dev forward unchanged). Finite negatives are clipped to 0.
+    previous duration forward unchanged). Finite negatives are clipped to 0.
     """
-    n_coh, n_dev, n_replicates = cum.shape
-    for j in range(1, n_dev):
+    n_coh, n_duration, n_replicates = cum.shape
+    for j in range(1, n_duration):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
         proj = (last_obs >= 0) & (last_obs < j)
@@ -1427,12 +1427,12 @@ def _fwd_proj_ed(
 ) -> None:
     """Additive ED lower-triangle projection (in place).
 
-    For each dev ``j``,
+    For each duration ``j``,
     cohorts with ``last_obs[i] < j`` get ``cum[i, j] = cum[i, j-1] +
     g_star[k] * premium_proj[i, j-1]``. Finite negatives clipped to 0.
     """
-    n_coh, n_dev, n_replicates = cum.shape
-    for j in range(1, n_dev):
+    n_coh, n_duration, n_replicates = cum.shape
+    for j in range(1, n_duration):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
         proj = (last_obs >= 0) & (last_obs < j)
@@ -1446,7 +1446,7 @@ def _fwd_proj_ed(
             g_b = np.where(np.isfinite(g_b), g_b, 0.0)
             p_prev = premium_proj[proj, j - 1][:, None]
             # NaN premium -> 0 increment is intentional: a cohort with no
-            # premium basis at this dev contributes a flat (zero-increment)
+            # premium basis at this duration contributes a flat (zero-increment)
             # cumulative, mirroring the CL path's f=1.0 carry-forward.
             inc = np.where(np.isfinite(p_prev), g_b * p_prev, 0.0)
             cum[proj, j, :] = prev + inc
@@ -1466,12 +1466,12 @@ def _fwd_proj_sa(
     """Stage-adaptive lower-triangle projection (in place).
 
     Per cohort the stage switches at ``mat_k[i]`` -- the 1-indexed
-    from-dev where CL begins:
-    for to-dev ``j``, the link is CL when ``j >= mat_k[i]`` (and
+    from-duration where CL begins:
+    for to-duration ``j``, the link is CL when ``j >= mat_k[i]`` (and
     ``mat_k[i]`` is finite). CL step multiplies; ED step adds.
     """
-    n_coh, n_dev, n_replicates = cum.shape
-    for j in range(1, n_dev):
+    n_coh, n_duration, n_replicates = cum.shape
+    for j in range(1, n_duration):
         k_1 = int(k_idx_by_j[j])
         k   = k_1 - 1 if k_1 != -1 else -1
         proj = (last_obs >= 0) & (last_obs < j)
@@ -1482,7 +1482,7 @@ def _fwd_proj_sa(
             cum[proj, j, :] = prev
             continue
         # Per-cohort stage split among the projecting cohorts: CL when the
-        # switch is set and this to-dev has reached it, else ED. Masks keyed
+        # switch is set and this to-duration has reached it, else ED. Masks keyed
         # on mat_k mirror _fwd_proj_cl / _fwd_proj_ed.
         cl_stage = (mat_k[proj] != _NO_SWITCH) & (j >= mat_k[proj])
         out = np.empty_like(prev)
@@ -1506,11 +1506,11 @@ def _cum_diff_inc_mean3(cum_mean: np.ndarray) -> np.ndarray:
     """Per-cell mean increment from the noise-free cumulative grid.
 
     ``inc_mean3[:, j] = cum_mean[:, j] - cum_mean[:, j-1]`` where both
-    devs are finite, NaN otherwise (and NaN at dev 0). 3-D
-    ``(n_coh, n_dev, n_replicates)``. Shared by the CL and SA cell forward-sim.
+    durations are finite, NaN otherwise (and NaN at duration 0). 3-D
+    ``(n_coh, n_duration, n_replicates)``. Shared by the CL and SA cell forward-sim.
     """
-    n_coh, n_dev, n_replicates = cum_mean.shape
-    inc_mean3 = np.full((n_coh, n_dev, n_replicates), np.nan, dtype=np.float64)
+    n_coh, n_duration, n_replicates = cum_mean.shape
+    inc_mean3 = np.full((n_coh, n_duration, n_replicates), np.nan, dtype=np.float64)
     both = np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
     inc_mean3[:, 1:, :] = np.where(
         both, cum_mean[:, 1:, :] - cum_mean[:, :-1, :], np.nan
@@ -1530,36 +1530,36 @@ def _fwd_sim_cell_bulk(
 ) -> np.ndarray:
     """Vectorised cell-independent Stage-2 accumulation (shared cl/ed/sa).
 
-    Arrays suffixed ``3`` are 3-D ``(n_coh, n_dev, n_replicates)``; ``2`` are 2-D
-    ``(n_coh, n_dev)``. ``inc_mean3`` is the per-cell mean increment, NaN
+    Arrays suffixed ``3`` are 3-D ``(n_coh, n_duration, n_replicates)``; ``2`` are 2-D
+    ``(n_coh, n_duration)``. ``inc_mean3`` is the per-cell mean increment, NaN
     where a draw must propagate NaN and 0 where the cell carries the
     previous level with no contribution. ``phi`` is a scalar or a
-    per-cell ``(n_coh, n_dev)`` dispersion. ``masked=True`` applies the
+    per-cell ``(n_coh, n_duration)`` dispersion. ``masked=True`` applies the
     CL/SA ``both`` semantics (``cum_sampled`` is NaN where the
-    ``cum_mean`` dev-pair is not both finite); ``masked=False`` is the
+    ``cum_mean`` duration-pair is not both finite); ``masked=False`` is the
     ED rule (the running sum is written across the whole projected
-    region). The active-draw subset is drawn in (cohort, dev, n_replicates) C-order
+    region). The active-draw subset is drawn in (cohort, duration, n_replicates) C-order
     via one ``rng`` call -- the same order the per-cell loop it replaced
     consumed the stream -- and accumulation is a base-seeded cumsum so
     the float addition order matches the recursion exactly.
     """
-    n_coh, n_dev, n_replicates = cum_mean.shape
+    n_coh, n_duration, n_replicates = cum_mean.shape
     cum_sampled = cum_mean.copy()
     lj = last_obs.astype(np.int64)
 
     # Processed region: cohorts with a valid last-obs and a finite seed,
-    # cells at dev > lj.
-    valid = (lj >= 0) & (lj <= n_dev - 2)
-    seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_dev - 1), :]
+    # cells at duration > lj.
+    valid = (lj >= 0) & (lj <= n_duration - 2)
+    seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_duration - 1), :]
     cohort_ok = valid & np.isfinite(seed).any(axis=1)
-    processed2 = cohort_ok[:, None] & (np.arange(n_dev)[None, :] > lj[:, None])
-    processed3 = np.broadcast_to(processed2[:, :, None], (n_coh, n_dev, n_replicates))
+    processed2 = cohort_ok[:, None] & (np.arange(n_duration)[None, :] > lj[:, None])
+    processed3 = np.broadcast_to(processed2[:, :, None], (n_coh, n_duration, n_replicates))
 
     if np.ndim(phi) == 0:
-        phi3 = np.full((n_coh, n_dev, n_replicates), float(phi), dtype=np.float64)
+        phi3 = np.full((n_coh, n_duration, n_replicates), float(phi), dtype=np.float64)
     else:
         phi3 = np.broadcast_to(
-            np.asarray(phi, dtype=np.float64)[:, :, None], (n_coh, n_dev, n_replicates)
+            np.asarray(phi, dtype=np.float64)[:, :, None], (n_coh, n_duration, n_replicates)
         )
 
     # Active cell-paradigm draws: finite positive mean, positive phi.
@@ -1569,7 +1569,7 @@ def _fwd_sim_cell_bulk(
     )
     inc_sampled3 = inc_mean3.copy()
     if active3.any():
-        idx = np.where(active3)        # C-order == (cohort, dev, n_replicates) loop order
+        idx = np.where(active3)        # C-order == (cohort, duration, n_replicates) loop order
         if process_code in (1, 2):     # gamma / od_pois
             inc_sampled3[idx] = rng.gamma(
                 shape=inc_mean3[idx] / phi3[idx], scale=phi3[idx]
@@ -1581,12 +1581,12 @@ def _fwd_sim_cell_bulk(
             )
 
     # Accumulation: seed the base at each cohort's lj, add increments, and
-    # cumsum along dev (left-to-right, matching the recursion's add order).
-    contrib = np.zeros((n_coh, n_dev, n_replicates), dtype=np.float64)
+    # cumsum along duration (left-to-right, matching the recursion's add order).
+    contrib = np.zeros((n_coh, n_duration, n_replicates), dtype=np.float64)
     rows = np.where(cohort_ok)[0]
     contrib[rows, lj[rows], :] = cum_mean[rows, lj[rows], :]
     if masked:
-        both3 = np.zeros((n_coh, n_dev, n_replicates), dtype=bool)
+        both3 = np.zeros((n_coh, n_duration, n_replicates), dtype=bool)
         both3[:, 1:, :] = (
             np.isfinite(cum_mean[:, 1:, :]) & np.isfinite(cum_mean[:, :-1, :])
         )
@@ -1644,15 +1644,15 @@ def _fwd_sim_ed_cell(
     ``inc_mean = g_star[k] * premium_proj[j-1]``;
     a fresh process draw is added and ``cum_sampled`` accumulates.
     """
-    n_coh, n_dev, n_replicates = cum_mean.shape
+    n_coh, n_duration, n_replicates = cum_mean.shape
     n_links = g_star.shape[0]
     if not (np.isfinite(phi) and phi > 0.0):
         return cum_mean.copy()
     # Additive ED increment g_star[k] * premium_proj[j-1]; a missing link
     # (k_1 == -1) or non-finite premium carries the level forward (0
     # contribution), an unfittable g propagates NaN.
-    inc_mean3 = np.zeros((n_coh, n_dev, n_replicates), dtype=np.float64)
-    for j in range(1, n_dev):
+    inc_mean3 = np.zeros((n_coh, n_duration, n_replicates), dtype=np.float64)
+    for j in range(1, n_duration):
         k_1 = int(k_idx_by_j[j])
         if k_1 == -1:
             continue
@@ -1686,11 +1686,11 @@ def _fwd_sim_sa_cell(
     dispersion ``phi`` is selected per cell -- ``phi_cl`` when the cell
     is in the CL stage (``j >= mat_k[i]``), else ``phi_ed``.
     """
-    n_dev = cum_mean.shape[1]
+    n_duration = cum_mean.shape[1]
     inc_mean3 = _cum_diff_inc_mean3(cum_mean)
     # per-cell dispersion: phi_cl in the CL stage (j >= mat_k), else phi_ed.
     mk = mat_k.astype(np.int64)
-    stage_cl = (mk[:, None] != _NO_SWITCH) & (np.arange(n_dev)[None, :] >= mk[:, None])
+    stage_cl = (mk[:, None] != _NO_SWITCH) & (np.arange(n_duration)[None, :] >= mk[:, None])
     phi = np.where(stage_cl, phi_cl, phi_ed)
     return _fwd_sim_cell_bulk(
         rng, cum_mean, last_obs, inc_mean3, phi, alpha, process_code,
@@ -1716,29 +1716,29 @@ def _fwd_sim_cl_link(
     mu^2/var``, ``scale = var/mu``; Normal adds ``N(0, sqrt(var))``.
     Pathological steps degenerate to the deterministic mean.
 
-    The dev recursion is irreducibly sequential (each step's draw
+    The duration recursion is irreducibly sequential (each step's draw
     parameters depend on the previous noisy level), but the cohort axis
-    is vectorised: at each dev all active cohorts are drawn in one ``rng``
-    call. This consumes the RNG stream in dev-major order, so it is a
+    is vectorised: at each duration all active cohorts are drawn in one ``rng``
+    call. This consumes the RNG stream in duration-major order, so it is a
     different (equally valid) Monte-Carlo sample than a cohort-major loop
     would produce -- not bit-identical, but the projection means come
     from ``cum_mean`` (untouched here) and the SE shift is Monte-Carlo
     noise within the statistical tolerance.
     """
-    n_coh, n_dev, n_replicates = cum_mean.shape
+    n_coh, n_duration, n_replicates = cum_mean.shape
     cum_sampled = cum_mean.copy()
     lj = last_obs.astype(np.int64)
-    valid = (lj >= 0) & (lj <= n_dev - 2)
+    valid = (lj >= 0) & (lj <= n_duration - 2)
     # clip is only to keep the gather in-bounds for invalid (lj == -1)
     # cohorts; those rows are dropped by `cohort_ok` and never read.
-    seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_dev - 1), :]
+    seed = cum_mean[np.arange(n_coh), np.clip(lj, 0, n_duration - 1), :]
     cohort_ok = valid & np.isfinite(seed).any(axis=1)
     if not cohort_ok.any():
         return cum_sampled
 
     prev = seed.copy()                       # (n_coh, n_replicates); only cohort_ok rows used
-    for j in range(1, n_dev):
-        active = cohort_ok & (lj < j)        # cohorts past their last obs at dev j
+    for j in range(1, n_duration):
+        active = cohort_ok & (lj < j)        # cohorts past their last obs at duration j
         if not active.any():
             continue
         k_1 = int(k_idx_by_j[j])
@@ -1822,16 +1822,16 @@ def _draw_parametric_cells(
     return out
 
 
-def _pool_dev_subpools(
+def _pool_duration_subpools(
     pool: "_ResidualPool | None",
 ) -> dict[int, np.ndarray]:
-    """Map each pooled ``dev`` to the residual array of its ``pool_id``.
+    """Map each pooled ``duration`` to the residual array of its ``pool_id``.
 
-    A cell at dev ``d`` resamples from the sub-pool whose ``pool_id``
-    covers ``d``. For ``pooling="pooled"`` every dev maps to the one
-    ``"all"`` pool; for ``"separated"`` each dev maps to its own; for
-    ``"tail_pooled"`` post-cut devs all map to the single ``POST``
-    pool (a ``dev`` -> ``pool_id`` -> residual-array indirection).
+    A cell at duration ``d`` resamples from the sub-pool whose ``pool_id``
+    covers ``d``. For ``pooling="pooled"`` every duration maps to the one
+    ``"all"`` pool; for ``"separated"`` each duration maps to its own; for
+    ``"tail_pooled"`` post-cut durations all map to the single ``POST``
+    pool (a ``duration`` -> ``pool_id`` -> residual-array indirection).
     """
     out: dict[int, np.ndarray] = {}
     if pool is None or len(pool) == 0:
@@ -1840,7 +1840,7 @@ def _pool_dev_subpools(
     by_pid: dict[Any, np.ndarray] = {}
     for pid in np.unique(pool.pool_id):
         by_pid[pid] = pool.residual[pool.pool_id == pid]
-    # dev -> pool_id (a dev maps to whichever pool_id its residuals carry).
+    # duration -> pool_id (a duration maps to whichever pool_id its residuals carry).
     for d in np.unique(pool.key):
         sel = pool.key == d
         pid = pool.pool_id[sel][0]
@@ -1853,16 +1853,16 @@ def _resample_increment(
     mu:            np.ndarray,
     sqrt_term:     np.ndarray,
     pool:          "_ResidualPool | None",
-    dev:           np.ndarray,
+    duration:           np.ndarray,
     n_replicates:             int,
     _injected:     np.ndarray | None = None,
 ) -> np.ndarray:
     """Resample a Pearson residual per active cell, per replicate.
 
-    For active cell ``a`` at dev ``dev[a]`` the pseudo increment is
+    For active cell ``a`` at duration ``duration[a]`` the pseudo increment is
     ``mu[a] + r_star * sqrt_term[a]`` where ``r_star`` is drawn
-    uniformly from the sub-pool covering that dev (see
-    :func:`_pool_dev_subpools`). An empty / absent pool gives
+    uniformly from the sub-pool covering that duration (see
+    :func:`_pool_duration_subpools`). An empty / absent pool gives
     ``r_star = 0`` (the pseudo cell is then deterministic at ``mu``).
 
     This is phase (a) of the CL / ED cell kernels.
@@ -1873,8 +1873,8 @@ def _resample_increment(
         ``(n_active,)`` fitted increment mean and its Pearson scale.
     pool
         The :class:`_ResidualPool`; ``None`` -> no resampling.
-    dev
-        ``(n_active,)`` per-cell *dev value* (not index).
+    duration
+        ``(n_active,)`` per-cell *duration value* (not index).
     n_replicates
         Replicate count.
     _injected
@@ -1888,13 +1888,13 @@ def _resample_increment(
     """
     n_active = mu.shape[0]
     inc = np.zeros((n_active, n_replicates), dtype=np.float64)
-    subpools = _pool_dev_subpools(pool)
+    subpools = _pool_duration_subpools(pool)
 
     # Resolve each cell's sub-pool once; a cell draws residuals only when it
     # has a finite mean and a non-empty sub-pool.
     finite = np.isfinite(mu)
     subs: list[np.ndarray | None] = [
-        subpools.get(int(dev[a])) if finite[a] else None for a in range(n_active)
+        subpools.get(int(duration[a])) if finite[a] else None for a in range(n_active)
     ]
     draw_rows = [a for a in range(n_active) if subs[a] is not None and subs[a].size]
 
@@ -1934,38 +1934,38 @@ class _GroupKernelInputs:
     precomputed index vectors the kernels consume.
     """
 
-    loss_obs:    np.ndarray   # (n_coh, n_dev) observed cumulative
-    last_obs:    np.ndarray   # (n_coh,) 0-indexed last obs dev, -1 none
-    k_idx_by_j:  np.ndarray   # (n_dev,) 1-indexed link for to-dev j, -1
-    link_to_idx: np.ndarray   # (n_links,) 1-indexed dest dev per link
+    loss_obs:    np.ndarray   # (n_coh, n_duration) observed cumulative
+    last_obs:    np.ndarray   # (n_coh,) 0-indexed last obs duration, -1 none
+    k_idx_by_j:  np.ndarray   # (n_duration,) 1-indexed link for to-duration j, -1
+    link_to_idx: np.ndarray   # (n_links,) 1-indexed dest duration per link
     cohorts:     list
-    devs:        list
+    durations:        list
 
 
 def _build_group_inputs(
     loss_obs: np.ndarray,
     anchor:   _Anchor,
     cohorts:  list,
-    devs:     list,
+    durations:     list,
 ) -> _GroupKernelInputs:
     """Assemble the index scaffolding for a single group."""
-    n_coh, n_dev = loss_obs.shape
+    n_coh, n_duration = loss_obs.shape
     last_obs = _last_obs_idx(loss_obs)
 
-    dev_pos = {d: j for j, d in enumerate(devs)}
-    n_links = len(anchor.dev_to)
+    duration_pos = {d: j for j, d in enumerate(durations)}
+    n_links = len(anchor.duration_to)
 
-    # link_to_idx[k] = 1-indexed dev column of the link's destination.
+    # link_to_idx[k] = 1-indexed duration column of the link's destination.
     link_to_idx = np.full(n_links, -1, dtype=np.int64)
     for k in range(n_links):
-        j = dev_pos.get(int(anchor.dev_to[k]))
+        j = duration_pos.get(int(anchor.duration_to[k]))
         if j is not None:
             link_to_idx[k] = j + 1
 
-    # k_idx_by_j[j] = 1-indexed link landing at to-dev j (-1 if none).
-    k_idx_by_j = np.full(n_dev, -1, dtype=np.int64)
-    to_to_k = {int(anchor.dev_to[k]): k for k in range(n_links)}
-    for j, d in enumerate(devs):
+    # k_idx_by_j[j] = 1-indexed link landing at to-duration j (-1 if none).
+    k_idx_by_j = np.full(n_duration, -1, dtype=np.int64)
+    to_to_k = {int(anchor.duration_to[k]): k for k in range(n_links)}
+    for j, d in enumerate(durations):
         k = to_to_k.get(int(d))
         if k is not None:
             k_idx_by_j[j] = k + 1
@@ -1976,7 +1976,7 @@ def _build_group_inputs(
         k_idx_by_j  = k_idx_by_j,
         link_to_idx = link_to_idx,
         cohorts     = cohorts,
-        devs        = devs,
+        durations        = durations,
     )
 
 
@@ -1984,14 +1984,14 @@ def _fitted_grid_cl(
     loss_obs: np.ndarray,
     last_obs: np.ndarray,
     anchor:   _Anchor,
-    devs:     list,
+    durations:     list,
 ) -> np.ndarray:
     """Chain-anchored CL fitted incremental backbone ``mu_hat``."""
-    n_dev = loss_obs.shape[1]
-    f_by_to = np.full(n_dev, np.nan, dtype=np.float64)
-    dev_pos = {d: j for j, d in enumerate(devs)}
-    for k in range(len(anchor.dev_to)):
-        j = dev_pos.get(int(anchor.dev_to[k]))
+    n_duration = loss_obs.shape[1]
+    f_by_to = np.full(n_duration, np.nan, dtype=np.float64)
+    duration_pos = {d: j for j, d in enumerate(durations)}
+    for k in range(len(anchor.duration_to)):
+        j = duration_pos.get(int(anchor.duration_to[k]))
         if j is not None:
             f_by_to[j] = anchor.f_hat[k]
     fwd, bwd = _boot_steps_cl(f_by_to)
@@ -2001,23 +2001,23 @@ def _fitted_grid_cl(
 def _premium_obs_matrix(
     df:      pl.DataFrame,
     cohorts: list,
-    devs:    list,
+    durations:    list,
 ) -> np.ndarray:
-    """Observed cumulative premium matrix, aligned to ``cohorts`` / ``devs``."""
-    n_coh, n_dev = len(cohorts), len(devs)
+    """Observed cumulative premium matrix, aligned to ``cohorts`` / ``durations``."""
+    n_coh, n_duration = len(cohorts), len(durations)
     if "premium" not in df.columns:
-        return np.full((n_coh, n_dev), np.nan, dtype=np.float64)
-    # Reindex onto the fixed (cohorts x devs) grid: df rows outside the grid
-    # (unknown cohort / dev) drop out; missing cells stay null -> NaN.
+        return np.full((n_coh, n_duration), np.nan, dtype=np.float64)
+    # Reindex onto the fixed (cohorts x durations) grid: df rows outside the grid
+    # (unknown cohort / duration) drop out; missing cells stay null -> NaN.
     grid = pl.DataFrame({"cohort": cohorts}).join(
-        pl.DataFrame({"dev": devs}), how="cross"
+        pl.DataFrame({"duration": durations}), how="cross"
     )
     filled = grid.join(
-        df.select(["cohort", "dev", "premium"]),
-        on=["cohort", "dev"],
+        df.select(["cohort", "duration", "premium"]),
+        on=["cohort", "duration"],
         how="left",
     )
-    return filled["premium"].cast(pl.Float64).to_numpy().reshape(n_coh, n_dev)
+    return filled["premium"].cast(pl.Float64).to_numpy().reshape(n_coh, n_duration)
 
 
 def _premium_anchor_proj(
@@ -2027,14 +2027,14 @@ def _premium_anchor_proj(
     """Project the premium column forward via CL (fixed across replicates).
 
     Volume-weighted per-link factor on observed cumulative premium, then
-    a deterministic forward roll from each cohort's last observed dev.
+    a deterministic forward roll from each cohort's last observed duration.
     """
-    n_coh, n_dev = exp_obs.shape
+    n_coh, n_duration = exp_obs.shape
     out = exp_obs.copy()
-    if n_dev < 2:
+    if n_duration < 2:
         return out
-    f_by_to = np.full(n_dev, np.nan, dtype=np.float64)
-    for j in range(1, n_dev):
+    f_by_to = np.full(n_duration, np.nan, dtype=np.float64)
+    for j in range(1, n_duration):
         active = (last_obs >= 0) & (last_obs >= j)
         if active.any():
             num = exp_obs[active, j]
@@ -2045,12 +2045,12 @@ def _premium_anchor_proj(
                 f_by_to[j] = num[ok].sum() / s_den
     for i in range(n_coh):
         lj = int(last_obs[i])
-        if lj < 0 or lj >= n_dev:
+        if lj < 0 or lj >= n_duration:
             continue
         cur = out[i, lj]
         if not np.isfinite(cur):
             continue
-        for j in range(lj + 1, n_dev):
+        for j in range(lj + 1, n_duration):
             f_k = f_by_to[j]
             if np.isfinite(f_k):
                 cur = f_k * cur
@@ -2067,8 +2067,8 @@ def _ed_intensity_anchor(
     ``g_k = sum(loss_delta) / sum(premium_from)`` over observed link
     rows; non-finite -> 0.
     """
-    sub = link_df.select(["dev_to", "loss_delta", "premium_from"])
-    dev_to     = sub["dev_to"].to_numpy().astype(np.float64)
+    sub = link_df.select(["duration_to", "loss_delta", "premium_from"])
+    duration_to     = sub["duration_to"].to_numpy().astype(np.float64)
     loss_delta = sub["loss_delta"].to_numpy().astype(np.float64)
     premium_from  = sub["premium_from"].to_numpy().astype(np.float64)
 
@@ -2076,16 +2076,16 @@ def _ed_intensity_anchor(
     ok = (
         np.isfinite(loss_delta) & np.isfinite(premium_from) & (premium_from > 0.0)
     )
-    for lk in np.unique(dev_to[np.isfinite(dev_to)]):
-        sel = ok & (dev_to == lk)
+    for lk in np.unique(duration_to[np.isfinite(duration_to)]):
+        sel = ok & (duration_to == lk)
         s_den = premium_from[sel].sum()
         if s_den > 0.0:
             g_by_to[int(lk)] = loss_delta[sel].sum() / s_den
 
-    n_links = len(anchor.dev_to)
+    n_links = len(anchor.duration_to)
     g_hat = np.zeros(n_links, dtype=np.float64)
     for k in range(n_links):
-        v = g_by_to.get(int(anchor.dev_to[k]))
+        v = g_by_to.get(int(anchor.duration_to[k]))
         if v is not None and np.isfinite(v):
             g_hat[k] = v
     return g_hat
@@ -2097,12 +2097,12 @@ def _active_upper_cells(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Active upper-triangle cells with a finite fitted ``mu``.
 
-    Returns ``(coh_idx, dev_idx, lin)`` -- the cohort / 0-indexed dev
-    arrays and a column-major linear index into the ``(n_coh, n_dev)``
+    Returns ``(coh_idx, duration_idx, lin)`` -- the cohort / 0-indexed duration
+    arrays and a column-major linear index into the ``(n_coh, n_duration)``
     grid (cohort fastest).
     """
-    n_coh, n_dev = mu_grid.shape
-    upper = np.zeros((n_coh, n_dev), dtype=bool)
+    n_coh, n_duration = mu_grid.shape
+    upper = np.zeros((n_coh, n_duration), dtype=bool)
     for i in range(n_coh):
         lj = int(last_obs[i])
         if lj >= 0:
@@ -2111,27 +2111,27 @@ def _active_upper_cells(
     # column-major: cohort fastest.
     lin = np.where(active.flatten(order="F"))[0]
     coh_idx = lin % n_coh
-    dev_idx = lin // n_coh
-    return coh_idx, dev_idx, lin
+    duration_idx = lin // n_coh
+    return coh_idx, duration_idx, lin
 
 
 def _place_increments(
     inc:     np.ndarray,
     lin:     np.ndarray,
     n_coh:   int,
-    n_dev:   int,
+    n_duration:   int,
     n_replicates:       int,
 ) -> np.ndarray:
-    """Scatter per-cell increments into a ``(n_coh, n_dev, n_replicates)`` grid.
+    """Scatter per-cell increments into a ``(n_coh, n_duration, n_replicates)`` grid.
 
     Inactive cells are 0 (so the cumsum carries the active increments);
     NaN increments propagate as NaN.
     """
-    cum = np.zeros((n_coh, n_dev, n_replicates), dtype=np.float64)
+    cum = np.zeros((n_coh, n_duration, n_replicates), dtype=np.float64)
     if lin.size:
         coh = lin % n_coh
-        dev = lin // n_coh
-        cum[coh, dev, :] = inc
+        duration = lin // n_coh
+        cum[coh, duration, :] = inc
     return cum
 
 
@@ -2139,17 +2139,17 @@ def _cumsum_mask(
     cum:      np.ndarray,
     last_obs: np.ndarray,
 ) -> None:
-    """Cumsum along dev per cohort, then mask the lower triangle to NaN.
+    """Cumsum along duration per cohort, then mask the lower triangle to NaN.
 
     In place (phases (b) + (c) of the cell kernels). A cohort
-    with no observation (``last_obs == -1``) is masked from dev 0.
+    with no observation (``last_obs == -1``) is masked from duration 0.
     """
-    n_coh, n_dev, n_replicates = cum.shape
+    n_coh, n_duration, n_replicates = cum.shape
     np.cumsum(cum, axis=1, out=cum)
     # `last_obs` is 0-indexed -- keep cells 0..L, mask L+1 onward. A cohort
-    # with no observation (L == -1) masks every dev (j > -1 is always true).
-    dev_idx = np.arange(n_dev)
-    mask = dev_idx[None, :] > np.asarray(last_obs)[:, None]
+    # with no observation (L == -1) masks every duration (j > -1 is always true).
+    duration_idx = np.arange(n_duration)
+    mask = duration_idx[None, :] > np.asarray(last_obs)[:, None]
     cum[mask, :] = np.nan
 
 
@@ -2177,17 +2177,17 @@ def _boot_kernel_cl_cell(
     cell-independent Stage-2 simulation (``cum_sampled``).
     """
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
-    coh_idx, dev_idx, lin = _active_upper_cells(gi.last_obs, mu_grid)
+    n_coh, n_duration = loss_obs.shape
+    coh_idx, duration_idx, lin = _active_upper_cells(gi.last_obs, mu_grid)
     mu_active   = mu_grid.flatten(order="F")[lin]
     sqrt_active = np.sqrt(np.abs(mu_active))
 
-    dev_vals = np.array([int(d) for d in gi.devs], dtype=np.int64)[dev_idx]
+    duration_vals = np.array([int(d) for d in gi.durations], dtype=np.int64)[duration_idx]
     inc = _resample_increment(
-        rng, mu_active, sqrt_active, pool, dev_vals, n_replicates,
+        rng, mu_active, sqrt_active, pool, duration_vals, n_replicates,
         _injected=_injected_resample,
     )
-    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
+    cum = _place_increments(inc, lin, n_coh, n_duration, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2196,7 +2196,7 @@ def _boot_kernel_cl_cell(
     cum_sampled = _fwd_sim_cl_cell(
         cum, gi.last_obs, rng, phi, alpha, _process_code(process)
     )
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 def _boot_kernel_cl_link(
@@ -2217,17 +2217,17 @@ def _boot_kernel_cl_link(
     refit ``f_star``, project, and run the chain-Markov Stage-2.
     """
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
-    n_links = len(anchor.dev_to)
+    n_coh, n_duration = loss_obs.shape
+    n_links = len(anchor.duration_to)
 
-    cum = np.full((n_coh, n_dev, n_replicates), np.nan, dtype=np.float64)
+    cum = np.full((n_coh, n_duration, n_replicates), np.nan, dtype=np.float64)
     cum[:, 0, :] = loss_obs[:, 0][:, None]
 
-    # Per-link residual sub-pools, keyed by dev_to.
+    # Per-link residual sub-pools, keyed by duration_to.
     pools: dict[int, np.ndarray] = {}
     if pool is not None and len(pool) > 0:
         for k in range(n_links):
-            sub = pool.residual[pool.key == int(anchor.dev_to[k])]
+            sub = pool.residual[pool.key == int(anchor.duration_to[k])]
             if sub.size:
                 pools[k] = sub
 
@@ -2243,7 +2243,7 @@ def _boot_kernel_cl_link(
             s2_k = 0.0
         obs_to = loss_obs[:, to_col]
         sub    = pools.get(k)
-        # Cohorts updated at this link: observed at to-dev with at least one
+        # Cohorts updated at this link: observed at to-duration with at least one
         # finite, positive predecessor replicate. The set is fixed at entry to
         # link k (this k reads from_col, writes to_col != from_col), so the
         # per-(k, i) rng.random(n_replicates) draws can be batched into one
@@ -2286,7 +2286,7 @@ def _boot_kernel_cl_link(
         cum, f_star, anchor.sigma2, gi.last_obs, gi.k_idx_by_j,
         rng, alpha, _process_code(process),
     )
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 def _boot_kernel_ed_cell(
@@ -2310,17 +2310,17 @@ def _boot_kernel_ed_cell(
     and the Stage-2 increment mean is ``g_star[k] * premium_proj[j-1]``.
     """
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
-    coh_idx, dev_idx, lin = _active_upper_cells(gi.last_obs, mu_ed_grid)
+    n_coh, n_duration = loss_obs.shape
+    coh_idx, duration_idx, lin = _active_upper_cells(gi.last_obs, mu_ed_grid)
     mu_active   = mu_ed_grid.flatten(order="F")[lin]
     sqrt_active = np.sqrt(np.abs(mu_active))
 
-    dev_vals = np.array([int(d) for d in gi.devs], dtype=np.int64)[dev_idx]
+    duration_vals = np.array([int(d) for d in gi.durations], dtype=np.int64)[duration_idx]
     inc = _resample_increment(
-        rng, mu_active, sqrt_active, pool, dev_vals, n_replicates,
+        rng, mu_active, sqrt_active, pool, duration_vals, n_replicates,
         _injected=_injected_resample,
     )
-    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
+    cum = _place_increments(inc, lin, n_coh, n_duration, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
@@ -2330,7 +2330,7 @@ def _boot_kernel_ed_cell(
         cum, g_star, premium_proj, gi.last_obs, gi.k_idx_by_j,
         rng, phi, alpha, _process_code(process),
     )
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 def _boot_kernel_sa_cell(
@@ -2353,18 +2353,18 @@ def _boot_kernel_sa_cell(
 ) -> _Stage1Result:
     """SA cell-residual kernel (stage-adaptive ED-before / CL-after).
 
-    Each active cell is classified ED or CL by its from-dev vs
+    Each active cell is classified ED or CL by its from-duration vs
     ``mat_k``; the ED cells draw from the ED pool with ``mu_ed`` /
     ``sqrt(|mu_ed|)``, the CL cells from the CL pool with ``mu_cl`` /
     ``sqrt(|mu_cl|)``. The two pools are never merged. Projection and
     Stage-2 switch paradigm per cohort at ``mat_k``.
     """
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
+    n_coh, n_duration = loss_obs.shape
 
     # Active upper cells -- a cell is active iff its paradigm-appropriate
     # fitted grid is finite.
-    upper = np.zeros((n_coh, n_dev), dtype=bool)
+    upper = np.zeros((n_coh, n_duration), dtype=bool)
     for i in range(n_coh):
         lj = int(gi.last_obs[i])
         if lj >= 0:
@@ -2372,7 +2372,7 @@ def _boot_kernel_sa_cell(
     lin_all = np.where(upper.flatten(order="F"))[0]
     a_i = lin_all % n_coh
     a_j = lin_all // n_coh
-    # CL iff the to-dev j reaches the CL-start from-dev mat_k[i].
+    # CL iff the to-duration j reaches the CL-start from-duration mat_k[i].
     is_cl = (mat_k[a_i] != _NO_SWITCH) & (a_j >= mat_k[a_i])
 
     cl_fin = np.isfinite(mu_cl_grid.flatten(order="F")[lin_all])
@@ -2391,16 +2391,16 @@ def _boot_kernel_sa_cell(
     # pool_cl. The two pools stay disjoint (paradigm-tagged).
     n_active = mu_active.shape[0]
     inc = np.zeros((n_active, n_replicates), dtype=np.float64)
-    ed_sub = _pool_dev_subpools(pool_ed)
-    cl_sub = _pool_dev_subpools(pool_cl)
+    ed_sub = _pool_duration_subpools(pool_ed)
+    cl_sub = _pool_duration_subpools(pool_cl)
 
     # Resolve each cell's sub-pool once; a cell draws only when it has a finite
     # mean and a non-empty paradigm-tagged sub-pool (CL pool for CL cells, ED
     # pool for ED cells).
     finite = np.isfinite(mu_active)
     subs: list[np.ndarray | None] = [
-        (cl_sub.get(int(gi.devs[a_j[a]])) if is_cl[a]
-         else ed_sub.get(int(gi.devs[a_j[a]])))
+        (cl_sub.get(int(gi.durations[a_j[a]])) if is_cl[a]
+         else ed_sub.get(int(gi.durations[a_j[a]])))
         if finite[a] else None
         for a in range(n_active)
     ]
@@ -2430,7 +2430,7 @@ def _boot_kernel_sa_cell(
             pos += 1
         inc[a, :] = mu_active[a] + sub[idx] * sqrt_active[a]
 
-    cum = _place_increments(inc, lin_all, n_coh, n_dev, n_replicates)
+    cum = _place_increments(inc, lin_all, n_coh, n_duration, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2442,7 +2442,7 @@ def _boot_kernel_sa_cell(
         cum, gi.last_obs, mat_k, rng, phi_ed, phi_cl, alpha,
         _process_code(process),
     )
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 def _boot_kernel_cl_parametric(
@@ -2463,20 +2463,20 @@ def _boot_kernel_cl_parametric(
     path beyond phase (a)).
     """
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
+    n_coh, n_duration = loss_obs.shape
     _, _, lin = _active_upper_cells(gi.last_obs, mu_grid)
     mu_active = mu_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
     inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, n_replicates)
-    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
+    cum = _place_increments(inc, lin, n_coh, n_duration, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
     _fwd_proj_cl(cum, f_star, gi.last_obs, gi.k_idx_by_j)
 
     cum_sampled = _fwd_sim_cl_cell(cum, gi.last_obs, rng, phi, alpha, pc)
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 def _boot_kernel_ed_parametric(
@@ -2493,13 +2493,13 @@ def _boot_kernel_ed_parametric(
 ) -> _Stage1Result:
     """ED parametric kernel (textbook England-Verrall 1999, additive)."""
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
+    n_coh, n_duration = loss_obs.shape
     _, _, lin = _active_upper_cells(gi.last_obs, mu_ed_grid)
     mu_active = mu_ed_grid.flatten(order="F")[lin]
     pc = _process_code(process)
 
     inc = _draw_parametric_cells(rng, mu_active, phi, alpha, pc, n_replicates)
-    cum = _place_increments(inc, lin, n_coh, n_dev, n_replicates)
+    cum = _place_increments(inc, lin, n_coh, n_duration, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     g_star = _refit_gstar(cum, premium_proj, gi.link_to_idx, g_hat)
@@ -2509,7 +2509,7 @@ def _boot_kernel_ed_parametric(
         cum, g_star, premium_proj, gi.last_obs, gi.k_idx_by_j,
         rng, phi, alpha, pc,
     )
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 def _boot_kernel_sa_parametric(
@@ -2533,10 +2533,10 @@ def _boot_kernel_sa_parametric(
     ``mu`` and ``phi`` selected by the per-cohort stage at ``mat_k``.
     """
     loss_obs = gi.loss_obs
-    n_coh, n_dev = loss_obs.shape
+    n_coh, n_duration = loss_obs.shape
     pc = _process_code(process)
 
-    upper = np.zeros((n_coh, n_dev), dtype=bool)
+    upper = np.zeros((n_coh, n_duration), dtype=bool)
     for i in range(n_coh):
         lj = int(gi.last_obs[i])
         if lj >= 0:
@@ -2557,7 +2557,7 @@ def _boot_kernel_sa_parametric(
 
     phi_active = np.where(is_cl, phi_cl, phi_ed)
     inc = _draw_parametric_cells(rng, mu_active, phi_active, alpha, pc, n_replicates)
-    cum = _place_increments(inc, lin_all, n_coh, n_dev, n_replicates)
+    cum = _place_increments(inc, lin_all, n_coh, n_duration, n_replicates)
     _cumsum_mask(cum, gi.last_obs)
 
     f_star = _refit_fstar(cum, gi.link_to_idx, anchor.f_hat)
@@ -2568,7 +2568,7 @@ def _boot_kernel_sa_parametric(
     cum_sampled = _fwd_sim_sa_cell(
         cum, gi.last_obs, mat_k, rng, phi_ed, phi_cl, alpha, pc,
     )
-    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.devs)
+    return _Stage1Result(cum, cum_sampled, gi.cohorts, gi.durations)
 
 
 # ---------------------------------------------------------------------------
@@ -2588,7 +2588,7 @@ class BootstrapTriangle:
     ----------
     summary
         Long-format DataFrame with columns
-        ``[groups?, cohort, dev, mean_proj, param_se, proc_se,
+        ``[groups?, cohort, duration, mean_proj, param_se, proc_se,
         total_se, total_cv (, ci_lo, ci_hi)]``.
     f_anchor
         Per-link ``f_hat`` and ``n_cohorts``.
@@ -2599,7 +2599,7 @@ class BootstrapTriangle:
     pseudo_triangles
         ``None`` unless ``keep_pseudo=True`` -- then a long-format
         DataFrame of the per-replicate trajectories with columns
-        ``[groups?, cohort, dev, rep, {target}_mean, {target}_sampled]``
+        ``[groups?, cohort, duration, rep, {target}_mean, {target}_sampled]``
         (the Stage-1 deterministic projection and the Stage-1 + Stage-2
         process-noisy simulation).
     ultimate_samples
@@ -2646,10 +2646,10 @@ class BootstrapTriangle:
 
         Long-format DataFrame ``[groups?, rep, {target}_ult_sampled]``:
         for each replicate, the sum across cohorts of the ultimate
-        cumulative (final dev column). Use for an ultimate-aggregate
+        cumulative (final duration column). Use for an ultimate-aggregate
         predictive histogram. ``None`` when no draws exist.
 
-        Pre-tail -- the bootstrap develops to the triangle's last dev,
+        Pre-tail -- the bootstrap develops to the triangle's last duration,
         not through a deterministic tail factor.
         """
         samples = getattr(self, "_ultimate_samples", None)
@@ -2885,21 +2885,21 @@ class Bootstrap:
         switch_map = self._resolve_switch_map(triangle)
 
         for g, sub in _iter_group_frames(tri_df, groups):
-            loss_obs, cohorts, devs = self._build_obs_matrix(sub, target)
+            loss_obs, cohorts, durations = self._build_obs_matrix(sub, target)
 
             anchor = _boot_anchor_cl(loss_obs)
             stage1 = self._run_group_kernel(
                 sub      = sub,
                 loss_obs = loss_obs,
                 cohorts  = cohorts,
-                devs     = devs,
+                durations     = durations,
                 anchor   = anchor,
                 target   = target,
                 mat_k    = switch_map.get(g),
                 rng      = rng,
             )
             stage1.cohorts = cohorts
-            stage1.devs    = devs
+            stage1.durations    = durations
 
             decomp = _boot_summary_decompose(
                 stage1.cum_mean,
@@ -2907,7 +2907,7 @@ class Bootstrap:
                 quantile_ci = self.quantile_ci,
             )
             summary_parts.append(
-                self._decomp_to_df(decomp, cohorts, devs, groups, g)
+                self._decomp_to_df(decomp, cohorts, durations, groups, g)
             )
             f_anchor_parts.append(
                 self._anchor_to_df(
@@ -2978,7 +2978,7 @@ class Bootstrap:
         self,
         triangle: "Triangle",
     ) -> dict[Any, int | None]:
-        """Resolve the SA stage-transition point to a per-group switch dev.
+        """Resolve the SA stage-transition point to a per-group switch duration.
 
         Only the SA paradigm consumes this. The ``switch`` config argument
         accepts:
@@ -2988,11 +2988,11 @@ class Bootstrap:
         * a :class:`SwitchPoint` -- read its ``point``.
         * a callable ``f(triangle) -> SwitchPoint`` (a ``SwitchPoint.detect()``
           spec).
-        * an ``int`` (or per-group ``dict``) -- a literal switch dev.
+        * an ``int`` (or per-group ``dict``) -- a literal switch duration.
 
         Returns a ``{group_value: switch_k}`` map. ``switch_k`` is the
-        ``dev_to`` switch point; the kernels convert it to the 1-indexed
-        from-dev ``switch_k - 1`` where CL begins. ``group_value`` is
+        ``duration_to`` switch point; the kernels convert it to the 1-indexed
+        from-duration ``switch_k - 1`` where CL begins. ``group_value`` is
         ``None`` for an ungrouped Triangle.
         """
         if self.method != "sa":
@@ -3021,7 +3021,7 @@ class Bootstrap:
         sub:      pl.DataFrame,
         loss_obs: np.ndarray,
         cohorts:  list,
-        devs:     list,
+        durations:     list,
         anchor:   _Anchor,
         target:   str,
         mat_k:    int | None,
@@ -3035,8 +3035,8 @@ class Bootstrap:
         """
         n_replicates = int(self.n_replicates)
         alpha = float(self.alpha)
-        gi    = _build_group_inputs(loss_obs, anchor, cohorts, devs)
-        n_coh, n_dev = loss_obs.shape
+        gi    = _build_group_inputs(loss_obs, anchor, cohorts, durations)
+        n_coh, n_duration = loss_obs.shape
 
         # ---- type='analytical' -- Mack closed-form (CL only) -------------
         if self.type == "analytical":
@@ -3053,7 +3053,7 @@ class Bootstrap:
         if self.type == "parametric":
             if self.method == "cl":
                 mu_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor,
-                                          devs)
+                                          durations)
                 cell = _cell_residuals_cl(
                     sub, anchor, target=target, hat_adj=self.hat_adj
                 )
@@ -3066,10 +3066,10 @@ class Bootstrap:
                 sub, None, target, "premium", None, drop_invalid=True
             )
             g_hat = _ed_intensity_anchor(link_df, anchor)
-            exp_obs = _premium_obs_matrix(sub, cohorts, devs)
+            exp_obs = _premium_obs_matrix(sub, cohorts, durations)
             premium_proj = _premium_anchor_proj(exp_obs, gi.last_obs)
             mu_ed_grid = self._ed_fitted_grid(
-                loss_obs, gi.last_obs, anchor, g_hat, premium_proj, devs
+                loss_obs, gi.last_obs, anchor, g_hat, premium_proj, durations
             )
             if self.method == "ed":
                 cell = _cell_residuals_ed(link_df)
@@ -3079,7 +3079,7 @@ class Bootstrap:
                 )
             # SA parametric.
             mu_cl_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor,
-                                         devs)
+                                         durations)
             cell_ed = _cell_residuals_ed(link_df)
             cell_cl = _cell_residuals_cl(
                 sub, anchor, target=target, hat_adj=self.hat_adj
@@ -3107,7 +3107,7 @@ class Bootstrap:
 
         # residual == "cell"
         if self.method == "cl":
-            mu_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor, devs)
+            mu_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor, durations)
             cell = _cell_residuals_cl(
                 sub, anchor, target=target, hat_adj=self.hat_adj
             )
@@ -3125,10 +3125,10 @@ class Bootstrap:
             sub, None, target, "premium", None, drop_invalid=True
         )
         g_hat = _ed_intensity_anchor(link_df, anchor)
-        exp_obs = _premium_obs_matrix(sub, cohorts, devs)
+        exp_obs = _premium_obs_matrix(sub, cohorts, durations)
         premium_proj = _premium_anchor_proj(exp_obs, gi.last_obs)
         mu_ed_grid = self._ed_fitted_grid(
-            loss_obs, gi.last_obs, anchor, g_hat, premium_proj, devs
+            loss_obs, gi.last_obs, anchor, g_hat, premium_proj, durations
         )
 
         if self.method == "ed":
@@ -3143,7 +3143,7 @@ class Bootstrap:
             )
 
         # SA cell -- dual residual pool (ED + CL, never merged).
-        mu_cl_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor, devs)
+        mu_cl_grid = _fitted_grid_cl(loss_obs, gi.last_obs, anchor, durations)
         cell_ed = _cell_residuals_ed(link_df)
         cell_cl = _cell_residuals_cl(
             sub, anchor, target=target, hat_adj=self.hat_adj
@@ -3170,7 +3170,7 @@ class Bootstrap:
         anchor:        _Anchor,
         g_hat:         np.ndarray,
         premium_proj:  np.ndarray,
-        devs:          list,
+        durations:          list,
     ) -> np.ndarray:
         """Chain-anchored ED fitted incremental backbone ``mu_ed``.
 
@@ -3180,11 +3180,11 @@ class Bootstrap:
         additive analogue). The premium matrix is the fixed projected
         premium so lower-triangle steps have a finite multiplier.
         """
-        n_dev = loss_obs.shape[1]
-        g_by_to = np.full(n_dev, np.nan, dtype=np.float64)
-        dev_pos = {d: j for j, d in enumerate(devs)}
-        for k in range(len(anchor.dev_to)):
-            j = dev_pos.get(int(anchor.dev_to[k]))
+        n_duration = loss_obs.shape[1]
+        g_by_to = np.full(n_duration, np.nan, dtype=np.float64)
+        duration_pos = {d: j for j, d in enumerate(durations)}
+        for k in range(len(anchor.duration_to)):
+            j = duration_pos.get(int(anchor.duration_to[k]))
             if j is not None:
                 g_by_to[j] = g_hat[k]
 
@@ -3206,16 +3206,16 @@ class Bootstrap:
 
     @staticmethod
     def _mat_k_vec(mat_k: int | None, n_coh: int) -> np.ndarray:
-        """Per-cohort 1-indexed from-dev where CL begins (SA stage switch).
+        """Per-cohort 1-indexed from-duration where CL begins (SA stage switch).
 
-        ``mat_k`` is the ``dev_to`` switch point; the kernels switch
-        to CL once the to-dev ``j >= mat_k - 1`` -- equivalently the
-        from-dev ``>= mat_k - 1``. ``None`` -> all-ED
+        ``mat_k`` is the ``duration_to`` switch point; the kernels switch
+        to CL once the to-duration ``j >= mat_k - 1`` -- equivalently the
+        from-duration ``>= mat_k - 1``. ``None`` -> all-ED
         (``iinfo(int64).max`` sentinel).
         """
         if mat_k is None or not np.isfinite(mat_k):
             return np.full(n_coh, _NO_SWITCH, dtype=np.int64)
-        # mat_k = dev_to switch; from-dev where CL begins is mat_k - 1.
+        # mat_k = duration_to switch; from-duration where CL begins is mat_k - 1.
         return np.full(n_coh, max(int(mat_k) - 1, 0), dtype=np.int64)
 
     @staticmethod
@@ -3223,55 +3223,55 @@ class Bootstrap:
         df:     pl.DataFrame,
         target: str,
     ) -> tuple[np.ndarray, list, list]:
-        """Build a ``(n_cohorts, n_devs)`` observed cumulative matrix.
+        """Build a ``(n_cohorts, n_durations)`` observed cumulative matrix.
 
-        Rows are cohorts (sorted), columns are dev ``1..max_dev``.
+        Rows are cohorts (sorted), columns are duration ``1..max_duration``.
         Unobserved cells are ``np.nan``.
         """
-        df = df.sort(["cohort", "dev"])
+        df = df.sort(["cohort", "duration"])
         cohorts = df["cohort"].unique(maintain_order=True).to_list()
-        devs    = sorted(df["dev"].unique().to_list())
+        durations    = sorted(df["duration"].unique().to_list())
         n_cohorts = len(cohorts)
-        n_devs    = len(devs)
+        n_durations    = len(durations)
 
         grid = pl.DataFrame({"cohort": cohorts}).join(
-            pl.DataFrame({"dev": devs}), how="cross"
+            pl.DataFrame({"duration": durations}), how="cross"
         )
         filled = grid.join(
-            df.select(["cohort", "dev", target]),
-            on=["cohort", "dev"],
+            df.select(["cohort", "duration", target]),
+            on=["cohort", "duration"],
             how="left",
         )
         mat = filled[target].cast(pl.Float64).to_numpy().reshape(
-            n_cohorts, n_devs
+            n_cohorts, n_durations
         )
-        return mat, cohorts, devs
+        return mat, cohorts, durations
 
     @staticmethod
     def _decomp_to_df(
         decomp:  dict[str, np.ndarray],
         cohorts: list,
-        devs:    list,
+        durations:    list,
         groups:  str | None,
         group_value: Any | None,
     ) -> pl.DataFrame:
         """Assemble the per-cell SE-decomposition long-format DataFrame.
 
         ``decomp`` arrays are column-major (cohort fastest) over the
-        ``(cohort, dev)`` grid -- matching ``np.repeat`` / ``np.tile``
+        ``(cohort, duration)`` grid -- matching ``np.repeat`` / ``np.tile``
         below.
         """
         n_cohorts = len(cohorts)
-        n_devs    = len(devs)
+        n_durations    = len(durations)
 
-        # cohort fastest: tile cohorts, repeat devs.
-        cohort_col = cohorts * n_devs
-        dev_col    = np.repeat(devs, n_cohorts).tolist()
+        # cohort fastest: tile cohorts, repeat durations.
+        cohort_col = cohorts * n_durations
+        duration_col    = np.repeat(durations, n_cohorts).tolist()
 
         data: dict[str, Any] = {}
-        fill_group_columns(data, groups, group_value, n_cohorts * n_devs)
+        fill_group_columns(data, groups, group_value, n_cohorts * n_durations)
         data["cohort"] = cohort_col
-        data["dev"]    = dev_col
+        data["duration"]    = duration_col
         for key in ("mean_proj", "param_se", "proc_se",
                     "total_se", "total_cv"):
             data[key] = decomp[key]
@@ -3280,7 +3280,7 @@ class Bootstrap:
             data["ci_hi"] = decomp["ci_hi"]
 
         return pl.DataFrame(data).sort(
-            [*normalize_groups(groups), "cohort", "dev"]
+            [*normalize_groups(groups), "cohort", "duration"]
         )
 
     @staticmethod
@@ -3292,10 +3292,10 @@ class Bootstrap:
     ) -> pl.DataFrame:
         """Assemble a per-link anchor DataFrame for the requested columns."""
         data: dict[str, Any] = {}
-        n_links = len(anchor.dev_from)
+        n_links = len(anchor.duration_from)
         fill_group_columns(data, groups, group_value, n_links)
-        data["dev_from"] = anchor.dev_from
-        data["dev_to"]   = anchor.dev_to
+        data["duration_from"] = anchor.duration_from
+        data["duration_to"]   = anchor.duration_to
         for c in cols:
             data[c] = getattr(anchor, c)
         return pl.DataFrame(data)
@@ -3309,7 +3309,7 @@ class Bootstrap:
     ) -> pl.DataFrame:
         """Long-format per-replicate trajectories (Stage-1 mean + sampled).
 
-        Columns: ``[groups?, cohort, dev, rep, {target}_mean,
+        Columns: ``[groups?, cohort, duration, rep, {target}_mean,
         {target}_sampled]`` -- ``rep`` ranges over ``1..n_replicates``. The
         ``{target}_mean`` column is the Stage-1 deterministic projection
         (parameter uncertainty only); ``{target}_sampled`` adds the
@@ -3318,25 +3318,25 @@ class Bootstrap:
         The value columns are named after the bootstrap ``target`` (e.g.
         ``loss_mean`` / ``premium_mean``).
         """
-        cum_mean    = stage1.cum_mean        # (n_cohorts, n_devs, n_replicates)
+        cum_mean    = stage1.cum_mean        # (n_cohorts, n_durations, n_replicates)
         cum_sampled = stage1.cum_sampled
-        n_cohorts, n_devs, n_replicates = cum_sampled.shape
+        n_cohorts, n_durations, n_replicates = cum_sampled.shape
         cohorts = stage1.cohorts
-        devs    = stage1.devs
+        durations    = stage1.durations
 
-        # column-major flatten (cohort fastest, then dev, then rep).
-        cohort_col = cohorts * (n_devs * n_replicates)
-        dev_col = np.tile(
-            np.repeat(devs, n_cohorts), n_replicates
+        # column-major flatten (cohort fastest, then duration, then rep).
+        cohort_col = cohorts * (n_durations * n_replicates)
+        duration_col = np.tile(
+            np.repeat(durations, n_cohorts), n_replicates
         ).tolist()
         rep_col = np.repeat(
-            np.arange(1, n_replicates + 1), n_cohorts * n_devs
+            np.arange(1, n_replicates + 1), n_cohorts * n_durations
         ).tolist()
 
         data: dict[str, Any] = {}
-        fill_group_columns(data, groups, group_value, n_cohorts * n_devs * n_replicates)
+        fill_group_columns(data, groups, group_value, n_cohorts * n_durations * n_replicates)
         data["cohort"]            = cohort_col
-        data["dev"]               = dev_col
+        data["duration"]               = duration_col
         data["rep"]               = rep_col
         data[f"{target}_mean"]    = cum_mean.flatten(order="F")
         data[f"{target}_sampled"] = cum_sampled.flatten(order="F")
@@ -3351,18 +3351,18 @@ class Bootstrap:
     ) -> pl.DataFrame:
         """Per-replicate portfolio ultimate of the bootstrapped target.
 
-        Sums each cohort's ultimate cumulative (the final dev column of
+        Sums each cohort's ultimate cumulative (the final duration column of
         the Stage-1 + Stage-2 sampled array) across cohorts, per
         replicate -- a length-``n_replicates`` vector. Columns:
         ``[groups?, rep, {target}_ult_sampled]`` with ``rep`` in
         ``1..n_replicates``.
 
         The aggregate is *pre-tail*: the bootstrap develops to the
-        triangle's last dev, not through a deterministic tail factor.
+        triangle's last duration, not through a deterministic tail factor.
         """
-        cum_sampled = stage1.cum_sampled     # (n_cohorts, n_devs, n_replicates)
+        cum_sampled = stage1.cum_sampled     # (n_cohorts, n_durations, n_replicates)
         n_replicates = cum_sampled.shape[2]
-        # final dev column == each cohort's ultimate cumulative; sum over
+        # final duration column == each cohort's ultimate cumulative; sum over
         # cohorts -> portfolio ultimate per replicate.
         ult = np.nansum(cum_sampled[:, -1, :], axis=0)   # (n_replicates,)
 
@@ -3487,7 +3487,7 @@ def _apply_bootstrap_overlay(
         "total_se", "total_cv"]``. The point projection is never
         overlaid.
     keys
-        Join key columns, ``[groups?, "cohort", "dev"]``.
+        Join key columns, ``[groups?, "cohort", "duration"]``.
 
     Returns
     -------

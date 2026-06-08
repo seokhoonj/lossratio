@@ -101,39 +101,39 @@ def _recent_segment_cohorts(
     return recent_cohorts, change_from
 
 
-def _own_intensity(sub: pl.DataFrame, n_devs: int) -> np.ndarray:
+def _own_intensity(sub: pl.DataFrame, n_durations: int) -> np.ndarray:
     """Recent-segment OWN aggregated intensity ``g_k`` per link.
 
-    Builds dense ``(n_cohorts, n_devs)`` cumulative ``loss_obs`` (``L``)
-    and ``premium_obs`` (``P``) matrices (array slot ``j`` = dev ``j+1``),
+    Builds dense ``(n_cohorts, n_durations)`` cumulative ``loss_obs`` (``L``)
+    and ``premium_obs`` (``P``) matrices (array slot ``j`` = duration ``j+1``),
     then aggregates the additive intensity over cohorts present at both
-    ends of each link with a positive from-dev premium::
+    ends of each link with a positive from-duration premium::
 
         g_k = sum(L[:, k+1] - L[:, k]) / sum(P[:, k])
 
     over the valid cohorts. ``g_k[j]`` is the intensity for the link
-    starting at from-dev ``j+1`` (length ``n_devs - 1``). Uses the
+    starting at from-duration ``j+1`` (length ``n_durations - 1``). Uses the
     segment's own observed development -- no donor, so no level
     contamination.
     """
     cohorts = sorted(sub["cohort"].unique().to_list())
     row_of = {c: i for i, c in enumerate(cohorts)}
-    L = np.full((len(cohorts), n_devs), np.nan, dtype=float)
-    P = np.full((len(cohorts), n_devs), np.nan, dtype=float)
+    L = np.full((len(cohorts), n_durations), np.nan, dtype=float)
+    P = np.full((len(cohorts), n_durations), np.nan, dtype=float)
     for c, d, lo, po in zip(
         sub["cohort"].to_list(),
-        sub["dev"].to_list(),
+        sub["duration"].to_list(),
         sub["loss_obs"].to_list(),
         sub["premium_obs"].to_list(),
     ):
         j = int(d) - 1
-        if 0 <= j < n_devs:
+        if 0 <= j < n_durations:
             i = row_of[c]
             L[i, j] = lo if lo is not None else np.nan
             P[i, j] = po if po is not None else np.nan
 
-    dl = L[:, 1:] - L[:, :-1]          # col j = link from-dev (j+1) -> (j+2)
-    pk = P[:, :-1]                      # premium at the FROM dev of each link
+    dl = L[:, 1:] - L[:, :-1]          # col j = link from-duration (j+1) -> (j+2)
+    pk = P[:, :-1]                      # premium at the FROM duration of each link
     valid = np.isfinite(dl) & np.isfinite(pk) & (pk > 0.0)
     num = np.where(valid, dl, 0.0).sum(axis=0)
     den = np.where(valid, pk, 0.0).sum(axis=0)
@@ -143,19 +143,19 @@ def _own_intensity(sub: pl.DataFrame, n_devs: int) -> np.ndarray:
 
 
 def _curve_leg_loss_proj(
-    cr: "CurveResult", sub: pl.DataFrame, n_devs: int
+    cr: "CurveResult", sub: pl.DataFrame, n_durations: int
 ) -> tuple[float, bool]:
     """Curve-leg ultimate loss summed over the recent cohorts.
 
-    Per cohort with last observed dev ``last`` (1-indexed), the ultimate
+    Per cohort with last observed duration ``last`` (1-indexed), the ultimate
     loss is the observed cumulative loss at ``last`` plus the
     premium-weighted sum of the fitted intensity over the unobserved
-    from-dev positions ``last .. n_devs-1``::
+    from-duration positions ``last .. n_durations-1``::
 
         loss_proj = L_obs[last] + sum_k cr.evaluate(k) * premium_proj[k]
 
-    ``cr.evaluate(k)`` is the intensity at from-dev ``k``; the increment
-    lands at dev ``k+1`` (the engine's ED from-column convention). Terms
+    ``cr.evaluate(k)`` is the intensity at from-duration ``k``; the increment
+    lands at duration ``k+1`` (the engine's ED from-column convention). Terms
     where ``evaluate`` is ``nan`` or ``premium_proj`` is null are skipped.
     Returns ``(loss_proj_curve, any_term)`` -- ``any_term`` is ``True``
     when at least one tail term was added (used to detect an all-empty
@@ -163,16 +163,16 @@ def _curve_leg_loss_proj(
     """
     cohorts = sorted(sub["cohort"].unique().to_list())
     row_of = {c: i for i, c in enumerate(cohorts)}
-    L = np.full((len(cohorts), n_devs), np.nan, dtype=float)
-    Pp = np.full((len(cohorts), n_devs), np.nan, dtype=float)
+    L = np.full((len(cohorts), n_durations), np.nan, dtype=float)
+    Pp = np.full((len(cohorts), n_durations), np.nan, dtype=float)
     for c, d, lo, pp in zip(
         sub["cohort"].to_list(),
-        sub["dev"].to_list(),
+        sub["duration"].to_list(),
         sub["loss_obs"].to_list(),
         sub["premium_proj"].to_list(),
     ):
         j = int(d) - 1
-        if 0 <= j < n_devs:
+        if 0 <= j < n_durations:
             i = row_of[c]
             L[i, j] = lo if lo is not None else np.nan
             Pp[i, j] = pp if pp is not None else np.nan
@@ -183,9 +183,9 @@ def _curve_leg_loss_proj(
         finite = np.flatnonzero(np.isfinite(L[i]))
         if finite.size == 0:
             continue
-        last = int(finite[-1]) + 1  # 1-indexed last observed dev
+        last = int(finite[-1]) + 1  # 1-indexed last observed duration
         loss_proj += float(L[i, last - 1])
-        ks = np.arange(last, n_devs)  # from-dev positions, 1-indexed
+        ks = np.arange(last, n_durations)  # from-duration positions, 1-indexed
         if ks.size == 0:
             continue
         ev = cr.evaluate(ks.astype(float))
@@ -308,7 +308,7 @@ def _segment_band(
             continue
 
         sub = gdf.filter(pl.col("cohort").is_in(recent_cohorts))
-        n_devs = int(gdf["dev"].max())
+        n_durations = int(gdf["duration"].max())
 
         # Borrow leg from segment_summary (recent segment row of this group).
         borrow = _borrow_row(seg, gcols, keyvals, change_from)
@@ -320,9 +320,9 @@ def _segment_band(
         n_cohorts = borrow["n_cohorts"]
 
         # Curve leg: own intensity -> Curve fit -> premium-weighted tail.
-        g_k = _own_intensity(sub, n_devs)
+        g_k = _own_intensity(sub, n_durations)
         cr = curve.fit(g_k)
-        loss_proj_curve, any_term = _curve_leg_loss_proj(cr, sub, n_devs)
+        loss_proj_curve, any_term = _curve_leg_loss_proj(cr, sub, n_durations)
 
         degenerate = cr.slope is None or not any_term
         if degenerate:
@@ -342,7 +342,7 @@ def _segment_band(
                 band_hi = max(ratio_proj_borrow, ratio_proj_curve)
                 band_width = band_hi - band_lo
             curve_alt_ratio_proj = _alt_curve_ratio(
-                cr, g_k, sub, n_devs, premium_proj
+                cr, g_k, sub, n_durations, premium_proj
             )
 
         # Mean leg: the midpoint of the two tail estimates -- a single
@@ -461,7 +461,7 @@ def _alt_curve_ratio(
     cr: "CurveResult",
     g_k: np.ndarray,
     sub: pl.DataFrame,
-    n_devs: int,
+    n_durations: int,
     premium_proj: float,
 ) -> float | None:
     """Curve-leg ratio recomputed under the fit's alternate law.
@@ -479,7 +479,7 @@ def _alt_curve_ratio(
     alt_cr = Curve(target=cr.target, family=cr.alt_family).fit(g_k)
     if alt_cr.slope is None:
         return None
-    loss_proj, any_term = _curve_leg_loss_proj(alt_cr, sub, n_devs)
+    loss_proj, any_term = _curve_leg_loss_proj(alt_cr, sub, n_durations)
     if not any_term:
         return None
     return loss_proj / premium_proj
@@ -776,7 +776,7 @@ def _empty_auto_band(gcols: list[str], output_type: str) -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Developing path (segment_path) -- the dev-by-dev companion to the band.
+# Developing path (segment_path) -- the duration-by-duration companion to the band.
 #
 # segment_band reports the recent segment's ULTIMATE two ways (borrow / curve)
 # and their spread. segment_path reports the same two legs AS A DEVELOPING
@@ -788,15 +788,15 @@ def _empty_auto_band(gcols: list[str], output_type: str) -> pl.DataFrame:
 # the real period-to-period dynamics and is grain-invariant. With
 # ``auto_grain=True`` the unobserved tail is extrapolated at the SELECTED
 # coarse grain (the band's mature, convergent grain) and then INTERPOLATED back
-# onto the fine display-grain dev positions. Interpolation introduces no new
+# onto the fine display-grain duration positions. Interpolation introduces no new
 # extrapolation error: the legs are only ever extrapolated at the selected
 # grain, and the fine path linearly connects those computed marks. By
 # construction the ultimate (last) row equals segment_band's reported ultimates
-# (both reduce to ``sum loss_proj / sum premium_proj`` at the ultimate dev).
+# (both reduce to ``sum loss_proj / sum premium_proj`` at the ultimate duration).
 # ---------------------------------------------------------------------------
 
 _PATH_SCHEMA: dict[str, pl.DataType] = {
-    "dev":          pl.Int64,
+    "duration":          pl.Int64,
     "ratio_borrow": pl.Float64,
     "ratio_curve":  pl.Float64,
     "ratio_mean":   pl.Float64,
@@ -811,18 +811,18 @@ _AUTO_PATH_SCHEMA: dict[str, pl.DataType] = {
 }
 
 
-def _curve_leg_cum_by_dev(
-    cr: "CurveResult", sub: pl.DataFrame, n_devs: int
+def _curve_leg_cum_by_duration(
+    cr: "CurveResult", sub: pl.DataFrame, n_durations: int
 ) -> tuple[np.ndarray | None, bool]:
-    """Curve-leg cumulative loss aggregated over recent cohorts, per dev.
+    """Curve-leg cumulative loss aggregated over recent cohorts, per duration.
 
     The per-development-period generalisation of :func:`_curve_leg_loss_proj`:
     instead of only the ultimate, it returns the recent-segment aggregate
-    cumulative curve-leg loss at EVERY dev ``1 .. n_devs`` (array slot ``j`` =
-    dev ``j+1``). Within a cohort's observed span the cumulative loss is the
+    cumulative curve-leg loss at EVERY duration ``1 .. n_durations`` (array slot ``j`` =
+    duration ``j+1``). Within a cohort's observed span the cumulative loss is the
     observed ``L_obs``; beyond it the observed last value plus the running
     premium-weighted sum of the fitted intensity ``cr.evaluate(k)``. Summed
-    across cohorts at each dev. Returns ``(cum, any_term)`` -- ``cum`` is
+    across cohorts at each duration. Returns ``(cum, any_term)`` -- ``cum`` is
     ``None`` when the curve is degenerate (no slope), ``any_term`` reports
     whether any tail term was added. The ultimate slot equals
     :func:`_curve_leg_loss_proj`'s scalar by construction.
@@ -832,30 +832,30 @@ def _curve_leg_cum_by_dev(
 
     cohorts = sorted(sub["cohort"].unique().to_list())
     row_of = {c: i for i, c in enumerate(cohorts)}
-    L = np.full((len(cohorts), n_devs), np.nan, dtype=float)
-    Pp = np.full((len(cohorts), n_devs), np.nan, dtype=float)
+    L = np.full((len(cohorts), n_durations), np.nan, dtype=float)
+    Pp = np.full((len(cohorts), n_durations), np.nan, dtype=float)
     for c, d, lo, pp in zip(
         sub["cohort"].to_list(),
-        sub["dev"].to_list(),
+        sub["duration"].to_list(),
         sub["loss_obs"].to_list(),
         sub["premium_proj"].to_list(),
     ):
         j = int(d) - 1
-        if 0 <= j < n_devs:
+        if 0 <= j < n_durations:
             i = row_of[c]
             L[i, j] = lo if lo is not None else np.nan
             Pp[i, j] = pp if pp is not None else np.nan
 
-    cum = np.zeros(n_devs, dtype=float)
+    cum = np.zeros(n_durations, dtype=float)
     any_term = False
-    # Curve value at each 1-indexed dev, evaluated once (vectorized) instead
-    # of per cohort x tail-dev; `ev_by_dev[k - 1]` mirrors `cr.evaluate(k)`.
-    ev_by_dev = cr.evaluate(np.arange(1, n_devs + 1, dtype=float))
+    # Curve value at each 1-indexed duration, evaluated once (vectorized) instead
+    # of per cohort x tail-duration; `ev_by_duration[k - 1]` mirrors `cr.evaluate(k)`.
+    ev_by_duration = cr.evaluate(np.arange(1, n_durations + 1, dtype=float))
     for i in range(len(cohorts)):
         finite = np.flatnonzero(np.isfinite(L[i]))
         if finite.size == 0:
             continue
-        last = int(finite[-1]) + 1  # 1-indexed last observed dev
+        last = int(finite[-1]) + 1  # 1-indexed last observed duration
         running = float(L[i, last - 1])
         # Observed span: the cumulative loss is the observed value. Carry the
         # last valid value across any interior gap (cumulative loss is
@@ -868,10 +868,10 @@ def _curve_leg_cum_by_dev(
             if np.isfinite(val):
                 carry = float(val)
             cum[d - 1] += carry
-        # Tail: accumulate premium-weighted fitted intensity, dev by dev.
-        for d in range(last + 1, n_devs + 1):
-            k = d - 1  # from-dev of the link landing at dev d
-            ev = ev_by_dev[k - 1]
+        # Tail: accumulate premium-weighted fitted intensity, duration by duration.
+        for d in range(last + 1, n_durations + 1):
+            k = d - 1  # from-duration of the link landing at duration d
+            ev = ev_by_duration[k - 1]
             pr = Pp[i, k - 1]
             if np.isfinite(ev) and np.isfinite(pr):
                 running += float(ev) * float(pr)
@@ -882,22 +882,22 @@ def _curve_leg_cum_by_dev(
     return cum, True
 
 
-def _segment_dev_table(
+def _segment_duration_table(
     fit: "RatioFit",
     keyvals: tuple,
     gcols: list[str],
     *,
     curve: Curve,
 ) -> dict | None:
-    """Per-dev aggregate borrow / curve ratio marks for one group's recent seg.
+    """Per-duration aggregate borrow / curve ratio marks for one group's recent seg.
 
     Returns ``None`` when the group has no recent segment. Otherwise a dict
-    with the development-month position of each dev (``dev * step``), the
-    borrow-leg and curve-leg aggregate cumulative loss ratios per dev, the
+    with the development-month position of each duration (``duration * step``), the
+    borrow-leg and curve-leg aggregate cumulative loss ratios per duration, the
     observed boundary in months (``m_obs``), and the grain step. The borrow
     leg is ``sum(loss_proj) / sum(premium_proj)`` over the recent cohorts at
-    each dev (full grid -- every cohort has a projected value at every dev);
-    the curve leg divides :func:`_curve_leg_cum_by_dev` by the same premium.
+    each duration (full grid -- every cohort has a projected value at every duration);
+    the curve leg divides :func:`_curve_leg_cum_by_duration` by the same premium.
     """
     reg = fit._regime
     if reg is None or reg._changes_df.is_empty():
@@ -924,37 +924,37 @@ def _segment_dev_table(
         return None
 
     sub = df.filter(pl.col("cohort").is_in(recent_cohorts))
-    n_devs = int(sub["dev"].max())
+    n_durations = int(sub["duration"].max())
     step = _GRAIN_MONTHS[fit._triangle.grain]
 
-    # Borrow leg + the shared premium denominator, per dev.
+    # Borrow leg + the shared premium denominator, per duration.
     agg = (
-        sub.group_by("dev")
+        sub.group_by("duration")
         .agg(
             pl.col("loss_proj").sum().alias("loss"),
             pl.col("premium_proj").sum().alias("premium"),
         )
-        .sort("dev")
+        .sort("duration")
     )
-    loss_dense = np.full(n_devs, np.nan, dtype=float)
-    prem_dense = np.full(n_devs, np.nan, dtype=float)
+    loss_dense = np.full(n_durations, np.nan, dtype=float)
+    prem_dense = np.full(n_durations, np.nan, dtype=float)
     for d, lo, pr in zip(
-        agg["dev"].to_list(), agg["loss"].to_list(), agg["premium"].to_list()
+        agg["duration"].to_list(), agg["loss"].to_list(), agg["premium"].to_list()
     ):
         loss_dense[int(d) - 1] = lo if lo is not None else np.nan
         prem_dense[int(d) - 1] = pr if pr is not None else np.nan
     with np.errstate(invalid="ignore", divide="ignore"):
         ratio_borrow = np.where(prem_dense > 0.0, loss_dense / prem_dense, np.nan)
 
-    # Observed boundary (months): the latest dev with real observed loss.
+    # Observed boundary (months): the latest duration with real observed loss.
     obs = sub.filter(pl.col("loss_obs").is_not_null())
-    max_obs_dev = int(obs["dev"].max()) if not obs.is_empty() else 0
-    m_obs = max_obs_dev * step
+    max_obs_duration = int(obs["duration"].max()) if not obs.is_empty() else 0
+    m_obs = max_obs_duration * step
 
-    # Curve leg, per dev (own intensity -> Curve -> premium-weighted cum).
-    g_k = _own_intensity(sub, n_devs)
+    # Curve leg, per duration (own intensity -> Curve -> premium-weighted cum).
+    g_k = _own_intensity(sub, n_durations)
     cr = curve.fit(g_k)
-    cum_curve, any_term = _curve_leg_cum_by_dev(cr, sub, n_devs)
+    cum_curve, any_term = _curve_leg_cum_by_duration(cr, sub, n_durations)
     if cum_curve is None or not any_term:
         ratio_curve = None
     else:
@@ -966,8 +966,8 @@ def _segment_dev_table(
     return {
         "grain":        fit._triangle.grain,
         "step":         step,
-        "n_devs":       n_devs,
-        "dev_month":    (np.arange(1, n_devs + 1) * step).astype(int),
+        "n_durations":       n_durations,
+        "duration_month":    (np.arange(1, n_durations + 1) * step).astype(int),
         "ratio_borrow": ratio_borrow,
         "ratio_curve":  ratio_curve,
         "m_obs":        m_obs,
@@ -996,13 +996,13 @@ def _build_path_rows(
     selected_grain: str | None,
     curve_available: bool,
 ) -> list[dict]:
-    """Assemble the per-dev path rows for one group from fine + coarse tables.
+    """Assemble the per-duration path rows for one group from fine + coarse tables.
 
-    Rows are at the DISPLAY grain: ``dev`` is the display-grain dev index and
-    its development-month position is ``dev * fine_step``. The observed region
+    Rows are at the DISPLAY grain: ``duration`` is the display-grain duration index and
+    its development-month position is ``duration * fine_step``. The observed region
     (month ``<= m_obs``) takes the fine borrow path verbatim (both legs
     coincide there). The tail interpolates each available leg's coarse marks
-    (at their coarse-grain month positions) onto the display-dev month
+    (at their coarse-grain month positions) onto the display-duration month
     positions, anchored at the observed boundary for continuity. The horizon
     is the coarse (selected-grain) ultimate, which may run past the fine grid;
     tail rows beyond it come purely from interpolation, never from the fine
@@ -1012,17 +1012,17 @@ def _build_path_rows(
     m_obs = fine["m_obs"]
     fine_borrow = fine["ratio_borrow"]
     fine_step = fine["step"]
-    ult_month = int(coarse["dev_month"][-1])
-    j_ult = ult_month // fine_step           # display devs out to the horizon.
-    j_obs = m_obs // fine_step               # last observed display dev.
+    ult_month = int(coarse["duration_month"][-1])
+    j_ult = ult_month // fine_step           # display durations out to the horizon.
+    j_obs = m_obs // fine_step               # last observed display duration.
 
-    # Observed-boundary anchor ratio (fine borrow path at the last obs dev).
+    # Observed-boundary anchor ratio (fine borrow path at the last obs duration).
     anchor = (
         float(fine_borrow[j_obs - 1]) if j_obs >= 1 else float("nan")
     )
 
     # Tail knots (development months): boundary anchor + coarse marks beyond it.
-    cm = coarse["dev_month"]
+    cm = coarse["duration_month"]
     cb = coarse["ratio_borrow"]
     bx = [float(m_obs)] + [float(m) for m in cm if m > m_obs]
     by = [anchor] + [float(cb[i]) for i, m in enumerate(cm) if m > m_obs]
@@ -1062,7 +1062,7 @@ def _build_path_rows(
                 lo = hi = None
         row: dict[str, Any] = {c: v for c, v in zip(gcols, keyvals)}
         row.update(
-            dev=j,
+            duration=j,
             ratio_borrow=rb,
             ratio_curve=rc,
             ratio_mean=mean,
@@ -1121,7 +1121,7 @@ def _segment_path(
         if not sorted(chg["change"].to_list()):
             continue  # group without a regime change -> no rows.
 
-        fine = _segment_dev_table(fit, keyvals, gcols, curve=curve)
+        fine = _segment_duration_table(fit, keyvals, gcols, curve=curve)
         if fine is None:
             continue  # no recent segment at the display grain -> no rows.
 
@@ -1160,12 +1160,12 @@ def _resolve_path_tail(
     tol: float,
     auto: bool,
 ) -> tuple[str | None, dict, bool]:
-    """Pick the tail grain and its dev table for one group.
+    """Pick the tail grain and its duration table for one group.
 
     Non-auto: the tail stays at the display grain (``coarse = fine``), the
     curve leg is available when the fine curve fit produced one.
     Auto: walk ``M -> Q -> H -> Y`` via :func:`_select_grain_row`; on a
-    ``"selected"`` verdict re-fit at that grain and take its dev table.
+    ``"selected"`` verdict re-fit at that grain and take its duration table.
     On ``"insufficient"`` / ``"degenerate"`` fall back to the fine borrow
     leg only (curve unavailable -- a non-converged tail is never drawn as a
     confident curve). Returns ``(selected_grain, coarse_table, curve_available)``.
@@ -1186,7 +1186,7 @@ def _resolve_path_tail(
     refit = _refit_at_grain(fit, selected_grain)
     if refit is None:
         return None, fine, False
-    coarse = _segment_dev_table(refit, keyvals, gcols, curve=curve)
+    coarse = _segment_duration_table(refit, keyvals, gcols, curve=curve)
     if coarse is None:
         return None, fine, False
     return selected_grain, coarse, coarse["ratio_curve"] is not None

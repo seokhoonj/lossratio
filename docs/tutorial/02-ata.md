@@ -108,10 +108,10 @@ toy = pl.DataFrame({
 tri = lr.Triangle(toy, cohort="uy_m", calendar="cy_m",
                   loss="loss", premium="premium", cell_type="cumulative")
 
-tri.link(target="loss").ata().df.select(["dev", "f", "n_cohorts"])
+tri.link(target="loss").ata().df.select(["duration", "f", "n_cohorts"])
 #> shape: (2, 3)
 #> ┌─────┬─────┬───────────┐
-#> │ dev ┆ f   ┆ n_cohorts │
+#> │ duration ┆ f   ┆ n_cohorts │
 #> │ --- ┆ --- ┆ ---       │
 #> │ i64 ┆ f64 ┆ i64       │
 #> ╞═════╪═════╪═══════════╡
@@ -194,10 +194,10 @@ import lossratio as lr
 df = lr.load_experience().filter(pl.col("coverage") == "SUR")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
-tri.link(target="loss").ata().df.select(["dev", "f", "cv", "rse", "n_cohorts"]).head(4)
+tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohorts"]).head(4)
 #> shape: (4, 5)
 #> ┌─────┬──────────┬──────────┬──────────┬───────────┐
-#> │ dev ┆ f        ┆ cv       ┆ rse      ┆ n_cohorts │
+#> │ duration ┆ f        ┆ cv       ┆ rse      ┆ n_cohorts │
 #> │ --- ┆ ---      ┆ ---      ┆ ---      ┆ ---       │
 #> │ i64 ┆ f64      ┆ f64      ┆ f64      ┆ i64       │
 #> ╞═════╪══════════╪══════════╪══════════╪═══════════╡
@@ -222,12 +222,12 @@ tri.link(target="loss").ata().df.select(["dev", "f", "cv", "rse", "n_cohorts"]).
 인자:
 
 ```text
-  immature dev: factors scattered across cohorts (high CV)
+  immature duration: factors scattered across cohorts (high CV)
    f |  o       o
      |      o        o
      |   o      o
      +------------------- cohort
-  stable dev: factors agree across cohorts (low CV)
+  stable duration: factors agree across cohorts (low CV)
    f |     oooooo
      |     oooooo
      +------------------- cohort

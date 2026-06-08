@@ -16,13 +16,13 @@ import lossratio as lr
 @pytest.fixture
 def tv_with_gaps():
     exp = lr.make_experience(seed=1)
-    # Drop a couple of dev cells from one coverage to create gaps
+    # Drop a couple of duration cells from one coverage to create gaps
     leaky = exp.filter(
-        ~((pl.col("coverage") == "CAN") & (pl.col("dev_m").is_in([3, 7])))
+        ~((pl.col("coverage") == "CAN") & (pl.col("duration_m").is_in([3, 7])))
     )
     return lr.TriangleValidation(
         leaky, groups="coverage",
-        cohort="uy_m", calendar="cy_m", dev="dev_m",
+        cohort="uy_m", calendar="cy_m", duration="duration_m",
     )
 
 
@@ -31,7 +31,7 @@ def tv_clean():
     exp = lr.make_experience(seed=1)
     return lr.TriangleValidation(
         exp, groups="coverage",
-        cohort="uy_m", calendar="cy_m", dev="dev_m",
+        cohort="uy_m", calendar="cy_m", duration="duration_m",
     )
 
 
@@ -103,11 +103,11 @@ def test_validation_plot_triangle_invalid_view(tv_with_gaps):
 def test_validation_plot_triangle_calendar_requires_calendar_col():
     exp = lr.make_experience(seed=1)
     leaky = exp.filter(
-        ~((pl.col("coverage") == "CAN") & (pl.col("dev_m").is_in([3, 7])))
+        ~((pl.col("coverage") == "CAN") & (pl.col("duration_m").is_in([3, 7])))
     )
     tv = lr.TriangleValidation(
         leaky, groups="coverage",
-        cohort="uy_m", calendar=None, dev="dev_m",
+        cohort="uy_m", calendar=None, duration="duration_m",
     )
     with pytest.raises(ValueError, match="calendar"):
         tv.plot_triangle(x_axis="calendar")

@@ -282,7 +282,7 @@ def test_usage_data_matches_plot_compute(tri_with_groups):
     )
 
     out = tri_with_groups.usage(holdout=6)
-    assert out.columns == ["coverage", "cohort", "dev", "status"]
+    assert out.columns == ["coverage", "cohort", "duration", "status"]
     assert set(out["status"].unique().to_list()) <= {
         "used", "unused", "holdout", "future",
     }
@@ -357,8 +357,8 @@ def test_usage_deterministic_order_multi_column_groups():
     a = tri.usage(holdout=6)
     b = tri.usage(holdout=6)
     assert_frame_equal(a, b)
-    # sorted by group keys then cohort, dev.
-    assert a.equals(a.sort(["coverage", "block", "cohort", "dev"]))
+    # sorted by group keys then cohort, duration.
+    assert a.equals(a.sort(["coverage", "block", "cohort", "duration"]))
 
 
 @pytest.mark.parametrize("bad", [True, 0, -1, 2.5, "x"])

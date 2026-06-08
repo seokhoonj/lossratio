@@ -3,7 +3,7 @@
 The R sibling's ``validate_triangle()`` returns a ``TriangleValidation``
 data.table carrying:
 
-* the gap table itself (rows = cohorts with a non-consecutive dev sequence)
+* the gap table itself (rows = cohorts with a non-consecutive duration sequence)
 * ``attr(., "invalid_rows")`` -- rows where ``calendar < cohort``
 * a printed summary that we mirror as a two-row count table
 
@@ -56,7 +56,7 @@ def _build_validation() -> TriangleValidation:
 
 
 def test_validation_gaps_match_r():
-    """The .gaps table -- cohorts with non-consecutive dev sequences.
+    """The .gaps table -- cohorts with non-consecutive duration sequences.
 
     Compares the cohort identity and the gap-positions list (``missing``).
     R writes ``missing`` as a list-column collapsed to a comma-separated
@@ -82,7 +82,7 @@ def test_validation_gaps_match_r():
     assert py_sorted["coverage"].to_list() == r_sorted["coverage"].to_list()
     assert py_sorted["uy_m"].to_list() == r_sorted["uy_m"].to_list()
 
-    for col in ("n_dev", "n_expected"):
+    for col in ("n_duration", "n_expected"):
         if col not in r_sorted.columns:
             continue
         assert py_sorted[col].to_list() == r_sorted[col].to_list(), (

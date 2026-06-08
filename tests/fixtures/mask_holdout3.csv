@@ -1,4 +1,4 @@
-coverage,n_cohorts,cohort,dev,loss,incr_loss,premium,incr_premium,ratio,incr_ratio,margin,incr_margin,profit,incr_profit,loss_share,incr_loss_share,premium_share,incr_premium_share
+coverage,n_cohorts,cohort,duration,loss,incr_loss,premium,incr_premium,ratio,incr_ratio,margin,incr_margin,profit,incr_profit,loss_share,incr_loss_share,premium_share,incr_premium_share
 surgery,36,2023-01-01,1,1886123,1886123,7527562,7527562,0.250562267039448,0.250562267039448,5641439,5641439,pos,pos,1,1,1,1
 surgery,35,2023-01-01,2,14030514,12144391,15168591,7641029,0.924971475597173,1.58936590870156,1138077,-4503362,pos,neg,1,1,1,1
 surgery,34,2023-01-01,3,24427715,10397201,22794364,7625773,1.07165591459363,1.36342912384095,-1633351,-2771428,neg,neg,1,1,1,1

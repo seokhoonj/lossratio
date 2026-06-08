@@ -2,7 +2,7 @@
 
 Mirrors R `fit_cl(tail=)` / `fit_loss(tail=)` / `fit_ratio(tail=)`.
 The tail factor is applied as `_tail`-suffixed companion columns on
-the last-dev row of each cohort -- the non-tail columns stay
+the last-duration row of each cohort -- the non-tail columns stay
 byte-identical to the no-tail fit.
 """
 
@@ -187,14 +187,14 @@ def test_cl_tail_true_adds_companion_columns(tri):
 def test_cl_tail_true_scales_only_last_row(tri):
     cf = lr.ChainLadder(tail=True).fit(tri)
     df = cf._df
-    # tail columns must be null everywhere except the last dev row per
+    # tail columns must be null everywhere except the last duration row per
     # (group, cohort) pair.
     last_marked = df.with_columns(
-        pl.col("dev").rank(method="dense", descending=True)
-        .over(["coverage", "cohort"]).alias("_dev_rank")
+        pl.col("duration").rank(method="dense", descending=True)
+        .over(["coverage", "cohort"]).alias("_duration_rank")
     )
-    not_last = last_marked.filter(pl.col("_dev_rank") != 1)
-    last = last_marked.filter(pl.col("_dev_rank") == 1)
+    not_last = last_marked.filter(pl.col("_duration_rank") != 1)
+    last = last_marked.filter(pl.col("_duration_rank") == 1)
     # not-last rows -> all loss_tail are null
     assert not_last["loss_tail"].is_null().all()
     # last rows -> at least one finite loss_tail (assuming tail_factor > 1)
@@ -215,10 +215,10 @@ def test_cl_tail_numeric_constant_per_group(tri):
     # loss_tail / loss_proj == 1.05 on last rows
     last = (
         cf._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter(pl.col("_dev_rank") == 1)
+        .filter(pl.col("_duration_rank") == 1)
         .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
     )
     ratios = last["_ratio"].drop_nulls().to_numpy()
@@ -229,10 +229,10 @@ def test_cl_tail_se_scaling(tri):
     cf = lr.ChainLadder(tail=2.0).fit(tri)
     last = (
         cf._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter(pl.col("_dev_rank") == 1)
+        .filter(pl.col("_duration_rank") == 1)
     )
     # loss_total_se_tail = loss_total_se * tail_factor (= 2.0)
     se = last["loss_total_se"].to_numpy()
@@ -419,7 +419,7 @@ def test_ed_tail_true_adds_companion_columns(tri):
 
 
 def test_ed_tail_additive_increment(tri):
-    # loss_tail = loss_proj + premium_proj * S on the last-dev row, where S
+    # loss_tail = loss_proj + premium_proj * S on the last-duration row, where S
     # is the coupled sum (premium develops in step with the loss intensity).
     ef = lr.ExposureDriven(tail=True).fit(tri)
     sum_g = compute_ed_tail_increment_coupled(
@@ -430,10 +430,10 @@ def test_ed_tail_additive_increment(tri):
     ).factor
     last = (
         ef._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "CAN"))
         .with_columns(
             (pl.col("loss_proj") + pl.col("premium_proj") * sum_g).alias("_expect")
         )
@@ -449,10 +449,10 @@ def test_ed_tail_numeric_is_multiplicative(tri):
     assert all(s == pytest.approx(1.1) for s in ef.tail_factor.values())
     last = (
         ef._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter(pl.col("_dev_rank") == 1)
+        .filter(pl.col("_duration_rank") == 1)
         .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
     )
     r = last["_ratio"].drop_nulls().to_numpy()
@@ -463,9 +463,9 @@ def test_ed_tail_se_scaling(tri):
     # tail-row SE scales by the per-cohort effective factor loss_tail/loss_proj.
     ef = lr.ExposureDriven(tail=True).fit(tri)
     last = ef._df.with_columns(
-        pl.col("dev").rank(method="dense", descending=True)
-        .over(["coverage", "cohort"]).alias("_dev_rank")
-    ).filter(pl.col("_dev_rank") == 1)
+        pl.col("duration").rank(method="dense", descending=True)
+        .over(["coverage", "cohort"]).alias("_duration_rank")
+    ).filter(pl.col("_duration_rank") == 1)
     se = last["loss_total_se"].to_numpy()
     se_t = last["loss_total_se_tail"].to_numpy()
     ef_factor = (last["loss_tail"] / last["loss_proj"]).to_numpy()
@@ -494,10 +494,10 @@ def test_sa_tail_post_switch_cl_is_multiplicative(tri):
     assert sa.tail_factor["SUR"] > 1.0  # this group converges
     last = (
         sa._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "SUR"))
+        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "SUR"))
         .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
     )
     r = last["_ratio"].drop_nulls().to_numpy()
@@ -518,10 +518,10 @@ def test_sa_tail_all_ed_is_additive(tri):
     ).factor
     last = (
         sa._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter((pl.col("_dev_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "CAN"))
         .with_columns(
             (pl.col("loss_proj") + pl.col("premium_proj") * sum_g).alias("_expect")
         )
@@ -554,13 +554,13 @@ def test_borrowed_tail_follows_effective_switch_not_selected(tri):
     )
 
     # A borrowed-edge segment: the effective switch is finite and within the
-    # dev range (the body capped the ED region at the donor-borrow boundary),
+    # duration range (the body capped the ED region at the donor-borrow boundary),
     # so the last stage is CL.
     borrowed = [
         key for key, v in sa._internals.items()
         if v.effective_switch_point is not None
         and np.isfinite(v.effective_switch_point)
-        and v.effective_switch_point <= v.n_devs
+        and v.effective_switch_point <= v.n_durations
     ]
     assert borrowed, "the borrow regime must create at least one CL-edge segment"
 
@@ -600,10 +600,10 @@ def test_premium_tail_numeric_is_multiplicative(tri):
     assert all(v == pytest.approx(1.1) for v in pf.premium_tail_factor.values())
     last = (
         pf._df.with_columns(
-            pl.col("dev").rank(method="dense", descending=True)
-            .over(["coverage", "cohort"]).alias("_dev_rank")
+            pl.col("duration").rank(method="dense", descending=True)
+            .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter(pl.col("_dev_rank") == 1)
+        .filter(pl.col("_duration_rank") == 1)
         .with_columns((pl.col("premium_tail") / pl.col("premium_proj")).alias("_ratio"))
     )
     r = last["_ratio"].drop_nulls().to_numpy()
@@ -619,9 +619,9 @@ def test_lossratio_tail_composes_consistent_ratio_tail(tri):
     assert "premium_tail" in df.columns
     assert "ratio_tail" in df.columns
     last = df.with_columns(
-        pl.col("dev").rank(method="dense", descending=True)
-        .over(["coverage", "cohort"]).alias("_dev_rank")
-    ).filter(pl.col("_dev_rank") == 1)
+        pl.col("duration").rank(method="dense", descending=True)
+        .over(["coverage", "cohort"]).alias("_duration_rank")
+    ).filter(pl.col("_duration_rank") == 1)
     lt = last["loss_tail"].to_numpy()
     pt = last["premium_tail"].to_numpy()
     rt = last["ratio_tail"].to_numpy()
@@ -675,12 +675,12 @@ def test_premium_tail_method_invariant(tri):
         assert ed.premium_tail_factor[g] == pytest.approx(cl.premium_tail_factor[g])
 
 
-def test_cl_tail_nan_gap_preserves_dev_positions():
-    """An interior NaN link keeps every later f at its true dev position.
+def test_cl_tail_nan_gap_preserves_duration_positions():
+    """An interior NaN link keeps every later f at its true duration position.
 
     Compacting f_sel before fitting would collapse the gap and shift the
     decay fit left, so a gapped factor series (the same finite values, but
-    one of them pushed to a later dev by an interior NaN) must give a
+    one of them pushed to a later duration by an interior NaN) must give a
     DIFFERENT -- strictly heavier -- tail than the gapless series. A
     position-collapse regression would make the two equal.
     """
@@ -689,6 +689,6 @@ def test_cl_tail_nan_gap_preserves_dev_positions():
     a = compute_tail_factor(f_nogap, Tail(), grain="M").factor
     b = compute_tail_factor(f_gap, Tail(), grain="M").factor
     assert a > 1.0 and b > 1.0
-    # Same excess spread over later dev -> slower decay -> heavier tail.
+    # Same excess spread over later duration -> slower decay -> heavier tail.
     assert b > a
     assert abs(b - a) > 1e-6

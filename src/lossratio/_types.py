@@ -46,6 +46,6 @@ if TYPE_CHECKING:
     # or a Tail spec (True resolves to the default Tail()).
     TailArg = bool | float | Tail
 
-    # Stage-adaptive switch point: an explicit SwitchPoint, an integer dev,
+    # Stage-adaptive switch point: an explicit SwitchPoint, an integer duration,
     # a lazy recipe, or None (auto-detect).
     SwitchArg = SwitchPoint | int | Callable[[Triangle], SwitchPoint] | None

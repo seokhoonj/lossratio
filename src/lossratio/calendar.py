@@ -31,9 +31,9 @@ class Calendar:
         grp = triangle.groups
         grain = triangle.grain
 
-        # Synthesize calendar = cohort + (dev - 1) * grain_step.
+        # Synthesize calendar = cohort + (duration - 1) * grain_step.
         tri_df = tri_df.with_columns(
-            add_periods(pl.col("cohort"), pl.col("dev"), grain).alias("calendar")
+            add_periods(pl.col("cohort"), pl.col("duration"), grain).alias("calendar")
         )
 
         agg_keys: list[str] = []
@@ -58,7 +58,7 @@ class Calendar:
 
         # Sequential calendar-period index per group. Named `cal_idx`
         # to match the Backtest output's same-named column (rank of the
-        # calendar date within its group). Intentionally NOT `dev` --
+        # calendar date within its group). Intentionally NOT `duration` --
         # in a Calendar this integer is just the date rank, not a true
         # development period.
         if grp is not None:
@@ -128,7 +128,7 @@ class Calendar:
         self._output_type = triangle._output_type
         self._groups = grp
         # Real raw calendar name from the Triangle. `None` for a mode-2
-        # (dev-only) triangle -- no calendar column was ever supplied.
+        # (duration-only) triangle -- no calendar column was ever supplied.
         self._calendar = triangle.calendar
         self._grain = grain
         return self
@@ -153,7 +153,7 @@ class Calendar:
     def calendar(self) -> str | None:
         """Original calendar variable name (e.g. 'cy_m').
 
-        ``None`` when the source :class:`Triangle` was built dev-only
+        ``None`` when the source :class:`Triangle` was built duration-only
         (mode 2), since no raw calendar column was supplied.
         """
         return self._calendar

@@ -43,7 +43,7 @@ class _IntensityResult:
     g_se_k: np.ndarray      # (n_links,)  standard error of g_k
     sigma2_k: np.ndarray    # (n_links,)  residual sigma^2 per link
     n_obs_k: np.ndarray     # (n_links,)  count of contributing cohorts
-    n_devs: int
+    n_durations: int
 
 
 def _compute_intensity(
@@ -60,7 +60,7 @@ def _compute_intensity(
     count) is computed only from links inside the recent wedge.
     ``None`` (default) is the byte-identical no-filter path.
 
-    For each link ``k = 0, ..., n_links - 1`` (0-indexed source dev),
+    For each link ``k = 0, ..., n_links - 1`` (0-indexed source duration),
     solves the no-intercept WLS regression with alpha = 1:
 
         ΔL_{i,k} = g_k · C^P_{i,k} + ε,    weights ∝ 1 / C^P_{i,k}
@@ -75,8 +75,8 @@ def _compute_intensity(
     Cohorts with non-finite or non-positive ``C^P_{i,k}`` are dropped
     for that link.
     """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
 
     g_k = np.full(n_links, np.nan, dtype=np.float64)
     g_se_k = np.full(n_links, np.nan, dtype=np.float64)
@@ -143,7 +143,7 @@ def _compute_intensity(
         g_se_k=g_se_k,
         sigma2_k=sigma2_k,
         n_obs_k=n_obs_k,
-        n_devs=n_devs,
+        n_durations=n_durations,
     )
 
 
@@ -156,7 +156,7 @@ def _diagnostic_to_df(
     n = len(result.g_k)
     return _arrays_to_long_df(
         {
-            "dev": np.arange(1, n + 1, dtype=np.int64),
+            "duration": np.arange(1, n + 1, dtype=np.int64),
             "g": result.g_k,
             "g_se": result.g_se_k,
             "sigma2": result.sigma2_k,
@@ -186,7 +186,7 @@ class Intensity:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[groups?, dev, g, g_se, sigma2, n_cohorts]``.
+        ``[groups?, duration, g, g_se, sigma2, n_cohorts]``.
 
     Examples
     --------
@@ -214,7 +214,7 @@ class Intensity:
         self._output_type = link._output_type
         self._groups = link._groups
         self._cohort = link._cohort
-        self._dev = link._dev
+        self._duration = link._duration
 
         tri_df = link._tri_df
         groups = link._groups

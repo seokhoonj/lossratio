@@ -11,7 +11,7 @@ This module exposes one module-level function:
 
 For deriving the M / Q / H / Y grain sibling columns
 (``uy`` / ``uy_h`` / ``uy_q``, ``cy`` / ``cy_h`` / ``cy_q``,
-``dev_y`` / ``dev_h`` / ``dev_q``) from a monthly source frame, see
+``duration_y`` / ``duration_h`` / ``duration_q``) from a monthly source frame, see
 :func:`lossratio.derive_grain_columns` (in :mod:`lossratio._period`).
 
 There is intentionally no ``Experience`` *class*. Wrapping a polars

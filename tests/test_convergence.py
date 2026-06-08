@@ -25,7 +25,7 @@ def _addm(d: dt.date, k: int) -> dt.date:
 def _converging_triangle() -> lr.Triangle:
     """A triangle whose portfolio loss ratio plateaus at 0.70 in-window.
 
-    Cumulative LR rises to 0.70 by dev ~8 and stays flat, with many cohorts
+    Cumulative LR rises to 0.70 by duration ~8 and stays flat, with many cohorts
     and low noise, so the convergence test fires (k** found) -- the case the
     ANCHOR branch of ``convergence_tail`` needs.
     """
@@ -92,7 +92,7 @@ def test_ols_slope_returns_nan_with_zero_variance():
 def test_compute_dispersion_schema():
     tri = _sur_triangle()
     disp = _compute_dispersion(tri, min_n_cohorts=5)
-    assert {"dev", "n_cohorts", "ratio_median", "ratio_mad",
+    assert {"duration", "n_cohorts", "ratio_median", "ratio_mad",
             "dispersion", "flag"}.issubset(set(disp.columns))
     # Sparse rows have null dispersion.
     sparse = disp.filter(pl.col("flag") == "sparse")
@@ -108,7 +108,7 @@ def test_detect_convergence_returns_object():
     conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     assert isinstance(conv, lr.Convergence)
     assert conv.method == "tail"
-    assert conv.dev_max == 36
+    assert conv.duration_max == 36
     assert conv.start == 2
 
 
@@ -135,9 +135,9 @@ def test_detect_convergence_summary_table():
     df = conv.summary()
     if hasattr(df, "to_polars"):
         df = df.to_polars()
-    assert df.height == len(conv.dev_cand)
+    assert df.height == len(conv.duration_cand)
     expected_cols = {
-        "dev", "ratio", "revision", "drift_window", "drift_tail",
+        "duration", "ratio", "revision", "drift_window", "drift_tail",
         "slope", "dispersion",
         "pass_window", "pass_tail", "pass_slope", "pass",
     }
@@ -149,8 +149,8 @@ def test_detect_convergence_pass_arrays_consistency():
     conv = _converge(
         tri, method="tail", max_drift=0.05, max_dispersion=0.5,
     )
-    # Diagnostic vectors all have the same length as dev_cand.
-    n = len(conv.dev_cand)
+    # Diagnostic vectors all have the same length as duration_cand.
+    n = len(conv.duration_cand)
     for arr in [conv.ratio, conv.revision, conv.drift_window, conv.drift_tail,
                 conv.slope, conv.dispersion,
                 conv.pass_window, conv.pass_tail, conv.pass_slope]:
@@ -165,16 +165,16 @@ def test_detect_convergence_manual_start():
         tri, start=10, max_drift=0.1, max_dispersion=1.0,
     )
     assert conv.start == 10
-    assert conv.dev_cand[0] == 10
+    assert conv.duration_cand[0] == 10
 
 
 def test_detect_convergence_no_candidate_warns():
-    """When start + 2 > dev_max, dev_cand is empty and a warning fires."""
+    """When start + 2 > duration_max, duration_cand is empty and a warning fires."""
     tri = _sur_triangle()
-    with pytest.warns(UserWarning, match="No candidate dev points"):
+    with pytest.warns(UserWarning, match="No candidate duration points"):
         conv = _converge(tri, start=40)
     assert conv.point is None
-    assert conv.dev_cand == []
+    assert conv.duration_cand == []
 
 
 def test_detect_convergence_validation_errors():
@@ -193,7 +193,7 @@ def test_detect_convergence_multi_group():
     # Multi-group: detection succeeds (dispersion collapsed via median
     # across groups). convergence_point may be None depending on data, but the
     # diagnostic series must still be populated.
-    assert len(conv.dev_cand) > 0
+    assert len(conv.duration_cand) > 0
     finite_ratio = np.isfinite(conv.ratio).sum()
     assert finite_ratio > 0
 
@@ -214,7 +214,7 @@ def test_convergence_repr_contains_key_fields():
     tri = _sur_triangle()
     conv = _converge(tri, max_drift=0.1, max_dispersion=1.0)
     r = repr(conv)
-    for token in ("method=", "point=", "start=", "dev_max=", "candidates="):
+    for token in ("method=", "point=", "start=", "duration_max=", "candidates="):
         assert token in r
 
 

@@ -71,7 +71,7 @@ _METHOD_TO_MODEL = {
 class _LossResult:
     """Single-group loss fit result."""
 
-    n_devs: int
+    n_durations: int
     loss_obs: np.ndarray
     loss_proj: np.ndarray
     proc_se: np.ndarray
@@ -79,7 +79,7 @@ class _LossResult:
     total_se: np.ndarray
     premium_obs: np.ndarray
     premium_proj: np.ndarray
-    # The SwitchPoint-selected ED->CL switch dev (internal/diagnostic), or
+    # The SwitchPoint-selected ED->CL switch duration (internal/diagnostic), or
     # None for no discretionary switch. Kept for future diagnostics; the
     # public surface exposes the EFFECTIVE switch, not this raw selection.
     selected_switch_point: int | None
@@ -91,7 +91,7 @@ class _LossResult:
     f_sigma2: np.ndarray
     f_var: np.ndarray
     last_obs: np.ndarray
-    # The EFFECTIVE switch dev: the dev where the CL stage actually begins for
+    # The EFFECTIVE switch duration: the duration where the CL stage actually begins for
     # this group's projection. General path = the selected switch (no cap).
     # Segment-borrow path = the boundary-capped value (`min(selected,
     # boundary)`, or the boundary itself when no switch was selected), so the
@@ -151,7 +151,7 @@ def _switch_for_group(
     override: Any,
     group_value: Any | None,
 ) -> int | None:
-    """Per-group switch dev for ``_fit_loss_single`` from a resolved
+    """Per-group switch duration for ``_fit_loss_single`` from a resolved
     :class:`SwitchPoint` override.
 
     ``None`` passes straight through (no switch). A :class:`SwitchPoint`
@@ -186,7 +186,7 @@ def _project_loss(
     Given the per-link factor arrays (CL ``f_k`` and ED ``g_k`` with
     their sigma2 / Mack-variance companions) and the SA switch
     ``switch_threshold`` (``0`` = pure CL, ``inf`` = pure ED, finite =
-    ED below / CL at-or-above that target dev), seeds each cohort from
+    ED below / CL at-or-above that target duration), seeds each cohort from
     its last observed cell and recurses forward. Returns
     ``(loss_proj, proc_se, param_se, total_se)``.
 
@@ -196,22 +196,22 @@ def _project_loss(
     using its own factors where available and borrowed factors beyond
     its own reach).
     """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
 
     loss_proj = loss_obs.copy()
-    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
 
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs_idx = np.where(
         has_obs,
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
-    eligible = (last_obs_idx >= 0) & (last_obs_idx < n_devs - 1)
+    eligible = (last_obs_idx >= 0) & (last_obs_idx < n_durations - 1)
 
     proc_acc = np.zeros(n_cohorts, dtype=np.float64)
     param_acc = np.zeros(n_cohorts, dtype=np.float64)
@@ -221,11 +221,11 @@ def _project_loss(
         if not active.any():
             continue
 
-        target_dev = k + 2  # link from dev (k+1) to dev (k+2)
+        target_duration = k + 2  # link from duration (k+1) to duration (k+2)
         ck = loss_proj[:, k]
         pk = premium_proj_from_fit[:, k]
 
-        if target_dev < switch_threshold:
+        if target_duration < switch_threshold:
             # ED phase: additive
             pos = active & ~np.isnan(pk) & (pk > 0)
             if pos.any():
@@ -284,19 +284,19 @@ def _fit_loss_single(
     triangle. ``None`` (default) is the byte-identical no-filter path.
 
     ``switch_override`` controls the SA ED->CL switch (only consulted
-    when ``method == "sa"``): an ``int`` switch dev (the per-group
+    when ``method == "sa"``): an ``int`` switch duration (the per-group
     :class:`SwitchPoint` point), or ``None`` for no switch (SA falls
     back to ED throughout).
     """
     from ._recent import recent_link_mask
 
-    n_cohorts, n_devs = loss_obs.shape
+    n_cohorts, n_durations = loss_obs.shape
 
     # Recent-diagonal link-level fit masks (None when recent=None).
     loss_link_mask = recent_link_mask(loss_obs, recent)
     premium_link_mask = recent_link_mask(premium_obs, recent)
 
-    n_links = n_devs - 1
+    n_links = n_durations - 1
     _nan_links = np.full(n_links, np.nan, dtype=np.float64)
 
     # ED parameters -- needed for the ed and sa phases. A pure cl fit's
@@ -333,12 +333,12 @@ def _fit_loss_single(
         var_f_k = _nan_links.copy()
 
     # SA switch (only for SA). `switch_override` is the per-group switch
-    # dev (an int) or None (no switch -> pure ED throughout).
+    # duration (an int) or None (no switch -> pure ED throughout).
     selected: int | None = None
     if method == "sa" and switch_override is not None:
         selected = int(switch_override)
 
-    # Switch threshold: target dev < switch = ED phase; >= switch = CL.
+    # Switch threshold: target duration < switch = ED phase; >= switch = CL.
     if method == "sa":
         switch_threshold = (
             float("inf") if selected is None else float(selected)
@@ -361,12 +361,12 @@ def _fit_loss_single(
     obs_mask = ~np.isnan(loss_obs)
     last_obs_idx = np.where(
         obs_mask.any(axis=1),
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
 
     return _LossResult(
-        n_devs=n_devs,
+        n_durations=n_durations,
         loss_obs=loss_obs,
         loss_proj=loss_proj,
         proc_se=proc_se,
@@ -399,14 +399,14 @@ def _borrowed_loss_group(
     """Per-group ``segment_bridged_borrowed`` fit.
 
     ``loss_obs`` / ``premium_obs`` / ``premium_proj`` are the group's
-    FULL-range matrices (cohorts x full dev axis, band-masked cells
+    FULL-range matrices (cohorts x full duration axis, band-masked cells
     NaN). ``seg_of_cohort`` is the segment id per cohort row. Because
-    every segment shares the same dev columns, the per-segment factor
-    arrays are absolute-dev-indexed and the donor borrow aligns by link
+    every segment shares the same duration columns, the per-segment factor
+    arrays are absolute-duration-indexed and the donor borrow aligns by link
     index.
 
     Steps: (1) estimate factors per segment on its row-subset (own
-    early-dev factors); (2) donor-augment the late-dev factors a segment
+    early-duration factors); (2) donor-augment the late-duration factors a segment
     cannot reach (:func:`_augment_segment_factors`); (3) re-project each
     segment's cohorts with the augmented factors so every cohort reaches
     full development. Returns ``({segment_id: _LossResult},
@@ -414,7 +414,7 @@ def _borrowed_loss_group(
     """
     from ._recent import recent_link_mask
 
-    n_cohorts, n_devs = loss_obs.shape
+    n_cohorts, n_durations = loss_obs.shape
     segs = sorted({int(s) for s in seg_of_cohort})
 
     # 1) per-segment factor estimation (full-range row subsets).
@@ -446,7 +446,7 @@ def _borrowed_loss_group(
             mk = int(switch_override)
         seg_switch[s] = mk
 
-    # 2) donor-augment. The borrowed (late-dev) region is ALWAYS driven
+    # 2) donor-augment. The borrowed (late-duration) region is ALWAYS driven
     # by the multiplicative f_k -- it is level-invariant (f_k = C_{k+1}/C_k
     # cancels the loss-ratio level), so a donor segment from a different
     # regime lends only its development SHAPE, not its loss-ratio level.
@@ -474,7 +474,7 @@ def _borrowed_loss_group(
             # the level-invariant CL f_k -- never the donor's g_k, which
             # would import a different-regime loss-ratio level. The own-data
             # boundary is where own factors end: link `own_max_link` (target
-            # dev own_max_link + 2) is the last own link, so CL starts one
+            # duration own_max_link + 2) is the last own link, so CL starts one
             # link later.
             own_f = seg_arrays[s]["f_k"]
             finite = np.flatnonzero(np.isfinite(own_f))
@@ -498,17 +498,17 @@ def _borrowed_loss_group(
         obs_mask = ~np.isnan(lo)
         last_obs = np.where(
             obs_mask.any(axis=1),
-            n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+            n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
             -1,
         )
-        # Effective switch = the dev where CL actually begins. For cl there
+        # Effective switch = the duration where CL actually begins. For cl there
         # is no ED stage (None, matching the general cl path); otherwise the
         # boundary-capped threshold the body applied (always finite here --
         # `boundary` or `min(selected, boundary)`), so even a no-discretionary
         # -switch borrowed segment records its forced donor-f_k CL boundary.
         effective = None if method == "cl" else int(switch_threshold)
         results[s] = _LossResult(
-            n_devs=n_devs,
+            n_durations=n_durations,
             loss_obs=lo,
             loss_proj=loss_proj,
             proc_se=proc_se,
@@ -544,7 +544,7 @@ def _loss_long_df(
     """
     z_alpha = float(norm.ppf((1 + conf_level) / 2))
     n_cohorts = len(cohorts)
-    n_devs = result.n_devs
+    n_durations = result.n_durations
 
     loss_obs = result.loss_obs
     loss_proj = result.loss_proj
@@ -567,15 +567,15 @@ def _loss_long_df(
 
     switch_from = result.effective_switch_point
 
-    cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_devs).tolist()
-    dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
-    total = n_cohorts * n_devs
+    cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_durations).tolist()
+    duration_flat = np.tile(np.arange(1, n_durations + 1, dtype=np.int64), n_cohorts)
+    total = n_cohorts * n_durations
 
     df_data: dict[str, Any] = {}
     if groups is not None:
         fill_group_columns(df_data, groups, group_value, total)
     df_data["cohort"] = cohort_flat
-    df_data["dev"] = dev_flat
+    df_data["duration"] = duration_flat
     df_data["loss_obs"] = loss_obs.flatten()
     df_data["loss_proj"] = loss_proj.flatten()
     df_data["incr_loss_proj"] = incr_proj.flatten()
@@ -589,7 +589,7 @@ def _loss_long_df(
 
     df = _nan_to_null(pl.DataFrame(df_data))
 
-    # Join premium_* columns from the PremiumFit slice (cohort, dev).
+    # Join premium_* columns from the PremiumFit slice (cohort, duration).
     premium_cols = [
         c
         for c in ("premium_obs", "premium_proj", "incr_premium_proj")
@@ -597,8 +597,8 @@ def _loss_long_df(
     ]
     if pf_sub.height > 0 and premium_cols:
         df = df.join(
-            pf_sub.select(["cohort", "dev", *premium_cols]),
-            on=["cohort", "dev"],
+            pf_sub.select(["cohort", "duration", *premium_cols]),
+            on=["cohort", "duration"],
             how="left",
         )
     else:
@@ -611,7 +611,7 @@ def _loss_long_df(
 
     # Restore the original column order (premium columns sit between
     # incr_loss_proj and switch_from).
-    desired = ["cohort", "dev", "loss_obs", "loss_proj", "incr_loss_proj",
+    desired = ["cohort", "duration", "loss_obs", "loss_proj", "incr_loss_proj",
                "premium_obs", "premium_proj", "incr_premium_proj",
                "switch_from",
                "loss_proc_se", "loss_param_se", "loss_total_se",
@@ -635,10 +635,10 @@ class Loss:
     method
         Projection method:
 
-        * ``"ed"`` (default): pure ED for all dev periods. The
+        * ``"ed"`` (default): pure ED for all duration periods. The
           unconditional safe baseline -- no switch dependency.
         * ``"cl"``: pure Mack chain ladder.
-        * ``"sa"``: stage-adaptive — ED before the switch dev, CL
+        * ``"sa"``: stage-adaptive — ED before the switch duration, CL
           after. The switch is resolved from the ``switch`` argument.
     alpha
         Variance-structure exponent for the loss fit. Default ``1``.
@@ -660,9 +660,9 @@ class Loss:
 
         * ``None`` (default): no discretionary switch -- ``"sa"`` falls
           back to ED throughout (a regime segment-borrow path still
-          develops the borrowed late-dev region with the donor's
+          develops the borrowed late-duration region with the donor's
           level-invariant ``f_k``).
-        * an ``int``: a fixed switch dev (normalised to
+        * an ``int``: a fixed switch duration (normalised to
           :meth:`~lossratio.SwitchPoint.at`).
         * a :class:`~lossratio.SwitchPoint`: use its ``point`` directly.
         * a ``SwitchPoint.detect()`` spec: resolved on the fit's
@@ -767,14 +767,14 @@ class LossFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns ``[groups?, cohort, dev,
+        Long-format triangle with columns ``[groups?, cohort, duration,
         loss_obs, loss_proj, incr_loss_proj, premium_obs, premium_proj,
         incr_premium_proj, switch_from, loss_proc_se, loss_param_se,
         loss_total_se, loss_total_cv, loss_ci_lo, loss_ci_hi]``.
     method : str
         ``"ed"``, ``"sa"``, or ``"cl"``.
     switch_point :
-        Effective ED->CL switch dev for ``"sa"`` (None elsewhere).
+        Effective ED->CL switch duration for ``"sa"`` (None elsewhere).
     premium_fit :
         The embedded :class:`PremiumFit` used for premium projection.
     """
@@ -832,7 +832,7 @@ class LossFit:
         # the triangle into per-segment mini-Triangles (bridged band
         # filter applied) and recurse with regime=None on each, then
         # concat the long-format outputs with a `segment_id` annotation
-        # plus the late-dev borrow. segment_bridged (default) instead
+        # plus the late-duration borrow. segment_bridged (default) instead
         # pools the whole bridged band into one factor set, so it falls
         # through to `_apply_regime_filter` (which drops `segment_id`).
         if (
@@ -850,7 +850,7 @@ class LossFit:
         self._output_type = triangle._output_type
         self._groups = triangle._groups
         self._cohort = triangle._cohort
-        self._dev = triangle._dev
+        self._duration = triangle._duration
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
@@ -899,7 +899,7 @@ class LossFit:
             (loss_obs, premium_obs), cohorts, _ = _build_value_matrices(
                 sub, ("loss", "premium")
             )
-            # premium_proj from PremiumFit (cohort, dev) -> value
+            # premium_proj from PremiumFit (cohort, duration) -> value
             premium_proj_mat = _premium_proj_matrix(
                 pf_sub, cohorts, loss_obs.shape[1]
             )
@@ -938,7 +938,7 @@ class LossFit:
 
         # ----- Tail (cl multiplicative f->1 / ed additive g->0) ------------
         # Append per-group `_tail`-suffixed companion columns to the
-        # last-dev row of each cohort. A numeric `tail` is an explicit
+        # last-duration row of each cohort. A numeric `tail` is an explicit
         # multiplicative factor for either method; `True`/`Tail` computes
         # the convergence-gated tail (CL: product of f; ED: loss_proj +
         # premium*Sum g). `self.tail_factor` carries the per-group headline
@@ -1001,7 +1001,7 @@ class LossFit:
                 return _apply_ed_tail(sub_result.g_sel, grp_long, g)
             # method == "sa": the tail follows the EFFECTIVE switch. A finite
             # switch means the CL stage reaches the edge -> CL tail fit on the
-            # post-switch factors (dev >= switch, i.e. links k >= switch - 2).
+            # post-switch factors (duration >= switch, i.e. links k >= switch - 2).
             # No switch (pure-ED sa) -> the additive ED tail.
             eff = sub_result.effective_switch_point
             if eff is None:
@@ -1054,7 +1054,7 @@ class LossFit:
         if tail_active:
             ptail_cols = [c for c in pf_df.columns if c.endswith("_tail")]
             if ptail_cols:
-                join_keys = [*normalize_groups(groups), "cohort", "dev"]
+                join_keys = [*normalize_groups(groups), "cohort", "duration"]
                 long_df = long_df.join(
                     pf_df.select([*join_keys, *ptail_cols]),
                     on=join_keys,
@@ -1128,7 +1128,7 @@ class LossFit:
             return long_df
 
         groups = self._groups
-        keys = [*normalize_groups(groups), "cohort", "dev"]
+        keys = [*normalize_groups(groups), "cohort", "duration"]
         long_df = _apply_bootstrap_overlay(
             long_df, boots,
             role    = "loss",
@@ -1151,10 +1151,10 @@ class LossFit:
 
         Masks the triangle to the bridged band (one full-range triangle
         carrying ``segment_id``), estimates factors per segment on its
-        cohort row-subset (early-dev factors stay regime-specific), then
-        donor-borrows the late-dev factors a segment cannot reach so
+        cohort row-subset (early-duration factors stay regime-specific), then
+        donor-borrows the late-duration factors a segment cannot reach so
         every cohort projects to full development. Because all segments
-        share the parent dev axis, the borrow aligns by absolute dev (no
+        share the parent duration axis, the borrow aligns by absolute duration (no
         truncated mini-triangles -- contrast the split that this
         replaces).
         """
@@ -1194,10 +1194,10 @@ class LossFit:
         # ----- Tail on the borrowed factors --------------------------------
         # The tail extrapolates each segment's DONOR-AUGMENTED factors
         # (`res.f_sel` / `res.g_sel` -- the very arrays that projected that
-        # segment's late-dev / borrowed region) beyond the parent dev axis.
+        # segment's late-duration / borrowed region) beyond the parent duration axis.
         # CL: product of f -> 1. ED: additive loss_proj + premium*Sum g,
         # coupled with the group's augmented premium factors. The companion
-        # `_tail` columns land on each cohort's last-dev row (the parent
+        # `_tail` columns land on each cohort's last-duration row (the parent
         # edge) and survive the grid expand below, so summary() / at_grain
         # pick them up unchanged. tail=False leaves df_s byte-identical.
         from .tail import (
@@ -1222,7 +1222,7 @@ class LossFit:
             # A numeric tail is an explicit multiplicative factor (f_sel
             # ignored); otherwise CL extrapolates f_sel, ED extrapolates
             # g_sel coupled with the group's augmented premium, SA follows
-            # the stage active at the last dev column.
+            # the stage active at the last duration column.
             if is_numeric or method == "cl":
                 r = compute_tail_factor(res.f_sel, tail, grain)
                 if not is_numeric:
@@ -1247,10 +1247,10 @@ class LossFit:
             # CL past its own-data boundary (the body capped the ED region
             # there), so even with no discretionary switch the last stage is
             # CL and the tail must be the multiplicative CL tail. Only when the
-            # effective switch lies beyond the last dev (the whole edge is
+            # effective switch lies beyond the last duration (the whole edge is
             # still ED) does the additive ED tail apply.
             eff = res.effective_switch_point
-            edge_is_cl = eff is not None and eff <= res.n_devs
+            edge_is_cl = eff is not None and eff <= res.n_durations
             if not edge_is_cl:
                 r = compute_ed_tail_increment_coupled(
                     res.g_sel, pf_fk_map.get(g), tail, grain
@@ -1324,7 +1324,7 @@ class LossFit:
         self._output_type = masked._output_type
         self._groups = groups
         self._cohort = masked._cohort
-        self._dev = masked._dev
+        self._duration = masked._duration
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
@@ -1354,11 +1354,11 @@ class LossFit:
         # Join the premium tail companion onto the loss frame so RatioFit can
         # compose ratio_tail = loss_proj / premium_proj. The embedded
         # PremiumFit was fit with the same `tail`, so it carries
-        # `premium_*_tail` columns on its last-dev rows.
+        # `premium_*_tail` columns on its last-duration rows.
         if tail_active:
             ptail_cols = [c for c in pf_df.columns if c.endswith("_tail")]
             if ptail_cols:
-                join_keys = [*normalize_groups(groups), "cohort", "dev"]
+                join_keys = [*normalize_groups(groups), "cohort", "duration"]
                 full_df = full_df.join(
                     pf_df.select([*join_keys, *ptail_cols]),
                     on=join_keys,
@@ -1397,7 +1397,7 @@ class LossFit:
 
     @property
     def switch_point(self):
-        """Effective ED->CL switch dev for SA (None for ED/CL and pure-ED
+        """Effective ED->CL switch duration for SA (None for ED/CL and pure-ED
         SA). In a segment-borrow fit this is the boundary-capped effective
         switch actually applied."""
         if self.method != "sa":
@@ -1427,7 +1427,7 @@ class LossFit:
 
         Columns: ``[groups?, cohort, latest, loss_proj, loss_ultimate,
         loss_proj_remaining, loss_proc_se, loss_param_se, loss_total_se,
-        loss_total_cv]`` -- all from the last projected-dev row per cohort.
+        loss_total_cv]`` -- all from the last projected-duration row per cohort.
         ``latest`` is the last observed cumulative loss, ``loss_proj`` the
         within-triangle projected loss, ``loss_ultimate`` the headline value
         that folds in an active tail (else equal to ``loss_proj``), and
@@ -1443,7 +1443,7 @@ class LossFit:
         # Latest observed cumulative loss per cohort.
         observed = (
             df.filter(pl.col("loss_obs").is_not_null())
-            .sort(keys + ["dev"])
+            .sort(keys + ["duration"])
             .group_by(keys)
             .agg(pl.col("loss_obs").last().alias("latest"))
         )
@@ -1455,7 +1455,7 @@ class LossFit:
         # headline is `loss_ultimate`, built below -- not this aggregate.)
         #
         # Tail cascade: an active tail leaves a scalar `loss_tail` on each
-        # cohort's last-dev row. `loss_proj` stays the within-triangle
+        # cohort's last-duration row. `loss_proj` stays the within-triangle
         # projection; the tail-inclusive headline goes in `loss_ultimate`
         # (= `loss_tail` where present, else `loss_proj`). With no tail
         # `loss_ultimate` equals `loss_proj`.
@@ -1466,7 +1466,7 @@ class LossFit:
             else []
         )
         ultimate = (
-            df.sort(keys + ["dev"])
+            df.sort(keys + ["duration"])
             .group_by(keys)
             .agg(
                 pl.col("loss_proj").drop_nulls().last().alias("loss_proj"),
@@ -1598,28 +1598,28 @@ class LossFit:
 def _premium_proj_matrix(
     pf_sub: pl.DataFrame,
     cohorts: list,
-    n_devs: int,
+    n_durations: int,
 ) -> np.ndarray:
-    """Reshape PremiumFit slice into a (n_cohorts, n_devs) array of
+    """Reshape PremiumFit slice into a (n_cohorts, n_durations) array of
     ``premium_proj`` values (NaN where missing).
     """
     if pf_sub.height == 0:
-        return np.full((len(cohorts), n_devs), np.nan, dtype=np.float64)
-    # Reindex pf_sub onto the fixed (given cohorts) x (dev 1..n_devs)
+        return np.full((len(cohorts), n_durations), np.nan, dtype=np.float64)
+    # Reindex pf_sub onto the fixed (given cohorts) x (duration 1..n_durations)
     # grid: cohorts/devs absent from pf_sub stay NaN; pf_sub rows outside
-    # the grid (unknown cohort or dev > n_devs) drop out. Cross join is
-    # cohort-major so a row-major reshape matches out[cohort_i, dev-1].
+    # the grid (unknown cohort or duration > n_durations) drop out. Cross join is
+    # cohort-major so a row-major reshape matches out[cohort_i, duration-1].
     grid = pl.DataFrame({"cohort": cohorts}).join(
-        pl.DataFrame({"dev": list(range(1, n_devs + 1))}), how="cross"
+        pl.DataFrame({"duration": list(range(1, n_durations + 1))}), how="cross"
     )
     filled = grid.join(
-        pf_sub.select(["cohort", "dev", "premium_proj"]),
-        on=["cohort", "dev"],
+        pf_sub.select(["cohort", "duration", "premium_proj"]),
+        on=["cohort", "duration"],
         how="left",
     )
     return (
         filled["premium_proj"]
         .cast(pl.Float64)
         .to_numpy()
-        .reshape(len(cohorts), n_devs)
+        .reshape(len(cohorts), n_durations)
     )

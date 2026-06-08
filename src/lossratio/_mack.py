@@ -101,7 +101,7 @@ def _mack_step_cl(
         proc'  = f^2 * proc  + sigma2   * C
         param' = f^2 * param + C^2 * Var(f_hat)
 
-    ``c`` is the full-length cumulative-loss-at-dev-k vector (only
+    ``c`` is the full-length cumulative-loss-at-duration-k vector (only
     ``c[pos]`` is read). Each term is applied only when its scalar is
     finite, matching the per-link guards in Mack (1993). This is the
     1D-accumulator form of the matrix recursion in :func:`_fit_mack`; the
@@ -135,7 +135,7 @@ def _mack_step_ed(
 
     The additive link contributes an exposure-anchored increment with
     no multiplicative carry of the prior accumulators (no ``f^2`` term).
-    ``p`` is the full-length exposure-at-dev-k vector (only ``p[pos]``
+    ``p`` is the full-length exposure-at-duration-k vector (only ``p[pos]``
     is read). Terms apply only when finite.
     """
     if np.isfinite(sigma2_g):
@@ -150,21 +150,21 @@ class _MackResult:
 
     All arrays use the convention:
       * cohorts  -- index i, len n_cohorts
-      * devs     -- index k (0-indexed in arrays; dev value = k + 1)
-      * f_k, sigma2_k have length n_devs - 1, indexed by k = 0..n_devs - 2
-        and represent the link from dev (k+1) to dev (k+2).
+      * durations     -- index k (0-indexed in arrays; duration value = k + 1)
+      * f_k, sigma2_k have length n_durations - 1, indexed by k = 0..n_durations - 2
+        and represent the link from duration (k+1) to duration (k+2).
     """
 
     cohorts: list
-    n_devs: int
-    loss_obs: np.ndarray    # (n_cohorts, n_devs) -- observed (NaN where unobserved)
-    loss_proj: np.ndarray   # (n_cohorts, n_devs) -- projected (filled in unobserved)
-    proc_se: np.ndarray     # (n_cohorts, n_devs) -- Mack process SE on projected cells
-    param_se: np.ndarray    # (n_cohorts, n_devs) -- Mack parameter SE on projected cells
-    total_se: np.ndarray    # (n_cohorts, n_devs) -- sqrt(proc^2 + param^2)
-    f_k: np.ndarray         # (n_devs - 1,)
-    sigma2_k: np.ndarray    # (n_devs - 1,)
-    sum_col_k: np.ndarray   # (n_devs - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
+    n_durations: int
+    loss_obs: np.ndarray    # (n_cohorts, n_durations) -- observed (NaN where unobserved)
+    loss_proj: np.ndarray   # (n_cohorts, n_durations) -- projected (filled in unobserved)
+    proc_se: np.ndarray     # (n_cohorts, n_durations) -- Mack process SE on projected cells
+    param_se: np.ndarray    # (n_cohorts, n_durations) -- Mack parameter SE on projected cells
+    total_se: np.ndarray    # (n_cohorts, n_durations) -- sqrt(proc^2 + param^2)
+    f_k: np.ndarray         # (n_durations - 1,)
+    sigma2_k: np.ndarray    # (n_durations - 1,)
+    sum_col_k: np.ndarray   # (n_durations - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
 
 
 def _mack_f_var(result: _MackResult) -> np.ndarray:
@@ -183,30 +183,30 @@ def _build_value_matrix(
 ) -> tuple[np.ndarray, list, int]:
     """Convert a single-group Triangle subset into a value matrix.
 
-    Rows are cohorts (sorted), columns are dev = 1..max_dev. The
+    Rows are cohorts (sorted), columns are duration = 1..max_duration. The
     column to extract is ``value_col`` (typically ``"loss"`` or
     ``"premium"``).
     """
-    df = df.sort(["cohort", "dev"])
+    df = df.sort(["cohort", "duration"])
     cohorts_df = df.select("cohort").unique(maintain_order=True)
     cohorts = cohorts_df["cohort"].to_list()
     n_cohorts = len(cohorts)
-    max_dev = int(df["dev"].max())
+    max_duration = int(df["duration"].max())
 
-    # Left-join the observed cells onto the full (sorted cohort) x (dev
-    # 1..max_dev) grid; the cross join is cohort-major so a row-major
-    # reshape lands each value at mat[cohort_i, dev-1]. Missing cells
+    # Left-join the observed cells onto the full (sorted cohort) x (duration
+    # 1..max_duration) grid; the cross join is cohort-major so a row-major
+    # reshape lands each value at mat[cohort_i, duration-1]. Missing cells
     # stay null -> NaN.
     grid = cohorts_df.join(
-        pl.DataFrame({"dev": list(range(1, max_dev + 1))}), how="cross"
+        pl.DataFrame({"duration": list(range(1, max_duration + 1))}), how="cross"
     )
     filled = grid.join(
-        df.select(["cohort", "dev", value_col]), on=["cohort", "dev"], how="left"
+        df.select(["cohort", "duration", value_col]), on=["cohort", "duration"], how="left"
     )
     mat = (
-        filled[value_col].cast(pl.Float64).to_numpy().reshape(n_cohorts, max_dev)
+        filled[value_col].cast(pl.Float64).to_numpy().reshape(n_cohorts, max_duration)
     )
-    return mat, cohorts, max_dev
+    return mat, cohorts, max_duration
 
 
 def _build_value_matrices(
@@ -215,30 +215,30 @@ def _build_value_matrices(
     """Build several value matrices from a single-group Triangle subset.
 
     Identical to calling :func:`_build_value_matrix` once per column, but the
-    sort + cohort-unique + cohort x dev cross-join + observed-cell left-join is
+    sort + cohort-unique + cohort x duration cross-join + observed-cell left-join is
     done a single time and each requested column is reshaped from the shared
-    filled grid. Returns ``(matrices, cohorts, max_dev)`` where ``matrices`` is
+    filled grid. Returns ``(matrices, cohorts, max_duration)`` where ``matrices`` is
     a tuple aligned with ``value_cols``.
     """
-    df = df.sort(["cohort", "dev"])
+    df = df.sort(["cohort", "duration"])
     cohorts_df = df.select("cohort").unique(maintain_order=True)
     cohorts = cohorts_df["cohort"].to_list()
     n_cohorts = len(cohorts)
-    max_dev = int(df["dev"].max())
+    max_duration = int(df["duration"].max())
 
     grid = cohorts_df.join(
-        pl.DataFrame({"dev": list(range(1, max_dev + 1))}), how="cross"
+        pl.DataFrame({"duration": list(range(1, max_duration + 1))}), how="cross"
     )
     filled = grid.join(
-        df.select(["cohort", "dev", *value_cols]),
-        on=["cohort", "dev"],
+        df.select(["cohort", "duration", *value_cols]),
+        on=["cohort", "duration"],
         how="left",
     )
     matrices = tuple(
-        filled[col].cast(pl.Float64).to_numpy().reshape(n_cohorts, max_dev)
+        filled[col].cast(pl.Float64).to_numpy().reshape(n_cohorts, max_duration)
         for col in value_cols
     )
-    return matrices, cohorts, max_dev
+    return matrices, cohorts, max_duration
 
 
 def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
@@ -257,15 +257,15 @@ def _fit_mack(
     """Fit Mack chain ladder (alpha = 1) on an observed loss matrix.
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    of shape ``(n_cohorts, n_devs - 1)`` (see :mod:`lossratio._recent`).
+    of shape ``(n_cohorts, n_durations - 1)`` (see :mod:`lossratio._recent`).
     When supplied, ``f_k`` / ``sigma2_k`` / ``sum_col_k`` are estimated
     only from links inside the recent wedge, while the point projection
     and Mack SE recursion are seeded from the full, unmasked
     ``loss_obs``. ``None`` (default) is the byte-identical no-filter
     path.
     """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
 
     f_k = np.full(n_links, np.nan, dtype=np.float64)
     sigma2_k = np.full(n_links, np.nan, dtype=np.float64)
@@ -312,16 +312,16 @@ def _fit_mack(
     from ._sigma import extrapolate_tail_sigma2
     sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
 
-    # Point projection: fill missing cells via f_k. The dev recursion is
-    # sequential (each dev reads the prior, already-filled dev) but the
-    # cohort axis is independent, so vectorise across cohorts per dev.
+    # Point projection: fill missing cells via f_k. The duration recursion is
+    # sequential (each duration reads the prior, already-filled duration) but the
+    # cohort axis is independent, so vectorise across cohorts per duration.
     loss_proj = loss_obs.copy()
-    for k in range(1, n_devs):
+    for k in range(1, n_durations):
         prev = loss_proj[:, k - 1]
         fill = np.isnan(loss_proj[:, k]) & ~np.isnan(prev)
         loss_proj[fill, k] = prev[fill] * f_k[k - 1]
 
-    # Mack SE on projected cells (per cohort, per dev), additive recursion
+    # Mack SE on projected cells (per cohort, per duration), additive recursion
     # form (Mack 1993). Decomposed into process and parameter variance:
     #
     #   proc_{i, k+1}  = f_k^2 * proc_{i, k}  + sigma^2_k * C_{i,k}^alpha
@@ -331,27 +331,27 @@ def _fit_mack(
     # per-link 1D form used by the loss / premium projection loops -- keep
     # the two in sync if the formula ever changes.
     # with Var(f_k) = sigma^2_k / sum_col_k[k]. Observed cells report 0
-    # (recursion starts at the last observed dev), projected cells
+    # (recursion starts at the last observed duration), projected cells
     # accumulate.
-    proc_var = np.zeros((n_cohorts, n_devs), dtype=np.float64)
-    param_var = np.zeros((n_cohorts, n_devs), dtype=np.float64)
+    proc_var = np.zeros((n_cohorts, n_durations), dtype=np.float64)
+    param_var = np.zeros((n_cohorts, n_durations), dtype=np.float64)
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs,
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
     alpha = 1.0  # only alpha = 1 is supported in this worker
     # f_var_k = sigma^2_k / sum_col_k -- Mack's Var(f_hat_k).
     f_var_k = _mack_factor_var(sigma2_k, sum_col_k)
 
-    # Sequential along dev, vectorised across cohorts. Each cohort starts
-    # accumulating at its first projected dev (last_obs + 1); cohorts not
-    # yet projected at dev k, or whose chain broke (NaN prev / unfittable
+    # Sequential along duration, vectorised across cohorts. Each cohort starts
+    # accumulating at its first projected duration (last_obs + 1); cohorts not
+    # yet projected at duration k, or whose chain broke (NaN prev / unfittable
     # link), keep variance 0 at that cell.
-    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
-    for k in range(1, n_devs):
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
+    for k in range(1, n_durations):
         f_prev = f_k[k - 1]
         if not np.isfinite(f_prev):
             continue
@@ -376,7 +376,7 @@ def _fit_mack(
 
     return _MackResult(
         cohorts=[],  # filled by caller (with cohort identifiers)
-        n_devs=n_devs,
+        n_durations=n_durations,
         loss_obs=loss_obs,
         loss_proj=loss_proj,
         proc_se=proc_se,
@@ -392,16 +392,16 @@ def _fit_mack(
 class _EDResult:
     """Result of ED fit on a single-group triangle."""
 
-    n_devs: int
+    n_durations: int
     loss_obs: np.ndarray
     premium_obs: np.ndarray
     loss_proj: np.ndarray
     premium_proj: np.ndarray
-    g_k: np.ndarray              # (n_devs - 1,)
-    sigma2_g_k: np.ndarray       # (n_devs - 1,)
-    f_p_k: np.ndarray            # (n_devs - 1,) — premium chain ladder factors
-    sigma2_f_p_k: np.ndarray     # (n_devs - 1,) — premium chain ladder sigma^2
-    sum_premium_k: np.ndarray    # (n_devs - 1,) — per-link sum of premium_from over the ED fit subset (Var(g_k) denom)
+    g_k: np.ndarray              # (n_durations - 1,)
+    sigma2_g_k: np.ndarray       # (n_durations - 1,)
+    f_p_k: np.ndarray            # (n_durations - 1,) — premium chain ladder factors
+    sigma2_f_p_k: np.ndarray     # (n_durations - 1,) — premium chain ladder sigma^2
+    sum_premium_k: np.ndarray    # (n_durations - 1,) — per-link sum of premium_from over the ED fit subset (Var(g_k) denom)
 
 
 def _mack_g_var(result: _EDResult) -> np.ndarray:
@@ -444,8 +444,8 @@ def _fit_ed(
     unmasked ``loss_obs`` / ``premium_obs``. ``None`` (default) is the
     byte-identical no-filter path.
     """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
 
     # 1. Premium chain ladder for exposure projection (factors from the
     #    recent wedge when masked, projection seed from the full matrix).
@@ -462,7 +462,7 @@ def _fit_ed(
     sum_premium_k = np.zeros(n_links, dtype=np.float64)
 
     for k in range(n_links):
-        # Δloss[i, k+1] = loss[i, k+1] - loss[i, k] (incremental at dev k+2)
+        # Δloss[i, k+1] = loss[i, k+1] - loss[i, k] (incremental at duration k+2)
         ck = premium_obs[:, k]
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
         # Drop cohorts with premium_from <= 0.
@@ -477,7 +477,7 @@ def _fit_ed(
             # unestimated (NaN, mirroring `_fit_mack`). NaN -- not 0.0 --
             # is what the segment_bridged_borrowed donor detection keys
             # off: a 0.0 here would be read as an owned (zero-increment)
-            # factor and never borrowed, flat-lining late-dev projection.
+            # factor and never borrowed, flat-lining late-duration projection.
             g_k[k] = np.nan
             sigma2_g_k[k] = np.nan
             continue
@@ -502,10 +502,10 @@ def _fit_ed(
 
     # 3. Project loss forward using ED rule:
     #    loss[i, k+1] = loss[i, k] + g_k * premium_proj[i, k]
-    # The dev recursion is sequential (each dev reads the prior, filled
-    # dev); the cohort axis is independent, so vectorise across cohorts.
+    # The duration recursion is sequential (each duration reads the prior, filled
+    # duration); the cohort axis is independent, so vectorise across cohorts.
     loss_proj = loss_obs.copy()
-    for k in range(1, n_devs):
+    for k in range(1, n_durations):
         prev = loss_proj[:, k - 1]
         pe = premium_proj[:, k - 1]
         fill = np.isnan(loss_proj[:, k]) & ~np.isnan(prev) & ~np.isnan(pe)
@@ -515,7 +515,7 @@ def _fit_ed(
     # parameter) downstream in `_result_to_long_df`, which is the single
     # source of the EDFit SE columns. No SE is accumulated here.
     return _EDResult(
-        n_devs=n_devs,
+        n_durations=n_durations,
         loss_obs=loss_obs,
         premium_obs=premium_obs,
         loss_proj=loss_proj,

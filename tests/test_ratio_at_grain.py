@@ -27,9 +27,9 @@ def _m_fit():
 
 
 def _portfolio_ultimate(df) -> tuple[float, float, float]:
-    """Sum each cohort's last-dev (ultimate) loss / premium across the book."""
+    """Sum each cohort's last-duration (ultimate) loss / premium across the book."""
     df = pl.from_pandas(df) if not isinstance(df, pl.DataFrame) else df
-    last = df.sort("dev").group_by("cohort").last()
+    last = df.sort("duration").group_by("cohort").last()
     loss = last["loss_proj"].sum()
     premium = last["premium_proj"].sum()
     return loss, premium, loss / premium
@@ -54,7 +54,7 @@ def _regime_m_fit():
     """An M-grain REGIME (segment_borrowed) Ratio fit on the SUR book.
 
     On the regime path the stored ``incr_loss_proj`` column is NULL at
-    dev 1 for every cohort, so summing that column would drop the dev-1
+    duration 1 for every cohort, so summing that column would drop the duration-1
     mass. ``at_grain`` derives increments from the (complete) cumulative
     ``loss_proj`` / ``premium_proj`` instead.
     """
@@ -77,8 +77,8 @@ def _regime_m_fit():
 def test_at_grain_regime_portfolio_ultimate_is_grain_invariant():
     """Regime fits: coarsening to Q must preserve the portfolio ultimate.
 
-    Regression for the dev-1 mass drop: the regime path leaves
-    ``incr_loss_proj`` NULL at dev 1, so re-binning from that column was
+    Regression for the duration-1 mass drop: the regime path leaves
+    ``incr_loss_proj`` NULL at duration 1, so re-binning from that column was
     short by the first increment (~0.56% on this book). Deriving the
     increments from the complete cumulative projection makes Q EXACT.
     """
@@ -159,7 +159,7 @@ def _m_fit_with_tail():
 def _fine_tail_inclusive_ultimate(df) -> tuple[float, float, float]:
     """Sum each cohort's tail-inclusive ultimate (loss_tail or loss_proj)."""
     df = pl.from_pandas(df) if not isinstance(df, pl.DataFrame) else df
-    last = df.sort("dev").group_by("cohort").last()
+    last = df.sort("duration").group_by("cohort").last()
     last = last.with_columns(
         pl.coalesce("loss_tail", "loss_proj").alias("_u_loss"),
         pl.coalesce("premium_tail", "premium_proj").alias("_u_prem"),
@@ -173,7 +173,7 @@ def test_at_grain_with_tail_portfolio_ultimate_is_grain_invariant():
     """With a tail active, the coarse ultimate must FOLD the tail mass.
 
     The M-grain tail-inclusive ultimate (loss_tail-or-loss_proj at the
-    last dev) must equal the Q-grain ``at_grain`` last-dev ``loss_proj``
+    last duration) must equal the Q-grain ``at_grain`` last-duration ``loss_proj``
     (which now folds the tail). This is the M=Q-with-tail guarantee --
     without the fold, ``at_grain`` silently dropped the tail mass.
     """

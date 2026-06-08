@@ -298,16 +298,16 @@ def test_resolve_by_helper():
 # ---------------------------------------------------------------------------
 
 
-def test_derive_loss_ata_drops_first_dev_and_reindexes():
-    """``loss_ata = loss[k]/loss[k-1]``; first dev becomes NA -> dropped;
-    surviving dev is re-indexed so the first row is dev=1."""
+def test_derive_loss_ata_drops_first_duration_and_reindexes():
+    """``loss_ata = loss[k]/loss[k-1]``; first duration becomes NA -> dropped;
+    surviving duration is re-indexed so the first row is duration=1."""
     tri = _sur_triangle()
     df = tri.to_polars()
     out, name = _derive_regime_target(df, "loss_ata", groups=None)
     assert name == "loss_ata"
     assert "loss_ata" in out.columns
-    # Re-indexed dev: minimum must be 1 (was 2 in the source).
-    assert out["dev"].min() == 1
+    # Re-indexed duration: minimum must be 1 (was 2 in the source).
+    assert out["duration"].min() == 1
     # And the column carries actual ratio values, not NaN.
     assert out["loss_ata"].is_finite().all()
 

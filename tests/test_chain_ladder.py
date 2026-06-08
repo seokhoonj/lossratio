@@ -30,7 +30,7 @@ def _triangle() -> lr.Triangle:
 def _sur_triangle() -> lr.Triangle:
     """Surgery slice of the synthetic experience dataset.
 
-    36 cohorts x 36 devs -- large enough that the `recent` calendar
+    36 cohorts x 36 durations -- large enough that the `recent` calendar
     wedge meaningfully restricts the contributing cohort set (early
     links lose all but the most-recent diagonals). Read from the same
     fixture the R `recent` parity fixtures were dumped from, so the
@@ -48,11 +48,11 @@ def _sur_triangle() -> lr.Triangle:
 
 
 def _toy_triangle_input() -> pl.DataFrame:
-    """Hand-verifiable 5-cohort, 5-dev experience data.
+    """Hand-verifiable 5-cohort, 5-duration experience data.
 
-    Resulting loss (cumulative loss) per (cohort, dev):
+    Resulting loss (cumulative loss) per (cohort, duration):
 
-        cohort       dev_1  dev_2  dev_3  dev_4  dev_5
+        cohort       duration_1  duration_2  duration_3  duration_4  duration_5
         2024-01      100    200    320    420    500
         2024-02      150    280    440    570
         2024-03      120    250    380
@@ -76,15 +76,15 @@ def _toy_triangle_input() -> pl.DataFrame:
     return pl.DataFrame(
         {
             "cy_m": [
-                # cohort 2024-01: dev 1..5
+                # cohort 2024-01: duration 1..5
                 "2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
-                # cohort 2024-02: dev 1..4
+                # cohort 2024-02: duration 1..4
                 "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
-                # cohort 2024-03: dev 1..3
+                # cohort 2024-03: duration 1..3
                 "2024-03-01", "2024-04-01", "2024-05-01",
-                # cohort 2024-04: dev 1..2
+                # cohort 2024-04: duration 1..2
                 "2024-04-01", "2024-05-01",
-                # cohort 2024-05: dev 1
+                # cohort 2024-05: duration 1
                 "2024-05-01",
             ],
             "uy_m": [
@@ -145,8 +145,8 @@ def test_monte_carlo_overlays_bootstrap() -> None:
     # The point projection is unchanged by the SE overlay.
     base = lr.ChainLadder().fit(tri).to_polars()
     assert_frame_equal(
-        fit.to_polars().select(["coverage", "cohort", "dev", "loss_proj"]),
-        base.select(["coverage", "cohort", "dev", "loss_proj"]),
+        fit.to_polars().select(["coverage", "cohort", "duration", "loss_proj"]),
+        base.select(["coverage", "cohort", "duration", "loss_proj"]),
     )
 
 
@@ -158,7 +158,7 @@ def test_monte_carlo_overlays_bootstrap() -> None:
 def test_cl_output_shape() -> None:
     tri = lr.Triangle(_toy_triangle_input())
     fit = lr.ChainLadder().fit(tri)
-    # 5 cohorts x 5 devs = 25 cells (observed + projected)
+    # 5 cohorts x 5 durations = 25 cells (observed + projected)
     assert fit.n_rows == 25
 
 
@@ -190,16 +190,16 @@ def test_cl_projection_observed_cells_unchanged() -> None:
 
 
 def test_cl_projection_propagates_via_f_k() -> None:
-    """Cohort 2024-05 only has dev 1 observed; subsequent devs are projected
+    """Cohort 2024-05 only has duration 1 observed; subsequent durations are projected
     by successive multiplication of f_1, f_2, f_3, f_4.
 
     The per-link ATA factors now live on the ATA diagnostic
     (``tri.link().ata()``), not on the loss fit.
     """
     tri = lr.Triangle(_toy_triangle_input())
-    fk = tri.link().ata().df.sort("dev")["f"].to_list()
+    fk = tri.link().ata().df.sort("duration")["f"].to_list()
     fit = lr.ChainLadder().fit(tri)
-    df = fit.to_polars().sort(["cohort", "dev"])
+    df = fit.to_polars().sort(["cohort", "duration"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
     loss_proj = cohort_5["loss_proj"].to_list()
     assert loss_proj[0] == 200.0
@@ -249,7 +249,7 @@ def test_cl_se_grows_with_distance_from_observed() -> None:
     """For a single cohort, SE on the ultimate should be >= SE on an
     intermediate projected cell (variance accumulates monotonically)."""
     fit = lr.ChainLadder().fit(lr.Triangle(_toy_triangle_input()))
-    df = fit.to_polars().sort(["cohort", "dev"])
+    df = fit.to_polars().sort(["cohort", "duration"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
     se = cohort_5["loss_total_se"].to_list()
     # se[0] is None (observed). se[1..4] are projected, monotonically
@@ -278,8 +278,8 @@ def test_cl_summary_columns_and_size() -> None:
 
 
 def test_cl_summary_ultimate_for_fully_observed_cohort() -> None:
-    """Cohort 2024-01 has all 5 devs observed; loss_proj must equal the
-    observed loss at dev 5 = 500.0 with a null SE (no projection)."""
+    """Cohort 2024-01 has all 5 durations observed; loss_proj must equal the
+    observed loss at duration 5 = 500.0 with a null SE (no projection)."""
     fit = lr.ChainLadder().fit(lr.Triangle(_toy_triangle_input()))
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
@@ -311,8 +311,8 @@ def test_cl_groups_fitted_independently() -> None:
         ]
     )
     ata = lr.Triangle(df_grouped, groups="coverage").link().ata().df
-    fk_A = ata.filter(pl.col("coverage") == "A").sort("dev")["f"].to_list()
-    fk_B = ata.filter(pl.col("coverage") == "B").sort("dev")["f"].to_list()
+    fk_A = ata.filter(pl.col("coverage") == "A").sort("duration")["f"].to_list()
+    fk_B = ata.filter(pl.col("coverage") == "B").sort("duration")["f"].to_list()
     assert fk_A == fk_B
 
 
@@ -344,8 +344,8 @@ def test_cl_recent_changes_proj() -> None:
     wedge: at least one projected loss cell moves, and the projection
     grid (row count) is unchanged."""
     tri = _sur_triangle()
-    full = lr.ChainLadder().fit(tri).to_polars().sort(["cohort", "dev"])
-    r12 = lr.ChainLadder(recent=12).fit(tri).to_polars().sort(["cohort", "dev"])
+    full = lr.ChainLadder().fit(tri).to_polars().sort(["cohort", "duration"])
+    r12 = lr.ChainLadder(recent=12).fit(tri).to_polars().sort(["cohort", "duration"])
     assert full.height == r12.height
     u = full["loss_proj"].to_list()
     f = r12["loss_proj"].to_list()
@@ -367,7 +367,7 @@ def test_cl_recent_larger_than_span_equals_unfiltered() -> None:
     """recent wider than the triangle's diagonal span keeps every link
     -- byte-identical to the unfiltered fit."""
     tri = _sur_triangle()
-    # 36 cohorts x 36 devs -> max source calendar index is 35; any
+    # 36 cohorts x 36 durations -> max source calendar index is 35; any
     # `recent` >= that keeps every existing link.
     unfiltered = lr.ChainLadder().fit(tri).to_polars()
     wide = lr.ChainLadder(recent=10_000).fit(tri).to_polars()

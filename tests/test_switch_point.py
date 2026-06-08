@@ -23,7 +23,7 @@ def test_at_scalar():
 
 
 def test_at_full_cl_sentinel():
-    # point == 1 is the "pure CL" sentinel (ED before dev 1 = nothing).
+    # point == 1 is the "pure CL" sentinel (ED before duration 1 = nothing).
     sp = lr.SwitchPoint.at(1)
     assert sp.point == 1
     assert sp.status == "cl"

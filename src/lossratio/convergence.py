@@ -27,14 +27,14 @@ def _compute_dispersion(
     triangle: "Triangle",
     min_n_cohorts: int = 5,
 ) -> pl.DataFrame:
-    """Robust cross-cohort dispersion of incremental Ratio per (group, dev).
+    """Robust cross-cohort dispersion of incremental Ratio per (group, duration).
 
-    Returns a polars DataFrame with columns ``[groups?, dev,
+    Returns a polars DataFrame with columns ``[groups?, duration,
     n_cohorts, ratio_median, ratio_mad, dispersion, flag]``.
     """
     tri_df = triangle.to_polars().filter(pl.col("ratio").is_not_null())
     grp = triangle.groups
-    by_cols = [*normalize_groups(grp), "dev"]
+    by_cols = [*normalize_groups(grp), "duration"]
 
     out = (
         tri_df.group_by(by_cols)
@@ -80,8 +80,8 @@ def _extract_portfolio_ratio(bt_fit: Any) -> float:
     Computes ``sum(loss_proj) / sum(premium_proj)`` where ``loss_proj`` /
     ``premium_proj`` are the *latest projected* per-cohort cumulative
     values (last non-null ``loss_proj`` / ``premium_proj`` sorted by
-    dev). Using last-non-null is robust when the masked refit's
-    projection halts before ``dev_max`` because late ATA factors are
+    duration). Using last-non-null is robust when the masked refit's
+    projection halts before ``duration_max`` because late ATA factors are
     unestimable (no cohort-pair under the mask).
 
     Returns ``nan`` when no cohorts have a projectable cell or total
@@ -100,11 +100,11 @@ def _extract_portfolio_ratio(bt_fit: Any) -> float:
 
     keys = [*normalize_groups(getattr(refit, "_groups", None)), "cohort"]
 
-    # Last non-null projection per cohort (sorted by dev).
+    # Last non-null projection per cohort (sorted by duration).
     ult = (
         df.filter(pl.col("loss_proj").is_not_null()
                   & pl.col("premium_proj").is_not_null())
-        .sort(keys + ["dev"])
+        .sort(keys + ["duration"])
         .group_by(keys, maintain_order=True)
         .agg(
             pl.col("loss_proj").last().alias("loss_proj"),
@@ -159,9 +159,9 @@ def detect_convergence(
         Which stability criterion drives the detected convergence ``point``. One of:
 
         - ``"tail"`` (default, reserving-safe): tail drift over
-          ``[k, dev_max]`` falls below ``max_drift``.
+          ``[k, duration_max]`` falls below ``max_drift``.
         - ``"window"``: local drift over ``[k, k + window - 1]``.
-        - ``"slope"``: ``|OLS slope of Ratio ~ k|`` on ``[k, dev_max]``
+        - ``"slope"``: ``|OLS slope of Ratio ~ k|`` on ``[k, duration_max]``
           below ``max_slope``.
         - ``"all"``: all three above pass simultaneously.
 
@@ -174,14 +174,14 @@ def detect_convergence(
     max_dispersion
         Upper bound on the cross-cohort dispersion. Default ``0.15``.
     window
-        Drift window length (in dev steps). Default ``5``.
+        Drift window length (in duration steps). Default ``5``.
     start
         First development period to scan for convergence (the candidate
         floor). Default ``2``. Convergence runs its own holdout backtests,
         so it needs no external factor-stability anchor.
     holdout_max
         Cap on holdout depth. When ``None``, set to
-        ``max(window, (dev_max - start) // 2)``.
+        ``max(window, (duration_max - start) // 2)``.
     min_n_cohorts
         Minimum cohorts required to compute dispersion. Default ``5``.
     **backtest_kwargs
@@ -191,8 +191,8 @@ def detect_convergence(
     Returns
     -------
     Convergence
-        Result object exposing ``point`` (the convergence dev),
-        ``start``, ``dev_max``, the candidate dev sequence and
+        Result object exposing ``point`` (the convergence duration),
+        ``start``, ``duration_max``, the candidate duration sequence and
         per-criterion diagnostics.
     """
     import warnings
@@ -219,25 +219,25 @@ def detect_convergence(
     if start < 2:
         raise ValueError(f"start must be >= 2, got {start}")
 
-    # 2. dev_max + candidate sequence.
-    dev_max = int(triangle.to_polars()["dev"].max())
+    # 2. duration_max + candidate sequence.
+    duration_max = int(triangle.to_polars()["duration"].max())
     if holdout_max is None:
-        holdout_max = max(window, (dev_max - start) // 2)
+        holdout_max = max(window, (duration_max - start) // 2)
     holdout_max = int(holdout_max)
 
-    if dev_max - 2 >= start:
-        dev_cand = list(range(start, dev_max - 1))
+    if duration_max - 2 >= start:
+        duration_cand = list(range(start, duration_max - 1))
     else:
-        dev_cand = []
+        duration_cand = []
         warnings.warn(
-            f"No candidate dev points: start ({start}) + 2 > dev_max "
-            f"({dev_max}). Returning point = None.",
+            f"No candidate duration points: start ({start}) + 2 > duration_max "
+            f"({duration_max}). Returning point = None.",
             stacklevel=2,
         )
 
     # 3. Ratio per candidate via cached backtest.
     estimator = backtest_kwargs.pop("estimator", None) or Ratio(method="sa")
-    ratio_arr = np.full(len(dev_cand), np.nan)
+    ratio_arr = np.full(len(duration_cand), np.nan)
     cache: dict[int, float] = {}
 
     def _get_ratio(h: int) -> float:
@@ -259,60 +259,60 @@ def detect_convergence(
         cache[h] = val
         return val
 
-    for i, k in enumerate(dev_cand):
-        h = dev_max - k
+    for i, k in enumerate(duration_cand):
+        h = duration_max - k
         if h < 1 or h > holdout_max:
             continue
         ratio_arr[i] = _get_ratio(h)
 
     # 4. revision (diagnostic only).
-    revision = np.full(len(dev_cand), np.nan)
-    if len(dev_cand) >= 2:
+    revision = np.full(len(duration_cand), np.nan)
+    if len(duration_cand) >= 2:
         revision[1:] = np.abs(np.diff(ratio_arr))
 
     # 5. drift_window: max - min over each length-`window` slice
     # [i, i+window-1]. NaN-propagating max/min naturally leave NaN where a
     # window has any gap (matching the original all-finite guard); slices
     # that would run past the end stay NaN.
-    drift_window = np.full(len(dev_cand), np.nan)
-    if len(dev_cand) >= window:
+    drift_window = np.full(len(duration_cand), np.nan)
+    if len(duration_cand) >= window:
         from numpy.lib.stride_tricks import sliding_window_view
         w = sliding_window_view(ratio_arr, window)
         drift_window[: w.shape[0]] = np.max(w, axis=1) - np.min(w, axis=1)
 
     # 6. drift_tail over [i, end].
-    drift_tail = np.full(len(dev_cand), np.nan)
-    for i in range(len(dev_cand)):
+    drift_tail = np.full(len(duration_cand), np.nan)
+    for i in range(len(duration_cand)):
         w = ratio_arr[i:]
         w = w[np.isfinite(w)]
         if len(w) >= 2:
             drift_tail[i] = float(np.max(w) - np.min(w))
 
-    # 7. slope -- OLS slope of Ratio ~ dev on [i, end].
-    slope_arr = np.full(len(dev_cand), np.nan)
-    dev_cand_arr = np.array(dev_cand, dtype=float)
-    for i in range(len(dev_cand)):
-        slope_arr[i] = _ols_slope(dev_cand_arr[i:], ratio_arr[i:])
+    # 7. slope -- OLS slope of Ratio ~ duration on [i, end].
+    slope_arr = np.full(len(duration_cand), np.nan)
+    duration_cand_arr = np.array(duration_cand, dtype=float)
+    for i in range(len(duration_cand)):
+        slope_arr[i] = _ols_slope(duration_cand_arr[i:], ratio_arr[i:])
 
-    # 8. dispersion at each candidate dev (group-collapsed via median).
-    dispersion = np.full(len(dev_cand), np.nan)
-    if dev_cand:
+    # 8. dispersion at each candidate duration (group-collapsed via median).
+    dispersion = np.full(len(duration_cand), np.nan)
+    if duration_cand:
         disp_tbl = _compute_dispersion(triangle, min_n_cohorts=min_n_cohorts)
         if triangle.groups is not None:
             disp_tbl = (
-                disp_tbl.group_by("dev")
+                disp_tbl.group_by("duration")
                 .agg(pl.col("dispersion").median().alias("dispersion"))
             )
         disp_map = dict(
-            zip(disp_tbl["dev"].to_list(), disp_tbl["dispersion"].to_list())
+            zip(disp_tbl["duration"].to_list(), disp_tbl["dispersion"].to_list())
         )
-        for i, k in enumerate(dev_cand):
+        for i, k in enumerate(duration_cand):
             v = disp_map.get(k)
             if v is not None:
                 dispersion[i] = float(v)
 
     # 9. per-method pass tests. A candidate whose own Ratio could not be
-    # computed (NaN -- e.g. an early dev below the holdout cap) must never be
+    # computed (NaN -- e.g. an early duration below the holdout cap) must never be
     # selected, even if the tail/slope skipped over it: guard on the
     # candidate's own finite Ratio. With `start=2` this matters where the old
     # factor-stability floor used to keep early candidates out.
@@ -336,10 +336,10 @@ def detect_convergence(
         "all": pass_all,
     }[method]
 
-    # 10. first passing dev.
+    # 10. first passing duration.
     if pass_arr.any():
         first_idx = int(np.argmax(pass_arr))
-        conv_k: int | None = int(dev_cand[first_idx])
+        conv_k: int | None = int(duration_cand[first_idx])
     else:
         conv_k = None
 
@@ -348,8 +348,8 @@ def detect_convergence(
         method=method,
         conv_k=conv_k,
         start=start,
-        dev_max=dev_max,
-        dev_cand=dev_cand,
+        duration_max=duration_max,
+        duration_cand=duration_cand,
         ratio=ratio_arr,
         revision=revision,
         drift_window=drift_window,
@@ -399,7 +399,7 @@ def _portfolio_factor_tail_ratio(fit: Any) -> float:
             pl.col("loss_proj").is_not_null()
             & pl.col("premium_proj").is_not_null()
         )
-        .sort(keys + ["dev"])
+        .sort(keys + ["duration"])
         .group_by(keys, maintain_order=True)
         .agg(*agg)
     )
@@ -459,9 +459,9 @@ def convergence_tail_frame(fit: Any, **conv_kwargs: Any) -> "FrameLike":
 
     # The converged / stable level is the latest finite candidate ratio --
     # the one built from the smallest holdout (the most data used), NOT
-    # `ratio[k**]` which is often nan (early candidate devs need a holdout
+    # `ratio[k**]` which is often nan (early candidate durations need a holdout
     # past `holdout_max` and are skipped).
-    fin = df.filter(pl.col("ratio").is_finite()).sort("dev")
+    fin = df.filter(pl.col("ratio").is_finite()).sort("duration")
     ratio_latest = (
         float(fin["ratio"].to_list()[-1]) if fin.height else float("nan")
     )
@@ -505,17 +505,17 @@ class Convergence:
     Attributes
     ----------
     point : int | None
-        First dev at which the chosen ``method``'s pass test fires.
+        First duration at which the chosen ``method``'s pass test fires.
     method : str
         Which criterion selected ``point``.
     start : int
         Floor used as the lower bound of the candidate window.
-    dev_max : int
-        Maximum observable dev.
-    dev_cand : list[int]
-        Candidate dev sequence ``[start, dev_max - 2]``.
+    duration_max : int
+        Maximum observable duration.
+    duration_cand : list[int]
+        Candidate duration sequence ``[start, duration_max - 2]``.
     ratio, revision, drift_window, drift_tail, slope, dispersion : ndarray
-        Diagnostic series, one entry per ``dev_cand``.
+        Diagnostic series, one entry per ``duration_cand``.
     pass_window, pass_tail, pass_slope, pass_ : ndarray[bool]
         Per-criterion pass vectors plus the chosen criterion.
     """
@@ -532,8 +532,8 @@ class Convergence:
         method: str,
         conv_k: int | None,
         start: int,
-        dev_max: int,
-        dev_cand: list[int],
+        duration_max: int,
+        duration_cand: list[int],
         ratio: np.ndarray,
         revision: np.ndarray,
         drift_window: np.ndarray,
@@ -556,8 +556,8 @@ class Convergence:
         self.point = conv_k
         self.method = method
         self.start = start
-        self.dev_max = dev_max
-        self.dev_cand = list(dev_cand)
+        self.duration_max = duration_max
+        self.duration_cand = list(duration_cand)
         self.ratio = ratio
         self.revision = revision
         self.drift_window = drift_window
@@ -581,7 +581,7 @@ class Convergence:
     def summary(self) -> "FrameLike":
         """One-row-per-candidate diagnostic table."""
         df = pl.DataFrame({
-            "dev": self.dev_cand,
+            "duration": self.duration_cand,
             "ratio": self.ratio,
             "revision": self.revision,
             "drift_window": self.drift_window,
@@ -606,7 +606,7 @@ class Convergence:
         """5-panel convergence diagnostic plot (matplotlib).
 
         Stacked column of ``ratio``, ``drift_window``, ``drift_tail``,
-        ``|slope|``, ``dispersion`` series across candidate dev
+        ``|slope|``, ``dispersion`` series across candidate duration
         cutoffs. Threshold hlines, the candidate-floor (``start``) dotted vline,
         and detected convergence ``point`` solid green vline are
         overlaid on every panel.
@@ -625,7 +625,7 @@ class Convergence:
         return plot_convergence(self, figsize=figsize)
 
     def __repr__(self) -> str:
-        n = len(self.dev_cand)
+        n = len(self.duration_cand)
         n_win = int(np.nansum(self.pass_window))
         n_tail = int(np.nansum(self.pass_tail))
         n_slope = int(np.nansum(self.pass_slope))
@@ -633,7 +633,7 @@ class Convergence:
             f"method={self.method}",
             f"point={self.point}",
             f"start={self.start}",
-            f"dev_max={self.dev_max}",
+            f"duration_max={self.duration_max}",
             f"candidates={n}",
             f"passes(window/tail/slope)={n_win}/{n_tail}/{n_slope}",
         ]

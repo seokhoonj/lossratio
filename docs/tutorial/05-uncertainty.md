@@ -214,7 +214,7 @@ lr.Ratio(method="cl", se_method="delta", rho=0.9).fit(tri).summary().select(
 boot = lr.ChainLadder(
     uncertainty=lr.ResidualBootstrap(n_replicates=1000, seed=42, quantile_ci=True)
 ).fit(tri)
-boot.boots.summary.select(["cohort", "dev", "total_cv", "ci_lo", "ci_hi"])
+boot.boots.summary.select(["cohort", "duration", "total_cv", "ci_lo", "ci_hi"])
 ```
 
 부트스트랩은 분포가 비대칭이거나(꼬리가 한쪽으로 길거나) 정규 가정이

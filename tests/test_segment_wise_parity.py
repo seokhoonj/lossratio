@@ -78,7 +78,7 @@ def _build_triangle() -> lr.Triangle:
 def test_segment_bridged_borrowed_ratio_cl_full_matches_r():
     """Cell-by-cell comparison of fit_ratio's $full projection under
     segment_bridged_borrowed treatment (both loss + premium sides)."""
-    r = _load("segment_bridged_borrowed_ratio_cl_full").sort(["cohort", "dev"])
+    r = _load("segment_bridged_borrowed_ratio_cl_full").sort(["cohort", "duration"])
     tri = _build_triangle()
     reg = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
@@ -87,14 +87,14 @@ def test_segment_bridged_borrowed_ratio_cl_full_matches_r():
         loss_regime=reg,
         premium_regime=reg,
     ).fit(tri)
-    py = fit.to_polars().sort(["cohort", "dev"])
+    py = fit.to_polars().sort(["cohort", "duration"])
 
     # Schema parity check
-    for c in ("cohort", "dev", "segment_id",
+    for c in ("cohort", "duration", "segment_id",
               "loss_proj", "premium_proj", "ratio_proj"):
         assert c in py.columns, f"Python missing column {c!r}"
 
-    # Segment ids should match exactly per (cohort, dev)
+    # Segment ids should match exactly per (cohort, duration)
     _compare(py, r, cols=["segment_id"], atol=0, rtol=0)
 
     # Projection columns — tight tolerance
@@ -137,7 +137,7 @@ def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
 
 
 @pytest.mark.xfail(
-    reason="Python corrected the ED segment borrow: the late-dev region is "
+    reason="Python corrected the ED segment borrow: the late-duration region is "
     "borrowed via the level-invariant f_k, not g_k (g_k = delta_loss / "
     "premium imports the donor's loss-ratio level across the regime change). "
     "The R fixtures still encode the old g_k borrow; they will be "
@@ -146,7 +146,7 @@ def test_segment_bridged_borrowed_ratio_cl_summary_matches_r():
 )
 def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
     """ED loss method + CL premium method under segment_bridged_borrowed."""
-    r = _load("segment_bridged_borrowed_ratio_ed_full").sort(["cohort", "dev"])
+    r = _load("segment_bridged_borrowed_ratio_ed_full").sort(["cohort", "duration"])
     tri = _build_triangle()
     reg = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.Ratio(
@@ -155,7 +155,7 @@ def test_segment_bridged_borrowed_ratio_ed_full_matches_r():
         loss_regime=reg,
         premium_regime=reg,
     ).fit(tri)
-    py = fit.to_polars().sort(["cohort", "dev"])
+    py = fit.to_polars().sort(["cohort", "duration"])
 
     _compare(py, r, cols=["segment_id"], atol=0, rtol=0)
     _compare(

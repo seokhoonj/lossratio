@@ -48,8 +48,8 @@ def _compute_cv_rse(
     recent wedge. ``None`` (default) is the byte-identical no-filter
     path.
     """
-    n_cohorts, n_devs = loss_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
 
     cv_k = np.full(n_links, np.nan, dtype=np.float64)
     rse_k = np.full(n_links, np.nan, dtype=np.float64)
@@ -103,13 +103,13 @@ def _detect_stability_point(
     min_run: int = 2,
     link_mask: np.ndarray | None = None,
 ) -> int | None:
-    """First dev (1-indexed ``dev_to``) where the ATA factor becomes
+    """First duration (1-indexed ``duration_to``) where the ATA factor becomes
     CV/RSE-stable for ``min_run`` consecutive links, else ``None``.
 
     Applies ``CV(f_k) < max_cv`` AND ``RSE(f_k) < max_rse`` to the
-    per-link factor stats and returns the ``dev_to`` of the first
+    per-link factor stats and returns the ``duration_to`` of the first
     sustained stable run. The development region splits as
-    ED = ``dev < point`` and CL = ``dev >= point``. An internal
+    ED = ``duration < point`` and CL = ``duration >= point``. An internal
     factor-stability diagnostic (no projection); used by the
     ``detect_regime(window="auto")`` trajectory-window resolver.
     """
@@ -126,7 +126,7 @@ def _detect_stability_point(
         return None
     for k in range(n_links - min_run + 1):
         if bool(np.all(stable[k : k + min_run])):
-            # link k goes from dev (k+1) -> dev (k+2); dev_to = k + 2.
+            # link k goes from duration (k+1) -> duration (k+2); duration_to = k + 2.
             return k + 2
     return None
 
@@ -140,7 +140,7 @@ class _ATAResult:
     cv_k: np.ndarray        # (n_links,)  CV of individual link factors
     rse_k: np.ndarray       # (n_links,)  RSE of pooled f_k
     n_obs_k: np.ndarray     # (n_links,)  count of cohorts contributing
-    n_devs: int
+    n_durations: int
 
 
 def _count_link_obs(
@@ -153,8 +153,8 @@ def _count_link_obs(
     (see :mod:`lossratio._recent`): when supplied, only links inside the
     recent wedge are counted.
     """
-    n_devs = loss_obs.shape[1]
-    n_links = n_devs - 1
+    n_durations = loss_obs.shape[1]
+    n_links = n_durations - 1
     n_obs_k = np.zeros(n_links, dtype=np.int64)
     for k in range(n_links):
         col_k = loss_obs[:, k]
@@ -191,7 +191,7 @@ def _compute_ata_factor(
         cv_k=cv_k,
         rse_k=rse_k,
         n_obs_k=n_obs_k,
-        n_devs=loss_obs.shape[1],
+        n_durations=loss_obs.shape[1],
     )
 
 
@@ -204,7 +204,7 @@ def _diagnostic_to_df(
     n = len(result.f_k)
     return _arrays_to_long_df(
         {
-            "dev": np.arange(1, n + 1, dtype=np.int64),
+            "duration": np.arange(1, n + 1, dtype=np.int64),
             "f": result.f_k,
             "sigma2": result.sigma2_k,
             "cv": result.cv_k,
@@ -238,7 +238,7 @@ class ATA:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[groups?, dev, f, sigma2, cv, rse, n_cohorts]``.
+        ``[groups?, duration, f, sigma2, cv, rse, n_cohorts]``.
 
     Examples
     --------
@@ -266,7 +266,7 @@ class ATA:
         self._output_type = link._output_type
         self._groups = link._groups
         self._cohort = link._cohort
-        self._dev = link._dev
+        self._duration = link._duration
 
         tri_df = link._tri_df
         groups = link._groups

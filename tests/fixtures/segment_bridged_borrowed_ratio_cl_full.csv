@@ -1,4 +1,4 @@
-cohort,dev,loss_obs,loss_proj,incr_loss_proj,premium_obs,premium_proj,incr_premium_proj,loss_total_se,loss_total_cv,ratio_proj,incr_ratio_proj,ratio_se,ratio_cv,segment_id
+cohort,duration,loss_obs,loss_proj,incr_loss_proj,premium_obs,premium_proj,incr_premium_proj,loss_total_se,loss_total_cv,ratio_proj,incr_ratio_proj,ratio_se,ratio_cv,segment_id
 2023-04-01,1,0,0,0,4566896,4566896,4566896,0,,0,0,0,,1
 2023-04-01,2,2700000,2700000,2700000,9996540,9996540,5429644,0,0,0.270093452334508,0.4972701709357,0,0,1
 2023-04-01,3,12625000,12625000,9925000,15005887,15005887,5009347,0,0,0.841336470146683,1.98129616494924,0,0,1

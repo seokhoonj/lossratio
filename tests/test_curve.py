@@ -108,7 +108,7 @@ def test_tail_refactor_golden_safe_smoke():
 
 def test_index_is_absolute_no_masking():
     # Clean monotone-decreasing inverse_power series, peak at slot 0.
-    # evaluate(dev=k+1) reproduces exp(a)*(k+1)**b, i.e. i = slot + 1.
+    # evaluate(duration=k+1) reproduces exp(a)*(k+1)**b, i.e. i = slot + 1.
     i = np.arange(1, 8, dtype=float)
     a_true, b_true = 0.3, -0.8
     values = np.exp(a_true) * i ** b_true  # intensity scale

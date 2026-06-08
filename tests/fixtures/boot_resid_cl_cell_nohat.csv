@@ -1,4 +1,4 @@
-coverage,cohort,dev,residual,pool_id
+coverage,cohort,duration,residual,pool_id
 surgery,2023-01-01,1,-309.869035538255,surgery
 surgery,2023-02-01,1,624.206541615713,surgery
 surgery,2023-03-01,1,-416.16940435248,surgery

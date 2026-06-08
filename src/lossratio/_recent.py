@@ -3,7 +3,7 @@
 The ``recent`` argument restricts *which cells contribute to factor
 estimation* (``f_k`` / ``g_k``) to the most-recent ``N`` calendar
 diagonals — a right-bottom wedge of the triangle. The point projection
-still covers the full ``cohort x dev`` grid; only the cells feeding the
+still covers the full ``cohort x duration`` grid; only the cells feeding the
 per-link factor estimate are masked.
 
 This is a calendar-diagonal filter, *not* a cohort cut: young
@@ -11,12 +11,12 @@ development cells of older cohorts still leak into the wedge (that is
 intentional — strict cohort-axis cuts are the separate ``regime``
 argument).
 
-The numpy kernels here work on the ``(n_cohorts, n_devs)`` value matrix,
+The numpy kernels here work on the ``(n_cohorts, n_durations)`` value matrix,
 so this helper produces a boolean *link-level fit mask* of shape
-``(n_cohorts, n_devs - 1)``: entry ``[i, k]`` is the link from dev
-``k + 1`` to dev ``k + 2`` of cohort ``i``. The filter keys on the
+``(n_cohorts, n_durations - 1)``: entry ``[i, k]`` is the link from duration
+``k + 1`` to duration ``k + 2`` of cohort ``i``. The filter keys on the
 link's *source* cell ``(i, k)`` -- i.e. the calendar diagonal of the
-dev the link starts from.
+duration the link starts from.
 """
 
 from __future__ import annotations
@@ -48,12 +48,12 @@ def recent_link_mask(
 ) -> np.ndarray | None:
     """Boolean link-level fit mask for the recent-``N`` calendar wedge.
 
-    A *link* ``k`` of cohort ``i`` runs from dev ``k + 1`` to dev
+    A *link* ``k`` of cohort ``i`` runs from duration ``k + 1`` to duration
     ``k + 2``; it exists when both endpoint cells ``(i, k)`` and
     ``(i, k + 1)`` are observed. The recent filter keys on the link's
-    *source* dev; the calendar index of that source cell is::
+    *source* duration; the calendar index of that source cell is::
 
-        cal_idx = coh_rank + dev_from - 1 = (i + 1) + (k + 1) - 1
+        cal_idx = coh_rank + duration_from - 1 = (i + 1) + (k + 1) - 1
                 = i + k + 1
 
     A link is kept (``True``) when ``cal_idx > max_cal - recent``,
@@ -64,7 +64,7 @@ def recent_link_mask(
     Parameters
     ----------
     value_obs
-        Observed value matrix, shape ``(n_cohorts, n_devs)``; cells are
+        Observed value matrix, shape ``(n_cohorts, n_durations)``; cells are
         ``NaN`` where unobserved.
     recent
         ``None`` (no filter) or a positive integer.
@@ -73,15 +73,15 @@ def recent_link_mask(
     -------
     np.ndarray | None
         ``None`` when ``recent`` is ``None`` (the no-filter path);
-        otherwise a boolean array of shape ``(n_cohorts, n_devs - 1)``
+        otherwise a boolean array of shape ``(n_cohorts, n_durations - 1)``
         — ``True`` for links inside the recent-diagonal wedge.
     """
     if recent is None:
         return None
     validate_recent(recent)
 
-    n_cohorts, n_devs = value_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = value_obs.shape
+    n_links = n_durations - 1
     if n_links < 1:
         return np.zeros((n_cohorts, 0), dtype=bool)
 

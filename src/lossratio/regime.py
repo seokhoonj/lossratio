@@ -70,9 +70,9 @@ def _derive_regime_target(
 ) -> tuple[pl.DataFrame, str]:
     """Compute a diagnostic derived metric column on ``df``.
 
-    The first dev row per (group, cohort) is NA (no predecessor), so it
-    is dropped and ``dev`` is
-    re-indexed so the first surviving observation becomes ``dev = 1``.
+    The first duration row per (group, cohort) is NA (no predecessor), so it
+    is dropped and ``duration`` is
+    re-indexed so the first surviving observation becomes ``duration = 1``.
     This lets the downstream eligibility filter (``n >= window``) and the
     feature-matrix pivot use the same code path as the native columns.
 
@@ -105,14 +105,14 @@ def _derive_regime_target(
         )
 
     out = df.with_columns(derived.alias(target))
-    # Drop rows where the derived metric is non-finite (first dev per
+    # Drop rows where the derived metric is non-finite (first duration per
     # cohort, plus any zero-denominator cases). polars treats NaN and
     # null separately, so test both.
     out = out.filter(
         pl.col(target).is_not_null() & pl.col(target).is_finite()
     )
-    # Re-index dev so the first surviving period per cohort becomes 1.
-    out = out.with_columns((pl.col("dev") - 1).alias("dev"))
+    # Re-index duration so the first surviving period per cohort becomes 1.
+    out = out.with_columns((pl.col("duration") - 1).alias("duration"))
     return out, target
 
 
@@ -436,12 +436,12 @@ def _coarsen_triangle(tri, target_grain: str):
         )
     mpp = _GRAIN_MONTHS[src]
     groups = normalize_groups(tri.groups)
-    # calendar of cell (cohort, dev) = cohort + (dev - 1) source periods.
+    # calendar of cell (cohort, duration) = cohort + (duration - 1) source periods.
     recon = tri._df.select(
         *groups,
         pl.col("cohort"),
         pl.col("cohort")
-        .dt.offset_by(pl.format("{}mo", (pl.col("dev") - 1) * mpp))
+        .dt.offset_by(pl.format("{}mo", (pl.col("duration") - 1) * mpp))
         .alias("_calendar"),
         pl.col("incr_loss"),
         pl.col("incr_premium"),
@@ -749,17 +749,17 @@ def _build_feature_matrix(
             f"{tri_df.columns}"
         )
 
-    df = tri_df.filter(pl.col("dev") <= K)
+    df = tri_df.filter(pl.col("duration") <= K)
 
-    # Count *distinct dev values* with a non-null target per cohort.
-    # When the input frame carries multiple rows per (cohort, dev)
+    # Count *distinct duration values* with a non-null target per cohort.
+    # When the input frame carries multiple rows per (cohort, duration)
     # (pooled detection on a multi-group triangle), raw row counts
     # would overstate eligibility -- the pivot aggregates to one cell
-    # per (cohort, dev), so the eligibility test must do the same.
+    # per (cohort, duration), so the eligibility test must do the same.
     counts = (
         df.filter(pl.col(target).is_not_null())
         .group_by("cohort")
-        .agg(pl.col("dev").n_unique().alias("n"))
+        .agg(pl.col("duration").n_unique().alias("n"))
         .sort("cohort")
     )
     eligible = counts.filter(pl.col("n") >= K)["cohort"].to_list()
@@ -777,14 +777,14 @@ def _build_feature_matrix(
             f"Reduce K."
         )
 
-    # Pivot to wide form: rows = cohort, cols = dev 1..K. Use mean as
+    # Pivot to wide form: rows = cohort, cols = duration 1..K. Use mean as
     # aggregator so pooled detection on a multi-group triangle (where
-    # each (cohort, dev) cell has one row per group) collapses to a
-    # single value per (cohort, dev), averaging over the groups while
+    # each (cohort, duration) cell has one row per group) collapses to a
+    # single value per (cohort, duration), averaging over the groups while
     # ignoring missing cells.
     wide = (
         df.filter(pl.col("cohort").is_in(eligible))
-        .pivot(on="dev", index="cohort", values=target, aggregate_function="mean")
+        .pivot(on="duration", index="cohort", values=target, aggregate_function="mean")
         .sort("cohort")
     )
 
@@ -804,18 +804,18 @@ def _cohort_level_scalar(
     target: str,
     window: int,
 ) -> tuple[list, np.ndarray]:
-    """Reduce each cohort to one scalar level: mean ``target`` over dev 1..window.
+    """Reduce each cohort to one scalar level: mean ``target`` over duration 1..window.
 
     Parameters
     ----------
     tri_df
-        Long-format Triangle frame with ``cohort`` (Date), ``dev`` (int) and
+        Long-format Triangle frame with ``cohort`` (Date), ``duration`` (int) and
         the metric column named by ``target``.
     target
         Metric column to average (e.g. ``"ratio"``).
     window
         Number of leading development periods that define the level. A cohort
-        is kept only if it has at least ``window`` DISTINCT non-null ``dev``
+        is kept only if it has at least ``window`` DISTINCT non-null ``duration``
         cells in ``1..window`` -- so the early trajectory is fully observed
         and the level is comparable across cohorts (no incomplete-development
         bias).
@@ -831,26 +831,26 @@ def _cohort_level_scalar(
     """
     if window < 1:
         raise ValueError(f"window must be >= 1, got {window!r}")
-    for col in ("cohort", "dev", target):
+    for col in ("cohort", "duration", target):
         if col not in tri_df.columns:
             raise KeyError(f"tri_df missing required column {col!r}")
 
     agg = (
         tri_df.lazy()
-        .select(["cohort", "dev", target])
+        .select(["cohort", "duration", target])
         .filter(
-            pl.col("dev").is_between(1, window)
+            pl.col("duration").is_between(1, window)
             & pl.col(target).is_not_null()
             & pl.col(target).is_not_nan()
         )
-        # distinct dev (not row count) so duplicate (cohort, dev) rows cannot
+        # distinct duration (not row count) so duplicate (cohort, duration) rows cannot
         # fake full early coverage.
         .group_by("cohort")
         .agg(
-            pl.col("dev").n_unique().alias("_n_dev"),
+            pl.col("duration").n_unique().alias("_n_duration"),
             pl.col(target).mean().alias("_level"),
         )
-        .filter(pl.col("_n_dev") >= window)
+        .filter(pl.col("_n_duration") >= window)
         .sort("cohort")
         .collect()
     )
@@ -1015,19 +1015,19 @@ def _borrow_screen_group(
       segments' overlap. A pure level (rate) change leaves f scale-invariant
       so this is ~0 (borrow safe); a shape change makes it large (unsafe).
       The overlap is restricted to links with ``f >= _SCREEN_F_MEANINGFUL``
-      so the f~1 late-dev relative-difference explosion does not over-fire,
+      so the f~1 late-duration relative-difference explosion does not over-fire,
       and links are weighted by the min contributing cohort count.
     - Axis 2 (CALENDAR): residuals of cell increments vs the pooled ATA,
-      regressed along the calendar diagonal after DEV-detrending (so a dev
+      regressed along the calendar diagonal after DEV-detrending (so a duration
       mis-specification cannot masquerade as a calendar trend).
       ``calendar_score`` is the t-statistic of that slope (slope / SE) --
       noise-aware, so a noisy coverage's spurious slope (large SE) deflates
       while a real diagonal trend stands out. A calendar effect inflates the
-      donor's late-dev factors (measured on the shocked diagonal) that the
+      donor's late-duration factors (measured on the shocked diagonal) that the
       young segment borrows but will not itself experience.
 
-    ``loss_cum`` is the (n_cohorts, n_dev) CUMULATIVE loss matrix (NaN where
-    undeveloped, column k = dev index k); ``cohort_ranks`` the calendar
+    ``loss_cum`` is the (n_cohorts, n_duration) CUMULATIVE loss matrix (NaN where
+    undeveloped, column k = duration index k); ``cohort_ranks`` the calendar
     order; ``seg_ids`` the per-cohort segment id (0=oldest). Returns native
     scalars: ``shape_score``, ``shape_trend``, ``calendar_score`` (t-stat),
     ``n_overlap``, ``verdict`` in {insufficient, shape, calendar, level}.
@@ -1039,8 +1039,8 @@ def _borrow_screen_group(
     loss_cum = np.asarray(loss_cum, dtype=float)
     cohort_ranks = np.asarray(cohort_ranks)
     seg_ids = np.asarray(seg_ids)
-    n_cohorts, n_dev = loss_cum.shape
-    n_links = n_dev - 1
+    n_cohorts, n_duration = loss_cum.shape
+    n_links = n_duration - 1
     nan = float("nan")
 
     seg_vals = np.sort(np.unique(seg_ids))
@@ -1105,7 +1105,7 @@ def _borrow_screen_group(
                         np.sum(ww * (ks - wm_k) * (rd - wm_r)) / varx
                     )
 
-    # Axis 2 -- calendar-diagonal residual trend, dev-detrended.
+    # Axis 2 -- calendar-diagonal residual trend, duration-detrended.
     calendar_score = nan
     if n_links >= 1:
         base = loss_cum[:, :-1]
@@ -1123,7 +1123,7 @@ def _borrow_screen_group(
             exp_incr = (fp - 1.0) * ci
             # Restrict to MEANINGFUL development (f >= threshold): at f~1 the
             # expected increment ~ 0, so actual/expected - 1 explodes into
-            # noise -- the same late-dev trap guarded on the shape axis.
+            # noise -- the same late-duration trap guarded on the shape axis.
             good = (
                 np.isfinite(exp_incr)
                 & np.isfinite(fp)
@@ -1134,7 +1134,7 @@ def _borrow_screen_group(
                 r = (ci1[good] - ci[good]) / exp_incr[good] - 1.0
                 k_cell = cols_idx[good].astype(float)
                 cal = cohort_ranks[rows_idx[good]].astype(float) + (k_cell + 1.0)
-                # Frisch-Waugh-Lovell: partial dev (k) out of both r and cal.
+                # Frisch-Waugh-Lovell: partial duration (k) out of both r and cal.
                 x = np.column_stack([np.ones_like(k_cell), k_cell])
                 beta_r, *_ = np.linalg.lstsq(x, r, rcond=None)
                 beta_c, *_ = np.linalg.lstsq(x, cal, rcond=None)
@@ -1144,7 +1144,7 @@ def _borrow_screen_group(
                 n_cells = r.size
                 if vc > 0 and n_cells > 3:
                     slope = float(np.sum(cal_perp * r_perp) / vc)
-                    # calendar_score = the t-statistic of the (dev-detrended)
+                    # calendar_score = the t-statistic of the (duration-detrended)
                     # calendar slope: slope / SE, NOT slope x span. Using the
                     # standard error makes it noise-aware -- a noisy coverage's
                     # spurious slope has a large SE and deflates, while a real
@@ -1153,7 +1153,7 @@ def _borrow_screen_group(
                     # and even ranked noisy coverages above real ones.)
                     resid = r_perp - slope * cal_perp
                     sse = float(np.sum(resid ** 2))
-                    dof = n_cells - 3  # intercept + dev + calendar
+                    dof = n_cells - 3  # intercept + duration + calendar
                     if sse > 0 and dof > 0:
                         se = float(np.sqrt((sse / dof) / vc))
                         if se > 0:
@@ -1161,9 +1161,9 @@ def _borrow_screen_group(
 
     # SHAPE axis (scale-invariant) gates first; then the CALENDAR axis as a
     # noise-aware t-statistic (slope / SE) -- a calendar effect contaminates
-    # the donor's late-dev factors (measured on the shocked diagonal) that
+    # the donor's late-duration factors (measured on the shocked diagonal) that
     # the young segment borrows but will not itself experience, a risk the
-    # shape axis structurally cannot see (the young segment has no late-dev
+    # shape axis structurally cannot see (the young segment has no late-duration
     # to compare).
     if n_seg < 2 or not np.isfinite(shape_score) or n_overlap_total < _SCREEN_MIN_OVERLAP:
         verdict = "insufficient"
@@ -1255,7 +1255,7 @@ def _edge_scan_change_points(
     For each edge, grow a contiguous block ``k = 1, 2, ...`` (capped at the
     e-divisive blind zone ``< min_size``) while the block's mean is far from
     the robust centre of the *remaining* cohorts, measured in robust-z
-    (RMS over dev features, MAD scale). A block survives only while every
+    (RMS over duration features, MAD scale). A block survives only while every
     extension stays above ``threshold`` (contiguity); the scan stops at the
     first cohort that is not an outlier, so an isolated interior spike is not
     flagged. ``threshold`` is an effect size in noise units -- a clearly
@@ -1272,10 +1272,10 @@ def _edge_scan_change_points(
         return []
 
     # Per-cohort robust-z: each cohort's RMS standardized distance to the
-    # robust centre (median / MAD over cohorts) per dev feature. Median /
+    # robust centre (median / MAD over cohorts) per duration feature. Median /
     # MAD are robust to the few edge outliers, so a clearly different edge
     # cohort gets a large z while a noisy coverage (large MAD) keeps every
-    # cohort modest. Constant dev features (MAD = 0) are ignored.
+    # cohort modest. Constant duration features (MAD = 0) are ignored.
     med = np.median(mat, axis=0)
     mad = np.median(np.abs(mat - med), axis=0) * 1.4826
     scale = np.where(mad > 0, mad, np.nan)
@@ -1351,7 +1351,7 @@ class Regime:
     target : str
         Trajectory variable name used.
     window : int
-        Development-period window length (number of dev cells per cohort
+        Development-period window length (number of duration cells per cohort
         used as the feature vector).
     cohort : str
         Original cohort variable name (e.g. ``"uy_m"``).
@@ -1478,7 +1478,7 @@ class Regime:
             sub_by_combo = dict(_iter_group_frames(tri_df, grp))
 
         # Resolve trajectory window per combo. ``window="auto"`` first
-        # tries the ATA factor-stability point (the dev where the
+        # tries the ATA factor-stability point (the duration where the
         # age-to-age factors become CV/RSE-stable) for each combo. When
         # that is unavailable (pooled detection, degenerate input, or no
         # sustained stable run) it falls back to the Kneedle elbow on the
@@ -1697,7 +1697,7 @@ class Regime:
             )
         )
         self.cohort = triangle.cohort
-        self.dev = triangle.dev
+        self.duration = triangle.duration
         self.groups = grp
         self.change_points = change_points
         self.n_regimes = n_regimes_total
@@ -1732,7 +1732,7 @@ class Regime:
         self.target = ""
         self.window = 0
         self.cohort = ""
-        self.dev = ""
+        self.duration = ""
         self.groups = groups
         self.change_points = changes_df["change"].to_list()
         self.n_regimes = 0
@@ -1770,14 +1770,14 @@ class Regime:
             Regime application mode.
             ``"segment_borrowed"`` (default) masks each segment's raw
             mini-triangle wall plus a ONE-DEV seam overlap (the donor's wall
-            drops one dev to cover the boundary link the newer segment
-            borrows -- closing the one-dev gap that would otherwise truncate
+            drops one duration to cover the boundary link the newer segment
+            borrows -- closing the one-duration gap that would otherwise truncate
             the newer segment), estimates factors per segment, and borrows
-            the late-dev factors a young segment cannot reach from an older
+            the late-duration factors a young segment cannot reach from an older
             donor -- so the seam carries no implicitly-pooled pre-change
             cells. The two ``*_bridged*`` modes instead widen each wall with
             a calendar-diagonal bridge to the next segment's first-cohort
-            midpoint dev: ``"segment_bridged"`` pools the whole bridged band
+            midpoint duration: ``"segment_bridged"`` pools the whole bridged band
             into a single factor set (development pattern shared across
             regimes); ``"segment_bridged_borrowed"`` estimates per segment
             and borrows over the bridged band.
@@ -2127,14 +2127,14 @@ class Regime:
         :func:`_borrow_screen_group`, returning one row per group with:
 
         - ``verdict``: ``"level"`` (development shape unchanged AND no
-          calendar trend -> borrowing the donor's late-dev tail is SAFE),
+          calendar trend -> borrowing the donor's late-duration tail is SAFE),
           ``"shape"`` (the development pattern changed -> borrowing UNSAFE,
           widen the band), ``"calendar"`` (a calendar-year effect
-          contaminates the donor's late-dev factors -> borrowing risky), or
+          contaminates the donor's late-duration factors -> borrowing risky), or
           ``"insufficient"`` (too few segments / overlap to judge).
         - ``shape_score`` / ``shape_trend`` (Axis 1, segment-to-segment ATA
           discrepancy) and ``calendar_score`` (Axis 2, the t-statistic of the
-          dev-detrended calendar-diagonal residual slope).
+          duration-detrended calendar-diagonal residual slope).
 
         A transparent guard for the borrow treatments: borrow where the
         verdict is ``"level"``; treat ``"shape"`` / ``"calendar"`` with
@@ -2165,14 +2165,14 @@ class Regime:
             change_dates = sorted(chg["change"].to_list()) if chg.height else []
 
             piv = (
-                gdf.pivot(values=target, index="cohort", on="dev",
+                gdf.pivot(values=target, index="cohort", on="duration",
                           aggregate_function="first")
                 .sort("cohort")
             )
-            dev_cols = sorted(
+            duration_cols = sorted(
                 (c for c in piv.columns if c != "cohort"), key=lambda x: int(x)
             )
-            loss_cum = piv.select(dev_cols).to_numpy().astype(float)
+            loss_cum = piv.select(duration_cols).to_numpy().astype(float)
             cohorts = piv["cohort"].to_list()
             seg_ids = np.array(
                 [sum(1 for c in change_dates if c <= ch) for ch in cohorts]
@@ -2400,17 +2400,17 @@ def _compute_segment_mini_tri_bounds(
     bridge: bool = False,
     seam_overlap: bool = False,
 ) -> np.ndarray:
-    """Per-cell effective ``dev_min`` for the segment mini-triangle band.
+    """Per-cell effective ``duration_min`` for the segment mini-triangle band.
 
-    For each cell, returns the minimum dev that keeps it inside its
+    For each cell, returns the minimum duration that keeps it inside its
     segment's fit mask. The mask is the union of two regions:
 
     1. The segment's natural mini-triangle:
-       ``dev >= max_cal - seg_last + 1``.
+       ``duration >= max_cal - seg_last + 1``.
     2. A *bridge* extension along the calendar diagonal anchored at the
-       *next* (newer) segment's first-cohort midpoint dev. The bridge
+       *next* (newer) segment's first-cohort midpoint duration. The bridge
        lets each older segment connect to its successor, filling the
-       late-dev cells of its early cohorts that would otherwise be cut
+       late-duration cells of its early cohorts that would otherwise be cut
        by the natural mini-triangle wall.
 
     Bridge construction (segments ordered by ``seg_id``, lower id =
@@ -2418,17 +2418,17 @@ def _compute_segment_mini_tri_bounds(
     successor), find segment ``s+1``'s
 
     * ``first_rank`` -- cohort rank of ``s+1``'s first cohort,
-    * ``seg_dev_min`` -- ``max_cal - last_rank(s+1) + 1``,
-    * ``first_cohort_dev_max`` -- ``max_cal - first_rank(s+1) + 1``,
-    * ``mid_dev`` -- ``(seg_dev_min + first_cohort_dev_max) // 2``.
+    * ``seg_duration_min`` -- ``max_cal - last_rank(s+1) + 1``,
+    * ``first_cohort_duration_max`` -- ``max_cal - first_rank(s+1) + 1``,
+    * ``mid_duration`` -- ``(seg_duration_min + first_cohort_duration_max) // 2``.
 
     The bridge diagonal for segment ``s`` is at
-    ``ext_cal_idx(s) = first_rank(s+1) + mid_dev(s+1) - 2`` (the cell
-    one cohort earlier than ``s+1``'s first cohort, at the same dev as
+    ``ext_cal_idx(s) = first_rank(s+1) + mid_duration(s+1) - 2`` (the cell
+    one cohort earlier than ``s+1``'s first cohort, at the same duration as
     that first cohort's mini-triangle midpoint). Each cell in segment
     ``s`` then takes
-    ``effective_dev_min =
-        min(seg_dev_min(s), ext_cal_idx(s) - coh_rank + 1)``.
+    ``effective_duration_min =
+        min(seg_duration_min(s), ext_cal_idx(s) - coh_rank + 1)``.
     For the newest segment ``ext_cal_idx`` is undefined and only the
     natural wall applies.
 
@@ -2447,7 +2447,7 @@ def _compute_segment_mini_tri_bounds(
     bridge
         When ``True``, widen each older segment's mini-triangle with
         the calendar-diagonal bridge anchored at the next segment's
-        first-cohort midpoint dev. When ``False`` (default), return
+        first-cohort midpoint duration. When ``False`` (default), return
         the natural mini-triangle wall only -- the pure
         natural mini-triangle wall (no boundary-gap closure); retained
         for diagnostics and the helper unit tests. Both segment
@@ -2456,7 +2456,7 @@ def _compute_segment_mini_tri_bounds(
     Returns
     -------
     np.ndarray
-        Integer per-cell effective ``dev_min`` for the mini-triangle
+        Integer per-cell effective ``duration_min`` for the mini-triangle
         filter (bridged or pure). Same length as ``coh_ranks``.
     """
     coh_ranks = np.asarray(coh_ranks, dtype=np.int64)
@@ -2473,22 +2473,22 @@ def _compute_segment_mini_tri_bounds(
         seg_first[int(s)] = int(coh_ranks[mask].min())
         seg_last[int(s)] = int(coh_ranks[mask].max())
 
-    seg_dev_min = {s: max_cal - seg_last[s] + 1 for s in seg_first}
+    seg_duration_min = {s: max_cal - seg_last[s] + 1 for s in seg_first}
     natural = np.fromiter(
-        (seg_dev_min[int(s)] for s in seg_ids),
+        (seg_duration_min[int(s)] for s in seg_ids),
         dtype=np.int64,
         count=seg_ids.size,
     )
 
     if not bridge:
         if seam_overlap:
-            # One-dev seam overlap (segment_borrowed): each non-newest
-            # (donor) segment's wall drops by exactly one dev so it covers
+            # One-duration seam overlap (segment_borrowed): each non-newest
+            # (donor) segment's wall drops by exactly one duration so it covers
             # the boundary link shared with the next (newer) segment --
-            # closing the "one-dev gap" that otherwise leaves the seam link
-            # (dev M -> M+1) with no donor, which truncates the newer
+            # closing the "one-duration gap" that otherwise leaves the seam link
+            # (duration M -> M+1) with no donor, which truncates the newer
             # segment's projection there. The seam is always a single link,
-            # so one dev suffices; far cheaper than the full midpoint bridge.
+            # so one duration suffices; far cheaper than the full midpoint bridge.
             # The newest segment keeps its natural wall.
             newest = int(unique_segs.max())
             out = natural.copy()
@@ -2498,9 +2498,9 @@ def _compute_segment_mini_tri_bounds(
             return out
         return natural
 
-    first_cohort_dev_max = {s: max_cal - seg_first[s] + 1 for s in seg_first}
-    mid_dev = {
-        s: (seg_dev_min[s] + first_cohort_dev_max[s]) // 2
+    first_cohort_duration_max = {s: max_cal - seg_first[s] + 1 for s in seg_first}
+    mid_duration = {
+        s: (seg_duration_min[s] + first_cohort_duration_max[s]) // 2
         for s in seg_first
     }
 
@@ -2509,7 +2509,7 @@ def _compute_segment_mini_tri_bounds(
     for i in range(len(seg_sorted) - 1):
         s_curr = seg_sorted[i]
         s_next = seg_sorted[i + 1]
-        ext_cal_idx[s_curr] = seg_first[s_next] + mid_dev[s_next] - 2
+        ext_cal_idx[s_curr] = seg_first[s_next] + mid_duration[s_next] - 2
 
     out = np.empty_like(natural)
     for i in range(seg_ids.size):
@@ -2529,10 +2529,10 @@ def _apply_mini_triangle_filter(
     """Mask the triangle to the bridged development band.
 
     For each (group, segment) cell, keeps rows where
-    ``dev >= effective_dev_min``, where the bound is the per-segment
+    ``duration >= effective_duration_min``, where the bound is the per-segment
     mini-triangle wall (``max_cal - seg_last + 1``) widened by the
     calendar-diagonal bridge to the next segment's first-cohort midpoint
-    dev (see :func:`_compute_segment_mini_tri_bounds`). Both segment
+    duration (see :func:`_compute_segment_mini_tri_bounds`). Both segment
     treatments use the bridged band.
 
     Under ``treatment="segment_bridged"`` the ``segment_id`` tag is
@@ -2543,7 +2543,7 @@ def _apply_mini_triangle_filter(
     if df.height == 0:
         return df
     # `segment_borrowed` uses each segment's raw wall plus a ONE-DEV seam
-    # overlap (the donor's wall drops one dev so it covers the boundary link
+    # overlap (the donor's wall drops one duration so it covers the boundary link
     # the newer segment borrows) -- not the full midpoint bridge the two
     # `*_bridged*` treatments use.
     bridge = regime.treatment != "segment_borrowed"
@@ -2560,7 +2560,7 @@ def _apply_mini_triangle_filter(
         .alias("_coh_rank"),
     )
     df = df.with_columns(
-        (pl.col("_coh_rank") + pl.col("dev") - 1).alias("_cal_idx"),
+        (pl.col("_coh_rank") + pl.col("duration") - 1).alias("_cal_idx"),
     )
     df = df.with_columns(
         pl.col("_cal_idx").max().over(rank_keys or pl.lit(1)).alias("_max_cal"),
@@ -2579,7 +2579,7 @@ def _apply_mini_triangle_filter(
                 bridge=bridge,
                 seam_overlap=seam_overlap,
             )
-            parts.append(sub.with_columns(pl.Series("_dev_min", bounds)))
+            parts.append(sub.with_columns(pl.Series("_duration_min", bounds)))
         df = pl.concat(parts, how="vertical_relaxed")
     else:
         bounds = _compute_segment_mini_tri_bounds(
@@ -2589,10 +2589,10 @@ def _apply_mini_triangle_filter(
             bridge=bridge,
             seam_overlap=seam_overlap,
         )
-        df = df.with_columns(pl.Series("_dev_min", bounds))
+        df = df.with_columns(pl.Series("_duration_min", bounds))
 
-    df = df.filter(pl.col("dev") >= pl.col("_dev_min")).drop(
-        "_coh_rank", "_cal_idx", "_max_cal", "_dev_min"
+    df = df.filter(pl.col("duration") >= pl.col("_duration_min")).drop(
+        "_coh_rank", "_cal_idx", "_max_cal", "_duration_min"
     )
     # segment_bridged pools the masked band -- drop the per-segment tag
     # so downstream estimation does not group by segment_id.
@@ -2608,14 +2608,14 @@ def _apply_regime_filter(
     """Mask ``triangle`` to the bridged development band for a regime.
 
     Both treatments mask the triangle to the bridged band -- each
-    segment's mini-triangle wall (``dev >= max_cal - seg_last + 1``)
+    segment's mini-triangle wall (``duration >= max_cal - seg_last + 1``)
     widened by a calendar-diagonal bridge to the next segment's
-    first-cohort midpoint dev. The bridge closes the factor gaps at the
-    segment boundaries so a continuous factor run covers every dev and
+    first-cohort midpoint duration. The bridge closes the factor gaps at the
+    segment boundaries so a continuous factor run covers every duration and
     every cohort projects to full development.
 
     - ``"segment_borrowed"`` (default): masks each segment's raw wall plus a
-      one-dev seam overlap (no full bridge) and keeps ``segment_id``, so the
+      one-duration seam overlap (no full bridge) and keeps ``segment_id``, so the
       fit dispatcher routes to per-segment estimation + donor borrow over the
       band.
 
@@ -2625,7 +2625,7 @@ def _apply_regime_filter(
       triangle directly.
 
     - ``"segment_bridged_borrowed"``: keeps ``segment_id`` so the fit
-      dispatcher routes to per-segment estimation with a late-dev borrow,
+      dispatcher routes to per-segment estimation with a late-duration borrow,
       operating on this full-range masked triangle (it does not split
       into per-segment mini-triangles). Premium-side fits without a
       borrow path likewise receive the masked triangle carrying

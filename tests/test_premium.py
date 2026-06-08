@@ -1,7 +1,7 @@
 """Tests for the Premium projection dispatcher.
 
 Premium had no dedicated suite even though it is a core dispatcher: it
-projects cumulative premium across the cohort x dev grid and feeds the
+projects cumulative premium across the cohort x duration grid and feeds the
 denominator of every loss-ratio fit. These tests pin its headline
 contract -- the point projection is identical under both variance
 recursions, only the standard errors differ.
@@ -21,7 +21,7 @@ def _sur_triangle() -> lr.Triangle:
 
 
 _PREMIUM_COLUMNS = {
-    "cohort", "dev", "premium_obs", "premium_proj", "incr_premium_proj",
+    "cohort", "duration", "premium_obs", "premium_proj", "incr_premium_proj",
     "premium_proc_se", "premium_param_se", "premium_total_se",
     "premium_proc_cv", "premium_param_cv", "premium_total_cv",
     "premium_ci_lo", "premium_ci_hi",
@@ -42,8 +42,8 @@ def test_premium_ed_cl_point_estimate_identical():
     both methods -- only the variance recursion differs -- so premium_proj
     must be identical between ed and cl."""
     tri = _sur_triangle()
-    ed = lr.Premium(method="ed").fit(tri).to_polars().sort(["cohort", "dev"])
-    cl = lr.Premium(method="cl").fit(tri).to_polars().sort(["cohort", "dev"])
+    ed = lr.Premium(method="ed").fit(tri).to_polars().sort(["cohort", "duration"])
+    cl = lr.Premium(method="cl").fit(tri).to_polars().sort(["cohort", "duration"])
     e = ed["premium_proj"].to_numpy()
     c = cl["premium_proj"].to_numpy()
     finite = ~np.isnan(e) & ~np.isnan(c)
@@ -55,8 +55,8 @@ def test_premium_ed_cl_variance_differs():
     """The ed (additive) and cl (multiplicative f^2-compounding) recursions
     give different standard errors on the identical point projection."""
     tri = _sur_triangle()
-    ed = lr.Premium(method="ed").fit(tri).to_polars().sort(["cohort", "dev"])
-    cl = lr.Premium(method="cl").fit(tri).to_polars().sort(["cohort", "dev"])
+    ed = lr.Premium(method="ed").fit(tri).to_polars().sort(["cohort", "duration"])
+    cl = lr.Premium(method="cl").fit(tri).to_polars().sort(["cohort", "duration"])
     e = ed["premium_total_se"].fill_null(0.0).to_numpy()
     c = cl["premium_total_se"].fill_null(0.0).to_numpy()
     assert not np.allclose(e, c)

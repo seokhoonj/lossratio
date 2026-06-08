@@ -47,7 +47,7 @@ def _sur_triangle() -> lr.Triangle:
 def _toy_triangle_input() -> pl.DataFrame:
     """A 5x5 toy triangle for hand-verified ED checks.
 
-    Resulting (cohort, dev) cumulative loss:
+    Resulting (cohort, duration) cumulative loss:
         2024-01: 100, 200, 320, 420, 500
         2024-02: 150, 280, 440, 570
         2024-03: 120, 250, 380
@@ -55,7 +55,7 @@ def _toy_triangle_input() -> pl.DataFrame:
         2024-05: 200
 
     Risk premium incr_premium is constant 100 per cell, so cumulative
-    premium is 100, 200, 300, ... per cohort regardless of dev attained.
+    premium is 100, 200, 300, ... per cohort regardless of duration attained.
     """
     return pl.DataFrame(
         {
@@ -123,7 +123,7 @@ def test_analytical_default_equivalent() -> None:
 
 def test_output_shape() -> None:
     fit = lr.ExposureDriven().fit(lr.Triangle(_toy_triangle_input()))
-    assert fit.n_rows == 25  # 5 cohorts x 5 devs
+    assert fit.n_rows == 25  # 5 cohorts x 5 durations
 
 
 def test_repr() -> None:
@@ -153,17 +153,17 @@ def test_projection_observed_cells_unchanged() -> None:
 
 
 def test_projection_uses_additive_rule() -> None:
-    """Cohort 2024-05 has only dev 1 observed (loss = 200, premium = 100).
+    """Cohort 2024-05 has only duration 1 observed (loss = 200, premium = 100).
 
         loss_proj[1, 2] = loss[1, 1] + g_1 * premium_proj[1, 1]
                           = 200 + 1.375 * 100
                           = 337.5
 
-    The intensity g_1 = 1.375 comes from the dev 1 -> 2 link pooling the
+    The intensity g_1 = 1.375 comes from the duration 1 -> 2 link pooling the
     four cohorts 2024-01..04 (sum Δloss 550 / sum premium 400).
     """
     fit = lr.ExposureDriven().fit(lr.Triangle(_toy_triangle_input()))
-    df = fit.to_polars().sort(["cohort", "dev"])
+    df = fit.to_polars().sort(["cohort", "duration"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
     loss_proj = cohort_5["loss_proj"].to_list()
     assert loss_proj[0] == 200.0
@@ -204,7 +204,7 @@ def test_se_proj_positive_for_projected_cells() -> None:
 
 def test_se_grows_with_distance_from_observed() -> None:
     fit = lr.ExposureDriven().fit(lr.Triangle(_toy_triangle_input()))
-    df = fit.to_polars().sort(["cohort", "dev"])
+    df = fit.to_polars().sort(["cohort", "duration"])
     cohort_5 = df.filter(pl.col("cohort") == _date("2024-05-01"))
     se = cohort_5["loss_total_se"].to_list()
     se_proj_only = [v for v in se if v is not None]
@@ -261,9 +261,9 @@ def test_groups_fitted_independently() -> None:
     )
     fit = lr.ExposureDriven().fit(lr.Triangle(df_grouped, groups="coverage"))
     out = fit.to_polars()
-    cols = ["cohort", "dev", "loss_proj", "premium_proj"]
-    a = out.filter(pl.col("coverage") == "A").sort(["cohort", "dev"]).select(cols)
-    b = out.filter(pl.col("coverage") == "B").sort(["cohort", "dev"]).select(cols)
+    cols = ["cohort", "duration", "loss_proj", "premium_proj"]
+    a = out.filter(pl.col("coverage") == "A").sort(["cohort", "duration"]).select(cols)
+    b = out.filter(pl.col("coverage") == "B").sort(["cohort", "duration"]).select(cols)
     assert_frame_equal(a, b)
 
 

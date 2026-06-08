@@ -235,13 +235,13 @@ def _compute_tail_factor_one(
     if f_finite.size < 3 or np.any(f_finite <= 0):
         return _TailResult(1.0, cfg.family, None, 0, False, False, "insufficient_factors")
     # Index the ORIGINAL f_sel so an interior NaN link keeps every later
-    # dev at its true 1-indexed position -- compacting f_sel first would
+    # duration at its true 1-indexed position -- compacting f_sel first would
     # shift the decay fit. Mirrors the g-path in compute_tail_increment.
     pos = np.flatnonzero(finite & (f_sel > 1.0))
     if pos.size < 2:
         return _TailResult(1.0, cfg.family, None, 0, False, False, "no_decaying_excess")
 
-    idx = (pos + 1).astype(float)  # 1-indexed dev positions in the original array
+    idx = (pos + 1).astype(float)  # 1-indexed duration positions in the original array
     excess = f_sel[pos] - 1.0      # > 0 on the f > 1 subset
 
     a, b, rstd = _fit_decay(excess, idx, cfg.family)
@@ -417,7 +417,7 @@ def apply_tail_to_long_df(
     groups: str | list[str] | None,
     role: str = "loss",
 ) -> pl.DataFrame:
-    """Append ``_tail``-suffixed companion columns to the last-dev row
+    """Append ``_tail``-suffixed companion columns to the last-duration row
     of each cohort.
 
     The non-tail columns are left untouched; users read ``<role>_tail``
@@ -437,11 +437,11 @@ def apply_tail_to_long_df(
     total_se = f"{role}_total_se"
 
     keys = [*normalize_groups(groups), "cohort"]
-    # Identify the last-dev row per cohort: rank by `dev` descending and pick rank==1.
+    # Identify the last-duration row per cohort: rank by `duration` descending and pick rank==1.
     last_marker = long_df.with_columns(
-        pl.col("dev").rank(method="dense", descending=True).over(keys).alias("_dev_rank")
+        pl.col("duration").rank(method="dense", descending=True).over(keys).alias("_duration_rank")
     )
-    is_last = pl.col("_dev_rank") == 1
+    is_last = pl.col("_duration_rank") == 1
 
     # Some columns may be absent in worker-level fits (no SE^2 cache);
     # fall back to deriving from the SE columns.
@@ -505,7 +505,7 @@ def apply_tail_to_long_df(
         .alias(f"{role}_total_cv_tail"),
     )
 
-    return out.drop("_dev_rank")
+    return out.drop("_duration_rank")
 
 
 def apply_ed_tail_to_long_df(
@@ -514,7 +514,7 @@ def apply_ed_tail_to_long_df(
     groups: str | list[str] | None,
     role: str = "loss",
 ) -> pl.DataFrame:
-    """Additive ED tail companion columns on the last-dev row of each cohort.
+    """Additive ED tail companion columns on the last-duration row of each cohort.
 
     ``<role>_tail = <role>_proj + premium_proj * Sum_g`` -- the premium is
     held at its last projected value (the matured exposure). The tail-row
@@ -536,11 +536,11 @@ def apply_ed_tail_to_long_df(
 
     keys = [*normalize_groups(groups), "cohort"]
     marked = long_df.with_columns(
-        pl.col("dev").rank(method="dense", descending=True).over(keys).alias("_dev_rank")
+        pl.col("duration").rank(method="dense", descending=True).over(keys).alias("_duration_rank")
     )
-    is_last = pl.col("_dev_rank") == 1
+    is_last = pl.col("_duration_rank") == 1
 
-    # loss_tail = loss_proj + premium_proj * Sum_g on the last-dev row.
+    # loss_tail = loss_proj + premium_proj * Sum_g on the last-duration row.
     out = marked.with_columns(
         pl.when(is_last)
         .then(pl.col(proj_col) + pl.col("premium_proj") * increment_sum)
@@ -578,7 +578,7 @@ def apply_ed_tail_to_long_df(
         pl.when(valid_tail).then(pl.col(f"{role}_total_se_tail") / pl.col(tail_col).abs()).otherwise(None).alias(f"{role}_total_cv_tail"),
     )
 
-    return out.drop("_dev_rank")
+    return out.drop("_duration_rank")
 
 
 def _fmt_group(g: Any) -> str | None:

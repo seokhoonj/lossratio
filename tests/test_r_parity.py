@@ -72,11 +72,11 @@ def _compare_numeric(py_df: pl.DataFrame, r_df: pl.DataFrame, cols: list[str]) -
 
 
 def test_triangle_build_matches_r():
-    r = _load("triangle_sur").sort(["cohort", "dev"])
+    r = _load("triangle_sur").sort(["cohort", "duration"])
     py = (
         lr.Triangle(_exp_sur(), groups="coverage")
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     # Numeric columns: the headline triplet plus the 7 new numeric
     # parity columns (n_cohorts, margin pair, share quartet). Proves
@@ -107,23 +107,23 @@ def test_triangle_build_matches_r():
 
 
 def test_ratio_ed_full_matches_r():
-    r = _load("ratio_ed_full").sort(["cohort", "dev"])
+    r = _load("ratio_ed_full").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.Ratio(method="ed").fit(tri)
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
 
 
 def test_ratio_cl_full_matches_r():
-    r = _load("ratio_cl_full").sort(["cohort", "dev"])
+    r = _load("ratio_cl_full").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.Ratio(method="cl").fit(tri)
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     _compare_numeric(py, r, cols=["loss_proj", "premium_proj", "ratio_proj"])
 
@@ -134,12 +134,12 @@ def test_ratio_cl_full_matches_r():
 
 
 def test_cl_full_matches_r():
-    r = _load("cl_full").sort(["cohort", "dev"])
+    r = _load("cl_full").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.ChainLadder().fit(tri)
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     _compare_numeric(py, r, cols=["loss_proj"])
 
@@ -152,12 +152,12 @@ def test_cl_mack_se_matches_r():
     ``fit_cl()$full``. The additive recursion form (Mack 1993) gives
     finite per-cell values on projected cells and 0 on observed cells.
     """
-    r = _load("cl_mack_full").sort(["cohort", "dev"])
+    r = _load("cl_mack_full").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.ChainLadder().fit(tri)
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     # NOTE: role-based LossFit drops the per-component CV columns
     # (`loss_proc_cv` / `loss_param_cv`); only `loss_total_cv` survives.
@@ -224,12 +224,12 @@ def test_cl_recent_matches_r():
     The recent-diagonal wedge is a deterministic filter, so the
     projected losses must match R to floating-point precision.
     """
-    r = _load("cl_recent12_full").sort(["cohort", "dev"])
+    r = _load("cl_recent12_full").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.ChainLadder(recent=12).fit(tri)
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     _compare_recent(py, r, cols=["loss_proj"])
 
@@ -237,12 +237,12 @@ def test_cl_recent_matches_r():
 def test_ed_recent_matches_r():
     """ED(recent=12).fit(...) loss_proj / premium_proj vs R
     fit_ed(recent=12)$full — deterministic, floating-point parity."""
-    r = _load("ed_recent12_full").sort(["cohort", "dev"])
+    r = _load("ed_recent12_full").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     py = (
         lr.ExposureDriven(recent=12).fit(tri)
         .to_polars()
-        .sort(["cohort", "dev"])
+        .sort(["cohort", "duration"])
     )
     cols = ["loss_proj"]
     if "premium_proj" in r.columns:
@@ -253,7 +253,7 @@ def test_ed_recent_matches_r():
 def test_cl_recent_factors_match_r():
     """recent=12 per-link ATA factors vs R cl_recent12_selected.csv.
 
-    Keys on the link's source dev (Python `dev` == R `ata_from`). The
+    Keys on the link's source duration (Python `duration` == R `ata_from`). The
     R `selected` fixture carries `f`, `f_sel`, `sigma2`, `n_cohorts`;
     Python applies no separate selection on top of the volume-weighted
     `f`, so `f` == R's `f_sel`.
@@ -266,14 +266,14 @@ def test_cl_recent_factors_match_r():
     """
     r = _load("cl_recent12_selected").sort(["ata_from"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = tri.link().ata(recent=12).df.sort(["dev"])
+    py = tri.link().ata(recent=12).df.sort(["duration"])
 
     assert py.height == r.height, (
         f"link count mismatch: py={py.height} r={r.height}"
     )
-    # Python `dev` aligns with R `ata_from` after both are sorted.
-    assert py["dev"].to_list() == r["ata_from"].to_list(), (
-        "link source-dev keys differ from R fixture"
+    # Python `duration` aligns with R `ata_from` after both are sorted.
+    assert py["duration"].to_list() == r["ata_from"].to_list(), (
+        "link source-duration keys differ from R fixture"
     )
     # Every early link caps at exactly 12; the wedge runs out only at
     # the triangle tip. Python and R must agree link-for-link.
@@ -300,12 +300,12 @@ def test_ata_factors_match_r():
     """Per-link ATA factor diagnostic (f, sigma2, cv, rse, n_cohorts).
 
     R fixture is keyed by (ata_from, ata_to, ata_link); Python uses
-    `dev` which equals R's `ata_from` (link source dev). Numeric
+    `duration` which equals R's `ata_from` (link source duration). Numeric
     columns must agree exactly on the overlapping link set.
     """
     r = _load("ata_selected").sort(["ata_from"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = tri.link().ata().df.sort(["dev"])
+    py = tri.link().ata().df.sort(["duration"])
 
     assert py.height == r.height, (
         f"ATA link count mismatch: py={py.height} r={r.height}"
@@ -317,7 +317,7 @@ def test_intensity_factors_match_r():
     """Per-link ED intensity diagnostic (g, g_se, sigma2, n_cohorts)."""
     r = _load("intensity_selected").sort(["ata_from"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
-    py = tri.link().intensity().df.sort(["dev"])
+    py = tri.link().intensity().df.sort(["duration"])
 
     assert py.height == r.height, (
         f"intensity link count mismatch: py={py.height} r={r.height}"
@@ -362,17 +362,17 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
     default, and "sa"); the Python `Backtest` uses the matching
     `Ratio` method. Both languages emit `actual`, `expected`, `aeg`,
     `ae_err` plus their `incr_*` siblings. The intersect-on-(cohort,
-    dev) guards against drift.
+    duration) guards against drift.
     """
-    r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "dev"])
+    r = _load(f"backtest_ratio_{method}_ae_err").sort(["cohort", "duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
         estimator=lr.Ratio(method=method),
         holdout=6, target="ratio",
     ).fit(tri)
-    py_aligned = bt.ae_err.sort(["cohort", "dev"])
+    py_aligned = bt.ae_err.sort(["cohort", "duration"])
 
-    keys = ["cohort", "dev"]
+    keys = ["cohort", "duration"]
     py_common = py_aligned.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_common = r.join(py_aligned.select(keys), on=keys, how="inner").sort(keys)
 
@@ -387,20 +387,20 @@ def test_backtest_ratio_ae_err_matches_r(method: str):
 
 @pytest.mark.parametrize("method", ["ed"])
 def test_backtest_col_summary_matches_r(method: str):
-    """col_summary aggregates by dev, per loss method.
+    """col_summary aggregates by duration, per loss method.
 
     Both the cumulative (`ae_err_*`) and incremental (`incr_ae_err_*`)
     statistic blocks must match R's `.backtest_aggregate()` output.
     """
-    r = _load(f"backtest_ratio_{method}_col_summary").sort(["dev"])
+    r = _load(f"backtest_ratio_{method}_col_summary").sort(["duration"])
     tri = lr.Triangle(_exp_sur(), groups="coverage")
     bt = lr.Backtest(
         estimator=lr.Ratio(method=method),
         holdout=6, target="ratio",
     ).fit(tri)
-    py = bt.col_summary.sort(["dev"])
+    py = bt.col_summary.sort(["duration"])
 
-    keys = ["dev"]
+    keys = ["duration"]
     py_common = py.join(r.select(keys), on=keys, how="inner").sort(keys)
     r_common = r.join(py.select(keys), on=keys, how="inner").sort(keys)
 

@@ -9,7 +9,7 @@ import lossratio as lr
 
 
 def _toy_input() -> pl.DataFrame:
-    """5-cohort, 5-dev experience data."""
+    """5-cohort, 5-duration experience data."""
     return pl.DataFrame(
         {
             "cy_m": [
@@ -79,22 +79,22 @@ def test_ata_repr_grouped():
 
 def test_ata_df_columns_no_group():
     ata = _tri().link().ata()
-    assert set(ata.df.columns) >= {"dev", "f", "sigma2", "cv", "rse", "n_cohorts"}
+    assert set(ata.df.columns) >= {"duration", "f", "sigma2", "cv", "rse", "n_cohorts"}
 
 
 def test_ata_df_columns_with_group():
     ata = _tri_grouped().link().ata()
     assert set(ata.df.columns) >= {
-        "coverage", "dev", "f", "sigma2", "cv", "rse", "n_cohorts",
+        "coverage", "duration", "f", "sigma2", "cv", "rse", "n_cohorts",
     }
 
 
-def test_ata_df_n_links_equals_n_devs_minus_one():
+def test_ata_df_n_links_equals_n_durations_minus_one():
     ata = _tri().link().ata()
     df = ata.df
-    # toy input has 5 dev periods → 4 links
+    # toy input has 5 duration periods → 4 links
     assert df.shape[0] == 4
-    assert sorted(df["dev"].to_list()) == [1, 2, 3, 4]
+    assert sorted(df["duration"].to_list()) == [1, 2, 3, 4]
 
 
 # ---------------------------------------------------------------------------
@@ -106,17 +106,17 @@ def test_ata_f_is_finite_for_nontrivial_links():
     ata = _tri().link().ata()
     df = ata.df
     # links 1..3 have at least 2 cohorts contributing → f should be finite
-    for k, f in zip(df["dev"].to_list(), df["f"].to_list()):
+    for k, f in zip(df["duration"].to_list(), df["f"].to_list()):
         if k <= 3:
             assert f is not None
 
 
-def test_ata_n_obs_decreasing_with_dev():
-    """As dev grows, fewer cohorts contribute (triangular structure)."""
+def test_ata_n_obs_decreasing_with_duration():
+    """As duration grows, fewer cohorts contribute (triangular structure)."""
     ata = _tri().link().ata()
-    df = ata.df.sort("dev")
+    df = ata.df.sort("duration")
     counts = df["n_cohorts"].to_list()
-    # toy: dev=1 has 4 links, dev=2 has 3, dev=3 has 2, dev=4 has 1
+    # toy: duration=1 has 4 links, duration=2 has 3, duration=3 has 2, duration=4 has 1
     assert counts == [4, 3, 2, 1]
 
 
@@ -161,6 +161,6 @@ def test_ata_per_group_independent():
     tri = lr.Triangle(df_grouped, groups="coverage")
     ata = tri.link().ata()
     df = ata.df
-    a_f = df.filter(pl.col("coverage") == "A").sort("dev")["f"].to_list()
-    b_f = df.filter(pl.col("coverage") == "B").sort("dev")["f"].to_list()
+    a_f = df.filter(pl.col("coverage") == "A").sort("duration")["f"].to_list()
+    b_f = df.filter(pl.col("coverage") == "B").sort("duration")["f"].to_list()
     assert a_f == b_f

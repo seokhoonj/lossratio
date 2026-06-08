@@ -191,12 +191,12 @@ CASE_NAMES = [
 # normalized via fill_null(0.0) on both sides before the compare.
 _REDESIGNED_SHARED_COLS: dict[str, list[str]] = {
     "cl": [
-        "coverage", "cohort", "dev",
+        "coverage", "cohort", "duration",
         "loss_obs", "loss_proj", "incr_loss_proj",
         "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     ],
     "ed": [
-        "coverage", "cohort", "dev",
+        "coverage", "cohort", "duration",
         "loss_obs", "loss_proj", "incr_loss_proj",
         "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     ],

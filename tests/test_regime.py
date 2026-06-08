@@ -87,14 +87,14 @@ def test_edivisive_seed_reproducible():
 def _toy_triangle(n_cohorts: int = 30, window: int = 12, shift_at: int = 15):
     """Build a Triangle with a synthetic regime shift.
 
-    Each cohort has the full window dev periods. The lr trajectory shape is
+    Each cohort has the full window duration periods. The lr trajectory shape is
     a piecewise-constant random vector around two distinct means.
     """
     rng = np.random.default_rng(20260509)
     rows = []
     for c_idx in range(n_cohorts):
         cohort_date = f"2024-{(c_idx % 12) + 1:02d}-01"
-        # Use yearly shifting cohort by month index — but keep window dev rows each
+        # Use yearly shifting cohort by month index — but keep window duration rows each
         for k in range(1, window + 1):
             # Underlying signal: pre-shift Ratio ~ 0.5; post-shift Ratio ~ 1.0
             base = 0.5 if c_idx < shift_at else 1.0
@@ -160,7 +160,7 @@ def _toy_input(n_cohorts: int = 30, window: int = 12, shift_at: int = 15) -> pl.
                 {
                     "cy_m": u,
                     "uy_m": u,
-                    "_dev_target": k,
+                    "_duration_target": k,
                     "incr_loss": ratio_val * 100.0,
                     "incr_premium": 100.0,
                 }
@@ -170,19 +170,19 @@ def _toy_input(n_cohorts: int = 30, window: int = 12, shift_at: int = 15) -> pl.
 
 def test_detect_regime_e_divisive_finds_shift():
     df = _toy_input(n_cohorts=30, window=12, shift_at=15)
-    # Triangle constructor builds dev from cym/uym — but our toy input
-    # sets cym = uym, so dev = 1 only. We need cym to advance. Build
+    # Triangle constructor builds duration from cym/uym — but our toy input
+    # sets cym = uym, so duration = 1 only. We need cym to advance. Build
     # cym by adding (k-1) months to uym.
     df = df.with_columns(
         pl.col("uy_m").cast(pl.Date),
         pl.col("cy_m").cast(pl.Date),
     )
     df = df.with_columns(
-        # cym = uym + (_dev_target - 1) months — emulate dev periods
+        # cym = uym + (_duration_target - 1) months — emulate duration periods
         pl.col("uy_m").dt.offset_by(
-            pl.format("{}mo", pl.col("_dev_target") - 1)
+            pl.format("{}mo", pl.col("_duration_target") - 1)
         ).alias("cy_m")
-    ).drop("_dev_target")
+    ).drop("_duration_target")
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
@@ -204,9 +204,9 @@ def test_detect_regime_hclust():
     )
     df = df.with_columns(
         pl.col("uy_m").dt.offset_by(
-            pl.format("{}mo", pl.col("_dev_target") - 1)
+            pl.format("{}mo", pl.col("_duration_target") - 1)
         ).alias("cy_m")
-    ).drop("_dev_target")
+    ).drop("_duration_target")
 
     tri = lr.Triangle(df)
     reg = tri.detect_regime(
@@ -224,9 +224,9 @@ def test_detect_regime_invalid_method_raises():
     )
     df = df.with_columns(
         pl.col("uy_m").dt.offset_by(
-            pl.format("{}mo", pl.col("_dev_target") - 1)
+            pl.format("{}mo", pl.col("_duration_target") - 1)
         ).alias("cy_m")
-    ).drop("_dev_target")
+    ).drop("_duration_target")
 
     tri = lr.Triangle(df)
     with pytest.raises(ValueError, match="method must be one of"):
@@ -241,9 +241,9 @@ def test_detect_regime_low_K_raises():
     )
     df = df.with_columns(
         pl.col("uy_m").dt.offset_by(
-            pl.format("{}mo", pl.col("_dev_target") - 1)
+            pl.format("{}mo", pl.col("_duration_target") - 1)
         ).alias("cy_m")
-    ).drop("_dev_target")
+    ).drop("_duration_target")
 
     tri = lr.Triangle(df)
     with pytest.raises(ValueError, match="window must be"):
@@ -422,8 +422,8 @@ def test_coarsen_triangle_matches_direct_build():
     exp = lr.load_experience()
     tri_m = lr.Triangle(exp, groups="coverage", grain="M")
     key = lambda t: t._df.select(
-        "coverage", "cohort", "dev", "loss", "premium", "ratio"
-    ).sort("coverage", "cohort", "dev")
+        "coverage", "cohort", "duration", "loss", "premium", "ratio"
+    ).sort("coverage", "cohort", "duration")
     for g in ("Q", "H"):
         coarse = _coarsen_triangle(tri_m, g)
         direct = lr.Triangle(exp, groups="coverage", grain=g)

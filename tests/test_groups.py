@@ -110,21 +110,21 @@ def test_iter_group_frames_multi_col_yields_tuple():
 
 def test_arrays_to_long_df_single_col():
     out = _arrays_to_long_df(
-        {"dev": np.array([1, 2]), "v": np.array([1.0, 2.0])},
+        {"duration": np.array([1, 2]), "v": np.array([1.0, 2.0])},
         groups="coverage",
         group_value="SUR",
     )
-    assert out.columns == ["coverage", "dev", "v"]
+    assert out.columns == ["coverage", "duration", "v"]
     assert out["coverage"].to_list() == ["SUR", "SUR"]
 
 
 def test_arrays_to_long_df_multi_col():
     out = _arrays_to_long_df(
-        {"dev": np.array([1, 2]), "v": np.array([1.0, 2.0])},
+        {"duration": np.array([1, 2]), "v": np.array([1.0, 2.0])},
         groups=["coverage", "channel"],
         group_value=("SUR", "TM"),
     )
-    assert out.columns == ["coverage", "channel", "dev", "v"]
+    assert out.columns == ["coverage", "channel", "duration", "v"]
     assert out["coverage"].to_list() == ["SUR", "SUR"]
     assert out["channel"].to_list() == ["TM", "TM"]
 

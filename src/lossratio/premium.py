@@ -1,7 +1,7 @@
 """Premium (exposure) projection dispatcher.
 
 ``Premium`` is the role-specific dispatcher that projects cumulative
-premium across the cohort x dev grid. The point estimate is identical
+premium across the cohort x duration grid. The point estimate is identical
 under both ``"cl"`` (Mack multiplicative) and ``"ed"`` (additive)
 recursions — the two methods differ only in how the variance
 accumulates forward.
@@ -50,7 +50,7 @@ _VALID_METHODS = ("ed", "cl")
 class _PremiumResult:
     """Single-group premium fit result."""
 
-    n_devs: int
+    n_durations: int
     premium_obs: np.ndarray
     premium_proj: np.ndarray
     proc_se: np.ndarray
@@ -75,22 +75,22 @@ def _project_premium(
     not). Used by the ``segment_bridged_borrowed`` premium path to
     re-project each segment with donor-augmented factor arrays.
     """
-    n_cohorts, n_devs = premium_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = premium_obs.shape
+    n_links = n_durations - 1
 
     premium_proj = premium_obs.copy()
     obs_mask = ~np.isnan(premium_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
-        has_obs, n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
     )
-    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
 
     proc_var = np.zeros(n_cohorts, dtype=np.float64)
     param_var = np.zeros(n_cohorts, dtype=np.float64)
-    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
 
     for k in range(n_links):
         active = eligible & (last_obs <= k)
@@ -136,7 +136,7 @@ def _borrowed_premium_group(
 
     Mirrors the loss-side borrow: ``premium_obs`` is the group's
     full-range matrix; estimate factors per segment on its row subset,
-    donor-augment the late-dev factors (via the shared
+    donor-augment the late-duration factors (via the shared
     :func:`lossratio._segment._augment_segment_factors`), then re-project
     each segment with the augmented factors so every cohort's premium
     reaches full development. Returns ``({segment_id: _PremiumResult},
@@ -144,7 +144,7 @@ def _borrowed_premium_group(
     """
     from ._segment import _augment_segment_factors
 
-    n_cohorts, n_devs = premium_obs.shape
+    n_cohorts, n_durations = premium_obs.shape
     segs = sorted({int(s) for s in seg_of_cohort})
 
     seg_arrays: dict[int, dict[str, np.ndarray]] = {}
@@ -173,7 +173,7 @@ def _borrowed_premium_group(
             po, a["f_k"], a["sigma2_k"], a["f_var"], method
         )
         results[s] = _PremiumResult(
-            n_devs=n_devs,
+            n_durations=n_durations,
             premium_obs=po,
             premium_proj=pp,
             proc_se=proc_se,
@@ -206,24 +206,24 @@ def _fit_premium_single(
     f_k = mack.f_k
     sigma2_k = mack.sigma2_k
     f_var = _mack_f_var(mack)
-    n_cohorts, n_devs = premium_obs.shape
-    n_links = n_devs - 1
+    n_cohorts, n_durations = premium_obs.shape
+    n_links = n_durations - 1
 
     obs_mask = ~np.isnan(premium_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs,
-        n_devs - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
         -1,
     )
-    eligible = (last_obs >= 0) & (last_obs < n_devs - 1)
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
 
     proc_var = np.zeros(n_cohorts, dtype=np.float64)
     param_var = np.zeros(n_cohorts, dtype=np.float64)
 
-    proc_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    param_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
-    total_se = np.full((n_cohorts, n_devs), np.nan, dtype=np.float64)
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
 
     for k in range(n_links):
         active = eligible & (last_obs <= k)
@@ -257,7 +257,7 @@ def _fit_premium_single(
     total_se[obs] = np.nan
 
     return _PremiumResult(
-        n_devs=n_devs,
+        n_durations=n_durations,
         premium_obs=premium_obs,
         premium_proj=premium_proj,
         proc_se=proc_se,
@@ -278,7 +278,7 @@ def _premium_long_df(
     """Convert a Premium result into a long-format polars DataFrame."""
     z_alpha = float(norm.ppf((1 + conf_level) / 2))
     n_cohorts = len(cohorts)
-    n_devs = result.n_devs
+    n_durations = result.n_durations
 
     premium_obs = result.premium_obs
     premium_proj = result.premium_proj
@@ -302,14 +302,14 @@ def _premium_long_df(
     ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
     ci_hi = np.where(both_finite, premium_proj + z_alpha * total_se, np.nan)
 
-    cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_devs).tolist()
-    dev_flat = np.tile(np.arange(1, n_devs + 1, dtype=np.int64), n_cohorts)
-    total = n_cohorts * n_devs
+    cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_durations).tolist()
+    duration_flat = np.tile(np.arange(1, n_durations + 1, dtype=np.int64), n_cohorts)
+    total = n_cohorts * n_durations
 
     df_data: dict[str, Any] = {}
     fill_group_columns(df_data, groups, group_value, total)
     df_data["cohort"] = cohort_flat
-    df_data["dev"] = dev_flat
+    df_data["duration"] = duration_flat
     df_data["premium_obs"] = premium_obs.flatten()
     df_data["premium_proj"] = premium_proj.flatten()
     df_data["incr_premium_proj"] = incr_proj.flatten()
@@ -334,7 +334,7 @@ def _premium_long_df(
 class Premium:
     """Premium (exposure) projection dispatcher.
 
-    Projects cumulative premium across the cohort x dev grid via chain
+    Projects cumulative premium across the cohort x duration grid via chain
     ladder. Two SE recursions are supported:
 
     * ``"ed"`` (default): additive variance — ``proc_{k+1} = proc_k +
@@ -425,7 +425,7 @@ class PremiumFit:
     Properties
     ----------
     df : DataFrame
-        Long-format triangle with columns ``[groups?, cohort, dev,
+        Long-format triangle with columns ``[groups?, cohort, duration,
         premium_obs, premium_proj, incr_premium_proj, premium_proc_se,
         premium_param_se, premium_total_se, premium_proc_cv,
         premium_param_cv, premium_total_cv, premium_ci_lo,
@@ -466,7 +466,7 @@ class PremiumFit:
         self._output_type = triangle._output_type
         self._groups = triangle._groups
         self._cohort = triangle._cohort
-        self._dev = triangle._dev
+        self._duration = triangle._duration
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
@@ -559,8 +559,8 @@ class PremiumFit:
 
         Mirrors the loss-side borrow: mask ONE full-range triangle with
         ``segment_id``, build the full-range matrices per group, subset
-        rows per segment (factors absolute-dev-aligned), estimate
-        per-segment factors, donor-borrow the late-dev factors, and
+        rows per segment (factors absolute-duration-aligned), estimate
+        per-segment factors, donor-borrow the late-duration factors, and
         re-project each segment to full development.
         """
         from ._segment import _expand_to_full_grid
@@ -577,7 +577,7 @@ class PremiumFit:
         self._output_type = masked._output_type
         self._groups = masked._groups
         self._cohort = masked._cohort
-        self._dev = masked._dev
+        self._duration = masked._duration
         self.method = estimator.method
         self.alpha = estimator.alpha
         self.sigma_method = estimator.sigma_method
@@ -594,7 +594,7 @@ class PremiumFit:
         self.tail = tail
         # The premium tail extrapolates the DONOR-augmented multiplicative
         # factors `f_k` (the same arrays that drove the recent segment's
-        # late-dev / borrowed region) beyond the parent dev axis. Donor
+        # late-duration / borrowed region) beyond the parent duration axis. Donor
         # selection keys off the most-recent segment per group (largest id),
         # whose augmented `f_k` is what projects that group's tail-most cohorts.
         factor_map: dict[Any, float] = {}
@@ -630,9 +630,9 @@ class PremiumFit:
                 if tail is not False:
                     # Each segment extrapolates its OWN augmented factors --
                     # the donor borrow already aligns every segment to the
-                    # shared dev axis, so each carries the operative late-dev
+                    # shared duration axis, so each carries the operative late-duration
                     # shape for its cohorts. The companion `_tail` columns land
-                    # on the last-dev row of each cohort and survive the grid
+                    # on the last-duration row of each cohort and survive the grid
                     # expand below.
                     res = compute_tail_factor(results[s].f_k, tail, grain)
                     if not is_numeric:
@@ -649,7 +649,7 @@ class PremiumFit:
         self._premium_f_k = f_k_map
 
         combined = pl.concat(parts, how="diagonal_relaxed")
-        # Expand to the full cohort × dev grid for the `$full` shape.
+        # Expand to the full cohort × duration grid for the `$full` shape.
         self._df = _expand_to_full_grid(
             combined, triangle, self._groups, self._cohort
         )
@@ -694,7 +694,7 @@ class PremiumFit:
         """Per-cohort projected premium, SE, and CV.
 
         Columns are ``[groups?, cohort, premium_proj, premium_ultimate,
-        premium_total_se, premium_total_cv]`` -- the last projected-dev row
+        premium_total_se, premium_total_cv]`` -- the last projected-duration row
         per cohort. ``premium_proj`` is the within-triangle projection;
         ``premium_ultimate`` is the headline value that folds in an active
         tail (else equal to ``premium_proj``).
@@ -708,7 +708,7 @@ class PremiumFit:
         # built below -- not this aggregate.
         #
         # Tail cascade: an active tail leaves a scalar `premium_tail` on each
-        # cohort's last-dev row. `premium_proj` stays the within-triangle
+        # cohort's last-duration row. `premium_proj` stays the within-triangle
         # projection; the tail-inclusive headline goes in `premium_ultimate`
         # (= `premium_tail` where present, else `premium_proj`).
         has_tail = "premium_tail" in df.columns
@@ -718,7 +718,7 @@ class PremiumFit:
             else []
         )
         ultimate = (
-            df.sort(keys + ["dev"])
+            df.sort(keys + ["duration"])
             .group_by(keys)
             .agg(
                 pl.col("premium_proj").drop_nulls().last().alias("premium_proj"),

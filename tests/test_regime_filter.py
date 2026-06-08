@@ -85,7 +85,7 @@ def test_apply_regime_filter_no_change_points_passthrough():
 
 def test_apply_regime_filter_band_masks_cells_keeps_cohorts():
     """`segment_bridged` masks the triangle to the bridged development
-    band: it keeps *all* cohorts but drops pre-regime early-dev cells, so
+    band: it keeps *all* cohorts but drops pre-regime early-duration cells, so
     the result has fewer rows than the input and no ``segment_id`` column
     (the pooled band carries no per-segment tag)."""
     tri = _sur_triangle()
@@ -95,7 +95,7 @@ def test_apply_regime_filter_band_masks_cells_keeps_cohorts():
     filtered = _apply_regime_filter(tri, r).to_polars()
     # All cohorts preserved -- the band masks cells, not whole cohorts.
     assert filtered["cohort"].n_unique() == orig["cohort"].n_unique()
-    # But strictly fewer rows (pre-regime early-dev cells removed).
+    # But strictly fewer rows (pre-regime early-duration cells removed).
     assert filtered.height < orig.height
     # Pooled band drops the per-segment tag.
     assert "segment_id" not in filtered.columns
@@ -138,15 +138,15 @@ def test_ratio_loss_regime_changes_loss_fit():
     fit = lr.Ratio(method="sa", loss_regime=r).fit(tri)
     fit_no = lr.Ratio(method="sa").fit(tri)
 
-    df = fit.loss_fit.to_polars().sort(["cohort", "dev"])
-    df_no = fit_no.loss_fit.to_polars().sort(["cohort", "dev"])
+    df = fit.loss_fit.to_polars().sort(["cohort", "duration"])
+    df_no = fit_no.loss_fit.to_polars().sort(["cohort", "duration"])
 
     # Cohort set unchanged (no cohort drop under the band mask).
     assert df["cohort"].n_unique() == tri.to_polars()["cohort"].n_unique()
     assert fit.loss_fit.regime is r
 
     # The regime changes the loss projection vs. a no-regime fit.
-    joined = df.join(df_no, on=["cohort", "dev"], how="inner", suffix="_no")
+    joined = df.join(df_no, on=["cohort", "duration"], how="inner", suffix="_no")
     diff = (
         joined["loss_proj"].fill_null(0.0)
         - joined["loss_proj_no"].fill_null(0.0)
@@ -162,13 +162,13 @@ def test_ratio_premium_regime_changes_premium_fit():
     fit = lr.Ratio(method="sa", premium_regime=r).fit(tri)
     fit_no = lr.Ratio(method="sa").fit(tri)
 
-    df = fit.premium_fit.to_polars().sort(["cohort", "dev"])
-    df_no = fit_no.premium_fit.to_polars().sort(["cohort", "dev"])
+    df = fit.premium_fit.to_polars().sort(["cohort", "duration"])
+    df_no = fit_no.premium_fit.to_polars().sort(["cohort", "duration"])
 
     assert df["cohort"].n_unique() == tri.to_polars()["cohort"].n_unique()
     assert fit.premium_fit.regime is r
 
-    joined = df.join(df_no, on=["cohort", "dev"], how="inner", suffix="_no")
+    joined = df.join(df_no, on=["cohort", "duration"], how="inner", suffix="_no")
     diff = (
         joined["premium_proj"].fill_null(0.0)
         - joined["premium_proj_no"].fill_null(0.0)
@@ -216,20 +216,20 @@ def test_ratio_loss_and_premium_regime_independent():
     assert fit.loss_fit.regime is ratio_reg
     assert fit.premium_fit.regime is pr_reg
 
-    ldf = fit.loss_fit.to_polars().sort(["cohort", "dev"])
-    ldf_same = fit_same.loss_fit.to_polars().sort(["cohort", "dev"])
-    pdf = fit.premium_fit.to_polars().sort(["cohort", "dev"])
-    pdf_same = fit_same.premium_fit.to_polars().sort(["cohort", "dev"])
+    ldf = fit.loss_fit.to_polars().sort(["cohort", "duration"])
+    ldf_same = fit_same.loss_fit.to_polars().sort(["cohort", "duration"])
+    pdf = fit.premium_fit.to_polars().sort(["cohort", "duration"])
+    pdf_same = fit_same.premium_fit.to_polars().sort(["cohort", "duration"])
 
     # Loss side identical (same loss_regime both fits).
-    lj = ldf.join(ldf_same, on=["cohort", "dev"], how="inner", suffix="_s")
+    lj = ldf.join(ldf_same, on=["cohort", "duration"], how="inner", suffix="_s")
     l_diff = (
         lj["loss_proj"].fill_null(0.0) - lj["loss_proj_s"].fill_null(0.0)
     ).abs().sum()
     assert l_diff == 0.0
 
     # Premium side differs because premium_regime differs -> independence.
-    pj = pdf.join(pdf_same, on=["cohort", "dev"], how="inner", suffix="_s")
+    pj = pdf.join(pdf_same, on=["cohort", "duration"], how="inner", suffix="_s")
     p_diff = (
         pj["premium_proj"].fill_null(0.0) - pj["premium_proj_s"].fill_null(0.0)
     ).abs().sum()
@@ -309,25 +309,25 @@ def test_segment_bridged_pooled_fit_drops_segment_id():
 
 
 def test_segment_bridged_borrowed_reaches_full_development():
-    """The borrow fills each segment's late-dev factors from a donor
+    """The borrow fills each segment's late-duration factors from a donor
     segment, so even the newest segment's cohorts project to the full
     development length (loss side)."""
     tri = _sur_triangle()
-    max_dev = tri.to_polars()["dev"].max()
+    max_duration = tri.to_polars()["duration"].max()
     r = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
     fit = lr.ChainLadder(regime=r).fit(tri)
     df = fit.to_polars()
     assert "segment_id" in df.columns
     newest = df.filter(pl.col("cohort") == df["cohort"].max())
-    assert newest["dev"].max() == max_dev
+    assert newest["duration"].max() == max_duration
     assert newest["loss_proj"].null_count() == 0
 
     # Borrowed keeps per-segment early factors, so its projection differs
     # from the pooled segment_bridged fit.
     pooled = lr.ChainLadder(
         regime=lr.Regime.at(change="2024-07-01", treatment="segment_bridged"),
-    ).fit(tri).to_polars().sort(["cohort", "dev"])
-    bor = df.sort(["cohort", "dev"])
+    ).fit(tri).to_polars().sort(["cohort", "duration"])
+    bor = df.sort(["cohort", "duration"])
     assert (
         pooled["loss_proj"].fill_null(0.0).to_list()
         != bor["loss_proj"].fill_null(0.0).to_list()
@@ -336,12 +336,12 @@ def test_segment_bridged_borrowed_reaches_full_development():
 
 def test_segment_borrowed_is_the_default_per_segment_treatment():
     """`segment_borrowed` (the DEFAULT treatment) masks each segment's RAW
-    per-segment wall plus a one-dev seam overlap (no full bridge), keeps
-    segment_id for per-segment estimation, and borrows late-dev factors from
+    per-segment wall plus a one-duration seam overlap (no full bridge), keeps
+    segment_id for per-segment estimation, and borrows late-duration factors from
     a donor so even the newest segment projects to FULL development -- the
-    seam overlap closes the one-dev gap that would otherwise truncate it."""
+    seam overlap closes the one-duration gap that would otherwise truncate it."""
     tri = _sur_triangle()
-    max_dev = tri.to_polars()["dev"].max()
+    max_duration = tri.to_polars()["duration"].max()
     # No explicit treatment -> the default.
     r = lr.Regime.at(change="2024-07-01")
     assert r.treatment == "segment_borrowed"
@@ -350,21 +350,21 @@ def test_segment_borrowed_is_the_default_per_segment_treatment():
     df = fit.to_polars()
     assert "segment_id" in df.columns                       # per-segment, not pooled
     assert sorted(df["segment_id"].drop_nulls().unique().to_list()) == [1, 2]
-    # The one-dev seam overlap lets the newest segment reach full development
+    # The one-duration seam overlap lets the newest segment reach full development
     # (no seam-gap truncation).
     newest = df.filter(pl.col("cohort") == df["cohort"].max())
-    assert newest["dev"].max() == max_dev
+    assert newest["duration"].max() == max_duration
     assert newest["loss_proj"].null_count() == 0
 
     # The no-bridge band differs from the bridged-borrowed treatment (the
     # bridge widens the older segments' walls to a midpoint; segment_borrowed
-    # only overlaps by one dev at the seam).
+    # only overlaps by one duration at the seam).
     bridged = lr.Ratio(
         method="cl",
         loss_regime=lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed"),
         premium_regime=lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed"),
-    ).fit(tri).to_polars().sort(["cohort", "dev"])
-    bor = df.sort(["cohort", "dev"])
+    ).fit(tri).to_polars().sort(["cohort", "duration"])
+    bor = df.sort(["cohort", "duration"])
     assert (
         bridged["loss_proj"].fill_null(0.0).to_list()
         != bor["loss_proj"].fill_null(0.0).to_list()
@@ -426,7 +426,7 @@ def test_segment_bridged_borrowed_with_auto_detection():
 
 def test_compute_segment_mini_tri_bounds_natural_wall_default():
     """Default (bridge=False) returns the natural mini-triangle wall:
-    dev_min = max_cal - seg_last + 1 per segment."""
+    duration_min = max_cal - seg_last + 1 per segment."""
     import numpy as np
     from lossratio.regime import _compute_segment_mini_tri_bounds
 
@@ -435,7 +435,7 @@ def test_compute_segment_mini_tri_bounds_natural_wall_default():
         seg_ids=np.array([1, 1, 2, 2]),
         max_cal=4,
     )
-    # seg_last(1) = 2 -> dev_min 3; seg_last(2) = 4 -> dev_min 1.
+    # seg_last(1) = 2 -> duration_min 3; seg_last(2) = 4 -> duration_min 1.
     assert list(bounds) == [3, 3, 1, 1]
 
 
@@ -473,15 +473,15 @@ def test_compute_segment_mini_tri_bounds_single_segment_passthrough():
         max_cal=3,
         bridge=True,
     )
-    # seg_last = 3, max_cal = 3 -> dev_min = 1 for every cohort.
+    # seg_last = 3, max_cal = 3 -> duration_min = 1 for every cohort.
     assert list(pure) == [1, 1, 1]
     assert list(bridged) == [1, 1, 1]
 
 
 def _ten_cohort_triangular_grid() -> lr.Triangle:
-    """A 10-cohort monthly triangular grid where cohort i has dev 1..(11-i).
+    """A 10-cohort monthly triangular grid where cohort i has duration 1..(11-i).
     Cohorts start 2023-01-01. Loss/premium are placeholders -- the filter
-    tests only care about (cohort, dev) coverage."""
+    tests only care about (cohort, duration) coverage."""
     import datetime
 
     rows: list[dict] = []
@@ -491,20 +491,20 @@ def _ten_cohort_triangular_grid() -> lr.Triangle:
             rows.append(
                 {
                     "uy_m": cohort,
-                    "dev_m": d,
+                    "duration_m": d,
                     "incr_loss": 1.0,
                     "incr_premium": 1.0,
                 }
             )
     df = pl.DataFrame(rows)
-    return lr.Triangle(df, calendar=None, dev="dev_m")
+    return lr.Triangle(df, calendar=None, duration="duration_m")
 
 
 def test_segment_bridged_borrowed_widens_older_segments_on_triangular_grid():
     """End-to-end Triangle filter with three segments on a 10-cohort
     triangular grid. Verifies that the bridged band widens seg 1 and
-    seg 2's dev coverage relative to the natural mini-triangle, and
-    that the per-cohort minimum dev matches the R unit test's
+    seg 2's duration coverage relative to the natural mini-triangle, and
+    that the per-cohort minimum duration matches the R unit test's
     hand-derived values."""
     tri = _ten_cohort_triangular_grid()
     reg = lr.Regime.at(
@@ -516,25 +516,25 @@ def test_segment_bridged_borrowed_widens_older_segments_on_triangular_grid():
     assert "segment_id" in out.columns
     assert sorted(out["segment_id"].unique().to_list()) == [1, 2, 3]
 
-    # Union of devs per segment (matches R: seg 1 -> 5..10, seg 2 -> 2..7,
+    # Union of durations per segment (matches R: seg 1 -> 5..10, seg 2 -> 2..7,
     # seg 3 -> 1..3).
-    seg1_devs = sorted(out.filter(pl.col("segment_id") == 1)["dev"].unique().to_list())
-    seg2_devs = sorted(out.filter(pl.col("segment_id") == 2)["dev"].unique().to_list())
-    seg3_devs = sorted(out.filter(pl.col("segment_id") == 3)["dev"].unique().to_list())
-    assert seg1_devs == list(range(5, 11))
-    assert seg2_devs == list(range(2, 8))
-    assert seg3_devs == list(range(1, 4))
+    seg1_durations = sorted(out.filter(pl.col("segment_id") == 1)["duration"].unique().to_list())
+    seg2_durations = sorted(out.filter(pl.col("segment_id") == 2)["duration"].unique().to_list())
+    seg3_durations = sorted(out.filter(pl.col("segment_id") == 3)["duration"].unique().to_list())
+    assert seg1_durations == list(range(5, 11))
+    assert seg2_durations == list(range(2, 8))
+    assert seg3_durations == list(range(1, 4))
 
-    # Per-cohort min dev: bridge sweeps seg 1 down by one dev per
+    # Per-cohort min duration: bridge sweeps seg 1 down by one duration per
     # cohort step away from the segment's last cohort until reaching
     # the natural wall. R parity: seg 1 = [7, 6, 5], seg 2 = [4, 4, 3, 2].
-    min_dev = (
+    min_duration = (
         out.group_by(["cohort", "segment_id"])
-        .agg(pl.col("dev").min().alias("min_dev"))
+        .agg(pl.col("duration").min().alias("min_duration"))
         .sort(["segment_id", "cohort"])
     )
-    assert min_dev.filter(pl.col("segment_id") == 1)["min_dev"].to_list() == [7, 6, 5]
-    assert min_dev.filter(pl.col("segment_id") == 2)["min_dev"].to_list() == [4, 4, 3, 2]
+    assert min_duration.filter(pl.col("segment_id") == 1)["min_duration"].to_list() == [7, 6, 5]
+    assert min_duration.filter(pl.col("segment_id") == 2)["min_duration"].to_list() == [4, 4, 3, 2]
 
 
 def test_segment_bridged_borrowed_dispatch_into_per_segment_fit():
@@ -559,7 +559,7 @@ def test_tail_with_segment_borrowed_extends_donor_factors():
     """`tail` + a segment-borrowed treatment extends the recent segment's
     DONOR-borrowed development factors beyond full development. The tail
     machinery runs on each segment's augmented ``f_sel`` / ``g_sel`` (the
-    arrays that projected its late-dev / borrowed region), producing the
+    arrays that projected its late-duration / borrowed region), producing the
     ``loss_tail`` / ``premium_tail`` companion columns exactly like the
     non-regime path. tail=False stays byte-identical (no ``*_tail`` cols).
     """
@@ -579,12 +579,12 @@ def test_tail_with_segment_borrowed_extends_donor_factors():
     assert "premium_tail" in on.columns
     tail_rows = on.filter(pl.col("loss_tail").is_not_null())
     assert tail_rows.height > 0
-    # A real (heavier-than-observed) tail: loss_tail > loss_proj at dev_max.
+    # A real (heavier-than-observed) tail: loss_tail > loss_proj at duration_max.
     assert (tail_rows["loss_tail"] > tail_rows["loss_proj"]).all()
 
     # The non-tail columns are unchanged by turning the tail on.
     common = [c for c in off.columns if c in on.columns]
-    keys = ["cohort", "dev"]
+    keys = ["cohort", "duration"]
     assert off.sort(keys).select(common).equals(on.sort(keys).select(common))
 
     # segment_bridged_borrowed works the same way.
@@ -620,7 +620,7 @@ def test_tail_segment_borrowed_mass_is_grain_stable():
     def q_ult(fit, col):
         q = fit.at_grain("Q")
         u = (
-            q.sort(["cohort", "dev"])
+            q.sort(["cohort", "duration"])
             .group_by(["cohort"])
             .agg(pl.col(col).drop_nulls().last().alias("V"))
         )

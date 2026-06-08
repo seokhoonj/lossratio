@@ -79,7 +79,7 @@ def test_link_df_has_ata_columns():
     link = _tri().link()
     cols = set(link.df.columns)
     assert {
-        "cohort", "dev_from", "dev_to", "dev_link",
+        "cohort", "duration_from", "duration_to", "duration_link",
         "loss_from", "loss_to", "loss_delta", "ata",
     } <= cols
 
@@ -140,10 +140,10 @@ def test_link_build_once_summarise_twice():
     """Same Link should produce identical ATA / Intensity results
     each time it's queried."""
     link = _tri().link()
-    a1 = link.ata().df.sort("dev")["f"].to_list()
-    a2 = link.ata().df.sort("dev")["f"].to_list()
-    i1 = link.intensity().df.sort("dev")["g"].to_list()
-    i2 = link.intensity().df.sort("dev")["g"].to_list()
+    a1 = link.ata().df.sort("duration")["f"].to_list()
+    a2 = link.ata().df.sort("duration")["f"].to_list()
+    i1 = link.intensity().df.sort("duration")["g"].to_list()
+    i2 = link.intensity().df.sort("duration")["g"].to_list()
     assert a1 == a2
     assert i1 == i2
 

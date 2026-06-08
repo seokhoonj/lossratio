@@ -7,7 +7,7 @@ import lossratio as lr
 
 
 def _toy_triangle_input() -> pl.DataFrame:
-    """5-cohort, 5-dev experience data (same fixture as CL/ED tests)."""
+    """5-cohort, 5-duration experience data (same fixture as CL/ED tests)."""
     return pl.DataFrame(
         {
             "cy_m": [
@@ -66,7 +66,7 @@ def test_ratio_output_columns():
         lr.Triangle(_toy_triangle_input())
     )
     expected = {
-        "cohort", "dev", "loss_obs", "premium_obs",
+        "cohort", "duration", "loss_obs", "premium_obs",
         "loss_proj", "premium_proj", "ratio_proj",
         "incr_loss_proj", "incr_premium_proj", "incr_ratio_proj",
         "loss_total_se", "ratio_se", "ratio_cv",
@@ -80,7 +80,7 @@ def test_ratio_output_shape():
     fit = lr.Ratio(method="cl").fit(
         lr.Triangle(_toy_triangle_input())
     )
-    assert fit.n_rows == 25  # 5 cohorts x 5 devs
+    assert fit.n_rows == 25  # 5 cohorts x 5 durations
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +93,8 @@ def test_ratio_cl_method_matches_cl_fit():
     cl_fit = lr.ChainLadder().fit(tri)
     ratio_fit = lr.Ratio(method="cl").fit(tri)
 
-    cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-    ratio_df = ratio_fit.to_polars().sort(["cohort", "dev"])
+    cl_df = cl_fit.to_polars().sort(["cohort", "duration"])
+    ratio_df = ratio_fit.to_polars().sort(["cohort", "duration"])
 
     # Cumulative loss projections must match
     assert cl_df["loss_proj"].to_list() == ratio_df["loss_proj"].to_list()
@@ -126,8 +126,8 @@ def test_ratio_ed_method_matches_ed_fit():
     ed_fit = lr.ExposureDriven().fit(tri)
     ratio_fit = lr.Ratio(method="ed").fit(tri)
 
-    ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
-    ratio_df = ratio_fit.to_polars().sort(["cohort", "dev"])
+    ed_df = ed_fit.to_polars().sort(["cohort", "duration"])
+    ratio_df = ratio_fit.to_polars().sort(["cohort", "duration"])
 
     # ED worker output uses generic ``target_*`` column names.
     assert ed_df["loss_proj"].to_list() == ratio_df["loss_proj"].to_list()
@@ -146,22 +146,22 @@ def test_ratio_sa_no_switch_falls_back_to_ed():
     ed_fit = lr.ExposureDriven().fit(tri)
 
     assert sa_fit.switch_point is None
-    sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
-    ed_df = ed_fit.to_polars().sort(["cohort", "dev"])
+    sa_df = sa_fit.to_polars().sort(["cohort", "duration"])
+    ed_df = ed_fit.to_polars().sort(["cohort", "duration"])
     assert sa_df["loss_proj"].to_list() == ed_df["loss_proj"].to_list()
 
 
 def test_ratio_sa_switch_two_matches_cl_projection():
-    """With switch=2, every link's target dev (>= 2) lies in the CL
-    region (target dev >= switch), so SA reduces to pure CL."""
+    """With switch=2, every link's target duration (>= 2) lies in the CL
+    region (target duration >= switch), so SA reduces to pure CL."""
     tri = lr.Triangle(_toy_triangle_input())
     sa_fit = lr.Ratio(method="sa", switch=2).fit(tri)
     cl_fit = lr.ChainLadder().fit(tri)
 
     assert sa_fit.switch_point == 2
-    sa_df = sa_fit.to_polars().sort(["cohort", "dev"])
-    cl_df = cl_fit.to_polars().sort(["cohort", "dev"])
-    # Both use CL throughout when switch = 2 (target dev >= 2 for all links).
+    sa_df = sa_fit.to_polars().sort(["cohort", "duration"])
+    cl_df = cl_fit.to_polars().sort(["cohort", "duration"])
+    # Both use CL throughout when switch = 2 (target duration >= 2 for all links).
     n_compared = 0
     for a, b in zip(sa_df["loss_proj"].to_list(), cl_df["loss_proj"].to_list()):
         if a is None or b is None:
@@ -204,9 +204,9 @@ def test_ratio_summary_fully_observed_cohort():
     )
     summary = fit.summary().filter(pl.col("cohort") == _date("2024-01-01"))
     assert summary.height == 1
-    # Cohort 2024-01 has all 5 devs observed; loss_proj = 500
+    # Cohort 2024-01 has all 5 durations observed; loss_proj = 500
     assert summary["loss_proj"].to_list()[0] == pytest.approx(500.0)
-    # premium_proj = 500 (rp=100 per dev for 5 devs)
+    # premium_proj = 500 (rp=100 per duration for 5 durations)
     assert summary["premium_proj"].to_list()[0] == pytest.approx(500.0)
     assert summary["ratio_proj"].to_list()[0] == pytest.approx(1.0)
 
@@ -235,7 +235,7 @@ def test_ratio_groups_fitted_independently():
     fit = lr.Ratio(method="cl").fit(
         lr.Triangle(df_grouped, groups="coverage")
     )
-    df = fit.to_polars().sort(["coverage", "cohort", "dev"])
+    df = fit.to_polars().sort(["coverage", "cohort", "duration"])
     a_loss = df.filter(pl.col("coverage") == "A")["loss_proj"].to_list()
     b_loss = df.filter(pl.col("coverage") == "B")["loss_proj"].to_list()
     assert a_loss == b_loss
@@ -319,8 +319,8 @@ def test_no_switch_is_sa_default():
     ed = lr.ExposureDriven().fit(tri)
     assert sa.switch_point is None
     assert (
-        sa.to_polars().sort(["cohort", "dev"])["loss_proj"].to_list()
-        == ed.to_polars().sort(["cohort", "dev"])["loss_proj"].to_list()
+        sa.to_polars().sort(["cohort", "duration"])["loss_proj"].to_list()
+        == ed.to_polars().sort(["cohort", "duration"])["loss_proj"].to_list()
     )
 
 

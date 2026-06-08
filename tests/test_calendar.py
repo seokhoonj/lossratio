@@ -54,7 +54,7 @@ def test_calendar_cal_idx_is_sequential_per_group():
 
 def test_calendar_diagonal_sum_matches_triangle():
     """Each (group, calendar) cell of Calendar = sum of Triangle cells on
-    the same calendar diagonal (cohort + dev - 1)."""
+    the same calendar diagonal (cohort + duration - 1)."""
     tri = _sample_triangle()
     cal = tri.calendar_agg().to_polars()
     grain = tri.grain
@@ -64,7 +64,7 @@ def test_calendar_diagonal_sum_matches_triangle():
     from lossratio._period import add_periods
 
     tri_df = tri.to_polars().with_columns(
-        add_periods(pl.col("cohort"), pl.col("dev"), grain).alias("calendar")
+        add_periods(pl.col("cohort"), pl.col("duration"), grain).alias("calendar")
     )
     direct = (
         tri_df.group_by(["coverage", "calendar"])

@@ -34,7 +34,7 @@ def test_recent_link_mask_none_returns_none():
 
 def test_recent_link_mask_shape():
     mask = recent_link_mask(np.ones((4, 4)), recent=2)
-    assert mask.shape == (4, 3)  # (n_cohorts, n_devs - 1)
+    assert mask.shape == (4, 3)  # (n_cohorts, n_durations - 1)
     assert mask.dtype == bool
 
 

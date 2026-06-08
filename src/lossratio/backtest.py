@@ -22,11 +22,11 @@ def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.Dat
     """Add a 1-based calendar index per cell.
 
     Calendar index counts the antidiagonal:
-    ``cohort_idx + dev - 1`` with ``cohort_idx`` the 1-based dense
+    ``cohort_idx + duration - 1`` with ``cohort_idx`` the 1-based dense
     rank of cohort within its group (ties share the same rank). So the
-    oldest cohort at dev = 1 lands on cal_idx = 1, and the maximum
+    oldest cohort at duration = 1 lands on cal_idx = 1, and the maximum
     cal_idx equals the number of cohorts (or, for square-ish triangles,
-    the number of devs).
+    the number of durations).
     """
     gcols = normalize_groups(groups)
     if gcols:
@@ -39,7 +39,7 @@ def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.Dat
     return tri_df.with_columns(
         cohort_idx_expr.alias("_cohort_idx"),
     ).with_columns(
-        (pl.col("_cohort_idx") + pl.col("dev") - 1).alias("cal_idx"),
+        (pl.col("_cohort_idx") + pl.col("duration") - 1).alias("cal_idx"),
     )
 
 
@@ -279,15 +279,15 @@ class BacktestFit:
     ----------
     ae_err : DataFrame
         Per-cell hold-out comparison
-        ``[groups?, cohort, dev, actual, expected, aeg, ae_err,
+        ``[groups?, cohort, duration, actual, expected, aeg, ae_err,
         incr_actual, incr_expected, incr_aeg, incr_ae_err, cal_idx]``.
         ``aeg = actual - expected`` (signed gap, target units) and
         ``ae_err = actual / expected - 1`` (signed relative error;
         positive = under-projection, negative = over-projection). The
         ``incr_`` columns are the per-period (incremental) counterparts.
     col_summary : DataFrame
-        Aggregated by dev:
-        ``[groups?, dev, n, ae_err_mean, ae_err_med, ae_err_wt]``.
+        Aggregated by duration:
+        ``[groups?, duration, n, ae_err_mean, ae_err_med, ae_err_wt]``.
         ``ae_err_wt = sum(actual - expected) / sum(expected)`` is the
         exposure-weighted pooled A/E - 1.
     diag_summary : DataFrame
@@ -311,7 +311,7 @@ class BacktestFit:
         self._output_type = triangle._output_type
         self._groups = triangle._groups
         self._cohort = triangle._cohort
-        self._dev = triangle._dev
+        self._duration = triangle._duration
         self._triangle = triangle
         self.holdout = bt.holdout
         self.estimator = bt.estimator
@@ -334,7 +334,7 @@ class BacktestFit:
         self.target = bt.target
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
-        keys: list[str] = [*normalize_groups(triangle._groups), "cohort", "dev"]
+        keys: list[str] = [*normalize_groups(triangle._groups), "cohort", "duration"]
 
         # `actual` is the cumulative column on the original Triangle that
         # corresponds to the chosen scoring lane; `incr_actual` is its
@@ -383,7 +383,7 @@ class BacktestFit:
         # `incr_expected` survived the join. Null on edge cells is
         # acceptable on the incremental view (`incr_aeg` /
         # `incr_ae_err` may be null when the projection has no upstream
-        # cumulative anchor at dev = 1).
+        # cumulative anchor at duration = 1).
         has_incr = ("incr_actual" in ae_err.columns) and (
             "incr_expected" in ae_err.columns
         )
@@ -409,10 +409,10 @@ class BacktestFit:
         ae_err = ae_err.select(col_order)
         self._ae_err = ae_err.sort(keys + ["cal_idx"])
 
-        # 5. Summaries -- mean / median / weighted A/E - 1 per dev or per
+        # 5. Summaries -- mean / median / weighted A/E - 1 per duration or per
         #    calendar diagonal, with `incr_*` companions when the
         #    incremental projection is available.
-        col_keys: list[str] = [*normalize_groups(triangle._groups), "dev"]
+        col_keys: list[str] = [*normalize_groups(triangle._groups), "duration"]
 
         self._col_summary = self._aggregate_ae_err(
             ae_err, col_keys, has_incr

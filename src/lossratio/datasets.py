@@ -99,7 +99,7 @@ _CHAN_LR_N = _normalised(_CHAN_W, _CHAN_LR)
 
 
 def _make_weights() -> np.ndarray:
-    """Constant per-dev weights with a small dev-1 dampening that
+    """Constant per-duration weights with a small duration-1 dampening that
     mimics the waiting-period dip in real long-term health data."""
     weights = np.ones(_K)
     weights[0] = 0.2
@@ -140,8 +140,8 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
         17 columns: the segment keys ``coverage`` / ``age_band`` /
         ``channel`` (str); the underwriting axis ``uy`` / ``uy_h`` /
         ``uy_q`` / ``uy_m`` (Date); the calendar axis ``cy`` / ``cy_h``
-        / ``cy_q`` / ``cy_m`` (Date); the development axis ``dev_y`` /
-        ``dev_h`` / ``dev_q`` / ``dev_m`` (int); and ``incr_loss`` /
+        / ``cy_q`` / ``cy_m`` (Date); the development axis ``duration_y`` /
+        ``duration_h`` / ``duration_q`` / ``duration_m`` (int); and ``incr_loss`` /
         ``incr_premium``. Pass directly to :class:`Triangle` with
         ``groups="coverage"`` (or ``"age_band"`` / ``"channel"``).
     """
@@ -150,7 +150,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
 
     records: list[dict] = []
     for coverage, target_ratio, premium_mean, premium_cv, cell_cv in _CALIB:
-        premium_mean_per_dev = premium_mean / _K
+        premium_mean_per_duration = premium_mean / _K
         shift = _SHIFTS.get(coverage)
         shift_at = shift[0] if shift else None
         shift_scale = shift[1] if shift else 1.0
@@ -160,7 +160,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
             # split it by the mix weights so the coverage total is
             # preserved.
             cohort_mult = math.exp(rng.normal(0.0, premium_cv))
-            premium_base = premium_mean_per_dev * cohort_mult
+            premium_base = premium_mean_per_duration * cohort_mult
             eff_target = target_ratio * (
                 shift_scale if shift_at is not None and ci >= shift_at else 1.0
             )
@@ -200,7 +200,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                                 "channel":      channel,
                                 "uy_m":         uy_m,
                                 "cy_m":         cy_m,
-                                "dev_m":        k + 1,
+                                "duration_m":        k + 1,
                                 "incr_loss":    round(incr_loss),
                                 "incr_premium": round(incr_premium),
                             }
@@ -217,7 +217,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
         "coverage", "age_band", "channel",
         "uy", "uy_h", "uy_q", "uy_m",
         "cy", "cy_h", "cy_q", "cy_m",
-        "dev_y", "dev_h", "dev_q", "dev_m",
+        "duration_y", "duration_h", "duration_q", "duration_m",
         "incr_loss", "incr_premium",
     )
 

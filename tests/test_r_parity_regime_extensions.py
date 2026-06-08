@@ -241,10 +241,10 @@ def test_regime_by_group_labels_match_r():
 
 @pytest.mark.parametrize("target", ["loss_ata", "premium_ata", "loss_ed"])
 def test_derived_regime_trajectory_matches_r(target: str):
-    """The derived per-(group, cohort, dev) trajectory matches R.
+    """The derived per-(group, cohort, duration) trajectory matches R.
 
-    Both languages drop the first dev row per cohort (NA from the lag)
-    and re-index ``dev`` so the first surviving period becomes 1. The
+    Both languages drop the first duration row per cohort (NA from the lag)
+    and re-index ``duration`` so the first surviving period becomes 1. The
     derived target column itself is a deterministic arithmetic combo
     of loss / premium -- must be bit-parity.
     """
@@ -253,7 +253,7 @@ def test_derived_regime_trajectory_matches_r(target: str):
     tri_df = tri.to_polars()
     out_df, _name = _derive_regime_target(tri_df, target, groups="coverage")
 
-    keys = ["coverage", "cohort", "dev"]
+    keys = ["coverage", "cohort", "duration"]
     py_sorted = out_df.select(
         [c for c in [*keys, target] if c in out_df.columns]
     ).sort(keys)
@@ -265,7 +265,7 @@ def test_derived_regime_trajectory_matches_r(target: str):
         f"{target} trajectory row count: "
         f"py={py_sorted.height} r={r_sorted.height}"
     )
-    # Coverage / cohort / dev identity must align row-for-row.
+    # Coverage / cohort / duration identity must align row-for-row.
     for k in keys:
         assert py_sorted[k].to_list() == r_sorted[k].to_list(), (
             f"{target} trajectory key col {k!r} differs"

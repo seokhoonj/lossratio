@@ -169,20 +169,20 @@ def test_x_axis_calendar_value(tri_single):
     # The calendar layout labels the x-axis with calendar periods (date
     # strings) instead of the bare integer development indices, and the
     # x-axis label switches to the calendar period.
-    fig_dev = tri_single.plot_triangle(x_axis="dev")
+    fig_duration = tri_single.plot_triangle(x_axis="duration")
     fig_cal = tri_single.plot_triangle(x_axis="calendar")
     try:
-        assert "development" in fig_dev._supxlabel.get_text()
+        assert "development" in fig_duration._supxlabel.get_text()
         assert "calendar" in fig_cal._supxlabel.get_text()
-        ax_dev = [a for a in fig_dev.get_axes() if a.get_visible()][0]
+        ax_duration = [a for a in fig_duration.get_axes() if a.get_visible()][0]
         ax_cal = [a for a in fig_cal.get_axes() if a.get_visible()][0]
-        dev_lbls = [t.get_text() for t in ax_dev.get_xticklabels()]
+        duration_lbls = [t.get_text() for t in ax_duration.get_xticklabels()]
         cal_lbls = [t.get_text() for t in ax_cal.get_xticklabels()]
-        # dev labels are bare integers; calendar labels are period strings.
-        assert all(s.isdigit() for s in dev_lbls if s)
+        # duration labels are bare integers; calendar labels are period strings.
+        assert all(s.isdigit() for s in duration_lbls if s)
         assert any(not s.isdigit() for s in cal_lbls if s)
     finally:
-        _close(fig_dev)
+        _close(fig_duration)
         _close(fig_cal)
 
 
@@ -208,14 +208,14 @@ def test_invalid_x_axis_raises(tri_with_groups):
 
 def test_x_axis_calendar_periods_match(tri_single):
     # The calendar x-levels must be exactly the distinct calendar periods
-    # of the cells: cohort + (dev - 1) at the grain (monthly here).
+    # of the cells: cohort + (duration - 1) at the grain (monthly here).
     import polars as pl
 
     df = tri_single.df
     expected = (
         df.with_columns(
             pl.col("cohort")
-            .dt.offset_by(((pl.col("dev") - 1)).cast(pl.Utf8) + "mo")
+            .dt.offset_by(((pl.col("duration") - 1)).cast(pl.Utf8) + "mo")
             .alias("_c")
         )["_c"].n_unique()
     )
@@ -229,7 +229,7 @@ def test_x_axis_calendar_periods_match(tri_single):
 
 
 def test_x_axis_calendar_multigroup_facets(tri_with_groups):
-    # The calendar layout faces out per group like the dev layout.
+    # The calendar layout faces out per group like the duration layout.
     for kind in ("value", "usage"):
         fig = tri_with_groups.plot_triangle(kind=kind, x_axis="calendar")
         try:
@@ -240,7 +240,7 @@ def test_x_axis_calendar_multigroup_facets(tri_with_groups):
 
 
 def test_usage_calendar_switch_is_a_staircase(tri_single):
-    # The switch boundary is a single vline on the dev axis but a
+    # The switch boundary is a single vline on the duration axis but a
     # stepped diagonal (many dashed segments) on the calendar axis.
     def _n_dashed(fig):
         ax = [a for a in fig.get_axes() if a.get_visible()][0]
@@ -248,15 +248,15 @@ def test_usage_calendar_switch_is_a_staircase(tri_single):
             1 for ln in ax.lines if ln.get_linestyle() in ("--", "dashed")
         )
 
-    fig_dev = tri_single.plot_triangle(kind="usage", switch=3, x_axis="dev")
+    fig_duration = tri_single.plot_triangle(kind="usage", switch=3, x_axis="duration")
     fig_cal = tri_single.plot_triangle(
         kind="usage", switch=3, x_axis="calendar"
     )
     try:
-        assert _n_dashed(fig_dev) == 1
-        assert _n_dashed(fig_cal) > _n_dashed(fig_dev)
+        assert _n_dashed(fig_duration) == 1
+        assert _n_dashed(fig_cal) > _n_dashed(fig_duration)
     finally:
-        _close(fig_dev)
+        _close(fig_duration)
         _close(fig_cal)
 
 
@@ -291,8 +291,8 @@ def test_get_period_type_from_var():
     assert _get_period_type("cy_q") == "quarter"
     assert _get_period_type("uy_h") == "half"
     assert _get_period_type("cy") == "year"
-    # dev_* are integer columns -- no period type.
-    assert _get_period_type("dev_m") is None
+    # duration_* are integer columns -- no period type.
+    assert _get_period_type("duration_m") is None
 
 
 def test_get_period_type_grain_fallback():

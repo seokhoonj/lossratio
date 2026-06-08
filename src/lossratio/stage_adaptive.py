@@ -3,11 +3,11 @@
 ``StageAdaptive`` is a loss-side estimator: ``.fit(triangle)`` develops the
 cumulative ``loss`` series with an ED -> CL switch -- exposure-driven (ED)
 for early development (where age-to-age factors are volatile) and Mack chain
-ladder (CL) past the switch dev -- and returns a role-based
+ladder (CL) past the switch duration -- and returns a role-based
 :class:`~lossratio.loss.LossFit` (``.model == "stage_adaptive"``).
 
 It is the ED+CL composition configuration of the shared loss-projection
-engine. The switch dev is resolved from the ``switch`` argument (a
+engine. The switch duration is resolved from the ``switch`` argument (a
 :class:`~lossratio.SwitchPoint`, an int, or ``None`` for pure ED).
 """
 
@@ -36,9 +36,9 @@ class StageAdaptive:
     switch
         The ED -> CL switch (authoritative input). ``None`` (default) takes
         no discretionary switch: the general path is pure ED, while a regime
-        segment-borrow path still develops the borrowed late-dev region with
+        segment-borrow path still develops the borrowed late-duration region with
         the donor's level-invariant ``f_k``. Otherwise an ``int`` (fixed
-        switch dev), a :class:`~lossratio.SwitchPoint`, or a
+        switch duration), a :class:`~lossratio.SwitchPoint`, or a
         ``SwitchPoint.detect()`` spec (backtest-selected, leakage-safe inside
         a backtest fold). ``StageAdaptive()`` with no switch and no regime is
         therefore equivalent to ``ExposureDriven()``.
