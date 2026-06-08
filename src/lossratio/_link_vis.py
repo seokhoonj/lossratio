@@ -553,7 +553,7 @@ def _finalize_facet_grid(
 ) -> None:
     for ax in axes_grid[n_used:]:
         ax.set_visible(False)
-    fig.suptitle(title, fontsize=12, fontweight="bold")
+    fig.suptitle(title, fontsize=12, fontweight="normal")
     fig.supxlabel(x_label, fontsize=10)
     fig.supylabel(y_label, fontsize=10)
 

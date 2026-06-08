@@ -100,7 +100,7 @@ base    = lr.Ratio(method="ed").fit(tri)                  # regime 무시
 trimmed = lr.Ratio(method="ed", loss_regime=reg).fit(tri) # regime 반영
 ```
 
-효과는 변화 이후의 어린 코호트에서 가장 크다. regime을 무시하면 가장 어린
+효과는 변화 이후의 최근 코호트에서 가장 크다. regime을 무시하면 가장 최근
 코호트(2025-4분기)의 예측 손해율이 **1.41**로 잡히지만, 이는 이미 끝난 옛
 regime의 높은 손해율이 섞여 부풀려진 값이다. regime을 반영하면 새 regime의
 코호트만으로 추정해 **0.92**로 내려간다 — 달라진 상품의 실제 수준에 더
@@ -150,7 +150,7 @@ lr.Ratio(method="ed",
 ## 6.5 함께 보기
 
 - {doc}`4장 — 손해율 예측 <04-projection>`: regime이 가장 크게 작용하는
-  어린 코호트의 예측이 방법마다 갈리는 양상.
+  최근 코호트의 예측이 방법마다 갈리는 양상.
 - {doc}`7장 — 예측 검증 <07-backtest>`: regime 반영이 실제로 예측을
   개선하는지 과거 시점에서 되짚어 확인한다.
 - {doc}`API 레퍼런스 <../api>`의 `Triangle.detect_regime`, `Regime`,

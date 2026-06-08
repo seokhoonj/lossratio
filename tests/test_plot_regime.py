@@ -40,7 +40,7 @@ def test_regime_plot_multi_group(reg_multi):
         assert isinstance(fig, plt.Figure)
         title = fig._suptitle.get_text()
         assert "regime detection" in title
-        assert f"method: {reg_multi.method}" in title
+        assert reg_multi.method in title
     finally:
         _close(fig)
 

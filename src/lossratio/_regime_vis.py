@@ -150,9 +150,8 @@ def plot_regime(
     _hide_unused(axes, n, nrow, ncol)
 
     fig.suptitle(
-        f"Cohort regime detection (method: {regime.method}, "
-        f"target: {regime.target}, window: {regime.window})",
-        fontsize=11, fontweight="bold",
+        f"Cohort regime detection ({regime.method})",
+        fontsize=11, fontweight="normal",
     )
     fig.supxlabel(_cohort_label(coh, grain=grain), fontsize=10)
     return fig
