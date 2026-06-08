@@ -9,7 +9,7 @@ RNG and so vary with the numpy version even at a fixed seed.
 Each coverage is decomposed across ``age_band`` x ``channel`` so the
 demo exercises the all / coverage / age / channel views with real data.
 The decomposition is *marginal-preserving*: premium-mix weights split
-the coverage premium, and the relative LR factors are normalised so the
+the coverage premium, and the relative loss-ratio factors are normalised so the
 premium-weighted average over the mix is 1 -- aggregating age x channel
 back up reproduces the coverage-level target Ratio.
 
@@ -67,18 +67,18 @@ _SHIFTS: dict[str, tuple[int, float]] = {"SURGERY": (18, 0.60)}
 # --- Segment dimensions: age_band x channel -----------------------------
 #
 # Each coverage's premium is split across age x channel by the mix
-# weights (each set sums to 1); the relative LR factors are normalised
+# weights (each set sums to 1); the relative loss-ratio factors are normalised
 # (see `_normalised`) so the premium-weighted average over the mix is 1,
 # making the decomposition marginal-preserving at the coverage level.
 _AGE_BANDS: tuple[str, ...] = ("20s", "30s", "40s", "50s", "60s", "70+")
 _AGE_W: tuple[float, ...] = (0.18, 0.22, 0.23, 0.17, 0.13, 0.07)  # premium mix
-# younger -> higher LR: Korean health insurance prices elderly steeply, so
-# the 20s portfolio LR lands well above 100% while 70+ stays low.
-_AGE_LR: tuple[float, ...] = (2.00, 1.45, 1.00, 0.75, 0.55, 0.40)
+# younger -> higher loss ratio: Korean health insurance prices elderly steeply, so
+# the 20s portfolio loss ratio lands well above 100% while 70+ stays low.
+_AGE_RATIO: tuple[float, ...] = (2.00, 1.45, 1.00, 0.75, 0.55, 0.40)
 
 _CHANNELS: tuple[str, ...] = ("FC", "GA", "TM", "ON")
 _CHAN_W: tuple[float, ...] = (0.40, 0.30, 0.20, 0.10)  # premium mix
-_CHAN_LR: tuple[float, ...] = (0.90, 1.15, 1.05, 0.95)  # GA least-curated -> higher LR
+_CHAN_RATIO: tuple[float, ...] = (0.90, 1.15, 1.05, 0.95)  # GA least-curated -> higher loss ratio
 
 _DEFAULT_SEED = 20260501
 _N_COHORTS = 36
@@ -94,8 +94,8 @@ def _normalised(
     return tuple(f / m for f in factors)
 
 
-_AGE_LR_N = _normalised(_AGE_W, _AGE_LR)
-_CHAN_LR_N = _normalised(_CHAN_W, _CHAN_LR)
+_AGE_RATIO_N = _normalised(_AGE_W, _AGE_RATIO)
+_CHAN_RATIO_N = _normalised(_CHAN_W, _CHAN_RATIO)
 
 
 def _make_weights() -> np.ndarray:
@@ -171,7 +171,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
             for ai, age in enumerate(_AGE_BANDS):
                 for chi, channel in enumerate(_CHANNELS):
                     seg_premium_base = premium_base * _AGE_W[ai] * _CHAN_W[chi]
-                    seg_ratio = eff_target * _AGE_LR_N[ai] * _CHAN_LR_N[chi]
+                    seg_ratio = eff_target * _AGE_RATIO_N[ai] * _CHAN_RATIO_N[chi]
 
                     for k in range(_K):
                         if ci + k > _MAX_CYM_IDX:

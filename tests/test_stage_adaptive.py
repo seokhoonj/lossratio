@@ -64,3 +64,30 @@ def test_monte_carlo_allowed() -> None:
     tri = _triangle()
     fit = lr.StageAdaptive(uncertainty=lr.ParametricBootstrap(seed=42, n_replicates=50)).fit(tri)
     assert fit.ci_type == "bootstrap"
+
+
+# ---------------------------------------------------------------------------
+# Argument validation -- mirror the ChainLadder / ExposureDriven siblings
+# (fail-fast in __post_init__).
+# ---------------------------------------------------------------------------
+
+
+def test_sa_invalid_sigma_method_raises() -> None:
+    with pytest.raises(ValueError, match="sigma_method"):
+        lr.StageAdaptive(sigma_method="nope")
+
+
+def test_sa_invalid_conf_level_raises() -> None:
+    with pytest.raises(ValueError, match="conf_level"):
+        lr.StageAdaptive(conf_level=1.5)
+
+
+def test_sa_alpha_other_raises() -> None:
+    with pytest.raises(NotImplementedError, match="alpha"):
+        lr.StageAdaptive(alpha=2.0)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 2.5, "x"])
+def test_sa_recent_invalid_raises(bad) -> None:
+    with pytest.raises(ValueError, match="recent"):
+        lr.StageAdaptive(recent=bad)
