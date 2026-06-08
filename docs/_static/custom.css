@@ -35,3 +35,24 @@ html[data-theme="dark"] .logo__ratio { color: #e8ecef; }
     html[data-theme="auto"] .logo__loss { color: #6ba3c9; }
     html[data-theme="auto"] .logo__ratio { color: #e8ecef; }
 }
+
+/* Mermaid flowcharts -- shrink the container to the diagram and centre it
+   so a small diagram does not float in a full-width block of whitespace. */
+.mermaid {
+    width: fit-content; max-width: 100%; margin: 1.25rem auto 1.6rem;
+    padding: 0.6rem 0.9rem; overflow-x: auto;
+    border: 1px solid var(--pst-color-border); border-radius: 6px;
+    background: color-mix(in srgb, var(--pst-color-surface) 92%, transparent);
+}
+.mermaid svg {
+    display: block; width: auto !important; max-width: 100% !important;
+    height: auto !important; margin: 0 auto;
+}
+.mermaid .nodeLabel, .mermaid .edgeLabel { line-height: 1.25; }
+.mermaid .edgeLabel { padding: 0.1rem 0.25rem; font-size: 0.78rem; background: transparent !important; }
+.mermaid .edgeLabel rect, .mermaid .edgeLabel foreignObject { fill: transparent !important; background: transparent !important; }
+.mermaid .labelBkg { background: transparent !important; background-color: transparent !important; }
+.mermaid .cluster rect { rx: 4px; ry: 4px; }
+@media (max-width: 767px) {
+    .mermaid { margin-inline: -0.5rem; padding-inline: 0.25rem; }
+}

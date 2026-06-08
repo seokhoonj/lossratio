@@ -37,12 +37,18 @@ mermaid_init_config = {
         "padding": 8,
         "htmlLabels": True,
     },
+    "state": {"useMaxWidth": True},
     "themeVariables": {
         "fontSize": "14px",
         "primaryColor": "#f4f7fa",
         "primaryTextColor": "#24313a",
         "primaryBorderColor": "#9aa9b5",
         "lineColor": "#788a97",
+        "secondaryColor": "#e8f4f1",
+        "tertiaryColor": "#eef3f8",
+        "edgeLabelBackground": "transparent",
+        "clusterBkg": "#f8fafb",
+        "clusterBorder": "#d5dee5",
     },
 }
 
