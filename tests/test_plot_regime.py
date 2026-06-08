@@ -25,7 +25,7 @@ def reg_multi():
 
 @pytest.fixture
 def reg_single():
-    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CAN")
+    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     tri = lr.Triangle(df)
     return tri.detect_regime(window=12)
 

@@ -18,7 +18,7 @@ def tv_with_gaps():
     exp = lr.make_experience(seed=1)
     # Drop a couple of duration cells from one coverage to create gaps
     leaky = exp.filter(
-        ~((pl.col("coverage") == "CAN") & (pl.col("duration_m").is_in([3, 7])))
+        ~((pl.col("coverage") == "CANCER") & (pl.col("duration_m").is_in([3, 7])))
     )
     return lr.TriangleValidation(
         leaky, groups="coverage",
@@ -103,7 +103,7 @@ def test_validation_plot_triangle_invalid_view(tv_with_gaps):
 def test_validation_plot_triangle_calendar_requires_calendar_col():
     exp = lr.make_experience(seed=1)
     leaky = exp.filter(
-        ~((pl.col("coverage") == "CAN") & (pl.col("duration_m").is_in([3, 7])))
+        ~((pl.col("coverage") == "CANCER") & (pl.col("duration_m").is_in([3, 7])))
     )
     tv = lr.TriangleValidation(
         leaky, groups="coverage",

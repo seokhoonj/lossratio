@@ -25,8 +25,8 @@ from lossratio._io import (
 
 def test_format_group_value():
     assert format_group_value(None) == ""
-    assert format_group_value("SUR") == "SUR"
-    assert format_group_value(("SUR", "TM")) == "SUR | TM"
+    assert format_group_value("SURGERY") == "SURGERY"
+    assert format_group_value(("SURGERY", "TM")) == "SURGERY | TM"
     assert format_group_value(6) == "6"
 
 
@@ -63,7 +63,7 @@ def test_collapse_groups():
 def _df() -> pl.DataFrame:
     return pl.DataFrame(
         {
-            "coverage": ["SUR", "SUR", "CI", "CI"],
+            "coverage": ["SURGERY", "SURGERY", "CI", "CI"],
             "channel":  ["TM", "GA", "TM", "GA"],
             "x":        [1, 2, 3, 4],
         }
@@ -96,7 +96,7 @@ def test_iter_group_frames_single_col_yields_scalar():
     items = list(_iter_group_frames(df, "coverage"))
     keys = [k for k, _ in items]
     # first-seen order, scalar keys
-    assert keys == ["SUR", "CI"]
+    assert keys == ["SURGERY", "CI"]
     assert all(isinstance(k, str) for k in keys)
 
 
@@ -104,7 +104,7 @@ def test_iter_group_frames_multi_col_yields_tuple():
     df = _df()
     items = list(_iter_group_frames(df, ["coverage", "channel"]))
     keys = [k for k, _ in items]
-    assert keys == [("SUR", "TM"), ("SUR", "GA"), ("CI", "TM"), ("CI", "GA")]
+    assert keys == [("SURGERY", "TM"), ("SURGERY", "GA"), ("CI", "TM"), ("CI", "GA")]
     assert all(isinstance(k, tuple) and len(k) == 2 for k in keys)
 
 
@@ -112,20 +112,20 @@ def test_arrays_to_long_df_single_col():
     out = _arrays_to_long_df(
         {"duration": np.array([1, 2]), "v": np.array([1.0, 2.0])},
         groups="coverage",
-        group_value="SUR",
+        group_value="SURGERY",
     )
     assert out.columns == ["coverage", "duration", "v"]
-    assert out["coverage"].to_list() == ["SUR", "SUR"]
+    assert out["coverage"].to_list() == ["SURGERY", "SURGERY"]
 
 
 def test_arrays_to_long_df_multi_col():
     out = _arrays_to_long_df(
         {"duration": np.array([1, 2]), "v": np.array([1.0, 2.0])},
         groups=["coverage", "channel"],
-        group_value=("SUR", "TM"),
+        group_value=("SURGERY", "TM"),
     )
     assert out.columns == ["coverage", "channel", "duration", "v"]
-    assert out["coverage"].to_list() == ["SUR", "SUR"]
+    assert out["coverage"].to_list() == ["SURGERY", "SURGERY"]
     assert out["channel"].to_list() == ["TM", "TM"]
 
 
@@ -133,8 +133,8 @@ def test_fill_group_columns():
     d: dict = {}
     fill_group_columns(d, None, None, 3)
     assert d == {}
-    fill_group_columns(d, "coverage", "SUR", 2)
-    assert d == {"coverage": ["SUR", "SUR"]}
+    fill_group_columns(d, "coverage", "SURGERY", 2)
+    assert d == {"coverage": ["SURGERY", "SURGERY"]}
     d2: dict = {}
     fill_group_columns(d2, ["coverage", "channel"], ("CI", "GA"), 2)
     assert d2 == {"coverage": ["CI", "CI"], "channel": ["GA", "GA"]}
@@ -144,8 +144,8 @@ def test_set_group_values():
     r: dict = {}
     set_group_values(r, None, None)
     assert r == {}
-    set_group_values(r, "coverage", "SUR")
-    assert r == {"coverage": "SUR"}
+    set_group_values(r, "coverage", "SURGERY")
+    assert r == {"coverage": "SURGERY"}
     r2: dict = {}
     set_group_values(r2, ["coverage", "channel"], ("CI", "GA"))
     assert r2 == {"coverage": "CI", "channel": "GA"}

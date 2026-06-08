@@ -30,8 +30,8 @@ def test_at_full_cl_sentinel():
 
 
 def test_at_multi_group():
-    sp = lr.SwitchPoint.at([4, 6], groups={"coverage": ["CAN", "CI"]})
-    assert sp.point == {"CAN": 4, "CI": 6}
+    sp = lr.SwitchPoint.at([4, 6], groups={"coverage": ["CANCER", "CI"]})
+    assert sp.point == {"CANCER": 4, "CI": 6}
 
 
 def test_at_rejects_bad_type():
@@ -41,7 +41,7 @@ def test_at_rejects_bad_type():
 
 def test_at_rejects_length_mismatch():
     with pytest.raises(ValueError):
-        lr.SwitchPoint.at([4, 6], groups={"coverage": ["CAN"]})
+        lr.SwitchPoint.at([4, 6], groups={"coverage": ["CANCER"]})
 
 
 def test_direct_construction_forbidden():
@@ -72,7 +72,7 @@ def test_point_values_are_none_or_positive_int(tri):
 
 def test_point_keys_match_groups(tri):
     sp = lr.SwitchPoint.detect()(tri)
-    assert set(sp.point) == {"CAN", "CI", "HOS", "SUR"}
+    assert set(sp.point) == {"CANCER", "CI", "INPATIENT", "SURGERY"}
 
 
 def test_summary_schema(tri):
@@ -100,7 +100,7 @@ def test_detect_holds_selection_params_only(tri):
     # spec call (the consumer supplies alpha/sigma_method/recent/regime).
     spec = lr.SwitchPoint.detect(min_eval=20)
     sp = spec(tri, recent=24, sigma_method="min_last2")
-    assert set(sp.point) == {"CAN", "CI", "HOS", "SUR"}
+    assert set(sp.point) == {"CANCER", "CI", "INPATIENT", "SURGERY"}
 
 
 def test_detect_spec_default_config(tri):
@@ -109,6 +109,6 @@ def test_detect_spec_default_config(tri):
 
 
 def test_ungrouped_triangle_returns_scalar_point():
-    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "SUR").drop("coverage")
+    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "SURGERY").drop("coverage")
     sp = lr.SwitchPoint.detect()(lr.Triangle(df))
     assert sp.point is None or (isinstance(sp.point, int) and sp.point >= 1)

@@ -9,10 +9,10 @@ import lossratio as lr
 
 
 def _sample_triangle(group: bool = True) -> lr.Triangle:
-    exp = lr.load_experience().filter(pl.col("coverage").is_in(["SUR", "CI"]))
+    exp = lr.load_experience().filter(pl.col("coverage").is_in(["SURGERY", "CI"]))
     if group:
         return lr.Triangle(exp, groups="coverage")
-    return lr.Triangle(exp.filter(pl.col("coverage") == "SUR"))
+    return lr.Triangle(exp.filter(pl.col("coverage") == "SURGERY"))
 
 
 def test_calendar_agg_returns_calendar():
@@ -106,7 +106,7 @@ def test_calendar_share_sums_to_one():
 
 def test_calendar_output_type_mirror():
     """Calendar.df mirrors the input format used to build the Triangle."""
-    exp_pl = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    exp_pl = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 
     # polars in -> polars out
     tri_pl = lr.Triangle(exp_pl)

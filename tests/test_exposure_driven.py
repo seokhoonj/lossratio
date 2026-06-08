@@ -246,7 +246,7 @@ def test_summary_fully_observed_cohort() -> None:
 
 
 def test_with_group_var() -> None:
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    df = _toy_triangle_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     fit = lr.ExposureDriven().fit(lr.Triangle(df, groups="coverage"))
     assert "coverage" in fit.to_polars().columns
 

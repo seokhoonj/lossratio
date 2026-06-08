@@ -161,7 +161,7 @@ def test_band_legs_present_when_mature():
     real two-leg agreement.)
     """
     fit = _regime_fit()
-    band = fit.segment_band().filter(pl.col("coverage") == "SUR")
+    band = fit.segment_band().filter(pl.col("coverage") == "SURGERY")
     assert band.height == 1
     row = band.row(0, named=True)
     # Both legs land on the mature-ish SUR recent segment.
@@ -368,7 +368,7 @@ def test_under_determined_flagged():
     # Force under-determined by demanding far more points than exist.
     band = fit.segment_band(
         curve=lr.Curve(target="intensity", min_points=99)
-    ).filter(pl.col("coverage") == "SUR")
+    ).filter(pl.col("coverage") == "SURGERY")
     row = band.row(0, named=True)
     assert row["curve_under_determined"] is True
     assert row["band_status"] == "wide"
@@ -440,7 +440,7 @@ def test_ratio_proj_mean_is_midpoint():
     alongside on its own columns).
     """
     fit = _regime_fit()
-    band = fit.segment_band().filter(pl.col("coverage") == "SUR")
+    band = fit.segment_band().filter(pl.col("coverage") == "SURGERY")
     row = band.row(0, named=True)
     assert row["ratio_proj_curve"] is not None  # SUR curve is well-defined
     assert row["ratio_proj_mean"] == pytest.approx(
@@ -474,7 +474,7 @@ def test_only_regime_groups_present():
     fit = _regime_fit()
     band = fit.segment_band()
     covs = set(band["coverage"].to_list())
-    assert covs == {"SUR"}
+    assert covs == {"SURGERY"}
 
 
 # ---------------------------------------------------------------------------
@@ -623,7 +623,7 @@ def test_auto_grain_selects_coarse_when_fine_diverges():
     finest grain where the slope is physical AND the legs agree.
     """
     fit = _regime_fit()
-    on = fit.segment_band(auto_grain=True).filter(pl.col("coverage") == "SUR")
+    on = fit.segment_band(auto_grain=True).filter(pl.col("coverage") == "SURGERY")
     assert on.height == 1
     row = on.row(0, named=True)
     # A coarser grain than the monthly display grain was selected.
@@ -633,7 +633,7 @@ def test_auto_grain_selects_coarse_when_fine_diverges():
 
     # The selected grain is physical (its curve did not diverge), unlike the
     # vetoed monthly grain.
-    off = fit.segment_band().filter(pl.col("coverage") == "SUR").row(0, named=True)
+    off = fit.segment_band().filter(pl.col("coverage") == "SURGERY").row(0, named=True)
     assert off["curve_diverged"] is True  # the fine-grain veto fired.
     assert row["curve_diverged"] is False
 
@@ -643,7 +643,7 @@ def test_auto_grain_selects_coarse_when_fine_diverges():
 
     tri_g = _coarsen_triangle(fit._triangle, row["selected_grain"])
     direct = fit._estimator.fit(tri_g).segment_band()
-    direct = direct.filter(pl.col("coverage") == "SUR").row(0, named=True)
+    direct = direct.filter(pl.col("coverage") == "SURGERY").row(0, named=True)
     assert row["ratio_proj_borrow"] == pytest.approx(direct["ratio_proj_borrow"])
     assert row["ratio_proj_curve"] == pytest.approx(direct["ratio_proj_curve"])
 
@@ -659,7 +659,7 @@ def test_auto_grain_observed_lr_grain_invariant():
     from lossratio.regime import _coarsen_triangle
 
     fit = _regime_fit()
-    change = fit._regime._changes_df.filter(pl.col("coverage") == "SUR")
+    change = fit._regime._changes_df.filter(pl.col("coverage") == "SURGERY")
     change_from = max(change["change"].to_list())
 
     def _observed_lr(grain: str) -> float:
@@ -674,7 +674,7 @@ def test_auto_grain_observed_lr_grain_invariant():
         df = f.to_polars()
         df = df.with_columns(pl.col("cohort").cast(pl.Date))
         sub = df.filter(
-            (pl.col("coverage") == "SUR")
+            (pl.col("coverage") == "SURGERY")
             & (pl.col("cohort") >= change_from)
         )
         latest = sub.sort("duration").group_by("cohort").agg(
@@ -910,7 +910,7 @@ def test_segment_path_observed_region_grain_invariant():
     """
     fit = _regime_fit()
     path = fit.segment_path(auto_grain=True)
-    df = fit.to_polars().filter(pl.col("coverage") == "SUR")
+    df = fit.to_polars().filter(pl.col("coverage") == "SURGERY")
     change = fit._regime._changes_df.row(0, named=True)["change"]
     recent = df.filter(pl.col("cohort") >= change)
     agg = (
@@ -923,7 +923,7 @@ def test_segment_path_observed_region_grain_invariant():
         .sort("duration")
     )
     obs = path.filter(
-        (pl.col("coverage") == "SUR") & pl.col("observed")
+        (pl.col("coverage") == "SURGERY") & pl.col("observed")
     ).select(["duration", "ratio_borrow"])
     chk = obs.join(agg, on="duration")
     assert chk.height == obs.height
@@ -933,7 +933,7 @@ def test_segment_path_observed_region_grain_invariant():
 def test_segment_path_observed_then_tail_structure():
     """Observed rows have a collapsed band; tail rows have a bracketing band."""
     fit = _regime_fit()
-    p = fit.segment_path(auto_grain=True).filter(pl.col("coverage") == "SUR")
+    p = fit.segment_path(auto_grain=True).filter(pl.col("coverage") == "SURGERY")
     obs = p.filter(pl.col("observed"))
     tail = p.filter(~pl.col("observed"))
     assert obs.height > 0 and tail.height > 0

@@ -61,7 +61,7 @@ def test_kneedle_elbow_too_few_points_returns_none():
 
 def _sur_triangle() -> "lr.Triangle":
     return lr.Triangle(
-        lr.load_experience().filter(pl.col("coverage") == "SUR")
+        lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     )
 
 

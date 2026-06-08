@@ -55,7 +55,7 @@
 import polars as pl
 import lossratio as lr
 
-df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
 bt = lr.Backtest(lr.Ratio(method="ed"), holdout=3, target="ratio").fit(tri)
@@ -78,7 +78,7 @@ bt = lr.Backtest(lr.Ratio(method="ed"), holdout=3, target="ratio").fit(tri)
    import polars as pl
    import lossratio as lr
 
-   df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+   df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="Q")
    bt = lr.Backtest(lr.Ratio(method="ed"), holdout=3, target="ratio").fit(tri)
 

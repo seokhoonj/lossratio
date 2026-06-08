@@ -53,7 +53,7 @@ def _converging_triangle() -> lr.Triangle:
 
 
 def _sur_triangle() -> lr.Triangle:
-    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    exp = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     return lr.Triangle(exp)
 
 

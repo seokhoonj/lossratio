@@ -155,7 +155,7 @@ tri.link(target="loss").ata().df.select(["duration", "f", "n_cohorts"])
    import polars as pl
    import lossratio as lr
 
-   df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+   df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="M")
    link = tri.link(target="loss", exposure="premium")
 
@@ -192,7 +192,7 @@ tri.link(target="loss").ata().df.select(["duration", "f", "n_cohorts"])
 import polars as pl
 import lossratio as lr
 
-df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="M")
 
 tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohorts"]).head(4)
@@ -246,7 +246,7 @@ tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohort
    import polars as pl
    import lossratio as lr
 
-   df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+   df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="M")
    link = tri.link(target="loss", exposure="premium")
 

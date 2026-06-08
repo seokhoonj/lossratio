@@ -29,7 +29,7 @@ def tri_with_groups():
 def tri_single():
     # Single-group: filter to one coverage and drop the groups arg.
     import polars as pl
-    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CAN")
+    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     return lr.Triangle(df)
 
 

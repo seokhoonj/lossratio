@@ -9,10 +9,10 @@ import lossratio as lr
 
 
 def _sample_triangle(group: bool = True) -> lr.Triangle:
-    exp = lr.load_experience().filter(pl.col("coverage").is_in(["SUR", "CI"]))
+    exp = lr.load_experience().filter(pl.col("coverage").is_in(["SURGERY", "CI"]))
     if group:
         return lr.Triangle(exp, groups="coverage")
-    return lr.Triangle(exp.filter(pl.col("coverage") == "SUR"))
+    return lr.Triangle(exp.filter(pl.col("coverage") == "SURGERY"))
 
 
 def test_total_agg_returns_total():
@@ -98,7 +98,7 @@ def test_total_cohort_range():
 
 
 def test_total_output_type_mirror():
-    exp_pl = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    exp_pl = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 
     tri_pl = lr.Triangle(exp_pl)
     tot_pl = tri_pl.total_agg()

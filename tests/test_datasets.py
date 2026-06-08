@@ -18,7 +18,7 @@ def test_load_experience_shape():
         "duration_y", "duration_h", "duration_q", "duration_m",
         "incr_loss", "incr_premium",
     ]
-    assert sorted(df["coverage"].unique().to_list()) == ["CAN", "CI", "HOS", "SUR"]
+    assert sorted(df["coverage"].unique().to_list()) == ["CANCER", "CI", "INPATIENT", "SURGERY"]
     assert sorted(df["age_band"].unique().to_list()) == [
         "20s", "30s", "40s", "50s", "60s", "70+"
     ]
@@ -43,7 +43,7 @@ def test_load_experience_grouped_pipeline_runs():
 
 
 def test_load_experience_sur_has_regime_break():
-    df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     tri = lr.Triangle(df)
     reg = tri.detect_regime(target="ratio", window=12)
     assert len(reg.change_points) == 1

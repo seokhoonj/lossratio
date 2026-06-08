@@ -205,7 +205,7 @@ def test_cl_tail_factor_per_group(tri):
     cf = lr.ChainLadder(tail=True).fit(tri)
     assert isinstance(cf.tail_factor, dict)
     # all groups represented, all > 1
-    assert set(cf.tail_factor.keys()) == {"CAN", "CI", "HOS", "SUR"}
+    assert set(cf.tail_factor.keys()) == {"CANCER", "CI", "INPATIENT", "SURGERY"}
     assert all(tf > 1.0 for tf in cf.tail_factor.values())
 
 
@@ -423,8 +423,8 @@ def test_ed_tail_additive_increment(tri):
     # is the coupled sum (premium develops in step with the loss intensity).
     ef = lr.ExposureDriven(tail=True).fit(tri)
     sum_g = compute_ed_tail_increment_coupled(
-        ef._internals["CAN"].g_sel,
-        ef.premium_fit._premium_f_k["CAN"],
+        ef._internals["CANCER"].g_sel,
+        ef.premium_fit._premium_f_k["CANCER"],
         True,
         grain=tri.grain,
     ).factor
@@ -433,7 +433,7 @@ def test_ed_tail_additive_increment(tri):
             pl.col("duration").rank(method="dense", descending=True)
             .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "CANCER"))
         .with_columns(
             (pl.col("loss_proj") + pl.col("premium_proj") * sum_g).alias("_expect")
         )
@@ -491,17 +491,17 @@ def test_sa_tail_post_switch_cl_is_multiplicative(tri):
     assert all(
         v.effective_switch_point is not None for v in sa._internals.values()
     )
-    assert sa.tail_factor["SUR"] > 1.0  # this group converges
+    assert sa.tail_factor["SURGERY"] > 1.0  # this group converges
     last = (
         sa._df.with_columns(
             pl.col("duration").rank(method="dense", descending=True)
             .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "SUR"))
+        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "SURGERY"))
         .with_columns((pl.col("loss_tail") / pl.col("loss_proj")).alias("_ratio"))
     )
     r = last["_ratio"].drop_nulls().to_numpy()
-    assert np.allclose(r[np.isfinite(r)], sa.tail_factor["SUR"])
+    assert np.allclose(r[np.isfinite(r)], sa.tail_factor["SURGERY"])
 
 
 def test_sa_tail_all_ed_is_additive(tri):
@@ -511,8 +511,8 @@ def test_sa_tail_all_ed_is_additive(tri):
         v.effective_switch_point is None for v in sa._internals.values()
     )
     sum_g = compute_ed_tail_increment_coupled(
-        sa._internals["CAN"].g_sel,
-        sa.premium_fit._premium_f_k["CAN"],
+        sa._internals["CANCER"].g_sel,
+        sa.premium_fit._premium_f_k["CANCER"],
         True,
         grain=tri.grain,
     ).factor
@@ -521,7 +521,7 @@ def test_sa_tail_all_ed_is_additive(tri):
             pl.col("duration").rank(method="dense", descending=True)
             .over(["coverage", "cohort"]).alias("_duration_rank")
         )
-        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "CAN"))
+        .filter((pl.col("_duration_rank") == 1) & (pl.col("coverage") == "CANCER"))
         .with_columns(
             (pl.col("loss_proj") + pl.col("premium_proj") * sum_g).alias("_expect")
         )

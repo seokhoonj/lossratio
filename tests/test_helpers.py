@@ -12,7 +12,7 @@ import lossratio as lr
 
 
 def _sur_triangle() -> lr.Triangle:
-    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    exp = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     return lr.Triangle(exp)
 
 
@@ -44,12 +44,12 @@ def test_regime_at_list_of_changes():
 def test_regime_at_with_groups():
     r = lr.Regime.at(
         change=["2024-07-01", "2024-10-01"],
-        groups={"coverage": ["SUR", "CI"]},
+        groups={"coverage": ["SURGERY", "CI"]},
     )
     assert r.groups == "coverage"
     changes = r.changes
     assert set(changes.columns) >= {"coverage", "change", "regime_id"}
-    assert changes["coverage"].to_list() == ["SUR", "CI"]
+    assert changes["coverage"].to_list() == ["SURGERY", "CI"]
     # All change rows get regime_id=2 (R parity: id marks "into next regime").
     assert changes["regime_id"].to_list() == [2, 2]
 
@@ -60,12 +60,12 @@ def test_regime_at_with_multi_column_groups():
     Regression for B3: ``Regime.at`` previously stored only the first key."""
     r = lr.Regime.at(
         change=["2024-07-01", "2025-01-01"],
-        groups={"coverage": ["SUR", "SUR"], "block": ["E", "O"]},
+        groups={"coverage": ["SURGERY", "SURGERY"], "block": ["E", "O"]},
     )
     assert r.groups == ["coverage", "block"]
     changes = r.changes
     assert set(changes.columns) >= {"coverage", "block", "change", "regime_id"}
-    assert changes["coverage"].to_list() == ["SUR", "SUR"]
+    assert changes["coverage"].to_list() == ["SURGERY", "SURGERY"]
     assert changes["block"].to_list() == ["E", "O"]
     # The two distinct (coverage, block) change dates must NOT collapse.
     assert changes.select(["coverage", "block"]).unique().height == 2
@@ -84,7 +84,7 @@ def test_regime_at_validation_errors():
     with pytest.raises(ValueError, match="equal length"):
         lr.Regime.at(
             change=["2024-07-01", "2024-10-01"],
-            groups={"coverage": ["SUR"]},
+            groups={"coverage": ["SURGERY"]},
         )
     with pytest.raises(ValueError, match="ISO date"):
         lr.Regime.at(change="not-a-date")

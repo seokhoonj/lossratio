@@ -12,7 +12,7 @@ from lossratio.regime import _apply_regime_filter, _resolve_regime
 
 def _sur_triangle() -> lr.Triangle:
     return lr.Triangle(
-        lr.load_experience().filter(pl.col("coverage") == "SUR")
+        lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     )
 
 
@@ -108,7 +108,7 @@ def test_apply_regime_filter_per_group_keeps_all_groups_cohorts():
     orig = tri.to_polars()
     r = lr.Regime.at(
         change=["2024-01-01", "2024-07-01"],
-        groups={"coverage": ["SUR", "CI"]},
+        groups={"coverage": ["SURGERY", "CI"]},
     )
     filtered = _apply_regime_filter(tri, r).to_polars()
     # Every original group still present.
@@ -376,7 +376,7 @@ def test_sa_segment_borrowed_coarse_grain_no_crash():
     per-segment diagonal concat. A short segment can yield an all-null
     `switch_from` column (Null dtype) that plain diagonal concat rejected
     against another segment's Int64 -- fixed via diagonal_relaxed supertyping."""
-    exp = lr.load_experience().filter(pl.col("coverage") == "SUR")
+    exp = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     tri = lr.Triangle(exp, grain="H")
     r = lr.Regime.at(change="2024-07-01")
     fit = lr.Ratio(method="sa", loss_regime=r, premium_regime=r).fit(tri)

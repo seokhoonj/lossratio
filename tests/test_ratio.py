@@ -217,7 +217,7 @@ def test_ratio_summary_fully_observed_cohort():
 
 
 def test_ratio_with_group_var():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    df = _toy_triangle_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     fit = lr.Ratio(method="cl").fit(
         lr.Triangle(df, groups="coverage")
     )
@@ -242,12 +242,12 @@ def test_ratio_groups_fitted_independently():
 
 
 def test_ratio_sa_switch_point_per_group_dict():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    df = _toy_triangle_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     fit = lr.Ratio(method="sa", switch=2).fit(
         lr.Triangle(df, groups="coverage")
     )
     assert isinstance(fit.switch_point, dict)
-    assert "SUR" in fit.switch_point
+    assert "SURGERY" in fit.switch_point
 
 
 # ---------------------------------------------------------------------------

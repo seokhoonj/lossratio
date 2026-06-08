@@ -17,7 +17,7 @@ import lossratio as lr
 
 
 def _sur_triangle() -> lr.Triangle:
-    return lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "SUR"))
+    return lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "SURGERY"))
 
 
 _PREMIUM_COLUMNS = {
@@ -99,12 +99,12 @@ def test_premium_rejects_alpha_not_one():
 def test_premium_grouped_keeps_every_group():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     df = lr.Premium().fit(tri).to_polars()
-    assert set(df["coverage"].unique().to_list()) == {"CAN", "CI", "HOS", "SUR"}
+    assert set(df["coverage"].unique().to_list()) == {"CANCER", "CI", "INPATIENT", "SURGERY"}
 
 
 def test_premium_mirror_pandas_in_pandas_out():
     pd = pytest.importorskip("pandas")
-    df_pd = lr.load_experience().filter(pl.col("coverage") == "SUR").to_pandas()
+    df_pd = lr.load_experience().filter(pl.col("coverage") == "SURGERY").to_pandas()
     fit = lr.Premium().fit(lr.Triangle(df_pd))
     assert isinstance(fit.df, pd.DataFrame)
     assert isinstance(fit.to_polars(), pl.DataFrame)

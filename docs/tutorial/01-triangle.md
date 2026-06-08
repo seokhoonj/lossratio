@@ -147,7 +147,7 @@ df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"
 * - 열
   - 의미
 * - `coverage`
-  - 담보 구분 (CI / CAN / HOS / SUR) — 그룹 변수
+  - 담보 구분 (CI / CANCER / INPATIENT / SURGERY) — 그룹 변수
 * - `uy_m`
   - 인수 연월 (underwriting year-month) — **코호트**를 정의
 * - `cy_m`
@@ -179,7 +179,7 @@ df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"
 이번 튜토리얼은 구조 변화가 한 번 심어져 있는 수술담보에 집중하겠습니다.
 
 ```python
-df_sur = df.filter(pl.col("coverage") == "SUR")
+df_sur = df.filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df_sur, groups="coverage")
 tri
 #> <Triangle: 666 rows, 1 groups, 36 cohorts x 36 durations (M)>
@@ -290,7 +290,7 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]
    import lossratio as lr
 
    df = lr.load_experience()
-   df_sur = df.filter(pl.col("coverage") == "SUR")
+   df_sur = df.filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df_sur, groups="coverage", grain="Q")
 
 .. plot::

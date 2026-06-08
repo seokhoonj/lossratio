@@ -51,7 +51,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     """Every pinned surface -> a polars frame of its numeric output (sorted)."""
     df = lr.load_experience()
     tri = lr.Triangle(df, groups="coverage")
-    sur = lr.Triangle(df.filter(pl.col("coverage") == "SUR"), groups="coverage")
+    sur = lr.Triangle(df.filter(pl.col("coverage") == "SURGERY"), groups="coverage")
 
     out: dict[str, pl.DataFrame] = {}
 

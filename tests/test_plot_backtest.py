@@ -24,7 +24,7 @@ def tri_multi():
 
 @pytest.fixture
 def tri_single():
-    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CAN")
+    df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     return lr.Triangle(df)
 
 

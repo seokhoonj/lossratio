@@ -380,7 +380,7 @@ def test_detect_regime_candidates_carries_assess():
     # candidates is a superset of accepted changes.
     assert cand.height >= reg.changes.height
     # the planted synthetic SUR regime is a clean step.
-    sur = cand.filter(pl.col("coverage") == "SUR")
+    sur = cand.filter(pl.col("coverage") == "SURGERY")
     assert sur.height >= 1                      # planted SUR regime must surface
     assert sur["kind"][0] == "step"
     assert sur["step_p"][0] < 0.05
@@ -405,7 +405,7 @@ def test_detect_regime_window_sweep_stability():
         assert sub["window_stability"].min() > 0.0
         assert sub["window_stability"].max() <= 1.0
     # the planted synthetic SUR regime recurs across windows (robust).
-    sur = cand.filter(pl.col("coverage") == "SUR")
+    sur = cand.filter(pl.col("coverage") == "SURGERY")
     assert sur.height >= 1                      # planted SUR regime must surface
     assert sur["window_stability"][0] >= 0.5
     assert sur["kind"][0] == "step"
@@ -445,7 +445,7 @@ def test_detect_regime_grain_sweep():
     assert "grain_stability" in cand.columns
     assert cand["grain_stability"].min() >= 1
     # the planted SUR regime is detected at >= 1 grain and is a step.
-    sur = cand.filter(pl.col("coverage") == "SUR")
+    sur = cand.filter(pl.col("coverage") == "SURGERY")
     assert sur.height >= 1                      # planted SUR regime must surface
     assert sur["kind"][0] == "step"
     assert sur["grain_stability"][0] >= 2       # detected at >= 2 grains (M and Q)
@@ -482,7 +482,7 @@ def test_evaluate_action_regime_or_none():
     if acted.height:
         assert (acted["confidence"] > 0.0).all()
     # the planted SUR step is a regime, not still-moving.
-    sur = ev.filter(pl.col("coverage") == "SUR")
+    sur = ev.filter(pl.col("coverage") == "SURGERY")
     assert sur.height >= 1                      # planted SUR regime must surface
     assert sur["action"][0] == "regime"
     assert not sur["still_moving"][0]
@@ -507,7 +507,7 @@ def test_accepted_with_no_detected_candidates_returns_empty_regime():
     the missing ``"action"`` column -- the empty evaluate frame carries no
     schema. Single-config detect on the bundled data yields zero candidates
     (the planted SUR regime only surfaces under the grain/window sweep)."""
-    tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "CAN"))
+    tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "CANCER"))
     reg = tri.detect_regime()
     assert reg.candidates.height == 0
     acc = reg.accepted()
@@ -544,7 +544,7 @@ def test_grain_sweep_per_grain_kind_profile():
         elif row["change_type"] == "transition":
             assert "step" in kinds and "drift" in kinds
     # the planted SUR regime is a clean step across its detected grains.
-    sur = cand.filter(pl.col("coverage") == "SUR")
+    sur = cand.filter(pl.col("coverage") == "SURGERY")
     assert sur.height >= 1                      # planted SUR regime must surface
     assert sur["change_type"][0] == "step"
 
@@ -569,7 +569,7 @@ def test_accepted_drives_the_fit():
     def sur_proj(f):
         s = f.summary()
         s = s if isinstance(s, pl.DataFrame) else pl.from_pandas(s)
-        return s.filter(pl.col("coverage") == "SUR")["ratio_proj"].drop_nulls().mean()
+        return s.filter(pl.col("coverage") == "SURGERY")["ratio_proj"].drop_nulls().mean()
 
     assert abs(sur_proj(f0) - sur_proj(f1)) > 1e-3
 
@@ -611,7 +611,7 @@ def test_borrow_screen_level_vs_shape():
 
 def test_borrow_screen_method():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    reg = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SUR"]})
+    reg = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SURGERY"]})
     scr = reg.borrow_screen(tri)
     assert {"coverage", "verdict", "shape_score", "calendar_score"} <= set(scr.columns)
     assert set(scr["verdict"].unique().to_list()) <= {"level", "shape", "calendar", "insufficient"}
@@ -647,13 +647,13 @@ def test_borrow_screen_calendar_trend():
 
 def test_ratio_segment_summary():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    acc = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SUR"]})
+    acc = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SURGERY"]})
     fit = lr.Ratio(loss_regime=acc).fit(tri)
     ss = fit.segment_summary()
     ss = ss if isinstance(ss, pl.DataFrame) else pl.from_pandas(ss)
     assert {"coverage", "segment", "change_from", "n_cohorts",
             "loss_proj", "premium_proj", "ratio_proj"} <= set(ss.columns)
-    sur = ss.filter(pl.col("coverage") == "SUR")
+    sur = ss.filter(pl.col("coverage") == "SURGERY")
     assert "total" in sur["segment"].to_list()
     # the total row's ult LR is the premium-weighted blend of the segments.
     seg = sur.filter(pl.col("segment") != "total")
@@ -667,7 +667,7 @@ def test_ratio_segment_summary():
     f0 = lr.Ratio().fit(tri)
     s0 = f0.segment_summary()
     s0 = s0 if isinstance(s0, pl.DataFrame) else pl.from_pandas(s0)
-    assert "total" in s0.filter(pl.col("coverage") == "SUR")["segment"].to_list()
+    assert "total" in s0.filter(pl.col("coverage") == "SURGERY")["segment"].to_list()
 
 
 # ---------------------------------------------------------------------------
@@ -703,7 +703,7 @@ def test_changes_at_ceil_snaps_to_grain(change, grain, expected):
 
 def test_changes_at_preserves_columns_and_rows():
     """Only ``change`` moves; columns / group keys / row count are intact."""
-    reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SUR"]})
+    reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SURGERY"]})
     base = reg.changes
     base = base if isinstance(base, pl.DataFrame) else pl.from_pandas(base)
     snapped = reg.changes_at("Q")
@@ -732,13 +732,13 @@ def test_changes_at_matches_segment_start():
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     # SUR has a detectable regime; pin a mid-quarter change to force a snap.
-    reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SUR"]})
+    reg = lr.Regime.at(change="2024-08-01", groups={"coverage": ["SURGERY"]})
     snapped = reg.changes_at("Q")
     snapped = snapped if isinstance(snapped, pl.DataFrame) else pl.from_pandas(snapped)
-    snap_date = snapped.filter(pl.col("coverage") == "SUR")["change"].to_list()[0]
+    snap_date = snapped.filter(pl.col("coverage") == "SURGERY")["change"].to_list()[0]
 
     tri_q = _coarsen_triangle(tri, "Q")
-    df = tri_q._df.filter(pl.col("coverage") == "SUR")
+    df = tri_q._df.filter(pl.col("coverage") == "SURGERY")
     cohorts = sorted(df["cohort"].unique().to_list())
     recent, _ = _recent_segment_cohorts(cohorts, [dt.date(2024, 8, 1)])
     assert min(recent) == snap_date

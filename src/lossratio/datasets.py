@@ -16,7 +16,7 @@ back up reproduces the coverage-level target Ratio.
 Calibration scalars (target Ratio, premium volume, cell noise CV) per
 coverage were measured once on a real long-term Korean health-
 insurance portfolio and are baked in here as constants so this module
-ships without any real-data dependency. SUR carries a regime shift at
+ships without any real-data dependency. SURGERY carries a regime shift at
 cohort 18 (2024-07): target Ratio is scaled by 0.6 to mimic the real
 portfolio's underwriting tightening.
 
@@ -48,21 +48,21 @@ _DATA_PATH = Path(__file__).parent / "data" / "experience.parquet"
 #            cerebral haemorrhage)
 #          - ischemic heart disease (angina, acute myocardial
 #            infarction)
-#        Does NOT include cancer; cancer is the separate `CAN` coverage.
-#   CAN  Cancer
-#   HOS  Hospitalisation (per-day fixed benefit)
-#   SUR  Surgery (per-event fixed benefit)
+#        Does NOT include cancer; cancer is the separate `CANCER` coverage.
+#   CANCER     Cancer
+#   INPATIENT  Hospitalisation (inpatient, per-day fixed benefit)
+#   SURGERY    Surgery (per-event fixed benefit)
 _CALIB: list[tuple[str, float, float, float, float]] = [
-    # (coverage, target_ratio, premium_mean,   premium_cv,   cell_cv)
-    ("CI",       0.6041798, 490_082_826, 0.9332768, 1.3679838),
-    ("CAN",      0.4966633, 403_465_899, 0.8684393, 1.6660074),
-    ("HOS",      0.3533962,  32_725_571, 0.8545352, 0.8603264),
-    ("SUR",      1.4291995, 704_738_057, 0.6738675, 0.3589258),
+    # (coverage,  target_ratio, premium_mean,   premium_cv,   cell_cv)
+    ("CI",        0.6041798, 490_082_826, 0.9332768, 1.3679838),
+    ("CANCER",    0.4966633, 403_465_899, 0.8684393, 1.6660074),
+    ("INPATIENT", 0.3533962,  32_725_571, 0.8545352, 0.8603264),
+    ("SURGERY",   1.4291995, 704_738_057, 0.6738675, 0.3589258),
 ]
 
-# Single regime shift on SUR at cohort idx 18 (2024-07): scale target
+# Single regime shift on SURGERY at cohort idx 18 (2024-07): scale target
 # Ratio by 0.6 (1.43 -> ~0.86).
-_SHIFTS: dict[str, tuple[int, float]] = {"SUR": (18, 0.60)}
+_SHIFTS: dict[str, tuple[int, float]] = {"SURGERY": (18, 0.60)}
 
 # --- Segment dimensions: age_band x channel -----------------------------
 #
@@ -117,9 +117,9 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
 
     * 36 monthly cohorts: 2023-01 to 2025-12.
     * Up to 36 development months per cohort, jagged triangle shape.
-    * Four coverages (``CI``, ``CAN``, ``HOS``, ``SUR``), each split
+    * Four coverages (``CI``, ``CANCER``, ``INPATIENT``, ``SURGERY``), each split
       across six ``age_band`` x four ``channel`` segments (96 segments).
-    * ``SUR`` carries a planted regime shift at cohort 2024-07 (cohort
+    * ``SURGERY`` carries a planted regime shift at cohort 2024-07 (cohort
       idx 18): target cumulative Ratio drops to roughly 0.6x the
       pre-break level. The other three coverages are stable.
 

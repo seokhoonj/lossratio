@@ -230,7 +230,7 @@ def test_backtest_with_ratio_cl_method():
 
 
 def test_backtest_with_group_var():
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    df = _toy_triangle_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     tri = lr.Triangle(df, groups="coverage")
     bt = lr.Backtest(estimator=lr.ChainLadder(), holdout=1, target="loss").fit(tri)
     assert "coverage" in bt.ae_err.columns

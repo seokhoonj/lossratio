@@ -198,7 +198,7 @@ ED입니다. 대신 손해 자체의 진전 패턴(곱셈식 증가)은 chain la
    import polars as pl
    import lossratio as lr
 
-   df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+   df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="M")
    link = tri.link(target="loss", exposure="premium")
 

@@ -74,7 +74,7 @@ def test_triangle_cumulative():
 
 def test_triangle_with_group():
     df = _exp_input().with_columns(
-        pl.lit("SUR").alias("coverage"),
+        pl.lit("SURGERY").alias("coverage"),
     )
     tri = lr.Triangle(df, groups="coverage")
     assert "coverage" in tri.columns
@@ -292,9 +292,9 @@ def test_triangle_share_columns_sum_to_one():
     Two groups (SUR + CAN) so the shares are non-trivial; with a single
     group every share is trivially 1.0.
     """
-    sur = _exp_input().with_columns(pl.lit("SUR").alias("coverage"))
+    sur = _exp_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     can = _exp_input().with_columns(
-        pl.lit("CAN").alias("coverage"),
+        pl.lit("CANCER").alias("coverage"),
         # distinct magnitudes so shares are not all 0.5
         (pl.col("incr_loss") * 3.0).alias("incr_loss"),
         (pl.col("incr_premium") * 2.0).alias("incr_premium"),
@@ -394,8 +394,8 @@ def test_mask_preserves_input_type_polars():
 
 def test_mask_with_groups():
     """Per-group masking: each group drops its own trailing diagonal."""
-    sur = _exp_input().with_columns(pl.lit("SUR").alias("coverage"))
-    can = _exp_input().with_columns(pl.lit("CAN").alias("coverage"))
+    sur = _exp_input().with_columns(pl.lit("SURGERY").alias("coverage"))
+    can = _exp_input().with_columns(pl.lit("CANCER").alias("coverage"))
     df = pl.concat([sur, can])
     tri = lr.Triangle(df, groups="coverage")
     masked = tri.mask(holdout=1)
@@ -404,7 +404,7 @@ def test_mask_with_groups():
     assert masked.n_rows == tri.n_rows - 6
     # Both groups survive.
     assert set(masked.to_polars()["coverage"].unique().to_list()) == {
-        "SUR", "CAN"
+        "SURGERY", "CANCER"
     }
 
 
@@ -459,10 +459,10 @@ def test_validation_detects_invalid_calendar():
 
 def test_validation_with_groups():
     """Groups column is propagated into the gaps table when supplied."""
-    df = _gap_input().with_columns(pl.lit("SUR").alias("coverage"))
+    df = _gap_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     v = TriangleValidation(df, groups="coverage")
     assert "coverage" in v.gaps.columns
-    assert v.gaps["coverage"].to_list() == ["SUR"]
+    assert v.gaps["coverage"].to_list() == ["SURGERY"]
 
 
 def test_validation_pandas_mirror():

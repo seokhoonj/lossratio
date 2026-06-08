@@ -40,7 +40,7 @@ chain ladder의 숨은 전제는 "하나의 일관된 진전 패턴"이다. regi
 import polars as pl
 import lossratio as lr
 
-df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
 reg = tri.detect_regime()
@@ -48,7 +48,7 @@ reg.changes
 #> ┌──────────┬────────────┬───────────┐
 #> │ coverage ┆ change     ┆ regime_id │
 #> ╞══════════╪════════════╪═══════════╡
-#> │ SUR      ┆ 2024-07-01 ┆ 2         │
+#> │ SURGERY  ┆ 2024-07-01 ┆ 2         │
 #> └──────────┴────────────┴───────────┘
 ```
 
@@ -76,7 +76,7 @@ elbow 휴리스틱으로, 그래도 안 잡히면 고정 기본값으로 차례�
    import polars as pl
    import lossratio as lr
 
-   df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+   df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="Q")
    reg = tri.detect_regime()
 

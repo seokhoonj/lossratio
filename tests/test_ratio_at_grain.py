@@ -11,7 +11,7 @@ def _m_fit():
     exp = lr.load_experience()
     exp = pl.from_pandas(exp) if not isinstance(exp, pl.DataFrame) else exp
     sub = exp.filter(
-        (pl.col("coverage") == "CAN")
+        (pl.col("coverage") == "CANCER")
         & (pl.col("age_band") == "40s")
         & (pl.col("channel") == "TM")
     )
@@ -60,7 +60,7 @@ def _regime_m_fit():
     """
     exp = lr.load_experience()
     exp = pl.from_pandas(exp) if not isinstance(exp, pl.DataFrame) else exp
-    sub = exp.filter(pl.col("coverage") == "SUR")
+    sub = exp.filter(pl.col("coverage") == "SURGERY")
     tri = lr.Triangle(
         sub,
         cohort="uy_m",
@@ -114,7 +114,7 @@ def _refine():
     exp = lr.load_experience()
     exp = pl.from_pandas(exp) if not isinstance(exp, pl.DataFrame) else exp
     sub = exp.filter(
-        (pl.col("coverage") == "CAN")
+        (pl.col("coverage") == "CANCER")
         & (pl.col("age_band") == "40s")
         & (pl.col("channel") == "TM")
     )
@@ -141,7 +141,7 @@ def _m_fit_with_tail():
     exp = lr.load_experience()
     exp = pl.from_pandas(exp) if not isinstance(exp, pl.DataFrame) else exp
     sub = exp.filter(
-        (pl.col("coverage") == "CAN")
+        (pl.col("coverage") == "CANCER")
         & (pl.col("age_band") == "40s")
         & (pl.col("channel") == "TM")
     )

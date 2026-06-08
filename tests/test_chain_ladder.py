@@ -294,7 +294,7 @@ def test_cl_summary_ultimate_for_fully_observed_cohort() -> None:
 
 
 def test_cl_with_group_var() -> None:
-    df = _toy_triangle_input().with_columns(pl.lit("SUR").alias("coverage"))
+    df = _toy_triangle_input().with_columns(pl.lit("SURGERY").alias("coverage"))
     tri = lr.Triangle(df, groups="coverage")
     fit = lr.ChainLadder().fit(tri)
     assert "coverage" in fit.to_polars().columns
