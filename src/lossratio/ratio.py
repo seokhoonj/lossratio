@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "sa", "cl")
+_VALID_METHODS = ("ed", "cl", "sa")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 _VALID_SE_METHODS = ("fixed", "delta")
 

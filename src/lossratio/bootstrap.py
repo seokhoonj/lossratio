@@ -2777,7 +2777,7 @@ class Bootstrap:
                 f"type must be one of 'analytical', 'nonparametric', "
                 f"'parametric', got {self.type!r}"
             )
-        if self.method not in ("cl", "ed", "sa"):
+        if self.method not in ("ed", "cl", "sa"):
             raise ValueError(
                 f"method must be one of 'cl', 'ed', 'sa', got {self.method!r}"
             )

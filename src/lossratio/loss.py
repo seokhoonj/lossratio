@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "sa", "cl")
+_VALID_METHODS = ("ed", "cl", "sa")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 
 # Map the internal method label to the public model name carried on
