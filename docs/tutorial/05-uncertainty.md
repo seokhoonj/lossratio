@@ -108,7 +108,71 @@ fit.summary().select(["cohort", "ratio_proj", "ratio_cv", "ratio_ci_lo", "ratio_
 나갈 수도, 보험료를 넘길 수도 있다"는 뜻이라, 어린 코호트의 점 예측 0.86은
 사실상 단독으로는 쓸 수 없는 값이다.
 
-## 5.4 부트스트랩
+## 5.4 손해율의 분산 — 분모도 흔들릴 때
+
+지금까지 본 `loss_proc_se`·`loss_param_se`는 **분자**(손해)의 분산이다. 그런데
+손해율은 손해를 위험보험료로 나눈 **비율**이고, 그 `ratio_se`를 만들려면
+**분모**(보험료)의 불확실성도 함께 따져야 한다. lossratio는 두 가지 방식을
+제공한다(`Ratio(se_method=...)`).
+
+- `se_method="fixed"`(기본값) — 분모를 **확정값**으로 본다. 보험료는 이미
+  거의 다 들어와 흔들림이 작다는 가정 아래, 손해율의 표준오차를 분자 SE를
+  분모로 나눠 구한다.
+
+  $$
+  \text{ratio\_se} = \frac{\text{loss\_total\_se}}{\text{premium}}
+  $$
+
+- `se_method="delta"` — 분자와 분모의 불확실성을 **델타 방법**(delta method,
+  1차 테일러 전개로 비율의 분산을 근사)으로 함께 전파하고, 둘의 상관계수
+  `rho`까지 반영한다.
+
+  $$
+  \operatorname{Var}\!\left(\tfrac{L}{P}\right) \approx
+  \left(\tfrac{\text{SE}_L}{P}\right)^{2}
+  + \left(\tfrac{L\,\text{SE}_P}{P^{2}}\right)^{2}
+  - 2\,\rho\,\frac{L\,\text{SE}_L\,\text{SE}_P}{P^{3}}
+  $$
+
+  마지막 항이 핵심이다. 손해와 보험료의 추정 오차는 보통 **같은 방향**으로
+  움직인다 — 물량이 많은 코호트는 손해도 보험료도 함께 크다(양의 `rho`).
+  분자와 분모가 같이 흔들리면 그 **비율은 오히려 덜 흔들린다**. 그래서
+  델타 방법의 손해율 SE는 분모를 고정으로 본 값보다 **작아질 수 있다**.
+
+```python
+import polars as pl
+import lossratio as lr
+
+df = lr.load_experience().filter(pl.col("coverage") == "SUR")
+tri = lr.Triangle(df, groups="coverage", grain="Q")
+
+# 분모 고정 (기본값)
+lr.Ratio(method="cl", se_method="fixed").fit(tri).summary().select(
+    ["cohort", "ratio_proj", "ratio_cv"]
+)
+#> 어린 코호트 (2025-4분기):  proj 0.86,  ratio_cv 22.7%
+
+# 분모도 전개 + 상관 반영
+lr.Ratio(method="cl", se_method="delta", rho=0.9).fit(tri).summary().select(
+    ["cohort", "ratio_proj", "ratio_cv"]
+)
+#> 어린 코호트 (2025-4분기):  proj 0.86,  ratio_cv 21.2%
+```
+
+같은 점 예측(0.86)에 분산만 달라진다. `delta`는 보험료의 불확실성
+(`premium_total_se`·`premium_total_cv` 컬럼이 함께 붙는다 — 여기선 약 1.7%)을
+더하면서도, 양의 상관 덕분에 손해율 CV가 22.7% -> 21.2%로 **줄었다**.
+
+```{admonition} 어느 쪽을 쓰나
+:class: tip
+
+보험료가 거의 다 들어와 분모가 사실상 확정이면 `fixed`로 충분하고 둘은
+거의 같다. 분모도 한참 전개해야 하거나(아주 어린 코호트), 손해·보험료의
+상관을 명시적으로 반영해 손해율 구간을 더 정확히 보고하고 싶을 때
+`se_method="delta"`를 쓴다. `rho`는 (-1, 1) 범위의 손해-보험료 상관이다.
+```
+
+## 5.5 부트스트랩
 
 지금까지의 표준오차·신뢰구간은 **공식**(Mack의 분산 분해)에 기댔다. 이는
 빠르지만 정규 근사 같은 분포 가정을 깔고 있다. **부트스트랩**(bootstrap,
@@ -161,7 +225,7 @@ lr.StageAdaptive(switch=3)   # 또는 기본 분석적 SE
 ```
 ::::
 
-## 5.5 함께 보기
+## 5.6 함께 보기
 
 - {doc}`4장 — 손해율 예측 <04-projection>`: 이 장이 불확실성을 입힌 점 예측.
   예측치와 CV·CI는 항상 함께 읽는다.
