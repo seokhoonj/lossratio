@@ -1,33 +1,34 @@
-"""Cohort-level exposure-driven loss projection (EXPERIMENTAL).
+"""Cohort-scaled exposure-driven loss projection (EXPERIMENTAL).
 
-``LevelExposureDriven`` extends the additive exposure-driven (ED) projection by
-giving each cohort its own level multiplying the shared per-duration intensity::
+``CohortScaled`` extends the additive exposure-driven (ED) projection by giving
+each cohort its own scale multiplying the shared per-duration intensity::
 
-    incr_loss[c, k] = cohort_level[c] * g_k * premium[c, k-1]
+    incr_loss[c, k] = cohort_scale[c] * g_k * premium[c, k-1]
 
 ``g_k`` is the pooled intensity -- identical to :class:`ExposureDriven`'s shape
 (``g_k = sum incr_loss / sum premium_prev`` across cohorts at duration ``k``).
-The only addition is ``cohort_level``, the per-cohort height, estimated as the
-median of ``(g_cohort / g_pooled)`` over the cohort's observed durations and
-shrunk toward ``1.0`` (the global average level) by Buhlmann credibility of
-strength ``credibility`` (K)::
+The only addition is ``cohort_scale``, the per-cohort multiplier, estimated as
+the median of ``(g_cohort / g_pooled)`` over the cohort's observed durations and
+shrunk toward ``1.0`` (the global average) by Buhlmann credibility of strength
+``credibility`` (K)::
 
-    cohort_level = (n * raw_median + K * 1.0) / (n + K)
+    cohort_scale = (n * raw_median + K * 1.0) / (n + K)
 
 The projection is additive and anchored on the observed cumulative loss, exactly
-like ED -- only the increment is scaled by ``cohort_level``. The denominator
-(premium) is projected with the shared pooled premium intensity, so the loss
-ratio is ``loss_proj / premium_proj``.
+like ED -- only the increment is scaled by ``cohort_scale`` (the scale is on the
+LOSS; premium stays the exposure base). The loss ratio is
+``loss_proj / premium_proj``.
 
 Uncertainty: an exact analytical SE is intractable here (the credibility-
-estimated ``cohort_level`` carries its own variance, the ``cohort_level * g_k``
+estimated ``cohort_scale`` carries its own variance, the ``cohort_scale * g_k``
 product, and their covariance all enter), and an approximation would understate
 it. ``n_bootstrap`` therefore drives a residual bootstrap that refits the whole
-pipeline (``g_k`` + ``cohort_level`` + projection) on resampled residuals and
+pipeline (``g_k`` + ``cohort_scale`` + projection) on resampled residuals and
 adds process noise to future cells, capturing every source at once.
 
 EXPERIMENTAL: not wired into the public API. It is ED plus one term; its
-eventual home is an ``ExposureDriven`` option once validated on real data.
+eventual home is an ``ExposureDriven`` option (or method ``"cs"``) once
+validated on real data.
 """
 
 from __future__ import annotations
@@ -81,9 +82,9 @@ def _intensities(
     return g_pool, gp_pool
 
 
-def _levels(cells: _Cells, g_pool: dict[int, float], K: float) -> dict[object, float]:
-    """Per-cohort level: median(g_cohort / g_pooled), Buhlmann-shrunk to 1.0."""
-    level: dict[object, float] = {}
+def _scales(cells: _Cells, g_pool: dict[int, float], K: float) -> dict[object, float]:
+    """Per-cohort scale: median(g_cohort / g_pooled), Buhlmann-shrunk to 1.0."""
+    scale: dict[object, float] = {}
     for c, cdict in cells.items():
         ratios = []
         for k in sorted(cdict):
@@ -93,14 +94,14 @@ def _levels(cells: _Cells, g_pool: dict[int, float], K: float) -> dict[object, f
                 ratios.append((cdict[k][2] / prev[1]) / gk)
         if ratios:
             n = len(ratios)
-            level[c] = (n * float(np.median(ratios)) + K * 1.0) / (n + K)
+            scale[c] = (n * float(np.median(ratios)) + K * 1.0) / (n + K)
         else:
-            level[c] = 1.0
-    return level
+            scale[c] = 1.0
+    return scale
 
 
 def _residuals(
-    cells: _Cells, level: dict[object, float], g_pool: dict[int, float]
+    cells: _Cells, scale: dict[object, float], g_pool: dict[int, float]
 ) -> np.ndarray:
     """Pearson residuals of observed increments: (incr - fitted)/sqrt(prem_prev)."""
     res = []
@@ -109,24 +110,24 @@ def _residuals(
             gk = g_pool.get(k)
             prev = cdict.get(k - 1)
             if gk and prev and prev[1] > 0:
-                fitted = level[c] * gk * prev[1]
+                fitted = scale[c] * gk * prev[1]
                 res.append((cdict[k][2] - fitted) / np.sqrt(prev[1]))
     arr = np.array(res, dtype=np.float64)
-    # Center: the median-based level does not zero the mean residual, so an
+    # Center: the median-based scale does not zero the mean residual, so an
     # uncentered pool would bias the bootstrap upward (loss is right-skewed).
     return arr - arr.mean() if arr.size else arr
 
 
 @dataclass(kw_only=True)
-class LevelExposureDriven:
-    """Cohort-level exposure-driven (additive) loss projection (experimental).
+class CohortScaled:
+    """Cohort-scaled exposure-driven (additive) loss projection (experimental).
 
     Parameters
     ----------
     credibility
-        Buhlmann credibility strength ``K`` shrinking each ``cohort_level``
-        toward ``1.0`` (the global average level). Larger ``K`` -> more
-        shrinkage; ``0`` trusts each cohort's raw median fully. Default ``3.0``.
+        Buhlmann credibility strength ``K`` shrinking each ``cohort_scale``
+        toward ``1.0`` (the global average). Larger ``K`` -> more shrinkage;
+        ``0`` trusts each cohort's raw median fully. Default ``3.0``.
     smooth
         Optional rolling-mean window for the pooled intensities. ``None``
         (default) applies no smoothing; a small odd window (e.g. ``3``)
@@ -156,25 +157,25 @@ class LevelExposureDriven:
         if not (0.0 < self.conf_level < 1.0):
             raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
 
-    def fit(self, triangle: "Triangle") -> "LevelExposureDrivenFit":
-        """Fit the cohort-level ED projection on a Triangle."""
+    def fit(self, triangle: "Triangle") -> "CohortScaledFit":
+        """Fit the cohort-scaled ED projection on a Triangle."""
         df = triangle.to_polars()
         gcols = normalize_groups(triangle.groups)
         rng = np.random.default_rng(self.seed)
 
-        proj_parts, level_parts, gk_parts = [], [], []
+        proj_parts, scale_parts, gk_parts = [], [], []
         if gcols:
             for key, sub in df.group_by(gcols, maintain_order=True):
                 key = key if isinstance(key, tuple) else (key,)
-                proj, level, gk = self._fit_group(sub, rng)
+                proj, scale, gk = self._fit_group(sub, rng)
                 for col, val in zip(gcols, key):
                     proj = proj.with_columns(pl.lit(val).alias(col))
-                    level = level.with_columns(pl.lit(val).alias(col))
+                    scale = scale.with_columns(pl.lit(val).alias(col))
                     gk = gk.with_columns(pl.lit(val).alias(col))
-                proj_parts.append(proj); level_parts.append(level); gk_parts.append(gk)
+                proj_parts.append(proj); scale_parts.append(scale); gk_parts.append(gk)
         else:
-            proj, level, gk = self._fit_group(df, rng)
-            proj_parts.append(proj); level_parts.append(level); gk_parts.append(gk)
+            proj, scale, gk = self._fit_group(df, rng)
+            proj_parts.append(proj); scale_parts.append(scale); gk_parts.append(gk)
 
         lead = list(gcols)
         ratio_cols = ["ratio_proj"]
@@ -183,11 +184,11 @@ class LevelExposureDriven:
         proj_df = pl.concat(proj_parts).select(
             lead + ["cohort", "duration", "loss_proj", "premium_proj"] + ratio_cols
         )
-        level_df = pl.concat(level_parts).select(lead + ["cohort", "cohort_level"])
+        scale_df = pl.concat(scale_parts).select(lead + ["cohort", "cohort_scale"])
         gk_df = pl.concat(gk_parts).select(lead + ["duration", "g_k"])
 
-        return LevelExposureDrivenFit(
-            df=proj_df, cohort_level=level_df, g_k=gk_df,
+        return CohortScaledFit(
+            df=proj_df, cohort_scale=scale_df, g_k=gk_df,
             output_type=triangle._output_type,
             credibility=self.credibility, smooth=self.smooth,
             n_bootstrap=self.n_bootstrap, conf_level=self.conf_level,
@@ -203,7 +204,7 @@ class LevelExposureDriven:
         return cells
 
     def _project(
-        self, cells: _Cells, level: dict[object, float],
+        self, cells: _Cells, scale: dict[object, float],
         g_pool: dict[int, float], gp_pool: dict[int, float], max_dur: int,
         residuals: np.ndarray | None = None, rng: "np.random.Generator | None" = None,
     ) -> list[dict]:
@@ -221,7 +222,7 @@ class LevelExposureDriven:
                 if gk is None or gpk is None:
                     break
                 prev_p = cp
-                incr = level[c] * gk * prev_p
+                incr = scale[c] * gk * prev_p
                 if residuals is not None and rng is not None and prev_p > 0:
                     incr += float(rng.choice(residuals)) * np.sqrt(prev_p)
                 cl = cl + incr
@@ -237,18 +238,18 @@ class LevelExposureDriven:
         durations = sorted({d for c in cells.values() for d in c})
         max_dur = max(durations)
         g_pool, gp_pool = _intensities(cells, durations, self.smooth)
-        level = _levels(cells, g_pool, self.credibility)
+        scale = _scales(cells, g_pool, self.credibility)
 
-        proj_df = pl.DataFrame(self._project(cells, level, g_pool, gp_pool, max_dur))
+        proj_df = pl.DataFrame(self._project(cells, scale, g_pool, gp_pool, max_dur))
 
         if self.n_bootstrap:
             ci = self._bootstrap(cells, durations, max_dur, rng)
             proj_df = proj_df.join(ci, on=["cohort", "duration"], how="left")
         proj_df = proj_df.sort(["cohort", "duration"])
 
-        level_df = pl.DataFrame({"cohort": list(level), "cohort_level": list(level.values())})
+        scale_df = pl.DataFrame({"cohort": list(scale), "cohort_scale": list(scale.values())})
         gk_df = pl.DataFrame({"duration": list(g_pool), "g_k": list(g_pool.values())}).sort("duration")
-        return proj_df, level_df, gk_df
+        return proj_df, scale_df, gk_df
 
     def _bootstrap(
         self, cells: _Cells, durations: list[int], max_dur: int,
@@ -256,8 +257,10 @@ class LevelExposureDriven:
     ) -> pl.DataFrame:
         """Residual bootstrap CI: refit on resampled residuals + process noise."""
         g_pool, gp_pool = _intensities(cells, durations, self.smooth)
-        level = _levels(cells, g_pool, self.credibility)
-        res = _residuals(cells, level, g_pool)
+        scale = _scales(cells, g_pool, self.credibility)
+        res = _residuals(cells, scale, g_pool)
+        # CI is meaningful only on PROJECTED cells; observed cells are known.
+        last_obs = {c: max(cdict) for c, cdict in cells.items()}
         samples: dict[tuple, list[float]] = defaultdict(list)
         if res.size == 0:
             return pl.DataFrame({"cohort": [], "duration": [], "ratio_lo": [], "ratio_hi": []})
@@ -267,19 +270,18 @@ class LevelExposureDriven:
             pseudo: _Cells = {}
             for c, cdict in cells.items():
                 ks = sorted(cdict)
-                cum = cdict[ks[0]][0]
                 pc: dict[int, tuple] = {ks[0]: cdict[ks[0]]}
                 for k in ks[1:]:
                     prev_p = cdict[k - 1][1]
-                    fitted = level[c] * g_pool.get(k, 0.0) * prev_p
+                    fitted = scale[c] * g_pool.get(k, 0.0) * prev_p
                     pincr = fitted + float(rng.choice(res)) * np.sqrt(prev_p) if prev_p > 0 else cdict[k][2]
                     cum = pc[k - 1][0] + pincr
                     pc[k] = (cum, cdict[k][1], pincr, cdict[k][3])
                 pseudo[c] = pc
             g_b, gp_b = _intensities(pseudo, durations, self.smooth)
-            lvl_b = _levels(pseudo, g_b, self.credibility)
-            for row in self._project(pseudo, lvl_b, g_b, gp_b, max_dur, residuals=res, rng=rng):
-                if row["ratio_proj"] is not None:
+            scale_b = _scales(pseudo, g_b, self.credibility)
+            for row in self._project(pseudo, scale_b, g_b, gp_b, max_dur, residuals=res, rng=rng):
+                if row["ratio_proj"] is not None and row["duration"] > last_obs[row["cohort"]]:
                     samples[(row["cohort"], row["duration"])].append(row["ratio_proj"])
 
         lo_q = (1.0 - self.conf_level) / 2.0
@@ -293,8 +295,8 @@ class LevelExposureDriven:
         return pl.DataFrame(out)
 
 
-class LevelExposureDrivenFit:
-    """Result of :meth:`LevelExposureDriven.fit` (experimental).
+class CohortScaledFit:
+    """Result of :meth:`CohortScaled.fit` (experimental).
 
     Attributes
     ----------
@@ -303,19 +305,19 @@ class LevelExposureDrivenFit:
         premium_proj, ratio_proj]`` (plus ``ratio_lo`` / ``ratio_hi`` when
         ``n_bootstrap`` is set). Observed cells carry observed values; cells
         beyond a cohort's last observation are projected.
-    cohort_level
-        Per-cohort estimated level (``[<groups>, cohort, cohort_level]``).
+    cohort_scale
+        Per-cohort estimated scale (``[<groups>, cohort, cohort_scale]``).
     g_k
         Pooled per-duration intensity / shape (``[<groups>, duration, g_k]``).
     """
 
     def __init__(
-        self, *, df: pl.DataFrame, cohort_level: pl.DataFrame, g_k: pl.DataFrame,
+        self, *, df: pl.DataFrame, cohort_scale: pl.DataFrame, g_k: pl.DataFrame,
         output_type: str, credibility: float, smooth: int | None,
         n_bootstrap: int | None, conf_level: float,
     ) -> None:
         self._df = df
-        self._cohort_level = cohort_level
+        self._cohort_scale = cohort_scale
         self._g_k = g_k
         self._output_type = output_type
         self.credibility = credibility
@@ -329,9 +331,9 @@ class LevelExposureDrivenFit:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def cohort_level(self) -> "FrameLike":
-        """Per-cohort estimated level."""
-        return mirror_output(self._cohort_level, self._output_type)
+    def cohort_scale(self) -> "FrameLike":
+        """Per-cohort estimated scale."""
+        return mirror_output(self._cohort_scale, self._output_type)
 
     @property
     def g_k(self) -> "FrameLike":
@@ -350,6 +352,6 @@ class LevelExposureDrivenFit:
         return mirror_output(latest, self._output_type)
 
     def __repr__(self) -> str:
-        return (f"LevelExposureDrivenFit(cells={self._df.height}, "
-                f"cohorts={self._cohort_level.height}, credibility={self.credibility}, "
+        return (f"CohortScaledFit(cells={self._df.height}, "
+                f"cohorts={self._cohort_scale.height}, credibility={self.credibility}, "
                 f"smooth={self.smooth}, n_bootstrap={self.n_bootstrap})")
