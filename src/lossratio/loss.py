@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "cl", "sa")
+_VALID_METHODS = ("ed", "cl", "sa", "cs")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 
 # Map the internal method label to the public model name carried on
@@ -59,6 +59,7 @@ _METHOD_TO_MODEL = {
     "cl": "chain_ladder",
     "ed": "exposure_driven",
     "sa": "stage_adaptive",
+    "cs": "cohort_scaled",
 }
 
 
@@ -100,6 +101,13 @@ class _LossResult:
     # public `switch_from` column / `switch_point` property report, and what
     # the tail follows.
     effective_switch_point: int | None = None
+    # Per-cell bootstrap CI bounds (cohort x duration), or None. Set ONLY by
+    # the cohort-scaled (`cs`) worker's residual bootstrap, whose CI is the
+    # quantile of the replicate distribution (asymmetric), NOT the SE-normal
+    # band the analytical methods derive in `_loss_long_df`. None for every
+    # ed / cl / sa fit -> `_loss_long_df` keeps its byte-identical formula.
+    boot_ci_lo: np.ndarray | None = None
+    boot_ci_hi: np.ndarray | None = None
 
 
 def _resolve_switch(
@@ -386,6 +394,260 @@ def _fit_loss_single(
     )
 
 
+def _cs_build_cells(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+) -> tuple[dict, list[int]]:
+    """Build a ``cohort_scaled._Cells`` dict from the loss/premium matrices.
+
+    ``cells[cohort_index][duration] = (cum_loss, cum_premium, incr_loss,
+    incr_premium)`` on observed cells only, so the reused ``_intensities`` /
+    ``_scales`` / ``_residuals`` helpers see exactly the structure they would
+    from a frame iteration. Duration is 1-indexed (matrix column ``k`` ->
+    duration ``k + 1``), matching the rest of ``loss.py``. A cell with a NaN
+    premium is skipped (never coerced to 0.0) so ``_intensities``' ``> 0``
+    guard behaves identically to the standalone ``CohortScaled._extract``.
+    Cohorts are keyed by their row index ``i`` (the projection maps back by
+    position).
+    """
+    incr_loss = _nan_skip_diff(loss_obs)
+    incr_prem = _nan_skip_diff(premium_obs)
+    n_cohorts, n_durations = loss_obs.shape
+    cells: dict = {}
+    durations: set[int] = set()
+    for i in range(n_cohorts):
+        cdict: dict = {}
+        for k in range(n_durations):
+            cl = loss_obs[i, k]
+            cp = premium_obs[i, k]
+            if np.isnan(cl) or np.isnan(cp):
+                continue
+            il = incr_loss[i, k]
+            ip = incr_prem[i, k]
+            cdict[k + 1] = (
+                float(cl),
+                float(cp),
+                float(il) if not np.isnan(il) else 0.0,
+                float(ip) if not np.isnan(ip) else 0.0,
+            )
+            durations.add(k + 1)
+        if cdict:
+            cells[i] = cdict
+    return cells, sorted(durations)
+
+
+def _cs_project(
+    loss_obs: np.ndarray,
+    premium_proj_from_fit: np.ndarray,
+    premium_obs: np.ndarray,
+    last_obs_idx: np.ndarray,
+    scale: dict,
+    g_pool: dict,
+    gp_pool: dict,
+    *,
+    residuals: "np.ndarray | None",
+    rng: "np.random.Generator | None",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Additive anchored cohort-scaled projection.
+
+    ``loss[k] = loss[k-1] + cohort_scale[c] * g_k * premium[k-1]`` walking the
+    premium base forward. The premium base is the dispatcher's ``PremiumFit``
+    projection (``premium_proj_from_fit``) where it is finite; where that has a
+    gap, premium is developed INTERNALLY from the pooled premium intensity
+    ``gp_k`` (``premium[k] = premium[k-1] * (1 + gp_k)``), exactly as the
+    standalone ``CohortScaled._project`` does, so a cohort never truncates
+    mid-tail because of a missing premium cell.
+
+    Returns ``(loss_out, premium_out)``: ``loss_out`` seeds from the cumulative
+    anchor and fills projected cells; ``premium_out`` is the SAME premium series
+    the loss was driven against on projected cells (fit-where-finite, internal-
+    development-on-gap), so the stored ``premium_proj`` and ``loss_proj`` are
+    consistent and ``ratio_proj = loss_proj / premium_proj`` uses one series.
+    When ``residuals`` / ``rng`` are given, Pearson process noise
+    ``res * sqrt(prem_prev)`` is added to each projected increment (bootstrap).
+    """
+    n_cohorts, n_durations = loss_obs.shape
+    loss_out = loss_obs.copy()
+    premium_out = premium_proj_from_fit.copy()
+    for i in range(n_cohorts):
+        li = last_obs_idx[i]
+        if li < 0 or li >= n_durations - 1 or i not in scale:
+            continue
+        cl = loss_out[i, li]
+        if np.isnan(cl):
+            continue
+        # Anchor premium: last finite observed premium for the gap fallback.
+        prem_prev = premium_obs[i, li]
+        sc = scale.get(i, 1.0)
+        for k in range(li + 1, n_durations):
+            dur = k + 1
+            gk = g_pool.get(dur)
+            if gk is None:
+                break
+            # Premium base for this step = fit projection at the PRIOR cell
+            # where finite, else the internally-developed fallback.
+            pk_prev = premium_proj_from_fit[i, k - 1]
+            if np.isnan(pk_prev):
+                pk_prev = prem_prev
+            if np.isnan(pk_prev):
+                break
+            incr = sc * gk * pk_prev
+            if residuals is not None and rng is not None and pk_prev > 0:
+                incr += float(rng.choice(residuals)) * np.sqrt(pk_prev)
+            cl = cl + incr
+            loss_out[i, k] = cl
+            # Develop premium one step for the next fallback (gp_k growth) and
+            # record the premium actually used as the base at this duration.
+            gpk = gp_pool.get(dur)
+            prem_prev = pk_prev * (1.0 + gpk) if gpk is not None else pk_prev
+            if np.isnan(premium_out[i, k]):
+                premium_out[i, k] = prem_prev
+    return loss_out, premium_out
+
+
+def _fit_cs(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    premium_proj_from_fit: np.ndarray,
+    *,
+    credibility: float,
+    smooth: int | None,
+    n_bootstrap: int | None,
+    conf_level: float,
+    rng: "np.random.Generator",
+) -> _LossResult:
+    """Cohort-scaled exposure-driven (additive) loss projection worker.
+
+    Mirrors :func:`_fit_loss_single`'s contract (matrix in, ``_LossResult``
+    out) but does NOT use the f_k / g_k factor + SA ``_project_loss``
+    recursion. The loss increment is the pooled per-duration intensity
+    ``g_k`` scaled by a per-cohort, credibility-shrunk ``cohort_scale``::
+
+        loss[c, k] = loss[c, k-1] + cohort_scale[c] * g_k * premium[c, k-1]
+
+    reusing the ``cohort_scaled`` module helpers (``_intensities`` /
+    ``_scales`` / ``_residuals``).
+
+    Uncertainty is RESIDUAL BOOTSTRAP only -- there is no closed-form
+    process / parameter SE decomposition for cs (the credibility-estimated
+    scale variance, the ``scale * g_k`` product, and their covariance are
+    intractable analytically). So ``proc_se`` / ``param_se`` stay all-NaN;
+    ``total_se`` is the per-cell std (Bessel-corrected, via ``nanstd``
+    ``ddof=1``) of the bootstrap cumulative-loss draws on projected cells; and
+    ``boot_ci_lo`` / ``boot_ci_hi`` are the per-cell replicate quantiles
+    (asymmetric -- consumed cs-gated in ``_loss_long_df``). With
+    ``n_bootstrap`` falsy these stay all-NaN (point projection only).
+    """
+    from .cohort_scaled import _intensities, _residuals, _scales
+
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    _nan_links = np.full(n_links, np.nan, dtype=np.float64)
+
+    cells, durations = _cs_build_cells(loss_obs, premium_obs)
+    g_pool, gp_pool = _intensities(cells, durations, smooth)
+    scale = _scales(cells, g_pool, credibility)
+
+    # g_sel aligned to the loss link axis: link k connects duration (k+1) ->
+    # (k+2); the real ED worker keys g_k[k] on that SOURCE link, while the
+    # cohort_scaled g_pool keys on the TARGET duration, so
+    # g_sel[k] = g_pool.get(k + 2). (Diagnostic only -- the cs tail is
+    # disabled in this deliverable.)
+    g_sel = np.array(
+        [g_pool.get(k + 2, np.nan) for k in range(n_links)], dtype=np.float64
+    )
+
+    obs_mask = ~np.isnan(loss_obs)
+    last_obs_idx = np.where(
+        obs_mask.any(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+
+    # ---- point projection (additive, anchored on observed cum loss) ----
+    loss_proj, premium_proj = _cs_project(
+        loss_obs, premium_proj_from_fit, premium_obs, last_obs_idx,
+        scale, g_pool, gp_pool, residuals=None, rng=None,
+    )
+
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    boot_ci_lo: np.ndarray | None = None
+    boot_ci_hi: np.ndarray | None = None
+
+    # ---- residual bootstrap -> loss-side total_se + quantile CI ----
+    proj_mask = (~obs_mask) & (~np.isnan(loss_proj))
+    if n_bootstrap:
+        res = _residuals(cells, scale, g_pool)
+        if res.size:
+            B = int(n_bootstrap)
+            draws = np.full(
+                (B, n_cohorts, n_durations), np.nan, dtype=np.float64
+            )
+            for b in range(B):
+                # 1) re-inject noise into observed increments -> pseudo cells.
+                pseudo: dict = {}
+                for c, cdict in cells.items():
+                    ks = sorted(cdict)
+                    pc = {ks[0]: cdict[ks[0]]}
+                    for d in ks[1:]:
+                        prev_p = cdict[d - 1][1]
+                        if prev_p > 0:
+                            fitted = scale[c] * g_pool.get(d, 0.0) * prev_p
+                            pincr = fitted + float(rng.choice(res)) * np.sqrt(prev_p)
+                        else:
+                            pincr = cdict[d][2]
+                        cum = pc[d - 1][0] + pincr
+                        pc[d] = (cum, cdict[d][1], pincr, cdict[d][3])
+                    pseudo[c] = pc
+                # 2) refit g_k / gp_k / scale on the pseudo book.
+                g_b, gp_b = _intensities(pseudo, durations, smooth)
+                scale_b = _scales(pseudo, g_b, credibility)
+                # 3) re-project from the PSEUDO cumulative anchor + process noise.
+                anchor = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+                for c, pc in pseudo.items():
+                    for d, tup in pc.items():
+                        anchor[c, d - 1] = tup[0]
+                draw_loss, _ = _cs_project(
+                    anchor, premium_proj_from_fit, premium_obs, last_obs_idx,
+                    scale_b, g_b, gp_b, residuals=res, rng=rng,
+                )
+                draws[b] = np.where(proj_mask, draw_loss, np.nan)
+            with np.errstate(invalid="ignore"):
+                sd = np.nanstd(draws, axis=0, ddof=1)  # NaN where < 2 draws
+            total_se = np.where(proj_mask, sd, np.nan)
+            lo_q = (1.0 - conf_level) / 2.0
+            hi_q = 1.0 - lo_q
+            with np.errstate(invalid="ignore"):
+                q_lo = np.nanquantile(draws, lo_q, axis=0)
+                q_hi = np.nanquantile(draws, hi_q, axis=0)
+            boot_ci_lo = np.where(proj_mask, q_lo, np.nan)
+            boot_ci_hi = np.where(proj_mask, q_hi, np.nan)
+
+    return _LossResult(
+        n_durations=n_durations,
+        loss_obs=loss_obs,
+        loss_proj=loss_proj,
+        proc_se=proc_se,
+        param_se=param_se,
+        total_se=total_se,
+        premium_obs=premium_obs,
+        premium_proj=premium_proj,
+        selected_switch_point=None,
+        g_sel=g_sel,
+        g_sigma2=_nan_links.copy(),
+        g_var=_nan_links.copy(),
+        f_sel=_nan_links.copy(),
+        f_sigma2=_nan_links.copy(),
+        f_var=_nan_links.copy(),
+        last_obs=last_obs_idx,
+        effective_switch_point=None,
+        boot_ci_lo=boot_ci_lo,
+        boot_ci_hi=boot_ci_hi,
+    )
+
+
 def _borrowed_loss_group(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -560,10 +822,22 @@ def _loss_long_df(
     with np.errstate(divide="ignore", invalid="ignore"):
         total_cv = total_se / np.abs(safe_lp)
 
-    both_finite = np.isfinite(total_se) & np.isfinite(loss_proj)
-    ci_lo_raw = loss_proj - z_alpha * total_se
-    loss_ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
-    loss_ci_hi = np.where(both_finite, loss_proj + z_alpha * total_se, np.nan)
+    # Bootstrap-quantile CI when the worker supplied per-cell bounds (the
+    # cohort-scaled `cs` path -- asymmetric, contract-mandated). Every
+    # ed / cl / sa fit leaves these None, so the SE-normal formula below runs
+    # byte-identically.
+    if result.boot_ci_lo is not None and result.boot_ci_hi is not None:
+        loss_ci_lo = np.where(
+            np.isfinite(result.boot_ci_lo),
+            np.maximum(0.0, result.boot_ci_lo),
+            np.nan,
+        )
+        loss_ci_hi = result.boot_ci_hi
+    else:
+        both_finite = np.isfinite(total_se) & np.isfinite(loss_proj)
+        ci_lo_raw = loss_proj - z_alpha * total_se
+        loss_ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
+        loss_ci_hi = np.where(both_finite, loss_proj + z_alpha * total_se, np.nan)
 
     switch_from = result.effective_switch_point
 
@@ -715,6 +989,11 @@ class Loss:
     recent:         int | None         = None
     tail:           TailArg            = False
     bootstrap:      Any                = None
+    # cohort-scaled (method="cs") config -- inert for ed / cl / sa.
+    credibility:    float              = 3.0
+    smooth:         int | None         = None
+    n_bootstrap:    int | None         = None
+    seed:           int | None         = None
 
     def __post_init__(self) -> None:
         if self.method not in _VALID_METHODS:
@@ -755,6 +1034,48 @@ class Loss:
         # switch is found, else ED).
         from .tail import validate_tail
         validate_tail(self.tail)
+        if self.method == "cs":
+            # Cohort-scaled uncertainty is the worker's OWN residual bootstrap
+            # (`n_bootstrap=`); the dispatcher `bootstrap=` overlay is hard-wired
+            # to the analytical-CL Mack paradigm and would silently overwrite the
+            # cs SE with a CL-Mack SE on a non-Mack additive model. Refuse it.
+            if self.bootstrap not in (None, False):
+                raise NotImplementedError(
+                    "method='cs' has its own residual-bootstrap uncertainty "
+                    "(`n_bootstrap=`); the dispatcher `bootstrap=` overlay "
+                    "(analytical-CL) is not applicable to a cohort-scaled fit."
+                )
+            # cs pools g_k and the cohort scale over the FULL triangle; the
+            # recent-diagonal factor window is not threaded into the pooling, so
+            # a silently-ignored `recent` would be a wrong-number trap. Refuse.
+            if self.recent is not None:
+                raise NotImplementedError(
+                    "method='cs' does not support `recent=` (the recent-diagonal "
+                    "factor window is not wired into the cohort-scaled intensity "
+                    "pooling, which is full-triangle)."
+                )
+            # The cs tail must scale each cohort's tail increment by its
+            # cohort_scale; the additive ED tail fits the bare pooled g_sel and
+            # would drop the per-cohort scale. Disabled until a scaled tail.
+            if self.tail is not False:
+                raise NotImplementedError(
+                    "method='cs' does not yet support a tail (the additive ED "
+                    "tail drops the per-cohort cohort_scale)."
+                )
+            if self.credibility < 0:
+                raise ValueError(
+                    f"credibility must be >= 0, got {self.credibility!r}"
+                )
+            if self.smooth is not None and self.smooth < 1:
+                raise ValueError(
+                    f"smooth must be a positive integer or None, "
+                    f"got {self.smooth!r}"
+                )
+            if self.n_bootstrap is not None and self.n_bootstrap < 1:
+                raise ValueError(
+                    f"n_bootstrap must be a positive integer or None, "
+                    f"got {self.n_bootstrap!r}"
+                )
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the loss projection on a Triangle."""
@@ -836,6 +1157,18 @@ class LossFit:
         # pools the whole bridged band into one factor set, so it falls
         # through to `_apply_regime_filter` (which drops `segment_id`).
         if (
+            estimator.method == "cs"
+            and regime is not None
+            and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
+            and regime.change_points
+        ):
+            raise NotImplementedError(
+                "method='cs' does not support the f_k segment-borrow regime "
+                "treatments (cohort-scale credibility is incompatible with "
+                "cross-segment factor borrow); use a latest_only regime, or a "
+                "factor method (ed / cl / sa) for borrow."
+            )
+        if (
             regime is not None
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
             and regime.change_points
@@ -887,6 +1220,12 @@ class LossFit:
         # internal-params dict; not exposed to user but kept for Ratio bootstrap
         self._internals: dict[Any, _LossResult] = {}
 
+        # Deterministic RNG for the cs residual bootstrap (unused for other
+        # methods). One RNG is shared across groups (matching the standalone
+        # CohortScaled), so a whole fit is reproducible from `seed`; a single
+        # group's bootstrap is not independently reproducible across grouping.
+        cs_rng = np.random.default_rng(estimator.seed)
+
         long_parts: list[pl.DataFrame] = []
         switch_rows: list[dict[str, Any]] = []
         # Partition the premium frame once (single pass) instead of
@@ -903,15 +1242,27 @@ class LossFit:
             premium_proj_mat = _premium_proj_matrix(
                 pf_sub, cohorts, loss_obs.shape[1]
             )
-            result = _fit_loss_single(
-                loss_obs,
-                premium_obs,
-                premium_proj_mat,
-                estimator.method,
-                estimator.sigma_method,
-                recent=estimator.recent,
-                switch_override=_switch_for_group(switch_resolved, g),
-            )
+            if estimator.method == "cs":
+                result = _fit_cs(
+                    loss_obs,
+                    premium_obs,
+                    premium_proj_mat,
+                    credibility=estimator.credibility,
+                    smooth=estimator.smooth,
+                    n_bootstrap=estimator.n_bootstrap,
+                    conf_level=estimator.conf_level,
+                    rng=cs_rng,
+                )
+            else:
+                result = _fit_loss_single(
+                    loss_obs,
+                    premium_obs,
+                    premium_proj_mat,
+                    estimator.method,
+                    estimator.sigma_method,
+                    recent=estimator.recent,
+                    switch_override=_switch_for_group(switch_resolved, g),
+                )
             long_parts.append(
                 _loss_long_df(
                     result, cohorts, pf_sub, groups, g, estimator.conf_level

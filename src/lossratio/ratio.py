@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "cl", "sa")
+_VALID_METHODS = ("ed", "cl", "sa", "cs")
 _VALID_PREMIUM_METHODS = ("ed", "cl")
 _VALID_SE_METHODS = ("fixed", "delta")
 
@@ -208,6 +208,11 @@ class Ratio:
     conf_level:     float          = 0.95
     tail:           TailArg        = False
     uncertainty:    UncertaintyArg = None
+    # cohort-scaled (method="cs") pass-through -- inert for ed / cl / sa.
+    credibility:    float          = 3.0
+    smooth:         int | None     = None
+    n_bootstrap:    int | None     = None
+    seed:           int | None     = None
 
     def __post_init__(self) -> None:
         from .tail import validate_tail
@@ -332,6 +337,10 @@ class RatioFit:
             premium_method=estimator.premium_method,
             premium_alpha=estimator.premium_alpha,
             switch=estimator.switch,
+            credibility=estimator.credibility,
+            smooth=estimator.smooth,
+            n_bootstrap=estimator.n_bootstrap,
+            seed=estimator.seed,
         )
         # Forward the tail to the loss-side Loss (effective for every
         # loss method: cl / ed / sa).
