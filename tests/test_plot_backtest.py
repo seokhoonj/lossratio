@@ -122,6 +122,42 @@ def test_backtest_plot_triangle_invalid_cell_type(bt_single):
         bt_single.plot_triangle(cell_type="bogus")
 
 
+def test_backtest_plot_triangle_duration_axis_default(bt_single):
+    # default x="duration" keeps the development-period axis label.
+    fig = bt_single.plot_triangle()
+    try:
+        assert "development" in fig._supxlabel.get_text()
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_calendar_axis(bt_single):
+    # x="calendar" repositions each cell at its actual calendar date.
+    fig = bt_single.plot_triangle(x="calendar")
+    try:
+        assert isinstance(fig, plt.Figure)
+        assert fig._supxlabel.get_text() == "calendar"
+        # the held-out wedge spans recent calendar columns -> labelled dates
+        ax = next(a for a in fig.axes if a.get_xticklabels())
+        labels = [t.get_text() for t in ax.get_xticklabels() if t.get_text()]
+        assert labels  # non-empty, formatted calendar labels
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_calendar_multi(bt_multi):
+    fig = bt_multi.plot_triangle(x="calendar")
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+
+def test_backtest_plot_triangle_invalid_x(bt_single):
+    with pytest.raises(ValueError, match="'duration' or 'calendar'"):
+        bt_single.plot_triangle(x="bogus")
+
+
 # --- kind='usage' ---------------------------------------------------------
 
 

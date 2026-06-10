@@ -522,6 +522,7 @@ class BacktestFit:
         recent: int | None = None,
         regime: "RegimeArg" = None,
         switch: Any = None,
+        x: str = "duration",
     ) -> Any:
         """A/E error heatmap (``kind='value'``) or cell-status
         heatmap (``kind='usage'``), backed by matplotlib.
@@ -553,6 +554,11 @@ class BacktestFit:
             loss model), and ``switch`` from the estimator's ``switch``
             slot (a :class:`SwitchPoint` or scalar) to draw the ED->CL
             boundary; pass an explicit value to override.
+        x
+            (``kind='value'`` only) horizontal axis: ``"duration"`` (default;
+            cohort x development period) or ``"calendar"`` (cohort x calendar
+            period -- each cell at its actual calendar date, so the held-out
+            diagonal reads as a block of recent calendar columns).
 
         Returns
         -------
@@ -569,6 +575,7 @@ class BacktestFit:
                 cell_type=cell_type,
                 label_size=label_size,
                 nrow=nrow, ncol=ncol, figsize=figsize,
+                x=x,
             )
         # kind == "usage": forward to the Triangle-side usage
         # renderer with `holdout=self.holdout` and filter args

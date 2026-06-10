@@ -103,16 +103,29 @@ def plot_triangle_backtest(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
+    *,
+    x: str = "duration",
 ) -> Any:
     """A/E error heatmap on the held-out wedge.
 
     Diverging palette: red = positive error (under-projected,
     actual > expected), blue = negative (over-projected). White at 0.
+
+    ``x`` selects the horizontal axis: ``"duration"`` (default; cohort x
+    development period) or ``"calendar"`` (cohort x calendar period). The
+    calendar view places each cell at its actual calendar date
+    (``cohort`` advanced by ``duration - 1`` grain periods), so a cohort's
+    cells align by calendar across rows and the held-out diagonal reads as a
+    block of recent calendar columns -- the geometry of the masking.
     """
     if cell_type not in _VALID_CELL_TYPES:
         raise ValueError(
             f"`cell_type` must be one of {_VALID_CELL_TYPES!r}; "
             f"got {cell_type!r}."
+        )
+    if x not in ("duration", "calendar"):
+        raise ValueError(
+            f"`x` must be 'duration' or 'calendar'; got {x!r}."
         )
     is_incr = cell_type == "incremental"
     ae_err_col = "incr_ae_err" if is_incr else "ae_err"
@@ -140,10 +153,38 @@ def plot_triangle_backtest(
 
     work = dt.with_columns(pl.Series(name="_y_lab", values=coh_labels))
     # Coherent axes:
-    # x = duration (numeric)
+    # x = duration (numeric) or calendar date, see `x`.
     # y = cohort labels, oldest at top / newest at the bottom -- the same
     #     orientation as the triangle value heatmap.
-    duration_levels = sorted(work["duration"].unique().to_list())
+    if x == "calendar":
+        if coh_type is None:
+            raise ValueError(
+                "x='calendar' needs a Date cohort axis; this triangle's "
+                "cohort is not a date."
+            )
+        # calendar = cohort advanced by (duration - 1) grain periods.
+        months_per = {"M": 1, "Q": 3, "H": 6, "Y": 12}.get(grain or "M", 1)
+        work = work.with_columns(
+            pl.col("cohort")
+            .dt.offset_by(
+                (((pl.col("duration") - 1) * months_per).cast(pl.Utf8) + "mo")
+            )
+            .alias("_xval")
+        )
+        x_field = "_xval"
+        x_levels = sorted(work["_xval"].unique().to_list())
+        x_tick_labels = _format_period_series(
+            pl.Series("_xval", x_levels), coh_type
+        )
+        x_axis_label = "calendar"
+        x_rotation = 90
+    else:
+        x_field = "duration"
+        x_levels = sorted(work["duration"].unique().to_list())
+        x_tick_labels = [str(d) for d in x_levels]
+        x_axis_label = _pretty_var_label(duration)
+        x_rotation = 0
+    duration_levels = x_levels
     # Cohort ascending (oldest -> newest). With `invert_yaxis()` below, the
     # oldest cohort sits at the top and the most recent cohort lands at the
     # bottom, matching plot_triangle.
@@ -185,7 +226,8 @@ def plot_triangle_backtest(
         r, c = divmod(idx, ncol)
         ax = axes[r][c]
         for row in sub.iter_rows(named=True):
-            xi = x_idx.get(int(row["duration"]))
+            xkey = int(row["duration"]) if x_field == "duration" else row[x_field]
+            xi = x_idx.get(xkey)
             yi = y_idx.get(row["_y_lab"])
             if xi is None or yi is None:
                 continue
@@ -205,7 +247,7 @@ def plot_triangle_backtest(
         ax.set_xlim(-0.5, len(duration_levels) - 0.5)
         ax.set_ylim(-0.5, len(y_levels_top_to_bottom) - 0.5)
         ax.set_xticks(range(len(duration_levels)))
-        ax.set_xticklabels([str(d) for d in duration_levels], fontsize=8)
+        ax.set_xticklabels(x_tick_labels, fontsize=8, rotation=x_rotation)
         ax.set_yticks(range(len(y_levels_top_to_bottom)))
         ax.set_yticklabels(y_levels_top_to_bottom, fontsize=8)
         ax.invert_yaxis()
@@ -224,7 +266,7 @@ def plot_triangle_backtest(
         f"Backtest A/E Error -- held-out cells ({mode_word})",
         fontsize=12, fontweight="bold",
     )
-    fig.supxlabel(_pretty_var_label(duration), fontsize=10)
+    fig.supxlabel(x_axis_label, fontsize=10)
     fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
     if last_drawn is not None:
         from matplotlib.cm import ScalarMappable
