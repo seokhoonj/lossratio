@@ -33,6 +33,8 @@ validated on real data.
 
 from __future__ import annotations
 
+import math
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -49,13 +51,73 @@ if TYPE_CHECKING:
 # cells[cohort][duration] = (cum_loss, cum_premium, incr_loss, incr_premium)
 _Cells = dict[object, dict[int, tuple[float, float, float, float]]]
 
+# Multiplicative-compounding runaway guard shared across the cs workers
+# (loss / premium gap-walk + the standalone projection). Hoisted here so the
+# loss-side and premium-side workers import the SAME constant.
+_CS_MAX_FACTOR = 1e6
+
+
+def _validate_cs_knobs(
+    credibility: float, smooth: int | None, n_bootstrap: int | None
+) -> None:
+    """Validate the cohort-scaled tuning knobs (shared by every cs entry point).
+
+    Mirrors :func:`lossratio._recent.validate_recent`: a single shared
+    validator so the standalone ``CohortScaled`` and the dispatcher
+    (``Loss`` / ``Premium`` / ``Ratio``) reject the same bad inputs the same
+    way. ``credibility`` must be a finite, non-negative number (a ``NaN`` would
+    silently produce an all-NaN forecast); ``smooth`` / ``n_bootstrap`` must be
+    ``None`` or a positive integer, and ``smooth`` must additionally be odd
+    (the rolling window is symmetric about each duration).
+    """
+    if not (isinstance(credibility, (int, float)) and not isinstance(credibility, bool)):
+        raise ValueError(f"credibility must be a number, got {credibility!r}")
+    if not (math.isfinite(credibility) and credibility >= 0):
+        raise ValueError(f"credibility must be finite and >= 0, got {credibility!r}")
+    if smooth is not None:
+        if (
+            not isinstance(smooth, int)
+            or isinstance(smooth, bool)
+            or smooth < 1
+        ):
+            raise ValueError(
+                f"smooth must be a positive integer or None, got {smooth!r}"
+            )
+        if smooth % 2 == 0:
+            raise ValueError(
+                f"smooth must be an odd positive integer (symmetric window), "
+                f"got {smooth!r}"
+            )
+    if n_bootstrap is not None and (
+        not isinstance(n_bootstrap, int)
+        or isinstance(n_bootstrap, bool)
+        or n_bootstrap < 1
+    ):
+        raise ValueError(
+            f"n_bootstrap must be a positive integer or None, got {n_bootstrap!r}"
+        )
+
 
 def _smooth(curve: dict[int, float], window: int) -> dict[int, float]:
-    """Rolling-mean smooth a duration-indexed curve (denoise lumpy books)."""
+    """Key-aware duration-distance rolling mean of a duration-indexed curve.
+
+    Each key's smoothed value is the mean of every observed value within
+    ``window // 2`` *durations* of it (so the window is keyed on the duration
+    axis, not array position). This fixes three defects of the previous
+    convolution: the zero-pad edge bias (edges were divided by the full
+    window even with fewer real neighbours), the smear across non-contiguous
+    durations (a gap was treated as adjacent), and ``window > len`` (which a
+    same-mode convolution silently mishandles). ``window`` is required odd
+    (validated upstream by :func:`_validate_cs_knobs`), so ``half = window //
+    2`` gives a symmetric width of exactly ``window``.
+    """
     keys = sorted(curve)
-    vals = np.array([curve[k] for k in keys], dtype=np.float64)
-    kernel = np.ones(window, dtype=np.float64) / window
-    return dict(zip(keys, np.convolve(vals, kernel, mode="same")))
+    half = window // 2
+    out: dict[int, float] = {}
+    for k in keys:
+        neigh = [curve[j] for j in keys if abs(j - k) <= half]
+        out[k] = float(np.mean(neigh)) if neigh else curve[k]
+    return out
 
 
 def _intensities(
@@ -148,12 +210,7 @@ class CohortScaled:
     seed:        int | None = None
 
     def __post_init__(self) -> None:
-        if self.credibility < 0:
-            raise ValueError(f"credibility must be >= 0, got {self.credibility!r}")
-        if self.smooth is not None and self.smooth < 1:
-            raise ValueError(f"smooth must be a positive integer or None, got {self.smooth!r}")
-        if self.n_bootstrap is not None and self.n_bootstrap < 1:
-            raise ValueError(f"n_bootstrap must be a positive integer or None, got {self.n_bootstrap!r}")
+        _validate_cs_knobs(self.credibility, self.smooth, self.n_bootstrap)
         if not (0.0 < self.conf_level < 1.0):
             raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
 
@@ -226,7 +283,19 @@ class CohortScaled:
                 if residuals is not None and rng is not None and prev_p > 0:
                     incr += float(rng.choice(residuals)) * np.sqrt(prev_p)
                 cl = cl + incr
+                # Loss runaway / non-finite guard (negative cum loss is legit
+                # with recoveries, so only break on non-finite / runaway).
+                if not np.isfinite(cl) or (
+                    prev_p > 0 and abs(cl) > _CS_MAX_FACTOR * prev_p
+                ):
+                    break
                 cp = prev_p * (1.0 + gpk)
+                # Premium multiplicative compounding guard: break BEFORE storing
+                # on a non-positive or runaway cumulative premium.
+                if not np.isfinite(cp) or cp <= 0 or (
+                    prev_p > 0 and cp > _CS_MAX_FACTOR * prev_p
+                ):
+                    break
                 rows.append({"cohort": c, "duration": k, "loss_proj": cl,
                              "premium_proj": cp, "ratio_proj": (cl / cp) if cp else None})
         return rows
@@ -265,13 +334,28 @@ class CohortScaled:
         if res.size == 0:
             return pl.DataFrame({"cohort": [], "duration": [], "ratio_lo": [], "ratio_hi": []})
 
+        # Point projection to recentre the replicate cloud on the noise-free
+        # point (the median-scale bootstrap is not centred on the point, so raw
+        # quantiles can violate lo <= proj <= hi).
+        point_ratio: dict[tuple, float] = {}
+        for row in self._project(cells, scale, g_pool, gp_pool, max_dur):
+            if row["ratio_proj"] is not None and row["duration"] > last_obs[row["cohort"]]:
+                point_ratio[(row["cohort"], row["duration"])] = row["ratio_proj"]
+
         for _ in range(int(self.n_bootstrap)):
             # Re-inject noise into observed increments -> pseudo cumulative loss.
+            # Walk only over CONSECUTIVE observed-duration pairs; a gap restarts
+            # the pseudo anchor from the next observed cell (seed the real cum)
+            # rather than chaining a missing predecessor (avoids KeyError).
             pseudo: _Cells = {}
             for c, cdict in cells.items():
                 ks = sorted(cdict)
                 pc: dict[int, tuple] = {ks[0]: cdict[ks[0]]}
                 for k in ks[1:]:
+                    if (k - 1) not in pc:
+                        # Contiguity broke -> reseed from the real observed cell.
+                        pc[k] = cdict[k]
+                        continue
                     prev_p = cdict[k - 1][1]
                     fitted = scale[c] * g_pool.get(k, 0.0) * prev_p
                     pincr = fitted + float(rng.choice(res)) * np.sqrt(prev_p) if prev_p > 0 else cdict[k][2]
@@ -288,10 +372,28 @@ class CohortScaled:
         hi_q = 1.0 - lo_q
         out = {"cohort": [], "duration": [], "ratio_lo": [], "ratio_hi": []}
         for (c, k), vals in samples.items():
-            arr = np.array(vals)
+            # Filter to FINITE samples (a None check is not enough -- a runaway
+            # walk can produce inf / NaN ratios).
+            finite = np.array([v for v in vals if v is not None and np.isfinite(v)],
+                              dtype=np.float64)
+            proj = point_ratio.get((c, k))
+            # Survivor gate: a cell carries a CI only with >= 2 finite draws and
+            # a finite point.
+            if finite.size < 2 or proj is None or not np.isfinite(proj):
+                continue
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                q_lo = float(np.quantile(finite, lo_q))
+                q_hi = float(np.quantile(finite, hi_q))
+                center = float(np.median(finite))
+            if not (np.isfinite(q_lo) and np.isfinite(q_hi) and np.isfinite(center)):
+                continue
+            # Recentre on the point: shift the quantile offsets onto `proj`.
+            ci_lo = proj - (center - q_lo)
+            ci_hi = proj + (q_hi - center)
             out["cohort"].append(c); out["duration"].append(k)
-            out["ratio_lo"].append(float(np.quantile(arr, lo_q)))
-            out["ratio_hi"].append(float(np.quantile(arr, hi_q)))
+            out["ratio_lo"].append(ci_lo)
+            out["ratio_hi"].append(ci_hi)
         return pl.DataFrame(out)
 
 

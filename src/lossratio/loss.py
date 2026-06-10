@@ -13,6 +13,7 @@ place.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,7 @@ from ._mack import _mack_step_cl
 from ._mack import _mack_step_ed
 from .premium import Premium, PremiumFit
 from ._segment import _augment_segment_factors, _expand_to_full_grid
+from .cohort_scaled import _CS_MAX_FACTOR
 
 if TYPE_CHECKING:
     from ._io import FrameLike
@@ -108,6 +110,11 @@ class _LossResult:
     # ed / cl / sa fit -> `_loss_long_df` keeps its byte-identical formula.
     boot_ci_lo: np.ndarray | None = None
     boot_ci_hi: np.ndarray | None = None
+    # True ONLY for a cohort-scaled (`cs`) fit. Set by `_fit_cs`. Gates the
+    # premium-source consistency path in `_loss_long_df` (cs sources
+    # `premium_proj` from the worker's own gap-filled series, not the pf_sub
+    # join). False for every ed / cl / sa fit -> they keep the pf_sub join.
+    is_cs: bool = False
 
 
 def _resolve_switch(
@@ -489,17 +496,28 @@ def _cs_project(
             pk_prev = premium_proj_from_fit[i, k - 1]
             if np.isnan(pk_prev):
                 pk_prev = prem_prev
-            if np.isnan(pk_prev):
+            # Internal premium fallback guard: a non-finite / non-positive base
+            # cannot drive the additive increment -- break the cohort's walk.
+            if not np.isfinite(pk_prev) or pk_prev <= 0:
                 break
             incr = sc * gk * pk_prev
             if residuals is not None and rng is not None and pk_prev > 0:
                 incr += float(rng.choice(residuals)) * np.sqrt(pk_prev)
             cl = cl + incr
+            # Loss runaway / non-finite guard. Negative cumulative loss is legit
+            # (recoveries), so only break on non-finite / runaway magnitude.
+            if not np.isfinite(cl) or abs(cl) > _CS_MAX_FACTOR * pk_prev:
+                break
             loss_out[i, k] = cl
             # Develop premium one step for the next fallback (gp_k growth) and
             # record the premium actually used as the base at this duration.
             gpk = gp_pool.get(dur)
             prem_prev = pk_prev * (1.0 + gpk) if gpk is not None else pk_prev
+            # Runaway-factor guard on the internally-developed premium fallback.
+            if not np.isfinite(prem_prev) or prem_prev <= 0 or (
+                pk_prev > 0 and prem_prev > _CS_MAX_FACTOR * pk_prev
+            ):
+                break
             if np.isnan(premium_out[i, k]):
                 premium_out[i, k] = prem_prev
     return loss_out, premium_out
@@ -587,11 +605,20 @@ def _fit_cs(
             )
             for b in range(B):
                 # 1) re-inject noise into observed increments -> pseudo cells.
+                # Walk only over CONSECUTIVE observed-duration pairs; a gap
+                # reseeds the pseudo anchor from the next observed cell rather
+                # than chaining a missing predecessor (avoids KeyError on a
+                # cohort with an interior-NaN duration gap). Every replicate
+                # then produces the same set of cells as the point path.
                 pseudo: dict = {}
                 for c, cdict in cells.items():
                     ks = sorted(cdict)
                     pc = {ks[0]: cdict[ks[0]]}
                     for d in ks[1:]:
+                        if (d - 1) not in pc:
+                            # Contiguity broke -> reseed from the real cell.
+                            pc[d] = cdict[d]
+                            continue
                         prev_p = cdict[d - 1][1]
                         if prev_p > 0:
                             fitted = scale[c] * g_pool.get(d, 0.0) * prev_p
@@ -614,16 +641,35 @@ def _fit_cs(
                     scale_b, g_b, gp_b, residuals=res, rng=rng,
                 )
                 draws[b] = np.where(proj_mask, draw_loss, np.nan)
-            with np.errstate(invalid="ignore"):
+            # Survivor gate: a cell carries a full uncertainty triple only with
+            # >= 2 finite draws (so total_se and the CI bounds appear together).
+            n_eff = np.sum(~np.isnan(draws), axis=0)
+            gate = proj_mask & (n_eff >= 2)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
                 sd = np.nanstd(draws, axis=0, ddof=1)  # NaN where < 2 draws
-            total_se = np.where(proj_mask, sd, np.nan)
+            total_se = np.where(gate & np.isfinite(sd), sd, np.nan)
             lo_q = (1.0 - conf_level) / 2.0
             hi_q = 1.0 - lo_q
-            with np.errstate(invalid="ignore"):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
                 q_lo = np.nanquantile(draws, lo_q, axis=0)
                 q_hi = np.nanquantile(draws, hi_q, axis=0)
-            boot_ci_lo = np.where(proj_mask, q_lo, np.nan)
-            boot_ci_hi = np.where(proj_mask, q_hi, np.nan)
+                center = np.nanmedian(draws, axis=0)
+            # Recentre the replicate cloud on the noise-free point: shift the
+            # quantile offsets onto `loss_proj` so lo <= proj <= hi holds. Store
+            # only where center / quantiles / proj are all finite.
+            finite_ci = (
+                gate
+                & np.isfinite(center)
+                & np.isfinite(q_lo)
+                & np.isfinite(q_hi)
+                & np.isfinite(loss_proj)
+            )
+            ci_lo = loss_proj - (center - q_lo)
+            ci_hi = loss_proj + (q_hi - center)
+            boot_ci_lo = np.where(finite_ci, ci_lo, np.nan)
+            boot_ci_hi = np.where(finite_ci, ci_hi, np.nan)
 
     return _LossResult(
         n_durations=n_durations,
@@ -645,6 +691,7 @@ def _fit_cs(
         effective_switch_point=None,
         boot_ci_lo=boot_ci_lo,
         boot_ci_hi=boot_ci_hi,
+        is_cs=True,
     )
 
 
@@ -861,27 +908,40 @@ def _loss_long_df(
     df_data["loss_ci_lo"] = loss_ci_lo.flatten()
     df_data["loss_ci_hi"] = loss_ci_hi.flatten()
 
-    df = _nan_to_null(pl.DataFrame(df_data))
-
-    # Join premium_* columns from the PremiumFit slice (cohort, duration).
-    premium_cols = [
-        c
-        for c in ("premium_obs", "premium_proj", "incr_premium_proj")
-        if c in pf_sub.columns
-    ]
-    if pf_sub.height > 0 and premium_cols:
-        df = df.join(
-            pf_sub.select(["cohort", "duration", *premium_cols]),
-            on=["cohort", "duration"],
-            how="left",
-        )
+    if result.is_cs:
+        # cohort-scaled: the worker gap-fills the premium base internally
+        # (`result.premium_proj`), so the loss / ratio are driven against a
+        # series the pf_sub join would leave NaN where the worker filled a
+        # gap. Source premium straight from the worker's own matrices so
+        # `ratio_proj = loss_proj / premium_proj` uses ONE consistent series.
+        # Gated explicitly on `is_cs` -- pure ED also leaves f_sel all-NaN and
+        # boot_ci is None when n_bootstrap is None, so neither is a safe proxy.
+        df_data["premium_obs"] = result.premium_obs.flatten()
+        df_data["premium_proj"] = result.premium_proj.flatten()
+        df_data["incr_premium_proj"] = _nan_skip_diff(result.premium_proj).flatten()
+        df = _nan_to_null(pl.DataFrame(df_data))
     else:
-        df = df.with_columns(
-            [
-                pl.lit(None, dtype=pl.Float64).alias(c)
-                for c in ("premium_obs", "premium_proj", "incr_premium_proj")
-            ]
-        )
+        df = _nan_to_null(pl.DataFrame(df_data))
+
+        # Join premium_* columns from the PremiumFit slice (cohort, duration).
+        premium_cols = [
+            c
+            for c in ("premium_obs", "premium_proj", "incr_premium_proj")
+            if c in pf_sub.columns
+        ]
+        if pf_sub.height > 0 and premium_cols:
+            df = df.join(
+                pf_sub.select(["cohort", "duration", *premium_cols]),
+                on=["cohort", "duration"],
+                how="left",
+            )
+        else:
+            df = df.with_columns(
+                [
+                    pl.lit(None, dtype=pl.Float64).alias(c)
+                    for c in ("premium_obs", "premium_proj", "incr_premium_proj")
+                ]
+            )
 
     # Restore the original column order (premium columns sit between
     # incr_loss_proj and switch_from).
@@ -1062,20 +1122,8 @@ class Loss:
                     "method='cs' does not yet support a tail (the additive ED "
                     "tail drops the per-cohort cohort_scale)."
                 )
-            if self.credibility < 0:
-                raise ValueError(
-                    f"credibility must be >= 0, got {self.credibility!r}"
-                )
-            if self.smooth is not None and self.smooth < 1:
-                raise ValueError(
-                    f"smooth must be a positive integer or None, "
-                    f"got {self.smooth!r}"
-                )
-            if self.n_bootstrap is not None and self.n_bootstrap < 1:
-                raise ValueError(
-                    f"n_bootstrap must be a positive integer or None, "
-                    f"got {self.n_bootstrap!r}"
-                )
+            from .cohort_scaled import _validate_cs_knobs
+            _validate_cs_knobs(self.credibility, self.smooth, self.n_bootstrap)
 
     def fit(self, triangle: "Triangle") -> "LossFit":
         """Fit the loss projection on a Triangle."""

@@ -37,6 +37,7 @@ def _compose_ratio_stats(
     se_method: str,
     rho: float,
     conf_level: float,
+    loss_method: str = "ed",
 ) -> pl.DataFrame:
     """Attach ``ratio_se`` / ``ratio_cv`` / ``ratio_ci_lo`` / ``ratio_ci_hi``.
 
@@ -46,6 +47,15 @@ def _compose_ratio_stats(
     ``rho``. Shared by the analytical RatioFit build and its
     bootstrap-overlay recompute; the two differ only in the upstream
     ``loss_total_se`` feeding it. Assumes ``ratio_proj`` already present.
+
+    For a cohort-scaled loss fit (``loss_method == "cs"``) in fixed mode the
+    loss CI is the worker's ASYMMETRIC bootstrap-quantile band, so the ratio
+    band is propagated as ``loss_ci_* / premium_proj`` rather than the
+    symmetric Gaussian ``ratio_proj +/- z * ratio_se``. Every other
+    method/mode keeps the symmetric Gaussian band byte-identically (the cs +
+    fixed gate is the only branch that changes). Delta-mode asymmetric ratio
+    bands have no closed form and are deferred -- cs + delta still uses the
+    Gaussian band below.
     """
     if se_method == "fixed":
         full = full.with_columns(
@@ -121,6 +131,34 @@ def _compose_ratio_stats(
         .otherwise(None)
         .alias("ratio_ci_hi"),
     )
+
+    # cs + fixed: propagate the worker's asymmetric loss CI to the ratio band
+    # as loss_ci_* / premium_proj. Gated EXPLICITLY on the cs loss method AND
+    # fixed mode -- non-cs loss frames also carry symmetric loss_ci_* columns,
+    # so gating on column presence would change ed / cl / sa (not golden-safe).
+    if (
+        loss_method == "cs"
+        and se_method == "fixed"
+        and "loss_ci_lo" in full.columns
+        and "loss_ci_hi" in full.columns
+    ):
+        valid = (
+            pl.col("premium_proj").is_not_null() & (pl.col("premium_proj") > 0.0)
+        )
+        full = full.with_columns(
+            pl.when(valid & pl.col("loss_ci_lo").is_not_null())
+            .then(
+                pl.max_horizontal(
+                    pl.lit(0.0), pl.col("loss_ci_lo") / pl.col("premium_proj")
+                )
+            )
+            .otherwise(None)
+            .alias("ratio_ci_lo"),
+            pl.when(valid & pl.col("loss_ci_hi").is_not_null())
+            .then(pl.col("loss_ci_hi") / pl.col("premium_proj"))
+            .otherwise(None)
+            .alias("ratio_ci_hi"),
+        )
     return full
 
 
@@ -254,6 +292,25 @@ class Ratio:
             )
         _validate_recent(self.recent)
         validate_tail(self.tail)
+        if self.method == "cs" or self.premium_method == "cs":
+            from .cohort_scaled import _validate_cs_knobs
+            _validate_cs_knobs(self.credibility, self.smooth, self.n_bootstrap)
+        # The cs LOSS method carries its OWN residual-bootstrap uncertainty
+        # (`n_bootstrap=`); the dispatcher `uncertainty=` overlay is the
+        # analytical-CL Mack paradigm and is not applicable to a cohort-scaled
+        # loss fit. (premium_method="cs" + uncertainty= is fine -- the overlay
+        # is loss-side only.)
+        from .uncertainty import Analytical
+        if (
+            self.method == "cs"
+            and self.uncertainty is not None
+            and not isinstance(self.uncertainty, Analytical)
+        ):
+            raise NotImplementedError(
+                "method='cs' has its own residual-bootstrap uncertainty "
+                "(n_bootstrap=); the uncertainty= overlay is not applicable to "
+                "a cohort-scaled fit."
+            )
 
     def fit(self, triangle: "Triangle") -> "RatioFit":
         """Fit the Ratio estimator on a Triangle."""
@@ -421,7 +478,8 @@ class RatioFit:
 
         # 5) ratio_se / ratio_cv / analytical CI ------------------------------
         full = _compose_ratio_stats(
-            full, estimator.se_method, estimator.rho, estimator.conf_level
+            full, estimator.se_method, estimator.rho, estimator.conf_level,
+            loss_method=estimator.method,
         )
 
         # 6) optional loss-side bootstrap overlay (strictly opt-in) -----------

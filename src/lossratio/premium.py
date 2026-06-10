@@ -9,6 +9,7 @@ accumulates forward.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,7 @@ from ._io import (
     mirror_output,
     normalize_groups,
 )
+from .cohort_scaled import _CS_MAX_FACTOR
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
 from ._sigma import VALID_SIGMA_METHODS
@@ -328,9 +330,6 @@ def _premium_residuals(
     return arr - arr.mean() if arr.size else arr
 
 
-_CS_MAX_FACTOR = 1e6  # multiplicative-compounding runaway guard
-
-
 def _premium_cs_project(
     premium_obs: np.ndarray,
     last_obs_idx: np.ndarray,
@@ -369,9 +368,11 @@ def _premium_cs_project(
             if residuals is not None and rng is not None and prev_p > 0:
                 incr += float(rng.choice(residuals)) * np.sqrt(prev_p)
             cp = prev_p + incr
-            # Multiplicative compounding guard: break on non-finite or runaway.
+            # Multiplicative compounding guard: break BEFORE storing on a
+            # non-finite, non-positive, or runaway cumulative premium.
             if (
                 not np.isfinite(cp)
+                or cp <= 0
                 or (prev_p > 0 and cp > _CS_MAX_FACTOR * prev_p)
             ):
                 break
@@ -459,11 +460,20 @@ def _fit_premium_cs(
             draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
             for b in range(B):
                 # 1) re-inject noise into observed increments -> pseudo cells.
+                # Walk only over CONSECUTIVE observed-duration pairs; a gap
+                # reseeds the pseudo anchor from the next observed cell rather
+                # than chaining a missing predecessor (avoids KeyError on an
+                # interior-NaN duration gap). Every replicate then produces the
+                # same set of cells as the point path.
                 pseudo: dict = {}
                 for c, cdict in cells.items():
                     ks = sorted(cdict)
                     pc = {ks[0]: cdict[ks[0]]}
                     for d in ks[1:]:
+                        if (d - 1) not in pc:
+                            # Contiguity broke -> reseed from the real cell.
+                            pc[d] = cdict[d]
+                            continue
                         prev_p = cdict[d - 1][1]
                         if prev_p > 0:
                             fitted = scale[c] * gp_pool.get(d, 0.0) * prev_p
@@ -485,16 +495,35 @@ def _fit_premium_cs(
                     anchor, last_obs_idx, scale_b, gp_b, residuals=res, rng=rng
                 )
                 draws[b] = np.where(proj_mask, draw_prem, np.nan)
-            with np.errstate(invalid="ignore"):
+            # Survivor gate: a cell carries a full uncertainty triple only with
+            # >= 2 finite draws (so total_se and the CI bounds appear together).
+            n_eff = np.sum(~np.isnan(draws), axis=0)
+            gate = proj_mask & (n_eff >= 2)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
                 sd = np.nanstd(draws, axis=0, ddof=1)  # NaN where < 2 draws
-            total_se = np.where(proj_mask, sd, np.nan)
+            total_se = np.where(gate & np.isfinite(sd), sd, np.nan)
             lo_q = (1.0 - conf_level) / 2.0
             hi_q = 1.0 - lo_q
-            with np.errstate(invalid="ignore"):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
                 q_lo = np.nanquantile(draws, lo_q, axis=0)
                 q_hi = np.nanquantile(draws, hi_q, axis=0)
-            boot_ci_lo = np.where(proj_mask, q_lo, np.nan)
-            boot_ci_hi = np.where(proj_mask, q_hi, np.nan)
+                center = np.nanmedian(draws, axis=0)
+            # Recentre the replicate cloud on the noise-free point so
+            # lo <= proj <= hi holds. Store only where center / quantiles /
+            # premium_proj are all finite.
+            finite_ci = (
+                gate
+                & np.isfinite(center)
+                & np.isfinite(q_lo)
+                & np.isfinite(q_hi)
+                & np.isfinite(premium_proj)
+            )
+            ci_lo = premium_proj - (center - q_lo)
+            ci_hi = premium_proj + (q_hi - center)
+            boot_ci_lo = np.where(finite_ci, ci_lo, np.nan)
+            boot_ci_hi = np.where(finite_ci, ci_hi, np.nan)
 
     return _PremiumResult(
         n_durations=n_durations,
@@ -690,20 +719,8 @@ class Premium:
                     "method='cs' does not yet support a tail (the multiplicative "
                     "premium tail drops the per-cohort cohort_scale)."
                 )
-            if self.credibility < 0:
-                raise ValueError(
-                    f"credibility must be >= 0, got {self.credibility!r}"
-                )
-            if self.smooth is not None and self.smooth < 1:
-                raise ValueError(
-                    f"smooth must be a positive integer or None, "
-                    f"got {self.smooth!r}"
-                )
-            if self.n_bootstrap is not None and self.n_bootstrap < 1:
-                raise ValueError(
-                    f"n_bootstrap must be a positive integer or None, "
-                    f"got {self.n_bootstrap!r}"
-                )
+            from .cohort_scaled import _validate_cs_knobs
+            _validate_cs_knobs(self.credibility, self.smooth, self.n_bootstrap)
 
     def fit(self, triangle: "Triangle") -> "PremiumFit":
         """Fit the premium projection on a Triangle."""
