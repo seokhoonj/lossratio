@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("ed", "cl", "sa", "cs")
-_VALID_PREMIUM_METHODS = ("ed", "cl")
+_VALID_PREMIUM_METHODS = ("ed", "cl", "cs")
 _VALID_SE_METHODS = ("fixed", "delta")
 
 
@@ -321,11 +321,28 @@ class RatioFit:
             regime=estimator.premium_regime,
             recent=estimator.recent,
             tail=estimator.tail,
+            # cohort-scaled (premium_method="cs") pass-through; inert otherwise.
+            credibility=estimator.credibility,
+            smooth=estimator.smooth,
+            n_bootstrap=estimator.n_bootstrap,
+            seed=estimator.seed,
         ).fit(triangle)
         self.premium_fit = premium_fit
 
         # 2) delegate loss-side projection to Loss --------------------------
         # For `sa` / `ed` / `cl` the embedded premium_fit is reused.
+        #
+        # `premium_fit` is ALWAYS supplied here, so Loss never builds its own
+        # Premium and never consults `premium_method`. Loss's premium-method
+        # enum only knows ("ed", "cl"), so a `premium_method="cs"` would trip
+        # its validation for no functional reason -- pass a loss-accepted
+        # placeholder ("ed") when the user picked "cs"; the real cs premium
+        # projection rides in via the already-built `premium_fit` above.
+        loss_premium_method = (
+            "ed"
+            if estimator.premium_method == "cs"
+            else estimator.premium_method
+        )
         loss_kwargs: dict[str, Any] = dict(
             method=estimator.method,
             alpha=estimator.loss_alpha,
@@ -334,7 +351,7 @@ class RatioFit:
             regime=estimator.loss_regime,
             recent=estimator.recent,
             premium_fit=premium_fit,
-            premium_method=estimator.premium_method,
+            premium_method=loss_premium_method,
             premium_alpha=estimator.premium_alpha,
             switch=estimator.switch,
             credibility=estimator.credibility,

@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-_VALID_METHODS = ("ed", "cl")
+_VALID_METHODS = ("ed", "cl", "cs")
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +58,12 @@ class _PremiumResult:
     total_se: np.ndarray
     f_k: np.ndarray
     sigma2_k: np.ndarray
+    # Per-cell bootstrap-quantile CI bounds populated only by the
+    # cohort-scaled (`cs`) worker's residual bootstrap, whose CI is the
+    # replicate quantile (asymmetric) rather than the SE-normal interval.
+    # Every ed / cl premium fit leaves these None.
+    boot_ci_lo: np.ndarray | None = None
+    boot_ci_hi: np.ndarray | None = None
 
 
 def _project_premium(
@@ -268,6 +274,242 @@ def _fit_premium_single(
     )
 
 
+# ---------------------------------------------------------------------------
+# Internal: cohort-scaled (method="cs") premium worker
+# ---------------------------------------------------------------------------
+
+
+def _premium_scales(
+    cells: dict, gp_pool: dict[int, float], K: float
+) -> dict[object, float]:
+    """Per-cohort PREMIUM scale: median(growth_cohort / gp_pooled), shrunk to 1.
+
+    ``growth_cohort`` at a link = ``incr_premium / cum_premium_prev`` (the
+    cohort's own premium intensity, cells field ``[3] / [1]``). The median
+    over the cohort's observed links is Buhlmann-shrunk toward ``1.0`` by
+    strength ``K`` -- the premium analogue of ``cohort_scaled._scales`` (which
+    is on the loss increment instead).
+    """
+    scale: dict[object, float] = {}
+    for c, cdict in cells.items():
+        ratios = []
+        for k in sorted(cdict):
+            gpk = gp_pool.get(k)
+            prev = cdict.get(k - 1)
+            if gpk and gpk != 0 and prev and prev[1] > 0:
+                ratios.append((cdict[k][3] / prev[1]) / gpk)
+        if ratios:
+            n = len(ratios)
+            scale[c] = (n * float(np.median(ratios)) + K * 1.0) / (n + K)
+        else:
+            scale[c] = 1.0
+    return scale
+
+
+def _premium_residuals(
+    cells: dict, scale: dict[object, float], gp_pool: dict[int, float]
+) -> np.ndarray:
+    """Pearson residuals of observed PREMIUM increments.
+
+    ``(incr_premium - fitted)/sqrt(cum_premium_prev)`` with
+    ``fitted = scale[c] * gp_k * cum_premium_prev``; centered (the median
+    scale does not zero the mean, so an uncentered pool would bias the
+    bootstrap).
+    """
+    res = []
+    for c, cdict in cells.items():
+        for k in sorted(cdict):
+            gpk = gp_pool.get(k)
+            prev = cdict.get(k - 1)
+            if gpk and prev and prev[1] > 0:
+                fitted = scale[c] * gpk * prev[1]
+                res.append((cdict[k][3] - fitted) / np.sqrt(prev[1]))
+    arr = np.array(res, dtype=np.float64)
+    return arr - arr.mean() if arr.size else arr
+
+
+_CS_MAX_FACTOR = 1e6  # multiplicative-compounding runaway guard
+
+
+def _premium_cs_project(
+    premium_obs: np.ndarray,
+    last_obs_idx: np.ndarray,
+    scale: dict,
+    gp_pool: dict,
+    *,
+    residuals: "np.ndarray | None",
+    rng: "np.random.Generator | None",
+) -> np.ndarray:
+    """Multiplicative anchored cohort-scaled premium projection.
+
+    ``premium[c, k+1] = premium[c, k] * (1 + cohort_scale_P[c] * gp_k)``
+    walking forward from each cohort's last observed cumulative premium.
+    When ``residuals`` / ``rng`` are given, Pearson process noise
+    ``res * sqrt(prem_prev)`` is added to each projected increment
+    (bootstrap). The compounding factor is guarded: a non-finite or runaway
+    step breaks the cohort's walk rather than NaN-cascading.
+    """
+    n_cohorts, n_durations = premium_obs.shape
+    premium_out = premium_obs.copy()
+    for i in range(n_cohorts):
+        li = last_obs_idx[i]
+        if li < 0 or li >= n_durations - 1 or i not in scale:
+            continue
+        cp = premium_out[i, li]
+        if np.isnan(cp):
+            continue
+        sc = scale.get(i, 1.0)
+        for k in range(li + 1, n_durations):
+            dur = k + 1
+            gpk = gp_pool.get(dur)
+            if gpk is None:
+                break
+            prev_p = cp
+            incr = sc * gpk * prev_p
+            if residuals is not None and rng is not None and prev_p > 0:
+                incr += float(rng.choice(residuals)) * np.sqrt(prev_p)
+            cp = prev_p + incr
+            # Multiplicative compounding guard: break on non-finite or runaway.
+            if (
+                not np.isfinite(cp)
+                or (prev_p > 0 and cp > _CS_MAX_FACTOR * prev_p)
+            ):
+                break
+            premium_out[i, k] = cp
+    return premium_out
+
+
+def _fit_premium_cs(
+    premium_obs: np.ndarray,
+    *,
+    credibility: float,
+    smooth: int | None,
+    n_bootstrap: int | None,
+    conf_level: float,
+    rng: "np.random.Generator",
+) -> _PremiumResult:
+    """Cohort-scaled (multiplicative) premium projection worker.
+
+    Mirrors :func:`_fit_premium_single`'s contract (matrix in,
+    ``_PremiumResult`` out) but does NOT use the Mack factor recursion. The
+    premium develops multiplicatively with a per-cohort, credibility-shrunk
+    development-factor scale::
+
+        premium[c, k+1] = premium[c, k] * (1 + cohort_scale_P[c] * gp_k)
+
+    where ``gp_k`` is the pooled premium intensity (``_intensities``' gp_pool
+    = ``f_k - 1``) and ``cohort_scale_P[c]`` is the Buhlmann-shrunk median of
+    the cohort's own growth (``incr_premium / cum_premium_prev``) over gp_k.
+
+    Uncertainty is RESIDUAL BOOTSTRAP only -- ``proc_se`` / ``param_se`` stay
+    all-NaN; ``total_se`` is the per-cell std of the bootstrap projected
+    premium on projected cells; ``boot_ci_lo`` / ``boot_ci_hi`` are the
+    replicate quantiles. With ``n_bootstrap`` falsy these stay all-NaN (point
+    projection only).
+    """
+    from .cohort_scaled import _intensities
+
+    n_cohorts, n_durations = premium_obs.shape
+    n_links = n_durations - 1
+    _nan_links = np.full(n_links, np.nan, dtype=np.float64)
+
+    # Reuse the loss-side cell builder: passing premium as both matrices makes
+    # cells field [1] = cum_premium and field [3] = incr_premium (the only
+    # fields the premium helpers read); the loss fields are unused here.
+    from .loss import _cs_build_cells
+
+    cells, durations = _cs_build_cells(premium_obs, premium_obs)
+    _, gp_pool = _intensities(cells, durations, smooth)
+    scale = _premium_scales(cells, gp_pool, credibility)
+
+    # f_k aligned to the premium link axis (diagnostic): link k connects
+    # duration (k+1) -> (k+2); gp_pool keys on the TARGET duration, so
+    # f_k[k] = 1 + gp_pool.get(k + 2).
+    f_k = np.array(
+        [
+            (1.0 + gp_pool[k + 2]) if (k + 2) in gp_pool else np.nan
+            for k in range(n_links)
+        ],
+        dtype=np.float64,
+    )
+
+    obs_mask = ~np.isnan(premium_obs)
+    last_obs_idx = np.where(
+        obs_mask.any(axis=1),
+        n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1),
+        -1,
+    )
+
+    # ---- point projection (multiplicative, anchored on observed cum prem) ----
+    premium_proj = _premium_cs_project(
+        premium_obs, last_obs_idx, scale, gp_pool, residuals=None, rng=None
+    )
+
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    boot_ci_lo: np.ndarray | None = None
+    boot_ci_hi: np.ndarray | None = None
+
+    proj_mask = (~obs_mask) & (~np.isnan(premium_proj))
+    if n_bootstrap:
+        res = _premium_residuals(cells, scale, gp_pool)
+        if res.size:
+            B = int(n_bootstrap)
+            draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
+            for b in range(B):
+                # 1) re-inject noise into observed increments -> pseudo cells.
+                pseudo: dict = {}
+                for c, cdict in cells.items():
+                    ks = sorted(cdict)
+                    pc = {ks[0]: cdict[ks[0]]}
+                    for d in ks[1:]:
+                        prev_p = cdict[d - 1][1]
+                        if prev_p > 0:
+                            fitted = scale[c] * gp_pool.get(d, 0.0) * prev_p
+                            pincr = fitted + float(rng.choice(res)) * np.sqrt(prev_p)
+                        else:
+                            pincr = cdict[d][3]
+                        cum = pc[d - 1][1] + pincr
+                        pc[d] = (cum, cum, pincr, pincr)
+                    pseudo[c] = pc
+                # 2) refit gp_k / scale on the pseudo book.
+                _, gp_b = _intensities(pseudo, durations, smooth)
+                scale_b = _premium_scales(pseudo, gp_b, credibility)
+                # 3) re-project from the PSEUDO cumulative anchor + process noise.
+                anchor = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+                for c, pc in pseudo.items():
+                    for d, tup in pc.items():
+                        anchor[c, d - 1] = tup[1]
+                draw_prem = _premium_cs_project(
+                    anchor, last_obs_idx, scale_b, gp_b, residuals=res, rng=rng
+                )
+                draws[b] = np.where(proj_mask, draw_prem, np.nan)
+            with np.errstate(invalid="ignore"):
+                sd = np.nanstd(draws, axis=0, ddof=1)  # NaN where < 2 draws
+            total_se = np.where(proj_mask, sd, np.nan)
+            lo_q = (1.0 - conf_level) / 2.0
+            hi_q = 1.0 - lo_q
+            with np.errstate(invalid="ignore"):
+                q_lo = np.nanquantile(draws, lo_q, axis=0)
+                q_hi = np.nanquantile(draws, hi_q, axis=0)
+            boot_ci_lo = np.where(proj_mask, q_lo, np.nan)
+            boot_ci_hi = np.where(proj_mask, q_hi, np.nan)
+
+    return _PremiumResult(
+        n_durations=n_durations,
+        premium_obs=premium_obs,
+        premium_proj=premium_proj,
+        proc_se=proc_se,
+        param_se=param_se,
+        total_se=total_se,
+        f_k=f_k,
+        sigma2_k=_nan_links.copy(),
+        boot_ci_lo=boot_ci_lo,
+        boot_ci_hi=boot_ci_hi,
+    )
+
+
 def _premium_long_df(
     result: _PremiumResult,
     cohorts: list,
@@ -296,11 +538,23 @@ def _premium_long_df(
         param_cv = param_se / safe_pp
         total_cv = total_se / safe_pp
 
-    # CI bounds: only valid when both total_se and premium_proj are finite.
-    both_finite = np.isfinite(total_se) & np.isfinite(premium_proj)
-    ci_lo_raw = premium_proj - z_alpha * total_se
-    ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
-    ci_hi = np.where(both_finite, premium_proj + z_alpha * total_se, np.nan)
+    # Bootstrap-quantile CI when the worker supplied per-cell bounds (the
+    # cohort-scaled `cs` path -- asymmetric, contract-mandated). Every
+    # ed / cl premium fit leaves these None, so the SE-normal formula below
+    # runs byte-identically.
+    if result.boot_ci_lo is not None and result.boot_ci_hi is not None:
+        ci_lo = np.where(
+            np.isfinite(result.boot_ci_lo),
+            np.maximum(0.0, result.boot_ci_lo),
+            np.nan,
+        )
+        ci_hi = result.boot_ci_hi
+    else:
+        # CI bounds: only valid when both total_se and premium_proj are finite.
+        both_finite = np.isfinite(total_se) & np.isfinite(premium_proj)
+        ci_lo_raw = premium_proj - z_alpha * total_se
+        ci_lo = np.where(both_finite, np.maximum(0.0, ci_lo_raw), np.nan)
+        ci_hi = np.where(both_finite, premium_proj + z_alpha * total_se, np.nan)
 
     cohort_flat = np.repeat(np.asarray(cohorts, dtype=object), n_durations).tolist()
     duration_flat = np.tile(np.arange(1, n_durations + 1, dtype=np.int64), n_cohorts)
@@ -390,6 +644,11 @@ class Premium:
     recent:       int | None = None
     tail:         TailArg    = False
     conf_level:   float      = 0.95
+    # cohort-scaled (method="cs") config -- inert for ed / cl.
+    credibility:  float      = 3.0
+    smooth:       int | None = None
+    n_bootstrap:  int | None = None
+    seed:         int | None = None
 
     def __post_init__(self) -> None:
         from .tail import validate_tail
@@ -413,6 +672,38 @@ class Premium:
                 f"conf_level must be in (0, 1), got {self.conf_level!r}"
             )
         _validate_recent(self.recent)
+        if self.method == "cs":
+            # cs pools gp_k and the cohort scale over the FULL triangle; the
+            # recent-diagonal factor window is not wired into the pooling, so a
+            # silently-ignored `recent` would be a wrong-number trap. Refuse.
+            if self.recent is not None:
+                raise NotImplementedError(
+                    "method='cs' does not support `recent=` (the recent-diagonal "
+                    "factor window is not wired into the cohort-scaled intensity "
+                    "pooling, which is full-triangle)."
+                )
+            # The cs tail must scale each cohort's tail increment by its
+            # cohort_scale; the multiplicative premium tail fits the bare pooled
+            # factors and would drop the per-cohort scale. Disabled for now.
+            if self.tail is not False:
+                raise NotImplementedError(
+                    "method='cs' does not yet support a tail (the multiplicative "
+                    "premium tail drops the per-cohort cohort_scale)."
+                )
+            if self.credibility < 0:
+                raise ValueError(
+                    f"credibility must be >= 0, got {self.credibility!r}"
+                )
+            if self.smooth is not None and self.smooth < 1:
+                raise ValueError(
+                    f"smooth must be a positive integer or None, "
+                    f"got {self.smooth!r}"
+                )
+            if self.n_bootstrap is not None and self.n_bootstrap < 1:
+                raise ValueError(
+                    f"n_bootstrap must be a positive integer or None, "
+                    f"got {self.n_bootstrap!r}"
+                )
 
     def fit(self, triangle: "Triangle") -> "PremiumFit":
         """Fit the premium projection on a Triangle."""
@@ -453,6 +744,18 @@ class PremiumFit:
 
         regime = _resolve_regime(estimator.regime, triangle)
 
+        if (
+            estimator.method == "cs"
+            and regime is not None
+            and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
+            and regime.change_points
+        ):
+            raise NotImplementedError(
+                "method='cs' does not support the segment-borrow regime "
+                "treatments (cohort-scale credibility is incompatible with "
+                "cross-segment factor borrow); use a latest_only regime, or a "
+                "factor method (ed / cl) for borrow."
+            )
         if (
             regime is not None
             and regime.treatment in ("segment_borrowed", "segment_bridged_borrowed")
@@ -502,13 +805,27 @@ class PremiumFit:
         # tail (loss.py) can develop premium in step with the loss intensity
         # instead of freezing it (a coupled forward walk).
         f_k_map: dict[Any, np.ndarray] = {}
+        # Deterministic RNG for the cs residual bootstrap (unused for other
+        # methods). One RNG is shared across groups (matching the loss-side
+        # CohortScaled), so a whole fit is reproducible from `seed`.
+        cs_rng = np.random.default_rng(estimator.seed)
         for g, sub in _iter_group_frames(tri_df, groups):
             keys.append(g)
             premium_obs, cohorts, _ = _build_premium_matrix(sub)
-            result = _fit_premium_single(
-                premium_obs, estimator.method, estimator.sigma_method,
-                link_mask=recent_link_mask(premium_obs, recent),
-            )
+            if estimator.method == "cs":
+                result = _fit_premium_cs(
+                    premium_obs,
+                    credibility=estimator.credibility,
+                    smooth=estimator.smooth,
+                    n_bootstrap=estimator.n_bootstrap,
+                    conf_level=estimator.conf_level,
+                    rng=cs_rng,
+                )
+            else:
+                result = _fit_premium_single(
+                    premium_obs, estimator.method, estimator.sigma_method,
+                    link_mask=recent_link_mask(premium_obs, recent),
+                )
             f_k_map[g] = result.f_k
             df_g = _premium_long_df(
                 result, cohorts, groups, g, estimator.conf_level
