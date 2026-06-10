@@ -24,6 +24,7 @@ from .loss import LossFit
 from .ratio import Ratio, RatioFit
 from .premium import Premium, PremiumFit
 from .regime import Regime
+from .rolling_backtest import RollingBacktest, RollingBacktestFit
 from .stage_adaptive import StageAdaptive
 from .switch_point import SwitchPoint
 from .tail import Tail
@@ -54,6 +55,8 @@ __all__ = [
     "RatioFit",
     "Regime",
     "ResidualBootstrap",
+    "RollingBacktest",
+    "RollingBacktestFit",
     "StageAdaptive",
     "SwitchPoint",
     "Tail",
