@@ -513,6 +513,36 @@ class RollingBacktestFit:
     def fits(self) -> dict[int, Any]:
         return dict(self._fits)
 
+    def plot(
+        self,
+        by: str = "horizon",
+        metric: str = "ae_err",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Reliability-curve line plot, backed by matplotlib.
+
+        ``by`` selects the axis: ``"horizon"`` (default; error vs how far
+        ahead -- the headline reliability curve), ``"anchor"`` (error vs how
+        much history the cohort had at the as-of date), or ``"holdout"`` (error
+        vs hold-out depth). ``metric`` is ``"ae_err"`` (default; relative
+        ``actual / expected - 1``) or ``"abs_err"`` (``mean |actual -
+        expected|``). The cumulative and per-period ``incr_*`` lanes are drawn
+        together; for ``by="horizon"`` the incremental lane is the
+        confound-free read (see the class docstring). Per-as-of-depth calendar
+        heatmaps are available via
+        ``self.fits[holdout].plot_triangle(x="calendar")``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._rolling_backtest_vis import plot_rolling_backtest
+        return plot_rolling_backtest(
+            self, by=by, metric=metric, nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         est_name = type(self.estimator).__name__
         used = sorted(self._fits)
