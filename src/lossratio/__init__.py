@@ -13,6 +13,7 @@ from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .calendar import Calendar
 from .chain_ladder import ChainLadder
+from .comparison import EstimatorComparison, EstimatorComparisonFit
 from .convergence import Convergence
 from .curve import Curve, CurveResult
 from .datasets import load_experience, make_experience
@@ -44,6 +45,8 @@ __all__ = [
     "Convergence",
     "Curve",
     "CurveResult",
+    "EstimatorComparison",
+    "EstimatorComparisonFit",
     "ExposureDriven",
     "Intensity",
     "Link",
