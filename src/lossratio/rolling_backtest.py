@@ -58,6 +58,7 @@ incremental projection (the same condition under which
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -512,6 +513,279 @@ class RollingBacktestFit:
     @property
     def fits(self) -> dict[int, Any]:
         return dict(self._fits)
+
+    # -- evidence readers ----------------------------------------------------
+
+    def _resolve_bias_col(self, tol: float, lane: str) -> str:
+        """Validate the shared ``tol`` / ``lane`` arguments of the evidence
+        readers and return the pooled signed-bias column to walk."""
+        if (
+            isinstance(tol, bool)
+            or not isinstance(tol, (int, float))
+            or not math.isfinite(tol)
+            or tol <= 0
+        ):
+            raise ValueError(
+                f"tol must be a positive finite number, got {tol!r}"
+            )
+        if lane not in ("cumulative", "incremental"):
+            raise ValueError(
+                f'lane must be "cumulative" or "incremental", got {lane!r}'
+            )
+        if lane == "incremental" and not self._has_incr:
+            raise ValueError(
+                'lane="incremental" is unavailable for this fit: not every '
+                "surviving hold-out depth carried an incremental projection, "
+                "so the summaries have no incr_* lane (see the module "
+                "docstring)"
+            )
+        return "ae_err_wt" if lane == "cumulative" else "incr_ae_err_wt"
+
+    @staticmethod
+    def _threshold_walk(
+        summ: pl.DataFrame,
+        gcols: list[str],
+        axis: str,
+        bias: str,
+        tol: float,
+        mode: str,
+        value_col: str,
+        max_col: str,
+        min_run: int = 1,
+    ) -> pl.DataFrame:
+        """Per-group tolerance walk over a summary axis.
+
+        ``mode="suffix"`` finds the smallest axis value from which EVERY
+        observed entry at or beyond it keeps ``|bias| <= tol`` (null when the
+        walk never starts -- including a violation at the very last entry),
+        and additionally requires the in-band suffix to hold at least
+        ``min_run`` observed entries (null otherwise; ``min_run`` is ignored
+        in prefix mode). ``mode="prefix"`` finds the largest axis value
+        reached while every entry from the front stays within tolerance (0
+        when the first entry already violates). A null bias counts as a
+        violation in both modes. The summaries are tiny, so a clear per-group
+        Python walk is preferred over a window-expression formulation.
+        """
+        axis_dt = summ.schema[axis]
+        schema: dict[str, Any] = {c: summ.schema[c] for c in gcols}
+        schema[value_col] = axis_dt
+        schema[max_col] = axis_dt
+        if summ.height == 0:
+            return pl.DataFrame(schema=schema)
+        parts = (
+            summ.partition_by(gcols, maintain_order=True) if gcols else [summ]
+        )
+        rows: list[dict[str, Any]] = []
+        for part in parts:
+            part = part.sort(axis)
+            values = part[axis].to_list()
+            within = [
+                b is not None and abs(b) <= tol for b in part[bias].to_list()
+            ]
+            result: Any
+            if mode == "suffix":
+                result = None
+                run = 0
+                for v, ok in zip(reversed(values), reversed(within)):
+                    if not ok:
+                        break
+                    result = v
+                    run += 1
+                if run < min_run:
+                    result = None
+            else:  # prefix
+                result = 0
+                for v, ok in zip(values, within):
+                    if not ok:
+                        break
+                    result = v
+            row: dict[str, Any] = {c: part[c][0] for c in gcols}
+            row[value_col] = result
+            row[max_col] = values[-1]
+            rows.append(row)
+        out = pl.DataFrame(rows, schema=schema)
+        return out.sort(gcols) if gcols else out
+
+    def convergence(
+        self, tol: float = 0.03, lane: str = "cumulative", min_run: int = 6
+    ):
+        """Smallest anchor duration from which the pooled bias stays in band.
+
+        Reads the ANCHOR axis of the rolling backtest: how much observed
+        history a cohort needs before its out-of-sample projections settle.
+        Per group, the ``anchor_summary`` pooled signed bias (``ae_err_wt``
+        for ``lane="cumulative"``, ``incr_ae_err_wt`` for
+        ``lane="incremental"``) is walked over ``anchor_duration``;
+        ``converged_at`` is the smallest observed anchor duration such that
+        EVERY observed anchor duration at or beyond it keeps
+        ``|bias| <= tol`` (a null bias counts as a violation) AND the
+        in-band suffix holds at least ``min_run`` observed anchor durations.
+        When no such anchor exists -- including when the largest observed
+        anchor still violates -- ``converged_at`` is null. That null is
+        honest, not a failure: the bias never settles within the observed
+        range, and ``max_anchor`` (the largest observed anchor duration) is
+        reported so the null can be judged against how far that range
+        actually reaches.
+
+        Why a SIGNED pooled bias rather than absolute error: on a lumpy
+        low-frequency book the per-period absolute error never shrinks (it
+        is irreducible noise), so an absolute-error criterion would never
+        trigger. Systematic over/under-projection, by contrast, averages out
+        across the many pooled out-of-sample cells, so the exposure-weighted
+        signed bias is the statistic that can actually settle. And why the
+        tolerance defaults TIGHT: the cumulative lane's denominator keeps
+        growing with duration, so an apparent flattening of the cumulative
+        loss ratio is an inertia illusion -- eyeballing that curve is not
+        evidence; the out-of-sample bias is. ``lane`` selects which bias to
+        walk: the cumulative lane is the smoother headline read, while the
+        incremental lane strips the cumulative-magnitude confound (see the
+        module docstring's lane discussion).
+
+        Why ``min_run`` guards the walk: the suffix-all test alone fails
+        OPEN at the data edge. Two mechanisms make the deepest observed
+        anchors unreliable witnesses on the cumulative lane. First, few
+        rolling-origin cells reach a deep anchor, so the pooled bias there
+        is computed from a handful of cells -- noise, not evidence. Second,
+        a cohort observed to a deep anchor carries a large accumulated
+        denominator, so projecting a few periods ahead moves its cumulative
+        ratio mechanically little: denominator inertia damps the relative
+        bias toward zero regardless of model quality (the same inertia that
+        makes the cumulative loss-ratio curve LOOK settled). A thin, damped
+        tail of a few in-band anchors can therefore fire the unguarded read
+        even when every anchor before it violates badly. Raising a
+        minimum-cell filter does not fix this: on a book whose bias never
+        settles, the spurious point simply chases the truncation edge as
+        the filter rises, whereas a genuine convergence point is
+        edge-stable under any such filter. ``min_run`` instead demands a
+        sustained in-band run, so a thin damped tail cannot fire the call
+        on its own. A young triangle whose whole observed anchor range is
+        shorter than ``min_run`` honestly reads null -- not enough evidence
+        yet -- and ``anchor_summary``'s ``n`` column is the drill-down for
+        judging how much pooled evidence each anchor carries.
+
+        This is an anchor-axis question (how much history until the
+        projection settles), not a horizon-axis question (how far ahead is
+        trustworthy) -- the two must not be conflated; see
+        :meth:`reliable_horizon` for the horizon axis.
+
+        Parameters
+        ----------
+        tol
+            Tolerance band on the pooled signed bias, ``|bias| <= tol``.
+            Must be a positive finite number. Default ``0.03``.
+        lane
+            ``"cumulative"`` (default) or ``"incremental"``. The incremental
+            lane is available only when every surviving hold-out depth
+            carried an incremental projection.
+        min_run
+            Minimum number of observed anchor durations the in-band suffix
+            must hold before ``converged_at`` fires. Must be an int >= 1;
+            ``1`` reproduces the unguarded suffix-all read. Default ``6``.
+
+        Returns
+        -------
+        DataFrame
+            Input-mirrored, one row per group, sorted by the group columns:
+            ``[groups?, converged_at, max_anchor]``. ``converged_at`` keeps
+            the ``anchor_duration`` dtype and is null when the bias never
+            settles within the observed range (or settles over fewer than
+            ``min_run`` observed anchors); ``max_anchor`` is non-null.
+        """
+        if (
+            isinstance(min_run, bool)
+            or not isinstance(min_run, int)
+            or min_run < 1
+        ):
+            raise ValueError(
+                f"min_run must be an int >= 1, got {min_run!r}"
+            )
+        bias = self._resolve_bias_col(tol, lane)
+        gcols = normalize_groups(self._groups)
+        out = self._threshold_walk(
+            self._anchor_summary,
+            gcols,
+            axis="anchor_duration",
+            bias=bias,
+            tol=tol,
+            mode="suffix",
+            value_col="converged_at",
+            max_col="max_anchor",
+            min_run=min_run,
+        )
+        return mirror_output(out, self._output_type)
+
+    def reliable_horizon(self, tol: float = 0.03, lane: str = "cumulative"):
+        """Largest horizon the projections stay in band for, from the front.
+
+        Reads the HORIZON axis of the rolling backtest: how far past the
+        as-of date a projection can be pushed before the pooled signed bias
+        leaves the tolerance band. Per group, the ``horizon_summary`` bias
+        (``ae_err_wt`` for ``lane="cumulative"``, ``incr_ae_err_wt`` for
+        ``lane="incremental"``) is walked over ``horizon`` from the smallest
+        observed horizon upward; ``reliable_horizon`` is the largest observed
+        horizon ``H`` such that EVERY observed horizon up to and including
+        ``H`` keeps ``|bias| <= tol`` -- a contiguous-from-the-front
+        definition that stops at the first violation (a null bias counts as
+        a violation). Reliability must be contiguous: a horizon that drifts
+        back into band beyond an out-of-band stretch is not trustworthy,
+        since reaching it means trusting the stretch that was not. When the
+        very first observed horizon already violates, ``reliable_horizon``
+        is ``0`` -- an honest "not reliable even one step ahead". (The ``0``
+        here versus :meth:`convergence`'s null is semantic, not cosmetic:
+        this method reports the largest contiguous reach, which can
+        legitimately be none; ``convergence`` reports the smallest point
+        FROM which the bias settles, which may simply not exist within the
+        observed range.)
+
+        The signed-pooled-bias rationale of :meth:`convergence` applies
+        unchanged -- on a lumpy book the per-period absolute error never
+        shrinks, so the bias band, not the absolute error, is what carries
+        the evidence. ``lane`` selects which bias to walk: the cumulative
+        lane is the smoother headline read, while the incremental lane
+        strips the cumulative-magnitude confound (the per-horizon population
+        drifts toward higher durations as horizon grows -- see the module
+        docstring's lane discussion). Unlike :meth:`convergence` there is no
+        ``min_run`` guard here: the prefix walk starts where the pooled data
+        is densest (the shallowest horizons) and stops at the first
+        violation, so it fails CLOSED at the thin data edge rather than open.
+
+        This is a horizon-axis question (how far ahead is trustworthy), not
+        an anchor-axis question (how much history until the projection
+        settles) -- the two must not be conflated; see :meth:`convergence`
+        for the anchor axis.
+
+        Parameters
+        ----------
+        tol
+            Tolerance band on the pooled signed bias, ``|bias| <= tol``.
+            Must be a positive finite number. Default ``0.03``.
+        lane
+            ``"cumulative"`` (default) or ``"incremental"``. The incremental
+            lane is available only when every surviving hold-out depth
+            carried an incremental projection.
+
+        Returns
+        -------
+        DataFrame
+            Input-mirrored, one row per group, sorted by the group columns:
+            ``[groups?, reliable_horizon, max_horizon]``. ``reliable_horizon``
+            keeps the ``horizon`` dtype and is ``0`` (non-null) when the
+            first observed horizon already violates; ``max_horizon`` is the
+            largest observed horizon.
+        """
+        bias = self._resolve_bias_col(tol, lane)
+        gcols = normalize_groups(self._groups)
+        out = self._threshold_walk(
+            self._horizon_summary,
+            gcols,
+            axis="horizon",
+            bias=bias,
+            tol=tol,
+            mode="prefix",
+            value_col="reliable_horizon",
+            max_col="max_horizon",
+        )
+        return mirror_output(out, self._output_type)
 
     def plot(
         self,
