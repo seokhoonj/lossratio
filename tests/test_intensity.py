@@ -164,3 +164,38 @@ def test_intensity_per_group_independent():
     a_g = df.filter(pl.col("coverage") == "A").sort("duration")["g"].to_list()
     b_g = df.filter(pl.col("coverage") == "B").sort("duration")["g"].to_list()
     assert a_g == b_g
+
+
+# ---------------------------------------------------------------------------
+# Degenerate group: single duration -> zero links
+# ---------------------------------------------------------------------------
+
+
+def _single_duration_input() -> pl.DataFrame:
+    """One cohort observed at a single duration: zero links."""
+    return pl.DataFrame(
+        {
+            "cy_m": ["2024-01-01"],
+            "uy_m": ["2024-01-01"],
+            "incr_loss": [100.0],
+            "incr_premium": [100.0],
+        }
+    )
+
+
+def test_intensity_single_duration_no_links():
+    intensity = lr.Triangle(_single_duration_input()).link().intensity()
+    assert intensity.df.height == 0
+
+
+def test_intensity_single_duration_group_alongside_normal():
+    df_grouped = pl.concat(
+        [
+            _toy_input().with_columns(pl.lit("A").alias("coverage")),
+            _single_duration_input().with_columns(pl.lit("B").alias("coverage")),
+        ]
+    )
+    tri = lr.Triangle(df_grouped, groups="coverage")
+    df = tri.link().intensity().df
+    assert df.filter(pl.col("coverage") == "A").height > 0
+    assert df.filter(pl.col("coverage") == "B").height == 0

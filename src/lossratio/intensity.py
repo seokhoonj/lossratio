@@ -121,7 +121,16 @@ def _compute_intensity(
     # Tail-sigma extrapolation. When the last link has a single
     # contributing cohort (n_k = 1), sigma2 is unestimable directly.
     # Delegate to the shared helper so the choice is consistent
-    # across cl / intensity / lr.
+    # across cl / intensity / lr. A single-duration group has no links
+    # at all (n_links = 0) -- nothing to extrapolate.
+    if n_links == 0:
+        return _IntensityResult(
+            g_k=g_k,
+            g_se_k=g_se_k,
+            sigma2_k=sigma2_k,
+            n_obs_k=n_obs_k,
+            n_durations=n_durations,
+        )
     from ._sigma import extrapolate_tail_sigma2
     sigma2_k_new = extrapolate_tail_sigma2(sigma2_k, sigma_method)
     if sigma2_k_new[-1] != sigma2_k[-1]:
