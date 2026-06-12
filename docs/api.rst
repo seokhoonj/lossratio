@@ -60,12 +60,6 @@ API 레퍼런스
 .. autoclass:: lossratio.ExposureDriven
    :members:
 
-.. autoclass:: lossratio.StageAdaptive
-   :members:
-
-.. autoclass:: lossratio.SwitchPoint
-   :members:
-
 .. autoclass:: lossratio.Tail
    :members:
 
@@ -103,4 +97,16 @@ API 레퍼런스
    :members:
 
 .. autoclass:: lossratio.BacktestFit
+   :members:
+
+.. autoclass:: lossratio.RollingBacktest
+   :members:
+
+.. autoclass:: lossratio.RollingBacktestFit
+   :members:
+
+.. autoclass:: lossratio.EstimatorComparison
+   :members:
+
+.. autoclass:: lossratio.EstimatorComparisonFit
    :members:

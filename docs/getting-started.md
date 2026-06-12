@@ -58,7 +58,7 @@ tri = lr.Triangle(df_sur, groups="coverage")
 
 `Ratio`는 손해율을 추정하는 추정기입니다. 기본값은 `method="ed"`로,
 노출 기반(exposure-driven, ED) 예측입니다. 갓 인수되어 관측이 얇은
-코호트에서도 전환점 검출 같은 사전 단계 없이 안전하게 작동하는
+코호트에서도 별도의 사전 판단 없이 안전하게 작동하는
 기준선이라 기본으로 채택했습니다.
 
 ```python
@@ -78,24 +78,33 @@ fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se", "ratio_cv"
 fit.plot()
 ```
 
-경과 후반부를 체인래더(CL)로 넘기고 싶으면 단계 적응형(stage-adaptive,
-SA)을 씁니다. SA는 전환점 이전에는 ED, 이후에는 CL로 예측하며, 전환점은
-`switch=`로 지정합니다 — 정수를 주면 그 경과 기간에 고정되고,
-`SwitchPoint.detect()`를 주면 백테스트로 표본 외 손해 예측 오차가 가장
-작아지는 경계를 골라 줍니다 (백테스트 fold 안에서도 누출 없이 안전하게
-재해석됩니다).
+코호트별 손해율 수준 차이까지 반영하고 싶으면 cohort-scaled(CS,
+`method="cs"`)를 씁니다. CS는 ED의 풀링된 형상은 그대로 두고, 각
+코호트의 수준만 신뢰도(credibility) 가중으로 보정합니다 — 관측이 쌓인
+코호트일수록 자기 경험을 더 믿고, 갓 인수된 코호트는 포트폴리오 평균에
+가깝게 묶어 둡니다. CS의 불확실성은 닫힌형 공식이 성립하지 않아
+부트스트랩 전용이며, `n_bootstrap=`으로 켭니다.
 
 ```python
-fit = lr.Ratio(method="sa", switch=lr.SwitchPoint.detect()).fit(tri)
-fit.switch_point
-#> {'SURGERY': 1}
+fit = lr.Ratio(method="cs", n_bootstrap=500, seed=42).fit(tri)
+fit.summary().select(
+    ["coverage", "cohort", "ratio_proj", "ratio_se", "ratio_ci_lo", "ratio_ci_hi"]
+).head(3)
+#> shape: (3, 6)
+#> ┌──────────┬────────────┬────────────┬──────────┬─────────────┬─────────────┐
+#> │ coverage ┆ cohort     ┆ ratio_proj ┆ ratio_se ┆ ratio_ci_lo ┆ ratio_ci_hi │
+#> │ ---      ┆ ---        ┆ ---        ┆ ---      ┆ ---         ┆ ---         │
+#> │ str      ┆ date       ┆ f64        ┆ f64      ┆ f64         ┆ f64         │
+#> ╞══════════╪════════════╪════════════╪══════════╪═════════════╪═════════════╡
+#> │ SURGERY  ┆ 2023-01-01 ┆ 1.509562   ┆ null     ┆ null        ┆ null        │
+#> │ SURGERY  ┆ 2023-02-01 ┆ 1.511121   ┆ 0.033652 ┆ 1.457595    ┆ 1.595545    │
+#> │ SURGERY  ┆ 2023-03-01 ┆ 1.527346   ┆ 0.067159 ┆ 1.419338    ┆ 1.675426    │
+#> └──────────┴────────────┴────────────┴──────────┴─────────────┴─────────────┘
 ```
 
-`SwitchPoint`는 보수적입니다 — 표본이 얇거나 분기 단위로 거칠면 흔히
-순수 ED로 물러납니다 (`switch_point`가 `None`이고 `switch_from` 열이
-null). 그 경우 예측은 안전한 ED 베이스라인과 같으며, 이는 의도된
-동작입니다. 전환점을 직접 고정하려면 `switch=12`처럼 정수를 주면
-됩니다.
+CS는 포트폴리오 집계 수준의 체계적 편향을 줄이는 보정이고, 셀 단위
+정확도는 대체로 ED가 낫습니다 — 언제 어느 쪽이 맞는지는 데이터로
+가립니다 ({doc}`튜토리얼 4장 <tutorial/04-projection>`).
 
 ## 구조 변화 탐지하기
 

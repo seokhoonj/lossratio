@@ -33,8 +33,8 @@ lossratio는 장기 건강보험의 **손해율(loss ratio)**, 곧
 
 :::{grid-item-card} 노출 기반 예측
 기본은 노출 기반(exposure-driven, ED)의 안전한 베이스라인.
-필요하면 `SwitchPoint`로 ED->CL 전환점을 골라 단계 적응형(SA)으로
-전환. 초기 변동성에 강건한 손해율 예측.
+코호트별 수준 차이는 cohort-scaled(CS)가 신뢰도 가중으로 보정.
+초기 변동성에 강건한 손해율 예측.
 :::
 
 :::{grid-item-card} 진단과 탐지
@@ -43,8 +43,8 @@ ATA 인자(age-to-age factor)·수렴점(convergence point) 진단, 그리고
 :::
 
 :::{grid-item-card} 검증과 불확실성
-달력 대각선 hold-out 백테스트로 예측을 검증하고,
-부트스트랩과 해석적 분해로 표준오차를 정량화.
+달력 대각선 hold-out 백테스트와 rolling-origin 신뢰도 곡선으로
+예측을 검증하고, 부트스트랩과 해석적 분해로 표준오차를 정량화.
 :::
 
 ::::

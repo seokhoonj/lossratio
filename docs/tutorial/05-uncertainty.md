@@ -221,22 +221,25 @@ boot.boots.summary.select(["cohort", "duration", "total_cv", "ci_lo", "ci_hi"])
 의심스러울 때 진가를 발휘한다. 그렇지 않은 경우엔 분석적 공식과 거의 같은
 답을 준다 — 두 길이 같은 답에 닿는다는 것은 양쪽 모두를 신뢰할 근거가 된다.
 
-::::{admonition} SA는 잔차 부트스트랩을 받지 않는다
+::::{admonition} CS의 불확실성은 부트스트랩 전용이다
 :class: warning
 
-`lr.StageAdaptive`는 `lr.ResidualBootstrap`을 **거부**한다.
-ED(덧셈)+CL(곱셈) 두 단계가 한 전환 지점에서 이어지는 적합이라, 잔차를
-한 통에 모을 일관된 풀이 없기 때문이다. SA의 불확실성은 분포 기반인
-`lr.ParametricBootstrap`이나 기본 분석적 SE로 구한다.
+4장의 cohort-scaled(`method="cs"`)에는 닫힌형 표준오차가 **없다** —
+신뢰도로 추정한 코호트 스케일 자체의 분산, 스케일과 강도의 곱, 둘의
+공분산이 모두 얽혀 해석식이 성립하지 않고, 근사하면 불확실성을
+과소평가한다. 그래서 CS는 **자체 잔차 부트스트랩**을 내장하며
+`n_bootstrap=` 인자로 켠다. 과정오차·모수오차 분해(`loss_proc_se` /
+`loss_param_se`)는 null로 남고, 총 표준오차(`ratio_se`)와 분위수 기반의
+**비대칭 신뢰구간**(`ratio_ci_lo` / `ratio_ci_hi`)만 채워진다 — 분포가
+치우쳐 있으면 구간도 치우친 그대로 나온다.
 
 ```python
-# 거부된다
-lr.StageAdaptive(switch=3, uncertainty=lr.ResidualBootstrap(n_replicates=500))
-#> ValueError: StageAdaptive does not support ResidualBootstrap ...
+# CS의 불확실성: 자체 잔차 부트스트랩 (n_bootstrap=)
+lr.Ratio(method="cs", n_bootstrap=500, seed=42)
 
-# 대신 이렇게
-lr.StageAdaptive(switch=3, uncertainty=lr.ParametricBootstrap(n_replicates=500, seed=42))
-lr.StageAdaptive(switch=3)   # 또는 기본 분석적 SE
+# uncertainty= 오버레이는 CS에 적용되지 않는다 (거부된다)
+lr.Ratio(method="cs", uncertainty=lr.ResidualBootstrap(n_replicates=500))
+#> NotImplementedError: method='cs' has its own residual-bootstrap ...
 ```
 ::::
 
