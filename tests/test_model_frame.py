@@ -49,12 +49,39 @@ def _cohort_rows(mf_df: pl.DataFrame, i: int) -> pl.DataFrame:
 def test_columns_and_segment_id():
     mf = ModelFrame.from_triangle(_oracle_triangle())
     assert mf.df.columns == [
-        "_segment_id", "grp", "cohort", "duration",
+        "_segment_id", "grp", "cohort", "duration", "calendar",
         "incr_loss", "premium", "incr_premium",
     ]
     assert mf.df["_segment_id"].unique().to_list() == [0]   # single segment
     assert mf.segments == ["grp"]
     assert len(mf) == 9                                      # 4+3+2 observed cells
+
+
+def test_calendar_coordinate():
+    """calendar = cohort advanced by (duration - 1) grain steps."""
+    mf = ModelFrame.from_triangle(_oracle_triangle())
+    c1 = _cohort_rows(mf.df, 1)["calendar"].to_list()
+    assert c1 == [date(2020, 1, 1), date(2020, 2, 1),
+                  date(2020, 3, 1), date(2020, 4, 1)]
+    c3 = _cohort_rows(mf.df, 3)["calendar"].to_list()
+    assert c3 == [date(2020, 3, 1), date(2020, 4, 1)]
+
+
+def test_recent_keeps_last_diagonals():
+    """recent=2 keeps only the last two calendar diagonals (2020-03, -04)."""
+    mf = ModelFrame.from_triangle(_oracle_triangle(), recent=2)
+    cals = set(mf.df["calendar"].to_list())
+    assert cals == {date(2020, 3, 1), date(2020, 4, 1)}
+    assert len(mf) == 6        # c1{03,04}, c2{03,04}, c3{03,04}
+    # recent=None (and recent >= n_diagonals) keep everything
+    assert len(ModelFrame.from_triangle(_oracle_triangle())) == 9
+    assert len(ModelFrame.from_triangle(_oracle_triangle(), recent=99)) == 9
+
+
+def test_recent_validation():
+    for bad in (0, -1, 2.0, True):
+        with pytest.raises(ValueError, match="recent"):
+            ModelFrame.from_triangle(_oracle_triangle(), recent=bad)
 
 
 def test_exposure_is_cumulative_premium_unshifted():

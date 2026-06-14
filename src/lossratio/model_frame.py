@@ -32,7 +32,13 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 # Cells carry both anchors; the engine picks via anchor="cum"|"incr".
-_CORE_COLUMNS = ["cohort", "duration", "incr_loss", "premium", "incr_premium"]
+_SOURCE_COLUMNS = ["cohort", "duration", "incr_loss", "premium", "incr_premium"]
+# Final column order (charter Sec.3.3): calendar sits between the axes and the
+# response/exposure block.
+_FRAME_ORDER = ["cohort", "duration", "calendar",
+                "incr_loss", "premium", "incr_premium"]
+# grain code -> months per duration step (for the calendar coordinate).
+_GRAIN_MONTHS = {"M": 1, "Q": 3, "H": 6, "Y": 12}
 
 
 class ModelFrame:
@@ -53,7 +59,9 @@ class ModelFrame:
         self._segments = segments
 
     @classmethod
-    def from_triangle(cls, triangle: "Triangle") -> "ModelFrame":
+    def from_triangle(
+        cls, triangle: "Triangle", *, recent: int | None = None,
+    ) -> "ModelFrame":
         """Build the design-matrix frame from a :class:`Triangle`.
 
         ``exposure`` (= cumulative ``premium``) is the from-anchor offset the
@@ -61,15 +69,29 @@ class ModelFrame:
         anchor. Both are taken from the standardised Triangle columns
         unshifted -- the off-by-one against the frozen micro-oracle is pinned
         in ``tests/test_model_frame.py``.
+
+        ``calendar`` is the cell's calendar period (``cohort`` advanced by
+        ``duration - 1`` grain steps) -- the coordinate the ``recent``
+        diagonal filter and masking work on, and the seat for a future
+        duration x calendar surface.
+
+        Parameters
+        ----------
+        recent
+            Keep only cells in the most-recent ``recent`` calendar diagonals
+            (the lower-right wedge), evaluated globally across segments.
+            ``None`` keeps every cell.
         """
         segments = normalize_groups(triangle.groups)
         src = triangle.to_polars()
-        need = [*segments, *_CORE_COLUMNS]
+        need = [*segments, *_SOURCE_COLUMNS]
         missing = [c for c in need if c not in src.columns]
         if missing:
             raise ValueError(f"Triangle is missing column(s): {missing}")
 
         df = src.select(need)
+
+        # dense 0-based segment id, stable in segment-key order
         if segments:
             seg = (df.select(segments).unique().sort(segments)
                    .with_row_index("_segment_id"))
@@ -78,10 +100,33 @@ class ModelFrame:
         else:
             df = df.with_columns(_segment_id=pl.lit(0, dtype=pl.Int64))
 
-        df = df.select("_segment_id", *segments, *_CORE_COLUMNS).sort(
+        # calendar = cohort + (duration - 1) grain steps
+        months = _GRAIN_MONTHS[triangle.grain]
+        df = df.with_columns(
+            calendar=pl.col("cohort").dt.offset_by(
+                (((pl.col("duration") - 1) * months)
+                 .cast(pl.Int64).cast(pl.Utf8) + "mo")
+            )
+        )
+
+        df = cls._apply_recent(df, recent)
+        df = df.select("_segment_id", *segments, *_FRAME_ORDER).sort(
             ["_segment_id", "cohort", "duration"]
         )
         return cls(df, segments)
+
+    @staticmethod
+    def _apply_recent(df: pl.DataFrame, recent: int | None) -> pl.DataFrame:
+        """Keep the most-recent ``recent`` calendar diagonals (global)."""
+        if recent is None:
+            return df
+        if not isinstance(recent, int) or isinstance(recent, bool) or recent < 1:
+            raise ValueError(f"recent must be a positive int, got {recent!r}")
+        diagonals = df.get_column("calendar").unique().sort()
+        if recent >= diagonals.len():
+            return df
+        cutoff = diagonals[diagonals.len() - recent]
+        return df.filter(pl.col("calendar") >= cutoff)
 
     @property
     def df(self) -> pl.DataFrame:
