@@ -21,6 +21,8 @@ count, so a degraded fit reports WHY in a field rather than a printed warning.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -40,6 +42,7 @@ from ._mack import (
     _build_value_matrices,
     _mack_factor_var,
     _mack_sigma2,
+    _mack_step_cl,
     _mack_step_ed,
     _fit_mack,
 )
@@ -48,7 +51,39 @@ from .model_frame import ModelFrame
 
 if TYPE_CHECKING:
     from ._io import FrameLike
+    from ._types import RegimeArg
     from .triangle import Triangle
+
+
+@dataclass(kw_only=True)
+class _EstimatorBase:
+    """Fields shared by every loss-side estimator (charter Sec.3.1).
+
+    ``recent`` (calendar-diagonal window) is declared for surface parity but
+    not yet implemented on the redesigned path -- its semantics are settled in
+    the validation layer (charter Sec.7-4). ``regime`` is the cohort-axis cut.
+    Subclasses overriding ``__post_init__`` should call ``super().__post_init__()``.
+    """
+
+    recent: int | None = None
+    regime: "RegimeArg" = None
+    sigma_method: str = "locf"
+    conf_level: float = 0.95
+
+    def __post_init__(self) -> None:
+        if self.recent is not None:
+            raise NotImplementedError(
+                "`recent` is not yet wired on the redesigned path; its "
+                "calendar-wedge semantics land in the validation layer."
+            )
+        if self.regime is not None and not isinstance(self.regime, (date, dict)):
+            raise NotImplementedError(
+                "regime currently accepts a resolved cut only (None, a date, "
+                "or a dict[segment -> date]); Regime-object / 'auto' "
+                "resolution is not yet wired."
+            )
+        if not (0.0 < self.conf_level < 1.0):
+            raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
 
 
 # Columns of the assembled long frame (charter loss schema). premium_* sit
@@ -97,7 +132,7 @@ def _segment_factor_links(
     return resp, expo, dur
 
 
-def _fit_segment(
+def _fit_segment_ed(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -215,6 +250,135 @@ def _project_ed(
     return loss_proj, proc_se, param_se, total_se
 
 
+def _fit_segment_cl(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str,
+) -> dict[str, np.ndarray]:
+    """Link-ratio (Mack chain ladder) fit for one segment.
+
+    ``f_k`` is the engine's link ratio (``_engine.link_ratios``, fed the
+    incremental loss it cumulates internally); the dispersion / parameter
+    variance reuse the shared Mack kernel and the projection is the
+    multiplicative recursion. Premium is projected by the same chain ladder
+    so ``ratio_proj`` and the premium columns stay populated, matching the
+    PooledLoss schema. CL is own-loss-anchored -- it does not read premium for
+    the loss projection.
+    """
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    # 1. engine link ratio f_k (keyed by from-duration 1..n_links). The engine
+    # cumulates the incremental response, so pass per-cell increments.
+    resp: list[float] = []
+    coh: list[int] = []
+    dur: list[int] = []
+    for i in range(n_cohorts):
+        prev = 0.0
+        for k in range(n_durations):
+            c = loss_obs[i, k]
+            if np.isnan(c):
+                continue
+            resp.append(float(c - prev))
+            coh.append(i)
+            dur.append(k + 1)
+            prev = c
+    f_map = _engine.link_ratios(response=resp, cohort=coh, duration=dur)
+    f_k = np.array([f_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
+
+    # 2. dispersion sigma2_f_k + parameter-variance denominator (shared kernel)
+    sigma2_f_k = np.full(n_links, np.nan, dtype=np.float64)
+    sum_col_k = np.zeros(n_links, dtype=np.float64)
+    for k in range(n_links):
+        ck = loss_obs[:, k]
+        ck1 = loss_obs[:, k + 1]
+        mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
+        n_k = int(mask.sum())
+        if n_k == 0:
+            continue                                  # f_k already NaN here
+        ck_eff = ck[mask]
+        sum_col_k[k] = ck_eff.sum()
+        if n_k >= 2 and np.isfinite(f_k[k]) and f_k[k] != 0:
+            sigma2_f_k[k] = _mack_sigma2(ck1[mask], ck_eff, f_k[k], n_k)
+        else:
+            sigma2_f_k[k] = 0.0
+    sigma2_f_k = extrapolate_tail_sigma2(sigma2_f_k, sigma_method)
+    var_f_k = _mack_factor_var(sigma2_f_k, sum_col_k)
+
+    # 3. premium chain ladder (kept Mack kernel) for the exposure projection
+    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+
+    # 4. loss projection + Mack variance recursion (CL multiplicative)
+    loss_proj, proc_se, param_se, total_se = _project_cl(
+        loss_obs, f_k, sigma2_f_k, var_f_k
+    )
+
+    return {
+        "loss_obs": loss_obs,
+        "loss_proj": loss_proj,
+        "premium_obs": premium_obs,
+        "premium_proj": premium_proj,
+        "proc_se": proc_se,
+        "param_se": param_se,
+        "total_se": total_se,
+        "f_k": f_k,
+    }
+
+
+def _project_cl(
+    loss_obs: np.ndarray,
+    f_k: np.ndarray,
+    sigma2_f_k: np.ndarray,
+    var_f_k: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Multiplicative chain-ladder projection + Mack variance recursion.
+
+    ``loss_{k+1} = f_k * loss_k`` seeded from each cohort's last observed
+    cell, with process / parameter variance via
+    :func:`lossratio._mack._mack_step_cl`. The ``switch_threshold = 0`` (pure
+    CL) case of the dispatcher's ``_project_loss``, isolated here.
+    """
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    loss_proj = loss_obs.copy()
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
+
+    proc_acc = np.zeros(n_cohorts, dtype=np.float64)
+    param_acc = np.zeros(n_cohorts, dtype=np.float64)
+
+    for k in range(n_links):
+        active = eligible & (last_obs <= k)
+        if not active.any():
+            continue
+        ck = loss_proj[:, k]
+        pos = active & ~np.isnan(ck) & (ck > 0)
+        if pos.any():
+            if np.isfinite(f_k[k]):
+                loss_proj[pos, k + 1] = f_k[k] * ck[pos]
+            _mack_step_cl(proc_acc, param_acc, pos, f_k[k],
+                          sigma2_f_k[k], var_f_k[k], ck)
+        ck1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(ck1)
+        proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
+        param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
+        total_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp] + param_acc[sp], 0))
+
+    proc_se[obs_mask] = np.nan
+    param_se[obs_mask] = np.nan
+    total_se[obs_mask] = np.nan
+    return loss_proj, proc_se, param_se, total_se
+
+
 def _segment_long_df(
     fit: dict[str, np.ndarray],
     cohorts: list,
@@ -273,20 +437,32 @@ def _segment_long_df(
 # ---------------------------------------------------------------------------
 
 
-def _fit_pooled_loss(
+# mechanism -> (per-segment fitter, method label, public model name)
+_MECHANISMS = {
+    "pooled": (_fit_segment_ed, "pooled", "pooled_loss"),
+    "link_ratio": (_fit_segment_cl, "link_ratio", "link_ratio"),
+}
+
+
+def _fit_loss(
     triangle: "Triangle",
     *,
+    mechanism: str,
     sigma_method: str,
     regime: "Any" = None,
     conf_level: float = 0.95,
 ) -> "LossFit":
-    """Fit the saturated-mode (complete-pooling ED) loss projection.
+    """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
-    ``regime`` is a RESOLVED cohort cut (``None`` / a ``date`` / a
-    ``dict[segment -> date]``) applied through :class:`ModelFrame`; ``recent``
-    is deliberately absent (its calendar-wedge semantics are settled in the
-    validation layer, charter Sec.7-4). Returns a :class:`LossFit`.
+    ``mechanism`` selects the per-segment engine fit: ``"pooled"`` (saturated
+    complete-pooling ED, intensity ``g_k``) or ``"link_ratio"`` (Mack chain
+    ladder, link ratio ``f_k``). Both share this driver, the long-frame
+    assembly, and the :class:`LossFit` schema. ``regime`` is a RESOLVED cohort
+    cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
+    :class:`ModelFrame`; ``recent`` is deliberately absent (settled in the
+    validation layer, charter Sec.7-4).
     """
+    fit_segment, method, model = _MECHANISMS[mechanism]
     groups = triangle.groups
     mf = ModelFrame.from_triangle(triangle, regime=regime)
     frame = mf.df
@@ -325,7 +501,7 @@ def _fit_pooled_loss(
             sub, value_cols=("loss", "premium")
         )
 
-        fit = _fit_segment(loss_obs, premium_obs, sigma_method)
+        fit = fit_segment(loss_obs, premium_obs, sigma_method)
 
         obs_mask = ~np.isnan(fit["loss_obs"])
         proj_mask = ~np.isnan(fit["loss_proj"]) & ~obs_mask
@@ -357,6 +533,8 @@ def _fit_pooled_loss(
     return LossFit(
         long_df,
         groups=collapse_groups(groups),
+        method=method,
+        model=model,
         sigma_method=sigma_method,
         regime=regime,
         conf_level=conf_level,
@@ -390,6 +568,8 @@ class LossFit:
         df: pl.DataFrame,
         *,
         groups: "str | list[str] | None",
+        method: str,
+        model: str,
         sigma_method: str,
         regime: Any,
         conf_level: float,
@@ -402,8 +582,8 @@ class LossFit:
         self._df = df
         self._output_type = output_type
         self.groups = groups
-        self.method = "pooled"
-        self.model = "pooled_loss"
+        self.method = method
+        self.model = model
         self.sigma_method = sigma_method
         self.regime = regime
         self.conf_level = conf_level
