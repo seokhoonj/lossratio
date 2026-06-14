@@ -22,6 +22,7 @@ Internal-only: not exported from the package.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -61,6 +62,7 @@ class ModelFrame:
     @classmethod
     def from_triangle(
         cls, triangle: "Triangle", *, recent: int | None = None,
+        regime: "date | dict | None" = None,
     ) -> "ModelFrame":
         """Build the design-matrix frame from a :class:`Triangle`.
 
@@ -81,6 +83,14 @@ class ModelFrame:
             Keep only cells in the most-recent ``recent`` calendar diagonals
             (the lower-right wedge), evaluated globally across segments.
             ``None`` keeps every cell.
+        regime
+            RESOLVED regime cut (cohort-axis): drop cells with
+            ``cohort < change``. ``None`` (no cut); a ``date`` applied to every
+            segment; or a ``dict`` mapping a segment value (scalar for a single
+            segment column, tuple for several) to its change ``date`` (segments
+            absent from the dict are uncut). ModelFrame stays a pure shaper --
+            resolving a ``Regime`` / ``"auto"`` / callable to date(s) is the
+            caller's job (charter Sec.6.1).
         """
         segments = normalize_groups(triangle.groups)
         src = triangle.to_polars()
@@ -110,10 +120,43 @@ class ModelFrame:
         )
 
         df = cls._apply_recent(df, recent)
+        df = cls._apply_regime(df, regime, segments)
         df = df.select("_segment_id", *segments, *_FRAME_ORDER).sort(
             ["_segment_id", "cohort", "duration"]
         )
         return cls(df, segments)
+
+    @staticmethod
+    def _apply_regime(
+        df: pl.DataFrame, regime: "date | dict | None", segments: list[str],
+    ) -> pl.DataFrame:
+        """Drop cells with ``cohort < change`` (resolved cut; per segment)."""
+        if regime is None:
+            return df
+        if isinstance(regime, date):                       # global change
+            return df.filter(pl.col("cohort") >= regime)
+        if isinstance(regime, dict):                       # per-segment change
+            if not segments:
+                raise ValueError(
+                    "per-segment regime needs a grouped triangle; "
+                    "pass a single date for an ungrouped one"
+                )
+            rows = []
+            for seg_val, change in regime.items():
+                if not isinstance(change, date):
+                    raise ValueError(
+                        f"regime change must be a date, got {change!r}"
+                    )
+                keys = (seg_val,) if len(segments) == 1 else tuple(seg_val)
+                rows.append({**dict(zip(segments, keys)), "_change": change})
+            rmap = pl.DataFrame(rows)
+            return (df.join(rmap, on=segments, how="left")
+                    .filter(pl.col("_change").is_null()
+                            | (pl.col("cohort") >= pl.col("_change")))
+                    .drop("_change"))
+        raise ValueError(
+            f"regime must be None, a date, or a dict, got {type(regime).__name__}"
+        )
 
     @staticmethod
     def _apply_recent(df: pl.DataFrame, recent: int | None) -> pl.DataFrame:

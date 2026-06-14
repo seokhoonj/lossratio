@@ -84,6 +84,49 @@ def test_recent_validation():
             ModelFrame.from_triangle(_oracle_triangle(), recent=bad)
 
 
+def _two_group_triangle() -> Triangle:
+    rows = []
+    for g in ("A", "B"):
+        for cdate in (COH_DATE[1], COH_DATE[2], COH_DATE[3]):
+            for k in (1, 2):
+                rows.append({"grp": g, "uy_m": cdate, "duration_m": k,
+                             "incr_loss": 10.0, "incr_premium": 100.0})
+    return Triangle(pl.DataFrame(rows), groups="grp", cohort="uy_m",
+                    duration="duration_m", calendar=None, loss="incr_loss",
+                    premium="incr_premium", grain="M")
+
+
+def test_regime_global_date():
+    mf = ModelFrame.from_triangle(_oracle_triangle(), regime=date(2020, 2, 1))
+    assert set(mf.df["cohort"].to_list()) == {date(2020, 2, 1), date(2020, 3, 1)}
+    assert len(mf) == 5            # cohort 2020-01 (4 cells) dropped
+
+
+def test_regime_per_segment():
+    mf = ModelFrame.from_triangle(
+        _two_group_triangle(),
+        regime={"A": date(2020, 2, 1), "B": date(2020, 3, 1)},
+    )
+    a = mf.df.filter(pl.col("grp") == "A")["cohort"].unique().sort().to_list()
+    b = mf.df.filter(pl.col("grp") == "B")["cohort"].unique().sort().to_list()
+    assert a == [date(2020, 2, 1), date(2020, 3, 1)]
+    assert b == [date(2020, 3, 1)]
+
+
+def test_regime_single_segment_dict():
+    mf = ModelFrame.from_triangle(_oracle_triangle(),
+                                  regime={"A": date(2020, 2, 1)})
+    assert set(mf.df["cohort"].to_list()) == {date(2020, 2, 1), date(2020, 3, 1)}
+
+
+def test_regime_none_and_invalid():
+    assert len(ModelFrame.from_triangle(_oracle_triangle(), regime=None)) == 9
+    with pytest.raises(ValueError, match="regime"):
+        ModelFrame.from_triangle(_oracle_triangle(), regime="2020-02-01")
+    with pytest.raises(ValueError, match="change must be a date"):
+        ModelFrame.from_triangle(_oracle_triangle(), regime={"A": "2020-02-01"})
+
+
 def test_exposure_is_cumulative_premium_unshifted():
     """premium == oracle P (cumulative), incr_loss == oracle y -- per cell."""
     mf = ModelFrame.from_triangle(_oracle_triangle())
