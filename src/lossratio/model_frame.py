@@ -61,8 +61,7 @@ class ModelFrame:
 
     @classmethod
     def from_triangle(
-        cls, triangle: "Triangle", *, recent: int | None = None,
-        regime: "date | dict | None" = None,
+        cls, triangle: "Triangle", *, regime: "date | dict | None" = None,
     ) -> "ModelFrame":
         """Build the design-matrix frame from a :class:`Triangle`.
 
@@ -73,16 +72,19 @@ class ModelFrame:
         in ``tests/test_model_frame.py``.
 
         ``calendar`` is the cell's calendar period (``cohort`` advanced by
-        ``duration - 1`` grain steps) -- the coordinate the ``recent``
-        diagonal filter and masking work on, and the seat for a future
-        duration x calendar surface.
+        ``duration - 1`` grain steps) -- the coordinate for masking and a
+        future duration x calendar surface.
+
+        A ``recent`` (calendar-diagonal) window is deliberately NOT a
+        ModelFrame concern: for a cumulative triangle ``recent`` is a
+        FIT-level link-mask (factors estimated from the recent diagonals, the
+        full data kept for the projection seed) -- the same data-intact
+        diagonal mask as a backtest ``holdout``. That shared mask lands in the
+        validation layer (charter Sec.7-4); ModelFrame never drops cells for it
+        (a cell-drop would corrupt the per-cohort cumulative reconstruction).
 
         Parameters
         ----------
-        recent
-            Keep only cells in the most-recent ``recent`` calendar diagonals
-            (the lower-right wedge), evaluated globally across segments.
-            ``None`` keeps every cell.
         regime
             RESOLVED regime cut (cohort-axis): drop cells with
             ``cohort < change``. ``None`` (no cut); a ``date`` applied to every
@@ -119,7 +121,6 @@ class ModelFrame:
             )
         )
 
-        df = cls._apply_recent(df, recent)
         df = cls._apply_regime(df, regime, segments)
         df = df.select("_segment_id", *segments, *_FRAME_ORDER).sort(
             ["_segment_id", "cohort", "duration"]
@@ -157,19 +158,6 @@ class ModelFrame:
         raise ValueError(
             f"regime must be None, a date, or a dict, got {type(regime).__name__}"
         )
-
-    @staticmethod
-    def _apply_recent(df: pl.DataFrame, recent: int | None) -> pl.DataFrame:
-        """Keep the most-recent ``recent`` calendar diagonals (global)."""
-        if recent is None:
-            return df
-        if not isinstance(recent, int) or isinstance(recent, bool) or recent < 1:
-            raise ValueError(f"recent must be a positive int, got {recent!r}")
-        diagonals = df.get_column("calendar").unique().sort()
-        if recent >= diagonals.len():
-            return df
-        cutoff = diagonals[diagonals.len() - recent]
-        return df.filter(pl.col("calendar") >= cutoff)
 
     @property
     def df(self) -> pl.DataFrame:

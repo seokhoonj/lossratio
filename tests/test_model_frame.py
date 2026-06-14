@@ -67,23 +67,6 @@ def test_calendar_coordinate():
     assert c3 == [date(2020, 3, 1), date(2020, 4, 1)]
 
 
-def test_recent_keeps_last_diagonals():
-    """recent=2 keeps only the last two calendar diagonals (2020-03, -04)."""
-    mf = ModelFrame.from_triangle(_oracle_triangle(), recent=2)
-    cals = set(mf.df["calendar"].to_list())
-    assert cals == {date(2020, 3, 1), date(2020, 4, 1)}
-    assert len(mf) == 6        # c1{03,04}, c2{03,04}, c3{03,04}
-    # recent=None (and recent >= n_diagonals) keep everything
-    assert len(ModelFrame.from_triangle(_oracle_triangle())) == 9
-    assert len(ModelFrame.from_triangle(_oracle_triangle(), recent=99)) == 9
-
-
-def test_recent_validation():
-    for bad in (0, -1, 2.0, True):
-        with pytest.raises(ValueError, match="recent"):
-            ModelFrame.from_triangle(_oracle_triangle(), recent=bad)
-
-
 def _two_group_triangle() -> Triangle:
     rows = []
     for g in ("A", "B"):
