@@ -19,6 +19,7 @@ from .curve import Curve, CurveResult
 from .datasets import load_experience, make_experience
 from .exposure_driven import ExposureDriven
 from .experience import validate_experience
+from .inception import inception_stability
 from .intensity import Intensity
 from .link import Link
 from .loss import LossFit
@@ -68,6 +69,7 @@ __all__ = [
     "TriangleValidation",
     "__version__",
     "derive_grain_columns",
+    "inception_stability",
     "load_experience",
     "make_experience",
     "validate_experience",
