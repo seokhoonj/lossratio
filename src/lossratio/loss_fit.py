@@ -40,6 +40,7 @@ from ._io import (
 )
 from ._mack import (
     _build_value_matrices,
+    _mack_f_var,
     _mack_factor_var,
     _mack_sigma2,
     _mack_step_cl,
@@ -67,6 +68,7 @@ class _EstimatorBase:
 
     recent: int | None = None
     regime: "RegimeArg" = None
+    borrow: "bool | str" = False
     sigma_method: str = "locf"
     conf_level: float = 0.95
 
@@ -75,6 +77,10 @@ class _EstimatorBase:
             raise NotImplementedError(
                 "`recent` is not yet wired on the redesigned path; its "
                 "calendar-wedge semantics land in the validation layer."
+            )
+        if self.borrow not in (False, "pooled"):
+            raise ValueError(
+                f"borrow must be False or 'pooled', got {self.borrow!r}"
             )
         if self.regime is not None and not isinstance(self.regime, (date, dict)):
             raise NotImplementedError(
@@ -95,7 +101,20 @@ _LONG_COLUMNS = [
     "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     "loss_ci_lo", "loss_ci_hi",
     "ratio_proj",
+    "source",
 ]
+
+
+def _locf_forward(arr: np.ndarray) -> np.ndarray:
+    """Carry the last finite value forward over NaNs (leading NaNs kept)."""
+    out = np.array(arr, dtype=np.float64)
+    last = np.nan
+    for i in range(out.size):
+        if np.isfinite(out[i]):
+            last = out[i]
+        elif np.isfinite(last):
+            out[i] = last
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +155,7 @@ def _fit_segment_ed(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Saturated-mode ED fit for one segment's loss / premium matrices.
 
@@ -175,10 +195,22 @@ def _fit_segment_ed(
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
     premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
 
-    # 4. loss projection + Mack variance recursion (ED additive, pure)
-    loss_proj, proc_se, param_se, total_se = _project_ed(
-        loss_obs, premium_proj, g_k, sigma2_g_k, var_g_k
-    )
+    # 4. loss projection + Mack variance recursion (ED additive). With a
+    # borrow donor, the tail beyond the segment's own g_k switches to the
+    # level-invariant donor link ratio.
+    if donor is None:
+        loss_proj, proc_se, param_se, total_se = _project_ed(
+            loss_obs, premium_proj, g_k, sigma2_g_k, var_g_k
+        )
+        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+    else:
+        nan = np.full(g_k.shape, np.nan)
+        loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
+            loss_obs, premium_proj, body="ed",
+            own_g=g_k, own_sig_g=sigma2_g_k, own_var_g=var_g_k,
+            own_f=nan, own_sig_f=nan, own_var_f=nan,
+            donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
+        )
 
     return {
         "loss_obs": loss_obs,
@@ -188,6 +220,7 @@ def _fit_segment_ed(
         "proc_se": proc_se,
         "param_se": param_se,
         "total_se": total_se,
+        "borrowed": borrowed,
         "g_k": g_k,
     }
 
@@ -254,6 +287,7 @@ def _fit_segment_cl(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Link-ratio (Mack chain ladder) fit for one segment.
 
@@ -308,10 +342,22 @@ def _fit_segment_cl(
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
     premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
 
-    # 4. loss projection + Mack variance recursion (CL multiplicative)
-    loss_proj, proc_se, param_se, total_se = _project_cl(
-        loss_obs, f_k, sigma2_f_k, var_f_k
-    )
+    # 4. loss projection + Mack variance recursion (CL multiplicative). With a
+    # borrow donor, the tail beyond the segment's own f_k switches to the
+    # donor link ratio.
+    if donor is None:
+        loss_proj, proc_se, param_se, total_se = _project_cl(
+            loss_obs, f_k, sigma2_f_k, var_f_k
+        )
+        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+    else:
+        nan = np.full(f_k.shape, np.nan)
+        loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
+            loss_obs, premium_proj, body="cl",
+            own_g=nan, own_sig_g=nan, own_var_g=nan,
+            own_f=f_k, own_sig_f=sigma2_f_k, own_var_f=var_f_k,
+            donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
+        )
 
     return {
         "loss_obs": loss_obs,
@@ -321,6 +367,7 @@ def _fit_segment_cl(
         "proc_se": proc_se,
         "param_se": param_se,
         "total_se": total_se,
+        "borrowed": borrowed,
         "f_k": f_k,
     }
 
@@ -379,6 +426,103 @@ def _project_cl(
     return loss_proj, proc_se, param_se, total_se
 
 
+def _project_borrow(
+    loss_obs: np.ndarray,
+    premium_proj: np.ndarray,
+    *,
+    body: str,
+    own_g: np.ndarray, own_sig_g: np.ndarray, own_var_g: np.ndarray,
+    own_f: np.ndarray, own_sig_f: np.ndarray, own_var_f: np.ndarray,
+    donor_f: np.ndarray, donor_sig_f: np.ndarray, donor_var_f: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Projection with a level-invariant borrowed tail.
+
+    The own-data boundary is the LAST link the segment can fit on its own data
+    (last finite own factor). Links at or below it use the segment's OWN factor
+    (``body="ed"`` -> intensity ``g_k`` additive; ``body="cl"`` -> link ratio
+    ``f_k`` multiplicative); links beyond it switch to the BORROWED donor link
+    ratio ``donor_f`` (always multiplicative -- level-invariant, so it lends
+    development SHAPE on the segment's own last cumulative loss, never the
+    donor's loss-ratio level). Switching is by INDEX (not per-link finiteness),
+    so an interior own gap is not mistaken for the tail; the donor is LOCF-
+    filled so a sparse interior donor link cannot break the tail chain. The
+    process / parameter variance accumulators carry across the boundary (donor
+    links use the donor's sigma2 / Var). Returns ``(loss_proj, proc_se,
+    param_se, total_se, borrowed)`` where ``borrowed`` flags the donor cells.
+    """
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    loss_proj = loss_obs.copy()
+    proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+    borrowed = np.zeros((n_cohorts, n_durations), dtype=bool)
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
+
+    # own-data boundary = last link the segment can fit on its own (-1 if none)
+    own = own_g if body == "ed" else own_f
+    own_links = np.flatnonzero(np.isfinite(own))
+    own_boundary = int(own_links.max()) if own_links.size else -1
+    # LOCF the donor link ratio / variance so a sparse interior donor link does
+    # not break the tail recursion (mirrors the tail-sigma carry-forward).
+    donor_f = _locf_forward(donor_f)
+    donor_sig_f = _locf_forward(donor_sig_f)
+    donor_var_f = _locf_forward(donor_var_f)
+
+    proc_acc = np.zeros(n_cohorts, dtype=np.float64)
+    param_acc = np.zeros(n_cohorts, dtype=np.float64)
+
+    for k in range(n_links):
+        active = eligible & (last_obs <= k)
+        if not active.any():
+            continue
+        ck = loss_proj[:, k]
+        pk = premium_proj[:, k]
+        if k <= own_boundary:                             # own body
+            if body == "ed":
+                if not np.isfinite(own_g[k]):
+                    continue                              # interior own gap
+                pos = active & ~np.isnan(pk) & (pk > 0)
+                if pos.any():
+                    loss_proj[pos, k + 1] = ck[pos] + own_g[k] * pk[pos]
+                    _mack_step_ed(proc_acc, param_acc, pos,
+                                  own_sig_g[k], own_var_g[k], pk)
+            else:
+                if not np.isfinite(own_f[k]):
+                    continue
+                pos = active & ~np.isnan(ck) & (ck > 0)
+                if pos.any():
+                    loss_proj[pos, k + 1] = own_f[k] * ck[pos]
+                    _mack_step_cl(proc_acc, param_acc, pos, own_f[k],
+                                  own_sig_f[k], own_var_f[k], ck)
+        elif np.isfinite(donor_f[k]):                     # borrowed CL tail
+            pos = active & ~np.isnan(ck) & (ck > 0)
+            if pos.any():
+                loss_proj[pos, k + 1] = donor_f[k] * ck[pos]
+                _mack_step_cl(proc_acc, param_acc, pos, donor_f[k],
+                              donor_sig_f[k], donor_var_f[k], ck)
+                borrowed[pos, k + 1] = True
+        else:
+            continue
+        ck1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(ck1)
+        proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
+        param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
+        total_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp] + param_acc[sp], 0))
+
+    proc_se[obs_mask] = np.nan
+    param_se[obs_mask] = np.nan
+    total_se[obs_mask] = np.nan
+    return loss_proj, proc_se, param_se, total_se, borrowed
+
+
 def _segment_long_df(
     fit: dict[str, np.ndarray],
     cohorts: list,
@@ -407,6 +551,15 @@ def _segment_long_df(
     ci_lo = np.where(both, np.maximum(0.0, loss_proj - z * total_se), np.nan)
     ci_hi = np.where(both, loss_proj + z * total_se, np.nan)
 
+    # provenance: observed cell / own projection / borrowed (donor) / null gap
+    obs = ~np.isnan(fit["loss_obs"])
+    borrowed = fit["borrowed"]
+    proj = ~np.isnan(loss_proj) & ~obs
+    source = np.full((n_cohorts, n_durations), None, dtype=object)
+    source[obs] = "observed"
+    source[proj & ~borrowed] = "own"
+    source[borrowed] = "borrowed"
+
     total = n_cohorts * n_durations
     data: dict[str, Any] = {}
     if groups is not None:
@@ -426,6 +579,7 @@ def _segment_long_df(
     data["loss_ci_lo"] = ci_lo.flatten()
     data["loss_ci_hi"] = ci_hi.flatten()
     data["ratio_proj"] = ratio_proj.flatten()
+    data["source"] = source.flatten().tolist()
 
     df = _nan_to_null(pl.DataFrame(data))
     order = _LONG_COLUMNS if groups is None else [*normalize_groups(groups), *_LONG_COLUMNS]
@@ -444,6 +598,45 @@ _MECHANISMS = {
 }
 
 
+def _pad_cols(mat: np.ndarray, n_cols: int) -> np.ndarray:
+    """Right-pad a matrix to ``n_cols`` columns with NaN (no-op if already wide
+    enough)."""
+    if mat.shape[1] >= n_cols:
+        return mat
+    pad = np.full((mat.shape[0], n_cols - mat.shape[1]), np.nan)
+    return np.hstack([mat, pad])
+
+
+def _segment_donors(
+    triangle: "Triangle", sigma_method: str
+) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]]:
+    """Per-segment level-invariant borrow donors (charter borrow design).
+
+    For each segment, the donor is the Mack chain ladder link ratio of THAT
+    segment's own FULL (regime-unfiltered) cohorts -- the data-rich older
+    cohorts a thin (e.g. post-regime) sub-set cannot see. The donor is
+    same-segment by design: development SHAPE is a property of the book
+    (coverage), so a coverage borrows from its own history, never across
+    coverages (that is precisely why coverages are separate ``groups``). ``f_k``
+    cancels the loss-ratio level, so only shape is lent, not the donor cohorts'
+    loss-ratio level.
+
+    Returns ``{segment_id: (f_k, sigma2_f_k, var_f_k, n_durations)}`` where
+    ``n_durations`` is that segment's own full development horizon -- the depth
+    its thinned cohorts can be projected out to.
+    """
+    frame = ModelFrame.from_triangle(triangle).df
+    donors: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]] = {}
+    for sid in frame.get_column("_segment_id").unique().sort().to_list():
+        sub = frame.filter(pl.col("_segment_id") == sid).sort(
+            ["cohort", "duration"]
+        ).with_columns(pl.col("incr_loss").cum_sum().over("cohort").alias("loss"))
+        (loss,), _, nd = _build_value_matrices(sub, value_cols=("loss",))
+        mk = _fit_mack(loss, sigma_method=sigma_method)
+        donors[sid] = (mk.f_k, mk.sigma2_k, _mack_f_var(mk), nd)
+    return donors
+
+
 def _fit_loss(
     triangle: "Triangle",
     *,
@@ -451,6 +644,7 @@ def _fit_loss(
     sigma_method: str,
     regime: "Any" = None,
     conf_level: float = 0.95,
+    borrow: "bool | str" = False,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
@@ -461,9 +655,23 @@ def _fit_loss(
     cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
     :class:`ModelFrame`; ``recent`` is deliberately absent (settled in the
     validation layer, charter Sec.7-4).
+
+    ``borrow`` (``False`` / ``"pooled"``) fills a segment's links beyond its
+    own data with the level-invariant donor link ratio pooled over the full
+    triangle: own body up to the own-data boundary, then borrowed ``f_k`` for
+    the tail (so a thin segment projects to the global development horizon
+    instead of leaving gaps). Borrowed cells are flagged in the ``source``
+    column.
     """
     fit_segment, method, model = _MECHANISMS[mechanism]
     groups = triangle.groups
+
+    donors = None
+    if borrow:
+        if borrow != "pooled":
+            raise ValueError(f"borrow must be False or 'pooled', got {borrow!r}")
+        donors = _segment_donors(triangle, sigma_method)
+
     mf = ModelFrame.from_triangle(triangle, regime=regime)
     frame = mf.df
     seg_cols = normalize_groups(groups)
@@ -475,7 +683,7 @@ def _fit_loss(
 
     long_parts: list[pl.DataFrame] = []
     reasons: list[str] = []
-    n_observed = n_projected = n_unfittable = 0
+    n_observed = n_projected = n_unfittable = n_borrowed = 0
 
     # iterate segments in stable id order; ungrouped triangles are one segment
     seg_ids = frame.get_column("_segment_id").unique().sort().to_list()
@@ -500,11 +708,21 @@ def _fit_loss(
         (loss_obs, premium_obs), cohorts, _ = _build_value_matrices(
             sub, value_cols=("loss", "premium")
         )
+        donor = None
+        if donors is not None:
+            d_f, d_sig, d_var, full_n_dur = donors[sid]
+            # widen to the segment's own full horizon so the borrowed tail can
+            # fill the cells beyond this (regime-thinned) sub-set's observation.
+            loss_obs = _pad_cols(loss_obs, full_n_dur)
+            premium_obs = _pad_cols(premium_obs, full_n_dur)
+            donor = (d_f, d_sig, d_var)
 
-        fit = fit_segment(loss_obs, premium_obs, sigma_method)
+        fit = fit_segment(loss_obs, premium_obs, sigma_method, donor=donor)
 
         obs_mask = ~np.isnan(fit["loss_obs"])
-        proj_mask = ~np.isnan(fit["loss_proj"]) & ~obs_mask
+        # projected = own projections only; borrowed is a disjoint category so
+        # observed / projected / borrowed / unfittable partition the cells.
+        proj_mask = ~np.isnan(fit["loss_proj"]) & ~obs_mask & ~fit["borrowed"]
         n_observed += int(obs_mask.sum())
         n_projected += int(proj_mask.sum())
         # projection GAPS: cells past a cohort's last observation that could
@@ -520,6 +738,7 @@ def _fit_loss(
         dur_idx = np.arange(n_dur)[None, :]
         should_proj = (dur_idx > last_obs[:, None]) & has_obs[:, None]
         n_unfittable += int((should_proj & np.isnan(fit["loss_proj"])).sum())
+        n_borrowed += int(fit["borrowed"].sum())
 
         long_parts.append(
             _segment_long_df(fit, cohorts, groups, group_value, conf_level)
@@ -546,6 +765,7 @@ def _fit_loss(
             "observed": n_observed,
             "projected": n_projected,
             "unfittable": n_unfittable,
+            "borrowed": n_borrowed,
         },
     )
 

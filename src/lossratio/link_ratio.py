@@ -52,4 +52,5 @@ class LinkRatio(_EstimatorBase):
             sigma_method=self.sigma_method,
             regime=self.regime,
             conf_level=self.conf_level,
+            borrow=self.borrow,
         )
