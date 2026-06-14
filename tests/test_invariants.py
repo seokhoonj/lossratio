@@ -1,0 +1,95 @@
+"""Structural invariants the projection must satisfy (charter Sec.6.6-4).
+
+These lock behaviour the redesigned engine must PRESERVE -- regression
+guards on the current golden implementation, written against the public
+API only.
+
+Covered here:
+* **unit invariance** (Sec.4.3 raison d'etre): scaling loss AND premium by
+  a common currency factor scales every loss/premium projection by that
+  factor while leaving the dimensionless loss ratio and CV unchanged.
+* **loss equivariance** (chain ladder): scaling loss alone scales the loss
+  projection by the same factor and leaves the CV unchanged (f_k is a
+  ratio of losses, scale-free).
+
+Not yet covered (need fit/backtest-internal contracts -- to add with the
+Sec.7-2/7-3 build): the balance property on the real fit (per-duration
+Sum fitted == Sum observed) and the leakage sentinel (mask a held-out cell
+with an extreme value, refit, assert byte-identical).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import polars as pl
+import pytest
+
+import lossratio as lr
+
+C = 1000.0
+KEYS = ["coverage", "cohort", "duration"]
+
+
+def _experience() -> pl.DataFrame:
+    df = lr.load_experience()
+    return df if isinstance(df, pl.DataFrame) else pl.from_pandas(df)
+
+
+def _triangle(df: pl.DataFrame) -> "lr.Triangle":
+    return lr.Triangle(df, groups="coverage", cohort="uy_m", calendar="cy_m",
+                       loss="incr_loss", premium="incr_premium", grain="M")
+
+
+def _fit_df(estimator, df: pl.DataFrame) -> pl.DataFrame:
+    out = estimator.fit(_triangle(df))
+    return out.to_polars().sort(KEYS)
+
+
+def _close(a: np.ndarray, b: np.ndarray, rtol: float = 1e-9) -> None:
+    m = np.isfinite(a) & np.isfinite(b)
+    assert m.any()
+    np.testing.assert_allclose(a[m], b[m], rtol=rtol)
+
+
+def test_ed_unit_invariance():
+    """ED: scale loss AND premium by C -> projections scale by C, the loss
+    ratio and CV are invariant."""
+    df = _experience()
+    base = _fit_df(lr.ExposureDriven(), df)
+    scaled = df.with_columns(
+        incr_loss=pl.col("incr_loss") * C,
+        incr_premium=pl.col("incr_premium") * C,
+    )
+    sc = _fit_df(lr.ExposureDriven(), scaled)
+    assert base.height == sc.height
+
+    _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())
+    _close(sc["premium_proj"].to_numpy(), C * base["premium_proj"].to_numpy())
+    # dimensionless quantities unchanged by the currency unit
+    _close(sc["loss_total_cv"].to_numpy(), base["loss_total_cv"].to_numpy())
+    ratio_base = base["loss_proj"].to_numpy() / base["premium_proj"].to_numpy()
+    ratio_sc = sc["loss_proj"].to_numpy() / sc["premium_proj"].to_numpy()
+    _close(ratio_sc, ratio_base)
+
+
+def test_cl_loss_equivariance():
+    """CL: scale loss alone by C -> loss projection scales by C, CV invariant
+    (f_k is a ratio of losses, scale-free)."""
+    df = _experience()
+    base = _fit_df(lr.ChainLadder(), df)
+    scaled = df.with_columns(incr_loss=pl.col("incr_loss") * C)
+    sc = _fit_df(lr.ChainLadder(), scaled)
+    assert base.height == sc.height
+
+    _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())
+    _close(sc["loss_total_cv"].to_numpy(), base["loss_total_cv"].to_numpy())
+
+
+def test_row_order_invariance():
+    """Shuffling input rows does not change the fitted projection (a fit is a
+    function of the cells, not their order)."""
+    df = _experience()
+    base = _fit_df(lr.ExposureDriven(), df)
+    shuffled = df.sample(fraction=1.0, shuffle=True, seed=20260614)
+    sc = _fit_df(lr.ExposureDriven(), shuffled)
+    _close(sc["loss_proj"].to_numpy(), base["loss_proj"].to_numpy())
