@@ -56,4 +56,5 @@ class PooledLoss(_EstimatorBase):
             recent=self.recent,
             conf_level=self.conf_level,
             borrow=self.borrow,
+            uncertainty=self.uncertainty,
         )

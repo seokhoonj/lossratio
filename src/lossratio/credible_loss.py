@@ -80,4 +80,5 @@ class CredibleLoss(_EstimatorBase):
             conf_level=self.conf_level,
             borrow=False,
             psi=self.psi,
+            uncertainty=self.uncertainty,
         )

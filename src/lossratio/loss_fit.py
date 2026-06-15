@@ -74,6 +74,7 @@ class _EstimatorBase:
     borrow: "bool | str" = False
     sigma_method: str = "locf"
     conf_level: float = 0.95
+    uncertainty: "Any" = None
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
@@ -89,6 +90,13 @@ class _EstimatorBase:
             )
         if not (0.0 < self.conf_level < 1.0):
             raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
+        if self.uncertainty is not None:
+            from ._resample import ResidualBootstrap
+            if not isinstance(self.uncertainty, ResidualBootstrap):
+                raise TypeError(
+                    "uncertainty must be None or a ResidualBootstrap, got "
+                    f"{type(self.uncertainty).__name__}"
+                )
 
 
 # Columns of the assembled long frame (charter loss schema). premium_* sit
@@ -472,50 +480,30 @@ def _project_cl(
     return loss_proj, proc_se, param_se, total_se
 
 
-def _fit_segment_credible(
+def _credible_levels(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
+    g_k: np.ndarray,
     sigma_method: str,
-    *,
-    recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    psi: "float | str" = "auto",
-) -> dict[str, np.ndarray]:
-    """Credibility (partial-pooling) fit for one segment.
+    psi: "float | str",
+) -> np.ndarray:
+    """Per-cohort credibility level ``u_i`` (dispersion-scaled conjugate).
 
-    Pooled intensity ``g_k`` (the same closed-form saturated mode as
-    ``PooledLoss``) plus a per-cohort credibility LEVEL ``u_i`` -- the
-    dispersion-scaled Buhlmann-Straub conjugate (charter Sec.4.3-4.4) computed
-    by the oracle-verified engine primitives. The cohort's projected increment
-    is ``u_i * g_k * P_k`` (additive, premium-anchored): own loss-ratio level
-    shrunk toward the pooled level by its credibility.
+    The estimation "cells" are the observed loss increments: response =
+    ``dLoss``, the ``u = 1`` fitted mean ``m0 = g_k * P_from``, keyed by
+    ``(cohort, from-duration)``. ``psi = "auto"`` estimates the between-cohort
+    variance by the Buhlmann-Straub moment; ``psi = 0`` (or any degenerate
+    case, charter Sec.4.4) leaves ``u = 1`` = exactly PooledLoss.
 
-    ``psi`` is the between-cohort variance: ``"auto"`` estimates it by the
-    Buhlmann-Straub moment (``psi_hat = 0`` degenerates to ``u = 1`` = exact
-    ``PooledLoss`` -- the ladder's automatic collapse), or a fixed
-    non-negative float.
-
-    SE is left null in v1: the credibility level's estimation variance makes
-    the Mack analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
-    rides the ResidualBootstrap, wired in a later step). ``recent`` / ``donor``
-    (borrow) are not supported and rejected by the ``CredibleLoss`` config.
+    The single source of truth for the credibility level: the point fit
+    (:func:`_fit_segment_credible`) and every ResidualBootstrap replicate
+    (:mod:`lossratio._resample`) call this so the bootstrap re-estimates the
+    full pipeline (g_k -> phi -> psi -> u) per replicate (charter Sec.5.2).
     """
-    if recent is not None:
-        raise NotImplementedError("CredibleLoss does not support recent yet")
-    if donor is not None:
-        raise NotImplementedError("CredibleLoss does not support borrow yet")
-
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
-    # 1. pooled intensity g_k (keyed by from-duration 1..n_links)
     resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
-    g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
-    g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
-
-    # 2. credibility level u_i (dispersion-scaled conjugate). The estimation
-    # "cells" are the observed loss increments: response = dLoss, the u=1 fitted
-    # mean m0 = g_k * P_from, keyed by (cohort, from-duration).
     coh: list[int] = []
     for k in range(n_links):
         ck = premium_obs[:, k]
@@ -559,6 +547,52 @@ def _fit_segment_credible(
             )
             for i, u in levels.u.items():
                 u_vec[i] = max(u, 0.0)     # recovery-dominated floor (Sec.4.3)
+    return u_vec
+
+
+def _fit_segment_credible(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    *,
+    recent: int | None = None,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    psi: "float | str" = "auto",
+) -> dict[str, np.ndarray]:
+    """Credibility (partial-pooling) fit for one segment.
+
+    Pooled intensity ``g_k`` (the same closed-form saturated mode as
+    ``PooledLoss``) plus a per-cohort credibility LEVEL ``u_i`` -- the
+    dispersion-scaled Buhlmann-Straub conjugate (charter Sec.4.3-4.4) computed
+    by the oracle-verified engine primitives. The cohort's projected increment
+    is ``u_i * g_k * P_k`` (additive, premium-anchored): own loss-ratio level
+    shrunk toward the pooled level by its credibility.
+
+    ``psi`` is the between-cohort variance: ``"auto"`` estimates it by the
+    Buhlmann-Straub moment (``psi_hat = 0`` degenerates to ``u = 1`` = exact
+    ``PooledLoss`` -- the ladder's automatic collapse), or a fixed
+    non-negative float.
+
+    SE is left null in v1: the credibility level's estimation variance makes
+    the Mack analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
+    rides the ResidualBootstrap, wired in a later step). ``recent`` / ``donor``
+    (borrow) are not supported and rejected by the ``CredibleLoss`` config.
+    """
+    if recent is not None:
+        raise NotImplementedError("CredibleLoss does not support recent yet")
+    if donor is not None:
+        raise NotImplementedError("CredibleLoss does not support borrow yet")
+
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    # 1. pooled intensity g_k (keyed by from-duration 1..n_links)
+    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
+    g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+    g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
+
+    # 2. credibility level u_i (dispersion-scaled conjugate)
+    u_vec = _credible_levels(loss_obs, premium_obs, g_k, sigma_method, psi)
 
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
     premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
@@ -718,8 +752,14 @@ def _segment_long_df(
     groups: "str | list[str] | None",
     group_value: Any | None,
     conf_level: float,
+    ci: "tuple[np.ndarray, np.ndarray] | None" = None,
 ) -> pl.DataFrame:
-    """Assemble one segment's fit matrices into the long loss frame."""
+    """Assemble one segment's fit matrices into the long loss frame.
+
+    ``ci`` overrides the Gaussian analytical band with a precomputed
+    ``(ci_lo, ci_hi)`` pair (the ResidualBootstrap empirical quantiles); when
+    ``None`` the band is the closed-form ``loss_proj +/- z * total_se``.
+    """
     z = float(norm.ppf((1 + conf_level) / 2))
     loss_proj = fit["loss_proj"]
     premium_proj = fit["premium_proj"]
@@ -736,9 +776,12 @@ def _segment_long_df(
             np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
         )
 
-    both = np.isfinite(total_se) & np.isfinite(loss_proj)
-    ci_lo = np.where(both, np.maximum(0.0, loss_proj - z * total_se), np.nan)
-    ci_hi = np.where(both, loss_proj + z * total_se, np.nan)
+    if ci is not None:
+        ci_lo, ci_hi = ci
+    else:
+        both = np.isfinite(total_se) & np.isfinite(loss_proj)
+        ci_lo = np.where(both, np.maximum(0.0, loss_proj - z * total_se), np.nan)
+        ci_hi = np.where(both, loss_proj + z * total_se, np.nan)
 
     # provenance: observed cell / own projection / borrowed (donor) / null gap
     obs = ~np.isnan(fit["loss_obs"])
@@ -837,6 +880,7 @@ def _fit_loss(
     conf_level: float = 0.95,
     borrow: "bool | str" = False,
     psi: "float | str" = "auto",
+    uncertainty: "Any" = None,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
@@ -861,6 +905,26 @@ def _fit_loss(
     fit_segment, method, model = _MECHANISMS[mechanism]
     groups = triangle.groups
 
+    boot_spec = None
+    seg_seeds: dict[Any, np.random.SeedSequence] = {}
+    if uncertainty is not None:
+        if mechanism not in ("pooled", "credible"):
+            raise NotImplementedError(
+                f"ResidualBootstrap is only wired for the intensity mechanisms "
+                f"('pooled', 'credible'); {model!r} keeps its analytical SE."
+            )
+        if borrow:
+            raise NotImplementedError(
+                "ResidualBootstrap with borrow= is not supported yet (the "
+                "donor-borrowed tail is not resampled)."
+            )
+        if recent is not None:
+            raise NotImplementedError(
+                "ResidualBootstrap with recent= is not supported yet (the "
+                "bootstrap refit does not apply the diagonal fit-mask)."
+            )
+        boot_spec = uncertainty
+
     donors = None
     if borrow:
         if borrow != "pooled":
@@ -882,6 +946,10 @@ def _fit_loss(
 
     # iterate segments in stable id order; ungrouped triangles are one segment
     seg_ids = frame.get_column("_segment_id").unique().sort().to_list()
+    if boot_spec is not None:
+        # independent, reproducible child streams per segment (in id order)
+        children = np.random.SeedSequence(boot_spec.seed).spawn(len(seg_ids))
+        seg_seeds = dict(zip(seg_ids, children))
     for sid in seg_ids:
         sub = frame.filter(pl.col("_segment_id") == sid)
         if seg_cols:
@@ -917,6 +985,22 @@ def _fit_loss(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor, **extra
         )
 
+        ci = None
+        if boot_spec is not None:
+            from ._resample import bootstrap_segment
+            boot = bootstrap_segment(
+                fit["loss_obs"], fit["premium_obs"],
+                mechanism=mechanism, sigma_method=sigma_method, psi=psi,
+                spec=boot_spec, conf_level=conf_level,
+                rng=np.random.default_rng(seg_seeds[sid]),
+            )
+            # replace the analytical / null SE with the bootstrap spread and
+            # carry the empirical quantile band (Sec.5.2 -- predictive interval)
+            fit["proc_se"] = boot["proc_se"]
+            fit["param_se"] = boot["param_se"]
+            fit["total_se"] = boot["total_se"]
+            ci = (boot["ci_lo"], boot["ci_hi"])
+
         obs_mask = ~np.isnan(fit["loss_obs"])
         # projected = own projections only; borrowed is a disjoint category so
         # observed / projected / borrowed / unfittable partition the cells.
@@ -939,7 +1023,7 @@ def _fit_loss(
         n_borrowed += int(fit["borrowed"].sum())
 
         long_parts.append(
-            _segment_long_df(fit, cohorts, groups, group_value, conf_level)
+            _segment_long_df(fit, cohorts, groups, group_value, conf_level, ci=ci)
         )
 
     long_df = pl.concat(long_parts)
@@ -955,6 +1039,7 @@ def _fit_loss(
         sigma_method=sigma_method,
         regime=regime,
         conf_level=conf_level,
+        uncertainty=boot_spec,
         output_type=triangle._output_type,
         status=status,
         status_reasons=reasons,
@@ -996,6 +1081,7 @@ class LossFit:
         status_reasons: list[str],
         converged: bool,
         cell_counts: dict[str, int],
+        uncertainty: Any = None,
     ) -> None:
         self._df = df
         self._output_type = output_type
@@ -1005,6 +1091,7 @@ class LossFit:
         self.sigma_method = sigma_method
         self.regime = regime
         self.conf_level = conf_level
+        self.uncertainty = uncertainty
         self.status = status
         self.status_reasons = status_reasons
         self.converged = converged
