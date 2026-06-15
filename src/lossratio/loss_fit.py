@@ -107,7 +107,7 @@ _LONG_COLUMNS = [
     "premium_obs", "premium_proj", "incr_premium_proj",
     "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     "loss_ci_lo", "loss_ci_hi",
-    "ratio_proj",
+    "ratio_proj", "ratio_se", "ratio_ci_lo", "ratio_ci_hi",
     "source",
 ]
 
@@ -783,11 +783,12 @@ def _segment_long_df(
     incr_premium_proj = _nan_skip_diff(premium_proj)
 
     safe_lp = np.where(np.isnan(loss_proj) | (loss_proj == 0.0), np.nan, loss_proj)
+    safe_pp = np.where(
+        np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
+    )
     with np.errstate(divide="ignore", invalid="ignore"):
         total_cv = total_se / np.abs(safe_lp)
-        ratio_proj = loss_proj / np.where(
-            np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
-        )
+        ratio_proj = loss_proj / safe_pp
 
     if ci is not None:
         ci_lo, ci_hi = ci
@@ -795,6 +796,15 @@ def _segment_long_df(
         both = np.isfinite(total_se) & np.isfinite(loss_proj)
         ci_lo = np.where(both, np.maximum(0.0, loss_proj - z * total_se), np.nan)
         ci_hi = np.where(both, loss_proj + z * total_se, np.nan)
+
+    # ratio band: premium is deterministic in v1 (not bootstrapped), so the
+    # loss-ratio uncertainty is the loss band scaled by the fixed projected
+    # premium (charter Sec.5.3 se_method="fixed"). Works for the analytical
+    # Gaussian band and the bootstrap empirical band alike.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio_se = total_se / safe_pp
+        ratio_ci_lo = ci_lo / safe_pp
+        ratio_ci_hi = ci_hi / safe_pp
 
     # provenance: observed cell / own projection / borrowed (donor) / null gap
     obs = ~np.isnan(fit["loss_obs"])
@@ -824,6 +834,9 @@ def _segment_long_df(
     data["loss_ci_lo"] = ci_lo.flatten()
     data["loss_ci_hi"] = ci_hi.flatten()
     data["ratio_proj"] = ratio_proj.flatten()
+    data["ratio_se"] = ratio_se.flatten()
+    data["ratio_ci_lo"] = ratio_ci_lo.flatten()
+    data["ratio_ci_hi"] = ratio_ci_hi.flatten()
     data["source"] = source.flatten().tolist()
 
     df = _nan_to_null(pl.DataFrame(data))

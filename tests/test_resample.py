@@ -227,3 +227,37 @@ def test_coverage_lane_flows_through_backtest(tri):
     cov = cum["coverage_95"].drop_nulls()
     assert cov.len() > 0
     assert ((cov >= 0.0) & (cov <= 1.0)).all()
+
+
+# --- ratio band (fixed-premium) + ratio coverage lane ----------------------
+
+
+def test_ratio_band_is_loss_band_over_fixed_premium(tri):
+    cb = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=60, seed=3)
+    ).fit(tri).to_polars()
+    proj = cb.filter(pl.col("source") == "own")
+    # premium is deterministic -> ratio SE / band = loss SE / band over premium
+    assert (proj["ratio_se"] - proj["loss_total_se"] / proj["premium_proj"]).abs().max() < 1e-9
+    assert (proj["ratio_ci_lo"] <= proj["ratio_proj"] + 1e-12).all()
+    assert (proj["ratio_proj"] <= proj["ratio_ci_hi"] + 1e-12).all()
+
+
+def test_pooled_analytical_has_ratio_se(tri):
+    # the ratio band rides whatever loss SE the fit has -- analytical for pooled
+    pa = PooledLoss().fit(tri).to_polars()
+    assert pa.filter(pl.col("source") == "own")["ratio_se"].is_not_null().all()
+    # credible point-only: no loss SE -> no ratio SE
+    cred = CredibleLoss().fit(tri).to_polars()
+    assert cred["ratio_se"].is_null().all()
+
+
+def test_ratio_coverage_lane_flows_through_backtest(tri):
+    est = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=50, seed=2))
+    ae = _pl(Backtest(estimator=est, holdout=6, target="ratio").fit(tri).ae_err)
+    assert "expected_se" in ae.columns
+    panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.95,)))
+    cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))
+    cov = cum["coverage_95"].drop_nulls()
+    assert cov.len() > 0
+    assert ((cov >= 0.0) & (cov <= 1.0)).all()
