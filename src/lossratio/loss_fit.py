@@ -486,14 +486,18 @@ def _credible_levels(
     g_k: np.ndarray,
     sigma_method: str,
     psi: "float | str",
-) -> np.ndarray:
-    """Per-cohort credibility level ``u_i`` (dispersion-scaled conjugate).
+) -> "tuple[np.ndarray, np.ndarray, float]":
+    """Per-cohort credibility level ``u_i``, weight ``Z_i``, and ``psi_hat``.
 
     The estimation "cells" are the observed loss increments: response =
     ``dLoss``, the ``u = 1`` fitted mean ``m0 = g_k * P_from``, keyed by
     ``(cohort, from-duration)``. ``psi = "auto"`` estimates the between-cohort
     variance by the Buhlmann-Straub moment; ``psi = 0`` (or any degenerate
-    case, charter Sec.4.4) leaves ``u = 1`` = exactly PooledLoss.
+    case, charter Sec.4.4) leaves ``u = 1`` / ``Z = 0`` = exactly PooledLoss.
+
+    Returns ``(u_vec, z_vec, psi_hat)``: ``u_vec`` / ``z_vec`` are per-cohort-row
+    (default ``u = 1`` / ``Z = 0`` for a cohort with no estimable level), and
+    ``psi_hat`` is the between-cohort variance actually used.
 
     The single source of truth for the credibility level: the point fit
     (:func:`_fit_segment_credible`) and every ResidualBootstrap replicate
@@ -513,6 +517,8 @@ def _credible_levels(
     m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
 
     u_vec = np.ones(n_cohorts, dtype=np.float64)
+    z_vec = np.zeros(n_cohorts, dtype=np.float64)
+    psi_hat = 0.0
     finite = [j for j, v in enumerate(m0) if np.isfinite(v)]
     if finite:
         resp_f = [resp[j] for j in finite]
@@ -547,7 +553,9 @@ def _credible_levels(
             )
             for i, u in levels.u.items():
                 u_vec[i] = max(u, 0.0)     # recovery-dominated floor (Sec.4.3)
-    return u_vec
+            for i, z in levels.Z.items():
+                z_vec[i] = z
+    return u_vec, z_vec, psi_hat
 
 
 def _fit_segment_credible(
@@ -591,8 +599,10 @@ def _fit_segment_credible(
     g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
 
-    # 2. credibility level u_i (dispersion-scaled conjugate)
-    u_vec = _credible_levels(loss_obs, premium_obs, g_k, sigma_method, psi)
+    # 2. credibility level u_i / weight Z_i / between-cohort variance psi_hat
+    u_vec, z_vec, psi_hat = _credible_levels(
+        loss_obs, premium_obs, g_k, sigma_method, psi
+    )
 
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
     premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
@@ -611,6 +621,9 @@ def _fit_segment_credible(
         "total_se": nan_se.copy(),
         "borrowed": np.zeros(loss_obs.shape, dtype=bool),
         "g_k": g_k,
+        "u": u_vec,
+        "Z": z_vec,
+        "psi": psi_hat,
     }
 
 
@@ -818,6 +831,33 @@ def _segment_long_df(
     return df.select(order)
 
 
+def _segment_credibility_df(
+    fit: dict[str, np.ndarray],
+    cohorts: list,
+    groups: "str | list[str] | None",
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """One segment's per-cohort credibility diagnostics (CredibleLoss only).
+
+    Columns ``[groups?, cohort, u, Z, psi]``: ``u`` the cohort credibility
+    level (mean-1 scaling on the pooled intensity), ``Z`` its credibility
+    weight, and ``psi`` the segment's between-cohort variance (constant per
+    segment). ``u = 1`` / ``Z = 0`` is the pooled-collapse cohort.
+    """
+    n = len(cohorts)
+    data: dict[str, Any] = {}
+    if groups is not None:
+        fill_group_columns(data, groups, group_value, n)
+    data["cohort"] = list(cohorts)
+    data["u"] = fit["u"].tolist()
+    data["Z"] = fit["Z"].tolist()
+    data["psi"] = [float(fit["psi"])] * n
+    df = pl.DataFrame(data)
+    order = (["cohort", "u", "Z", "psi"] if groups is None
+             else [*normalize_groups(groups), "cohort", "u", "Z", "psi"])
+    return df.select(order)
+
+
 # ---------------------------------------------------------------------------
 # Fit entry point
 # ---------------------------------------------------------------------------
@@ -941,6 +981,7 @@ def _fit_loss(
         )
 
     long_parts: list[pl.DataFrame] = []
+    cred_parts: list[pl.DataFrame] = []
     reasons: list[str] = []
     n_observed = n_projected = n_unfittable = n_borrowed = 0
 
@@ -1025,8 +1066,13 @@ def _fit_loss(
         long_parts.append(
             _segment_long_df(fit, cohorts, groups, group_value, conf_level, ci=ci)
         )
+        if mechanism == "credible":
+            cred_parts.append(
+                _segment_credibility_df(fit, cohorts, groups, group_value)
+            )
 
     long_df = pl.concat(long_parts)
+    credibility = pl.concat(cred_parts) if cred_parts else None
     if n_unfittable:
         reasons.append("projection_gap")
     status = "degraded" if reasons else "valid"
@@ -1040,6 +1086,7 @@ def _fit_loss(
         regime=regime,
         conf_level=conf_level,
         uncertainty=boot_spec,
+        credibility=credibility,
         output_type=triangle._output_type,
         status=status,
         status_reasons=reasons,
@@ -1082,8 +1129,10 @@ class LossFit:
         converged: bool,
         cell_counts: dict[str, int],
         uncertainty: Any = None,
+        credibility: "pl.DataFrame | None" = None,
     ) -> None:
         self._df = df
+        self._credibility = credibility
         self._output_type = output_type
         self.groups = groups
         self.method = method
@@ -1100,6 +1149,15 @@ class LossFit:
     @property
     def df(self) -> "FrameLike":
         return mirror_output(self._df, self._output_type)
+
+    @property
+    def credibility(self) -> "FrameLike | None":
+        """Per-cohort credibility diagnostics (``cohort``, ``u``, ``Z``,
+        ``psi``) for a ``CredibleLoss`` fit, or ``None`` for the pooled /
+        link-ratio rungs that carry no cohort level."""
+        if self._credibility is None:
+            return None
+        return mirror_output(self._credibility, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

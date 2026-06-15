@@ -27,6 +27,35 @@ def _pl(obj) -> pl.DataFrame:
     return obj if isinstance(obj, pl.DataFrame) else pl.from_pandas(obj)
 
 
+def test_credibility_diagnostics_exposed(tri):
+    cred = CredibleLoss().fit(tri)
+    c = _pl(cred.credibility)
+    assert c.columns == ["coverage", "cohort", "u", "Z", "psi"]
+    # one row per cohort x segment
+    n = cred.to_polars().select(["coverage", "cohort"]).unique().height
+    assert c.height == n
+    # sane ranges: u >= 0 (recovery floor), 0 <= Z <= 1, psi >= 0
+    assert (c["u"] >= 0).all()
+    assert ((c["Z"] >= 0) & (c["Z"] <= 1)).all()
+    assert (c["psi"] >= 0).all()
+    # psi is constant within a segment
+    per_seg = c.group_by("coverage").agg(pl.col("psi").n_unique())
+    assert (per_seg["psi"] == 1).all()
+
+
+def test_credibility_psi_zero_is_pooled_collapse(tri):
+    c = _pl(CredibleLoss(psi=0).fit(tri).credibility)
+    assert (c["u"] == 1.0).all()
+    assert (c["Z"] == 0.0).all()
+    assert (c["psi"] == 0.0).all()
+
+
+def test_pooled_and_link_have_no_credibility(tri):
+    from lossratio.link_ratio import LinkRatio
+    assert PooledLoss().fit(tri).credibility is None
+    assert LinkRatio().fit(tri).credibility is None
+
+
 def test_psi_zero_collapses_to_pooled(tri):
     # psi = 0 -> no between-cohort variance -> u = 1 -> exactly PooledLoss
     # (the ladder's automatic collapse). Byte-identical on every projection col.

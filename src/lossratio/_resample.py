@@ -144,7 +144,7 @@ def _estimate(
     g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
     if credible:
-        u_vec = _credible_levels(loss_obs, premium_obs, g_k, sigma_method, psi)
+        u_vec = _credible_levels(loss_obs, premium_obs, g_k, sigma_method, psi)[0]
     else:
         u_vec = np.ones(loss_obs.shape[0], dtype=np.float64)
     return g_k, u_vec
