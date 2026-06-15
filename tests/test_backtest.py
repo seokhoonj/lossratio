@@ -79,7 +79,27 @@ def test_backtest_ae_err_columns():
     )
     assert set(bt.ae_err.columns) >= {
         "cohort", "duration", "cal_idx", "actual", "expected", "ae_err",
+        "anchor_value",
     }
+
+
+def test_backtest_anchor_value_is_origin_cumulative():
+    # anchor_value = the cohort's observed cumulative target at the as-of
+    # boundary (the last non-masked duration = min held duration - 1).
+    tri = lr.Triangle(_toy_triangle_input())
+    bt = lr.Backtest(estimator=lr.ChainLadder(), holdout=2, target="loss").fit(tri)
+    ae = bt.ae_err if isinstance(bt.ae_err, pl.DataFrame) else pl.from_pandas(bt.ae_err)
+    tri_df = tri.to_polars()
+    assert ae.height > 0
+    for coh in ae["cohort"].unique():
+        held = ae.filter(pl.col("cohort") == coh)
+        boundary = held["duration"].min() - 1
+        observed = tri_df.filter(
+            (pl.col("cohort") == coh) & (pl.col("duration") == boundary)
+        )["loss"][0]
+        # constant within the cohort and equal to the origin cumulative
+        assert held["anchor_value"].n_unique() == 1
+        assert held["anchor_value"][0] == pytest.approx(observed)
 
 
 def test_backtest_ae_err_size_holdout_one():

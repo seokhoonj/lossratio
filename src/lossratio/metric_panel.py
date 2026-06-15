@@ -3,9 +3,19 @@
 A hold-out backtest's per-cell A/E table answers "how far off was each
 held-out cell"; the metric panel structures that answer into a decision-grade
 report -- **bias** (signed error), **dispersion** (absolute / squared error),
-and **Poisson deviance** -- on both the **cumulative** and **incremental**
-lanes, and split into the full population and the **terminal** (decision-region)
-durations the go-forward projection actually rides on.
+and **Poisson deviance** -- on the **cumulative**, **incremental**, and
+**anchored** lanes, and split into the full population and the **terminal**
+(decision-region) durations the go-forward projection actually rides on.
+
+The **anchored lane** (charter Sec.6.3) rebases each held cell against the
+cohort's observed cumulative at the as-of origin: ``anchored_actual = actual -
+anchor_value`` and ``anchored_expected = expected - anchor_value``. The signed
+gap is unchanged (the anchor cancels), but the relative error and the
+exposure-weighted ``bias_wt`` denominator measure the EMERGENCE since origin --
+free of the cumulative lane's denominator inertia and the incremental lane's
+per-period noise (the go-forward question's native lane). It appears only when
+the backtest emitted an ``anchor_value`` column; a cohort with no origin anchor
+gets a null and is dropped.
 
 It is a pure READER over a backtest's ``ae_err`` frame: no refitting, no
 estimator coupling, so it composes with both the single-origin
@@ -16,10 +26,9 @@ physical cell once per origin), the panel groups by it so depths are never
 pooled into a double-counted row.
 
 Charter-mandated but deferred to a follow-up (each needs a decision the panel
-cannot make on its own): the **anchored lane** (``anchored_actual = actual -
-baseline`` -- needs a naive-baseline definition) and the **machine verdict**
-(needs a pass / non-inferiority rule). **Coverage** needs the held-out cells'
-projection SE, which the A/E frame does not carry yet.
+cannot make on its own): the **machine verdict** (needs a pass /
+non-inferiority rule -- lives in :func:`~lossratio.gate.gate`). **Coverage**
+needs the held-out cells' projection SE, which the A/E frame does not carry yet.
 
 Internal-only during the additive build phase: not exported. The destructive
 sweep folds this into ``Backtest`` as a result method (charter file layout).
@@ -67,7 +76,14 @@ def _lane_metrics(deviance: bool) -> list[pl.Expr]:
     aggs = [
         pl.len().alias("n"),
         pl.col("_err").mean().alias("bias"),                 # mean signed A/E - 1
-        (pl.col("_aeg").sum() / pl.col("_exp").sum()).alias("bias_wt"),  # pooled A/E - 1
+        # pooled A/E - 1; null when the pooled denominator vanishes or is
+        # non-finite (the anchored lane rebases _exp to a signed emergence, so
+        # cross-cohort cancellation can drive sum(_exp) to ~0 even with every
+        # per-cell guard passing -- report null, never a silent NaN/inf).
+        pl.when((pl.col("_exp").sum() != 0) & pl.col("_exp").sum().is_finite())
+        .then(pl.col("_aeg").sum() / pl.col("_exp").sum())
+        .otherwise(None)
+        .alias("bias_wt"),
         pl.col("_err").abs().mean().alias("mae"),            # dispersion (scale-free)
         pl.col("_err").pow(2).mean().sqrt().alias("rmse"),
     ]
@@ -106,11 +122,14 @@ def metric_panel(
     Returns
     -------
     A tidy report ``[groups?, holdout?, population, lane, n, bias, bias_wt,
-    mae, rmse, deviance]``. ``bias`` is the mean signed relative error
-    (``A/E - 1``); ``bias_wt`` is the exposure-weighted pooled ``A/E - 1``
-    (``sum(actual - expected) / sum(expected)``); ``mae`` / ``rmse`` are the
-    dispersion of the relative error; ``deviance`` is the summed quasi-Poisson
-    deviance (incremental lane only, null on the cumulative lane).
+    mae, rmse, deviance]``. ``lane`` is ``"cum"`` / ``"incr"`` /
+    ``"anchored"`` (the last only when the frame carries ``anchor_value``).
+    ``bias`` is the mean signed relative error (``A/E - 1``); ``bias_wt`` is
+    the exposure-weighted pooled ``A/E - 1`` (``sum(actual - expected) /
+    sum(expected)``, rebased to the emergence-since-origin on the anchored
+    lane); ``mae`` / ``rmse`` are the dispersion of the relative error;
+    ``deviance`` is the summed quasi-Poisson deviance (incremental lane only,
+    null on the cumulative and anchored lanes).
     """
     df = ae_err if isinstance(ae_err, pl.DataFrame) else pl.from_pandas(ae_err)
     keys = normalize_groups(groups)
@@ -119,6 +138,7 @@ def metric_panel(
     lanes = [_CUM_LANE]
     if all(c in df.columns for c in _INCR_LANE[1:]):
         lanes.append(_INCR_LANE)
+    anchored = "anchor_value" in df.columns
 
     pops: list[tuple[str, pl.Expr]] = [("all", pl.lit(True))]
     if terminal is not None:
@@ -147,6 +167,31 @@ def metric_panel(
             g = f.group_by(gk).agg(aggs) if gk else f.select(aggs)
             g = g.with_columns(
                 population=pl.lit(pop_label), lane=pl.lit(lane_label)
+            )
+            parts.append(g)
+        if anchored:
+            # Rebase actual/expected against the origin anchor; the signed gap
+            # cancels the anchor (_aeg == cum _aeg) but the relative error and
+            # bias_wt denominator measure the emergence since origin. Null
+            # anchor (a cohort with no origin baseline) is dropped.
+            f = (sub.select([*gk, "actual", "expected", "anchor_value"])
+                 .drop_nulls("anchor_value")
+                 .with_columns(
+                     (pl.col("actual") - pl.col("anchor_value")).alias("_act"),
+                     (pl.col("expected") - pl.col("anchor_value")).alias("_exp"),
+                 )
+                 .with_columns(
+                     (pl.col("_act") - pl.col("_exp")).alias("_aeg"),
+                     pl.when(pl.col("_exp").is_finite() & (pl.col("_exp") != 0))
+                     .then(pl.col("_act") / pl.col("_exp") - 1)
+                     .otherwise(None)
+                     .alias("_err"),
+                 )
+                 .drop_nulls("_err"))
+            aggs = _lane_metrics(deviance=False)
+            g = f.group_by(gk).agg(aggs) if gk else f.select(aggs)
+            g = g.with_columns(
+                population=pl.lit(pop_label), lane=pl.lit("anchored")
             )
             parts.append(g)
 

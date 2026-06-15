@@ -399,13 +399,30 @@ class BacktestFit:
                 .alias("incr_ae_err"),
             )
 
+        # Anchored-lane support (charter Sec.6.3): the cohort's observed
+        # cumulative target at the as-of boundary (its last non-masked
+        # duration) -- the origin baseline the anchored metric lane rebases
+        # against (`anchored_actual = actual - anchor_value`). Constant per
+        # cohort per origin; a cohort wholly inside the held-out diagonals has
+        # no non-masked cell and gets a null anchor (already dropped above as
+        # unreachable).
+        gcols = normalize_groups(triangle._groups)
+        anchor = (
+            annotated_df.filter(~pl.col("masked"))
+            .group_by([*gcols, "cohort"])
+            .agg(
+                pl.col(actual_col).sort_by("duration").last().alias("anchor_value")
+            )
+        )
+        ae_err = ae_err.join(anchor, on=[*gcols, "cohort"], how="left")
+
         # Fixed final column order for the per-cell table.
         col_order = keys + ["actual", "expected", "aeg", "ae_err"]
         if has_incr:
             col_order += [
                 "incr_actual", "incr_expected", "incr_aeg", "incr_ae_err",
             ]
-        col_order.append("cal_idx")
+        col_order += ["anchor_value", "cal_idx"]
         ae_err = ae_err.select(col_order)
         self._ae_err = ae_err.sort(keys + ["cal_idx"])
 

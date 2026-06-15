@@ -34,11 +34,72 @@ def test_panel_structure(single_ae):
         "coverage", "population", "lane",
         "n", "bias", "bias_wt", "mae", "rmse", "deviance",
     ]
-    # cumulative + incremental lanes, full population only (no terminal arg)
-    assert set(panel["lane"].unique()) == {"cum", "incr"}
+    # cumulative + incremental + anchored lanes (the backtest emitted
+    # anchor_value), full population only (no terminal arg)
+    assert set(panel["lane"].unique()) == {"cum", "incr", "anchored"}
     assert set(panel["population"].unique()) == {"all"}
     # one row per (coverage, lane)
-    assert panel.height == single_ae["coverage"].n_unique() * 2
+    assert panel.height == single_ae["coverage"].n_unique() * 3
+
+
+def test_anchored_lane_rebases_against_origin(single_ae):
+    # The anchored lane rebases actual/expected against the cohort's observed
+    # cumulative at the as-of origin: bias_wt = sum(actual - expected) /
+    # sum(expected - anchor_value) over the scored cells.
+    assert "anchor_value" in single_ae.columns
+    panel = _pl(metric_panel(single_ae, groups="coverage"))
+    cov = single_ae["coverage"][0]
+    sub = (
+        single_ae.filter(pl.col("coverage") == cov)
+        .drop_nulls("anchor_value")
+        .with_columns(
+            (pl.col("actual") - pl.col("anchor_value")).alias("_act"),
+            (pl.col("expected") - pl.col("anchor_value")).alias("_exp"),
+        )
+        .filter(pl.col("_exp").is_finite() & (pl.col("_exp") != 0))
+    )
+    manual = (sub["actual"] - sub["expected"]).sum() / sub["_exp"].sum()
+    got = panel.filter(
+        (pl.col("coverage") == cov)
+        & (pl.col("population") == "all")
+        & (pl.col("lane") == "anchored")
+    )["bias_wt"][0]
+    assert got == pytest.approx(manual, rel=0, abs=1e-12)
+    # deviance is not defined on the anchored lane
+    assert panel.filter(pl.col("lane") == "anchored")["deviance"].is_null().all()
+
+
+def test_anchored_bias_wt_null_on_denominator_cancellation():
+    # The anchored _exp is a signed emergence; if it cancels across cohorts the
+    # pooled bias_wt denominator (sum _exp) is ~0 -> report null, never NaN/inf.
+    df = pl.DataFrame({
+        "cohort": [1, 2],
+        "duration": [2, 2],
+        "actual": [15.0, 5.0],
+        "expected": [15.0, 5.0],
+        "aeg": [0.0, 0.0],
+        "ae_err": [0.0, 0.0],
+        "anchor_value": [10.0, 10.0],   # _exp = [+5, -5] -> sum 0
+    })
+    panel = _pl(metric_panel(df))
+    anch = panel.filter(pl.col("lane") == "anchored")
+    assert anch.height == 1
+    assert anch["n"][0] == 2                       # both cells scored
+    assert anch["bias_wt"][0] is None             # guarded, not NaN/inf
+
+
+def test_anchored_lane_absent_without_anchor():
+    # A frame with no anchor_value column gets no anchored lane.
+    df = pl.DataFrame({
+        "cohort": [1, 1, 2, 2],
+        "duration": [1, 2, 1, 2],
+        "actual": [10.0, 22.0, 12.0, 24.0],
+        "expected": [10.0, 20.0, 12.0, 25.0],
+        "aeg": [0.0, 2.0, 0.0, -1.0],
+        "ae_err": [0.0, 0.1, 0.0, -0.04],
+    })
+    panel = _pl(metric_panel(df))
+    assert "anchored" not in set(panel["lane"].unique())
 
 
 def test_bias_wt_matches_manual(single_ae):
