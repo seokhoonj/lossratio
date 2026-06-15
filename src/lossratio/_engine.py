@@ -60,7 +60,12 @@ def link_ratios(*, response, cohort, duration, include=None) -> dict:
     cells build ``C``. This is the recent-diagonal fit mask: unlike the
     additive intensity (where masking is just dropping cells from the feed),
     the link ratio cumulates internally and so must gate at the sum step.
-    ``None`` (default) is the no-gate path the micro-oracle freezes."""
+    ``None`` (default) is the no-gate path the micro-oracle freezes.
+
+    A cohort enters ``f_k`` only when its SOURCE cumulative ``C_{i,k} > 0`` --
+    a zero / negative base carries no defined development ratio, so (as in the
+    standard Mack estimate) it is dropped from both sums rather than silently
+    inflating the numerator."""
     cell = {(i, k): y for y, i, k in zip(response, cohort, duration)}
     keep = (None if include is None
             else {(i, k) for inc, i, k in zip(include, cohort, duration) if inc})
@@ -76,7 +81,7 @@ def link_ratios(*, response, cohort, duration, include=None) -> dict:
     f: dict = {}
     for k in durs:
         both = [i for i in cohorts
-                if (i, k) in cum and (i, k + 1) in cum
+                if (i, k) in cum and (i, k + 1) in cum and cum[(i, k)] > 0.0
                 and (keep is None or (i, k) in keep)]
         if not both:
             continue
