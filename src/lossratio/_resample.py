@@ -14,8 +14,9 @@ Scope: the additive intensity mechanisms ``"pooled"``, ``"credible"``, and
 (the credibility level -- and, for smooth, the shape selection -- estimation
 variance breaks the Mack recursion), so the bootstrap is their only interval;
 for ``"smooth"`` each replicate re-runs the whole backfitting (shape + lambda),
-which is materially heavier. ``"link_ratio"`` keeps its analytical Mack SE and
-is rejected here.
+which is materially heavier. ``"link_ratio"`` uses a SEPARATE plug
+(:func:`bootstrap_segment_cl`, England-Verrall ODP residuals) since the chain
+ladder is own-loss-anchored, not premium-anchored.
 
 Algorithm (per segment, England-Verrall residual bootstrap adapted to the
 premium-anchored intensity model):
@@ -382,6 +383,221 @@ def bootstrap_segment(
         pred_draws[b] = pred_cum
 
     return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
+
+
+# ---------------------------------------------------------------------------
+# Link-ratio (chain ladder) bootstrap -- England-Verrall ODP residuals
+# ---------------------------------------------------------------------------
+#
+# A SEPARATE plug from the intensity bootstrap above: the chain ladder is the
+# over-dispersed-Poisson cross-classified GLM (E[Y_ij] = alpha_i * beta_j, no
+# premium offset), so the Pearson residual is standardized against the
+# CL-fitted incremental m_ij (own-loss anchored), and the per-replicate refit
+# re-estimates the link ratio f_k -- not the premium-anchored intensity g_k.
+# The resample / projection / process / drift / re-centre scaffold is shared.
+
+
+def _cl_increments(loss_obs: np.ndarray):
+    """Observed incremental cells of a cumulative-loss triangle.
+
+    Returns parallel ``(ii, jj, y)``: cohort row, 0-based duration, and the
+    incremental loss ``Y_ij = C_ij - C_i,j-1`` (the dev-1 cell is the first
+    cumulative). Assumes the per-cohort observed durations are contiguous (a
+    standard triangle)."""
+    n_cohorts, n_dur = loss_obs.shape
+    ii: list[int] = []
+    jj: list[int] = []
+    yy: list[float] = []
+    for i in range(n_cohorts):
+        prev = 0.0
+        for j in range(n_dur):
+            c = loss_obs[i, j]
+            if np.isnan(c):
+                continue
+            ii.append(i); jj.append(j); yy.append(float(c - prev))
+            prev = c
+    return (np.array(ii, dtype=np.int64), np.array(jj, dtype=np.int64),
+            np.array(yy, dtype=np.float64))
+
+
+def _ev_fitted_increments(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
+    """England-Verrall / ODP fitted incrementals ``m_ij`` (chain-ladder fitted).
+
+    The chain-ladder fitted cumulative is the back-recursion from each cohort's
+    own latest observed cumulative (``hat_C_{i,j} = hat_C_{i,j+1} / f_j``); the
+    fitted incremental is its first difference (``m_i0 = hat_C_i0``). Returns an
+    ``(n_cohorts, n_durations)`` matrix, NaN off the observed support."""
+    n_cohorts, n_dur = loss_obs.shape
+    m = np.full((n_cohorts, n_dur), np.nan, dtype=np.float64)
+    obs = ~np.isnan(loss_obs)
+    for i in range(n_cohorts):
+        cols = np.flatnonzero(obs[i])
+        if cols.size == 0:
+            continue
+        last = int(cols.max())
+        hatC = np.full(n_dur, np.nan, dtype=np.float64)
+        hatC[last] = loss_obs[i, last]
+        for j in range(last - 1, -1, -1):
+            fj = f_k[j]
+            hatC[j] = hatC[j + 1] / fj if (np.isfinite(fj) and fj != 0.0) else np.nan
+        m[i, 0] = hatC[0]
+        for j in range(1, last + 1):
+            m[i, j] = hatC[j] - hatC[j - 1]
+    return m
+
+
+def _project_cl_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
+    """Multiplicative chain-ladder cumulative projection from each cohort's last
+    observed cell (``C_{k+1} = f_k C_k``); no variance recursion."""
+    n_cohorts, n_dur = loss_obs.shape
+    n_links = n_dur - 1
+    proj = loss_obs.copy()
+    obs = ~np.isnan(loss_obs)
+    has = obs.any(axis=1)
+    last = np.where(has, n_dur - 1 - obs[:, ::-1].argmax(axis=1), -1)
+    for k in range(n_links):
+        active = has & (last >= 0) & (last <= k)
+        ck = proj[:, k]
+        pos = active & ~np.isnan(ck) & (ck > 0)
+        if pos.any() and np.isfinite(f_k[k]):
+            proj[pos, k + 1] = f_k[k] * ck[pos]
+    return proj
+
+
+def bootstrap_segment_cl(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    *,
+    sigma_method: str,
+    spec: ResidualBootstrap,
+    conf_level: float,
+    rng: np.random.Generator,
+) -> dict[str, np.ndarray]:
+    """England-Verrall ODP residual bootstrap for the chain ladder (LinkRatio).
+
+    Pearson residuals of the observed incrementals against the CL-fitted
+    incrementals are resampled (per development column) into a pseudo-triangle;
+    each pseudo-triangle's link ratio ``f*_k`` projects the REAL observed latest
+    diagonal forward (conditional prediction, charter Sec.5.2), with
+    over-dispersed process noise + the calendar drift band on the future cells.
+    Returns the same SE / CI matrices as the intensity bootstrap."""
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+
+    f_k = _fit_mack(loss_obs, sigma_method=sigma_method).f_k
+    point_proj = _project_cl_cum(loss_obs, f_k)
+    m_mat = _ev_fitted_increments(loss_obs, f_k)
+    ii, jj, y = _cl_increments(loss_obs)
+    m = m_mat[ii, jj]
+    dur1 = (jj + 1).tolist()
+
+    usable = np.isfinite(m) & (m > 0.0)
+    phi_map = _engine.pearson_dispersion(
+        response=y[usable].tolist(), fitted=m[usable].tolist(),
+        duration=[dur1[t] for t in np.flatnonzero(usable)], sigma_method=sigma_method,
+    )
+    phi_cell = np.array(
+        [phi_map.get(d) if phi_map.get(d) is not None else np.nan for d in dur1],
+        dtype=np.float64,
+    )
+    scale = np.sqrt(phi_cell * m)
+    res_ok = usable & np.isfinite(scale) & (scale > 0.0)
+    resid = np.full(m.shape, np.nan, dtype=np.float64)
+    resid[res_ok] = (y[res_ok] - m[res_ok]) / scale[res_ok]
+
+    if spec.hat_adjust:
+        for d in set(dur1):
+            idx = np.array([t for t in range(len(dur1)) if dur1[t] == d and res_ok[t]])
+            if idx.size == 0:
+                continue
+            tot = m[idx].sum()
+            if tot <= 0.0:
+                continue
+            h = m[idx] / tot
+            safe = np.where(h < 1.0, 1.0 - h, 1.0)
+            resid[idx] = resid[idx] * np.where(h < 1.0, 1.0 / np.sqrt(safe), 1.0)
+
+    global_pool = resid[np.isfinite(resid)]
+    if global_pool.size < 1:
+        nan = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+        return {"proc_se": nan, "param_se": nan.copy(), "total_se": nan.copy(),
+                "ci_lo": nan.copy(), "ci_hi": nan.copy()}
+    col_pools: dict[int, np.ndarray] = {}
+    for j in range(n_durations):
+        pool = resid[(jj == j) & np.isfinite(resid)]
+        col_pools[j] = pool if pool.size >= spec.min_pool else global_pool
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    drift_se = _calendar_drift_se(resid, ii, jj, res_ok) if spec.drift else 0.0
+    oi, ok_ = np.where(obs_mask)
+    frontier = int((oi + ok_).max()) if oi.size else 0
+    rows = np.arange(n_cohorts)
+
+    B = spec.n_replicates
+    param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
+    pred_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
+
+    for b in range(B):
+        rstar = np.empty(m.shape, dtype=np.float64)
+        for j in range(n_durations):
+            sel = jj == j
+            n_sel = int(sel.sum())
+            if n_sel:
+                rstar[sel] = rng.choice(col_pools[j], size=n_sel, replace=True)
+        ystar = np.where(res_ok, m + rstar * scale, y)
+        # pseudo cumulative triangle (per-cohort cumulative sum of the pseudo
+        # incrementals over the observed support)
+        cum = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+        run = np.zeros(n_cohorts, dtype=np.float64)
+        seen = np.zeros(n_cohorts, dtype=bool)
+        for t in range(ii.size):
+            i, j = int(ii[t]), int(jj[t])
+            run[i] += ystar[t]
+            cum[i, j] = run[i]
+            seen[i] = True
+        f_b = _fit_mack(cum, sigma_method=sigma_method).f_k
+        param_cum = _project_cl_cum(loss_obs, f_b)
+        param_draws[b] = param_cum
+        if spec.process == "none":
+            pred_draws[b] = param_cum
+            continue
+        pred_cum = loss_obs.copy()
+        eps_b = rng.normal(0.0, drift_se) if drift_se > 0.0 else 0.0
+        for k in range(n_links):
+            active = has_obs & (last_obs <= k) & ~np.isnan(param_cum[:, k + 1]) \
+                & ~np.isnan(pred_cum[:, k])
+            if not active.any():
+                continue
+            mean_inc = param_cum[:, k + 1] - param_cum[:, k]
+            draw = _process_draw(mean_inc, _phi_at_dur(phi_cell, jj, k + 1),
+                                 active, rng)
+            if eps_b != 0.0:
+                c = np.maximum((rows + (k + 1)) - frontier, 0)
+                phi_kp1 = _phi_at_dur(phi_cell, jj, k + 1)
+                if np.isfinite(phi_kp1):
+                    draw = draw + c * eps_b * np.sqrt(
+                        phi_kp1 * np.maximum(mean_inc, 0.0)
+                    )
+            pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
+        pred_draws[b] = pred_cum
+
+    return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
+
+
+def _phi_at_dur(phi_cell: np.ndarray, jj: np.ndarray, dur0: int) -> float:
+    """Per-development-column dispersion at 0-based duration ``dur0`` (the
+    process-noise scale for the cumulative cell arriving at ``dur0``)."""
+    sel = jj == dur0
+    if not sel.any():
+        return np.nan
+    vals = phi_cell[sel]
+    vals = vals[np.isfinite(vals)]
+    return float(vals[0]) if vals.size else np.nan
 
 
 def _refit_phi(

@@ -1162,11 +1162,9 @@ def _fit_loss(
     boot_spec = None
     seg_seeds: dict[Any, np.random.SeedSequence] = {}
     if uncertainty is not None:
-        if mechanism not in ("pooled", "credible", "smooth"):
+        if mechanism not in ("pooled", "credible", "smooth", "link_ratio"):
             raise NotImplementedError(
-                f"ResidualBootstrap is only wired for the intensity mechanisms "
-                f"('pooled', 'credible', 'smooth'); {model!r} keeps its "
-                f"analytical SE."
+                f"ResidualBootstrap is not wired for {model!r}."
             )
         if borrow:
             raise NotImplementedError(
@@ -1252,14 +1250,22 @@ def _fit_loss(
 
         ci = None
         if boot_spec is not None:
-            from ._resample import bootstrap_segment
-            boot = bootstrap_segment(
-                fit["loss_obs"], fit["premium_obs"],
-                mechanism=mechanism, sigma_method=sigma_method, psi=psi,
-                spec=boot_spec, conf_level=conf_level,
-                rng=np.random.default_rng(seg_seeds[sid]),
-                n_basis=n_basis, lam=lam,
-            )
+            rng = np.random.default_rng(seg_seeds[sid])
+            if mechanism == "link_ratio":
+                from ._resample import bootstrap_segment_cl
+                boot = bootstrap_segment_cl(
+                    fit["loss_obs"], fit["premium_obs"],
+                    sigma_method=sigma_method, spec=boot_spec,
+                    conf_level=conf_level, rng=rng,
+                )
+            else:
+                from ._resample import bootstrap_segment
+                boot = bootstrap_segment(
+                    fit["loss_obs"], fit["premium_obs"],
+                    mechanism=mechanism, sigma_method=sigma_method, psi=psi,
+                    spec=boot_spec, conf_level=conf_level, rng=rng,
+                    n_basis=n_basis, lam=lam,
+                )
             # replace the analytical / null SE with the bootstrap spread and
             # carry the empirical quantile band (Sec.5.2 -- predictive interval)
             fit["proc_se"] = boot["proc_se"]

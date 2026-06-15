@@ -190,9 +190,12 @@ def test_drift_grows_with_calendar_horizon(tri):
 # --- scope guards ----------------------------------------------------------
 
 
-def test_link_ratio_rejects_bootstrap(tri):
-    with pytest.raises(NotImplementedError):
-        LinkRatio(uncertainty=ResidualBootstrap(n_replicates=10)).fit(tri)
+def test_link_ratio_uses_odp_bootstrap(tri):
+    # LinkRatio now takes the bootstrap via the separate ODP (England-Verrall)
+    # plug -- it fills SE/CI like the intensity rungs (full coverage in
+    # tests/test_link_ratio.py); here just assert it does NOT reject + populates.
+    d = LinkRatio(uncertainty=ResidualBootstrap(n_replicates=20, seed=1)).fit(tri).to_polars()
+    assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()
 
 
 def test_borrow_plus_bootstrap_rejected(tri):

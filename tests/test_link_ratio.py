@@ -103,3 +103,49 @@ def test_recent_none_matches_no_arg(exp):
 def test_recent_validates(exp):
     with pytest.raises(ValueError):
         LinkRatio(recent=-1)
+
+
+# --- ODP residual bootstrap (England-Verrall) for the chain ladder ---------
+
+
+def test_odp_bootstrap_populates_se_ci(exp):
+    from lossratio._resample import ResidualBootstrap
+    tri = lr.Triangle(exp, groups="coverage")
+    d = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)).fit(tri))
+    proj = d.filter(pl.col("source") == "own")
+    assert proj["loss_total_se"].is_not_null().all()
+    assert (proj["loss_total_se"] > 0).all()
+    assert (proj["loss_proc_se"] <= proj["loss_total_se"] + 1e-9).all()
+    assert (proj["loss_ci_lo"] <= proj["loss_proj"] + 1e-6).all()
+    assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-6).all()
+    assert proj["ratio_se"].is_not_null().all()
+
+
+def test_odp_bootstrap_reproducible(exp):
+    from lossratio._resample import ResidualBootstrap
+    tri = lr.Triangle(exp, groups="coverage")
+    a = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
+    b = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
+    assert (a["loss_total_se"].fill_null(-1) - b["loss_total_se"].fill_null(-1)).abs().max() == 0.0
+
+
+def test_odp_bootstrap_in_calibration_range(exp):
+    # the ODP bootstrap and the analytical Mack SE are different variance models
+    # (ODP Var ~ mean vs Mack Var ~ C^alpha), so they need not match -- but the
+    # bootstrap SE should stay in a sane band around the analytical one
+    from lossratio._resample import ResidualBootstrap
+    tri = lr.Triangle(exp, groups="coverage")
+    ana = _pl(LinkRatio().fit(tri))
+    boot = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))
+    j = ana.join(boot, on=["coverage", "cohort", "duration"], suffix="_b").filter(
+        pl.col("source") == "own"
+    )
+    ratio = float((j["loss_total_se_b"] / j["loss_total_se"]).median())
+    assert 0.4 < ratio < 2.0
+
+
+def test_analytical_default_unchanged_by_bootstrap_wiring(exp):
+    # LinkRatio() with no uncertainty must still carry its analytical Mack SE
+    tri = lr.Triangle(exp, groups="coverage")
+    d = _pl(LinkRatio().fit(tri))
+    assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()
