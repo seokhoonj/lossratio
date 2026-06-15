@@ -49,6 +49,7 @@ from ._mack import (
 )
 from ._recent import recent_link_mask, validate_recent
 from ._sigma import extrapolate_tail_sigma2
+from ._smooth import smooth_intensity
 from .model_frame import ModelFrame
 
 if TYPE_CHECKING:
@@ -662,6 +663,166 @@ def _project_credible(
     return loss_proj
 
 
+def _fit_segment_smooth(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    *,
+    recent: int | None = None,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    psi: "float | str" = "auto",
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
+    max_outer: int = 50,
+    tol: float = 1e-4,
+) -> dict[str, np.ndarray]:
+    """Smooth (GLMM) fit for one segment -- the top ladder rung.
+
+    The credible rung with the saturated per-duration ``g_k`` replaced by the
+    smooth shape ``g_k = exp(s(k))`` (:func:`lossratio._smooth.smooth_intensity`).
+    The shape and the per-cohort credibility level are fit by the charter
+    Sec.4.5 block coordinate ascent (backfitting): the s-step refits the smooth
+    shape on the ``u``-adjusted exposure (``u_i * P``, so the late-duration
+    cells -- seen only by old cohorts whose ``E[u] != 1`` -- stop biasing the
+    shape), the u-step is the same dispersion-scaled conjugate the credible rung
+    uses. The two alternate to convergence in ``max |du|`` (Sec.4.5: 2-5 passes
+    typical). ``psi = 0`` keeps ``u = 1``, so it collapses to a single smooth
+    pass (no contamination to remove).
+
+    Non-representable (Sec.4.2): a segment whose pooled total is ``<= 0`` cannot
+    be log-link fit, so it falls back to the saturated ``g_k`` (ED) and is
+    flagged. ``recent`` / ``donor`` (borrow) are not supported.
+
+    Point-only in v1 (SE / CI null): the smooth shape + credibility estimation
+    variance breaks the Mack recursion; interval coverage rides a later smooth
+    ResidualBootstrap. SE is left null, like the credible rung before its
+    bootstrap.
+    """
+    if recent is not None:
+        raise NotImplementedError("SmoothLoss does not support recent yet")
+    if donor is not None:
+        raise NotImplementedError("SmoothLoss does not support borrow yet")
+
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    # valid loss-link cells: response = dLoss, exposure = predetermined premium,
+    # keyed by from-duration + cohort row (cohort needed for the u-adjustment).
+    resp: list[float] = []
+    expo: list[float] = []
+    dur: list[int] = []
+    coh: list[int] = []
+    for k in range(n_links):
+        ck = premium_obs[:, k]
+        dl = loss_obs[:, k + 1] - loss_obs[:, k]
+        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        for i in np.flatnonzero(mask):
+            resp.append(float(dl[i])); expo.append(float(ck[i]))
+            dur.append(k + 1); coh.append(int(i))
+    resp_a = np.array(resp, dtype=np.float64)
+    expo_a = np.array(expo, dtype=np.float64)
+    dur_l = dur
+    coh_a = np.array(coh, dtype=np.int64)
+
+    u_vec = np.ones(n_cohorts, dtype=np.float64)
+    z_vec = np.zeros(n_cohorts, dtype=np.float64)
+    psi_hat = 0.0
+    g_k = np.full(n_links, np.nan, dtype=np.float64)
+    lam_used = 0.0
+    edf = 0.0
+    representable = True
+    inner_converged = True
+    backfit_converged = True            # trivially so for no cells / single pass
+
+    def _smooth_g(u: np.ndarray, lam_use):
+        adj = (u[coh_a] * expo_a).tolist()       # divide u out -> shape on u*P
+        sm = smooth_intensity(
+            response=resp_a.tolist(), exposure=adj, duration=dur_l,
+            n_basis=n_basis, lam=lam_use,
+        )
+        gk = np.array(
+            [sm.g.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64
+        )
+        return sm, gk
+
+    # lambda is GCV-selected ONCE on the first (pooled) s-step, then held fixed
+    # through the backfitting: the shape smoothness is a pipeline choice, and
+    # re-selecting it each pass adds cost and can stall the alternation.
+    cur_lam: "float | str" = lam
+    if resp_a.size:
+        backfit_converged = False
+        for _ in range(max_outer):
+            # s-step: smooth shape on the u-adjusted exposure
+            sm, g_k = _smooth_g(u_vec, cur_lam)
+            if not sm.representable:
+                # Sec.4.2 boundary -> ED fallback (saturated g_k on raw exposure)
+                representable = False
+                g_map = _engine.saturated_intensity(
+                    response=resp_a.tolist(), exposure=expo_a.tolist(),
+                    duration=dur_l,
+                )
+                g_k = np.array(
+                    [g_map.get(k + 1, np.nan) for k in range(n_links)],
+                    dtype=np.float64,
+                )
+                u_vec, z_vec, psi_hat = _credible_levels(
+                    loss_obs, premium_obs, g_k, sigma_method, psi
+                )
+                backfit_converged = True          # fell back deterministically
+                break
+            lam_used, edf, inner_converged = sm.lam, sm.edf, sm.converged
+            cur_lam = sm.lam                  # freeze the smoothness after pass 1
+            # u-step: dispersion-scaled conjugate on the smooth fitted mean.
+            # g_k here was fit with the current u_vec; if the u-update is within
+            # tol the two stay mutually consistent, so break BEFORE re-syncing.
+            u_new, z_vec, psi_hat = _credible_levels(
+                loss_obs, premium_obs, g_k, sigma_method, psi
+            )
+            converged_step = float(np.max(np.abs(u_new - u_vec))) < tol
+            u_vec = u_new
+            if converged_step:
+                backfit_converged = True
+                break
+        else:
+            # max_outer exhausted: g_k is one step out of sync with the final
+            # u_vec -> refit the shape once more at the final u for consistency,
+            # and flag the non-convergence (so status/converged report it).
+            if representable:
+                sm, gk_final = _smooth_g(u_vec, cur_lam)
+                # only adopt the consistency refit if it is itself representable
+                # (the boundary is u-independent so this holds whenever the loop
+                # stayed representable, but never overwrite a valid g_k with a
+                # boundary all-zero shape).
+                if sm.representable:
+                    g_k = gk_final
+                    lam_used, edf, inner_converged = sm.lam, sm.edf, sm.converged
+            backfit_converged = False
+
+    smooth_converged = inner_converged and backfit_converged
+    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+    nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
+
+    return {
+        "loss_obs": loss_obs,
+        "loss_proj": loss_proj,
+        "premium_obs": premium_obs,
+        "premium_proj": premium_proj,
+        "proc_se": nan_se,
+        "param_se": nan_se.copy(),
+        "total_se": nan_se.copy(),
+        "borrowed": np.zeros(loss_obs.shape, dtype=bool),
+        "g_k": g_k,
+        "u": u_vec,
+        "Z": z_vec,
+        "psi": psi_hat,
+        "lam": lam_used,
+        "edf": edf,
+        "representable": representable,
+        "smooth_converged": smooth_converged,
+    }
+
+
 def _project_borrow(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
@@ -881,6 +1042,7 @@ _MECHANISMS = {
     "pooled": (_fit_segment_ed, "pooled", "pooled_loss"),
     "link_ratio": (_fit_segment_cl, "link_ratio", "link_ratio"),
     "credible": (_fit_segment_credible, "credible", "credible_loss"),
+    "smooth": (_fit_segment_smooth, "smooth", "smooth_loss"),
 }
 
 
@@ -933,6 +1095,8 @@ def _fit_loss(
     conf_level: float = 0.95,
     borrow: "bool | str" = False,
     psi: "float | str" = "auto",
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
     uncertainty: "Any" = None,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
@@ -966,6 +1130,8 @@ def _fit_loss(
                 f"ResidualBootstrap is only wired for the intensity mechanisms "
                 f"('pooled', 'credible'); {model!r} keeps its analytical SE."
             )
+        # note: 'smooth' bootstrap (refit s + lambda per replicate) is a later
+        # step; SmoothLoss is point-only in v1 (rejected at config time).
         if borrow:
             raise NotImplementedError(
                 "ResidualBootstrap with borrow= is not supported yet (the "
@@ -997,6 +1163,7 @@ def _fit_loss(
     cred_parts: list[pl.DataFrame] = []
     reasons: list[str] = []
     n_observed = n_projected = n_unfittable = n_borrowed = 0
+    n_smooth_fallback = n_smooth_nonconv = 0
 
     # iterate segments in stable id order; ungrouped triangles are one segment
     seg_ids = frame.get_column("_segment_id").unique().sort().to_list()
@@ -1034,10 +1201,18 @@ def _fit_loss(
             premium_obs = _pad_cols(premium_obs, full_n_dur)
             donor = (d_f, d_sig, d_var)
 
-        extra = {"psi": psi} if mechanism == "credible" else {}
+        if mechanism == "credible":
+            extra = {"psi": psi}
+        elif mechanism == "smooth":
+            extra = {"psi": psi, "n_basis": n_basis, "lam": lam}
+        else:
+            extra = {}
         fit = fit_segment(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor, **extra
         )
+        if mechanism == "smooth":
+            n_smooth_fallback += int(not fit["representable"])
+            n_smooth_nonconv += int(not fit["smooth_converged"])
 
         ci = None
         if boot_spec is not None:
@@ -1079,7 +1254,7 @@ def _fit_loss(
         long_parts.append(
             _segment_long_df(fit, cohorts, groups, group_value, conf_level, ci=ci)
         )
-        if mechanism == "credible":
+        if mechanism in ("credible", "smooth"):
             cred_parts.append(
                 _segment_credibility_df(fit, cohorts, groups, group_value)
             )
@@ -1088,6 +1263,10 @@ def _fit_loss(
     credibility = pl.concat(cred_parts) if cred_parts else None
     if n_unfittable:
         reasons.append("projection_gap")
+    if n_smooth_fallback:
+        reasons.append("smooth_fallback_ed")          # boundary -> ED (Sec.4.2)
+    if n_smooth_nonconv:
+        reasons.append("smooth_not_converged")
     status = "degraded" if reasons else "valid"
 
     return LossFit(
@@ -1103,7 +1282,7 @@ def _fit_loss(
         output_type=triangle._output_type,
         status=status,
         status_reasons=reasons,
-        converged=True,
+        converged=n_smooth_nonconv == 0,    # smooth backfitting / IRLS may fail
         cell_counts={
             "observed": n_observed,
             "projected": n_projected,
