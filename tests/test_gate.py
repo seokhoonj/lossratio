@@ -6,11 +6,13 @@ bootstrap CI of the primary improvement plus the panel non-inferiority reads.
 """
 from __future__ import annotations
 
+import polars as pl
 import pytest
 
 import lossratio as lr
 from lossratio.gate import GateReport, gate
 from lossratio.link_ratio import LinkRatio
+from lossratio.naive_baseline import NaiveBaseline
 from lossratio.pooled_loss import PooledLoss
 
 
@@ -105,3 +107,98 @@ def test_validates_args(cmp_pooled_link):
                {"lane": "sideways"}, {"n_boot": 0}):
         with pytest.raises(ValueError):
             gate(cmp_pooled_link, **kw)
+
+
+# --- Convergence hygiene + matched-vs-own sensitivity (charter Sec.6.4) ------
+
+
+def _fresh_pooled_link(exp):
+    """A function-scoped PooledLoss-vs-LinkRatio comparison, safe to mutate."""
+    tri = lr.Triangle(exp, groups="coverage")
+    return lr.EstimatorComparison(
+        {"pooled": PooledLoss(), "link": LinkRatio()},
+        holdouts=(6, 12, 18),
+        target="loss",
+        baseline="pooled",
+    ).fit(tri)
+
+
+def test_sensitivity_field_present(cmp_pooled_link):
+    # Always reported, with the matched-vs-own structure; closed-form
+    # estimators converge so the convergence counters are zero.
+    g = gate(cmp_pooled_link)
+    assert g.n_nonconverged == 0
+    assert g.n_excluded == 0
+    assert g.excluded_frac == 0.0
+    assert g.fail_reasons == []
+    assert set(g.sensitivity) == {
+        "own_improvement", "own_improvement_ci", "own_superiority",
+        "matched_superiority", "split",
+    }
+    assert g.sensitivity["matched_superiority"] == g.superiority
+
+
+def test_convergence_hygiene_partial_excludes_and_counts(exp):
+    cmp = _fresh_pooled_link(exp)
+    # mark ONE challenger fold non-converged: its matched cells are dropped
+    # and counted, but the share is small so no convergence auto-FAIL.
+    h0 = sorted(cmp._fits["link"]._fits)[0]
+    cmp._fits["link"]._fits[h0]._refit.converged = False
+    g = gate(cmp, max_nonconverged_frac=1.0)
+    assert g.n_nonconverged == 1
+    assert g.n_excluded > 0
+    assert 0.0 < g.excluded_frac < 1.0
+    assert "convergence" not in g.fail_reasons
+    assert g.n_clusters > 0
+    # the no-filter gate sees more matched cells than the one-fold-dropped gate
+    full = gate(cmp_fresh := _fresh_pooled_link(exp))
+    assert g.n_clusters <= full.n_clusters
+
+
+def test_convergence_hygiene_autofail(exp):
+    cmp = _fresh_pooled_link(exp)
+    # every challenger fold non-converged -> all matched cells excluded.
+    for bt in cmp._fits["link"]._fits.values():
+        bt._refit.converged = False
+    g = gate(cmp)
+    assert g.verdict == "FAIL"
+    assert "convergence" in g.fail_reasons
+    assert g.n_nonconverged == len(cmp._fits["link"]._fits)
+    assert g.excluded_frac > g.max_nonconverged_frac
+
+
+def test_sensitivity_split_blocks_pass(exp):
+    # PooledLoss vs the naive baseline normally PASSes (own win survives). Make
+    # the baseline look near-perfect on its OWN population (matched cells left
+    # untouched) so the matched win does NOT reproduce there -> forced FAIL.
+    tri = lr.Triangle(exp, groups="coverage")
+    cmp = lr.EstimatorComparison(
+        {"naive": NaiveBaseline(), "pooled": PooledLoss()},
+        holdouts=(6, 12, 18),
+        target="ratio",
+        baseline="naive",
+    ).fit(tri)
+    base = gate(cmp, challenger="pooled")
+    assert base.verdict == "PASS"          # control: the unperturbed verdict
+    assert base.sensitivity["split"] is False
+
+    naive_rbt = cmp._fits["naive"]
+    df = naive_rbt._ae_err.with_columns(
+        # collapse the baseline's own error toward zero (expected -> actual)
+        (pl.col("expected") + 0.999 * (pl.col("actual") - pl.col("expected")))
+        .alias("expected")
+    ).with_columns(
+        (pl.col("actual") - pl.col("expected")).alias("aeg"),
+        pl.when(pl.col("expected") != 0)
+        .then(pl.col("actual") / pl.col("expected") - 1)
+        .otherwise(None)
+        .alias("ae_err"),
+    )
+    naive_rbt._ae_err = df
+
+    g = gate(cmp, challenger="pooled")
+    assert g.sensitivity["matched_superiority"] is True
+    assert g.sensitivity["own_superiority"] is False
+    assert g.sensitivity["split"] is True
+    assert g.verdict == "FAIL"
+    assert "sensitivity_split" in g.fail_reasons
