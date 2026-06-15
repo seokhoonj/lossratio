@@ -40,6 +40,10 @@ class LinkRatio(_EstimatorBase):
     regime
         Resolved cohort cut: ``None``, a ``date``, or a
         ``dict[segment -> date]``.
+    recent
+        Calendar-diagonal fit window: ``None`` (all data) or a positive integer
+        ``N`` -- only the most-recent ``N`` diagonals feed factor estimation;
+        the projection stays seeded from the full triangle.
     conf_level
         Two-sided confidence level for the analytical CI columns.
     """
@@ -51,6 +55,7 @@ class LinkRatio(_EstimatorBase):
             mechanism="link_ratio",
             sigma_method=self.sigma_method,
             regime=self.regime,
+            recent=self.recent,
             conf_level=self.conf_level,
             borrow=self.borrow,
         )

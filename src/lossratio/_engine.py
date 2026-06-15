@@ -48,11 +48,22 @@ def fitted_mean(*, g, exposure, duration) -> list:
     return [g[k] * p for p, k in zip(exposure, duration)]
 
 
-def link_ratios(*, response, cohort, duration) -> dict:
+def link_ratios(*, response, cohort, duration, include=None) -> dict:
     """Mack link ratio ``f_k = sum C_{i,k+1} / sum C_{i,k}`` over cohorts seen
     at both ``k`` and ``k+1``, on cumulative loss ``C``. Keyed by the lower
-    duration ``k`` (the link ``k -> k+1``)."""
+    duration ``k`` (the link ``k -> k+1``).
+
+    ``include`` is an optional parallel boolean sequence (one flag per input
+    cell): the cell ``(i, k)`` contributes to ``f_k`` (as the link's SOURCE)
+    only when its flag is truthy. The internal cumulation always uses every
+    cell -- the gate restricts which links FEED the factor estimate, not which
+    cells build ``C``. This is the recent-diagonal fit mask: unlike the
+    additive intensity (where masking is just dropping cells from the feed),
+    the link ratio cumulates internally and so must gate at the sum step.
+    ``None`` (default) is the no-gate path the micro-oracle freezes."""
     cell = {(i, k): y for y, i, k in zip(response, cohort, duration)}
+    keep = (None if include is None
+            else {(i, k) for inc, i, k in zip(include, cohort, duration) if inc})
     cohorts = sorted(set(cohort))
     durs = sorted(set(duration))
     cum: dict = {}
@@ -64,7 +75,9 @@ def link_ratios(*, response, cohort, duration) -> dict:
                 cum[(i, k)] = run
     f: dict = {}
     for k in durs:
-        both = [i for i in cohorts if (i, k) in cum and (i, k + 1) in cum]
+        both = [i for i in cohorts
+                if (i, k) in cum and (i, k + 1) in cum
+                and (keep is None or (i, k) in keep)]
         if not both:
             continue
         denom = sum(cum[(i, k)] for i in both)

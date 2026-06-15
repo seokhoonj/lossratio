@@ -93,9 +93,45 @@ def test_regime_cohort_cut(exp):
     assert df.height < _pl(PooledLoss().fit(tri)).height
 
 
-def test_recent_not_implemented(exp):
-    with pytest.raises(NotImplementedError):
-        PooledLoss(recent=6)
+def _assert_shared_parity(ref: pl.DataFrame, got: pl.DataFrame, keys: list[str]):
+    a = ref.sort(keys)
+    b = got.sort(keys)
+    assert a.height == b.height
+    for c in _SHARED:
+        x = a[c].to_numpy().astype(float)
+        y = b[c].to_numpy().astype(float)
+        if c.endswith("_se") or c.endswith("_cv"):
+            x = np.nan_to_num(x, nan=0.0)
+            y = np.nan_to_num(y, nan=0.0)
+        assert (np.isnan(x) == np.isnan(y)).all(), f"{c}: NaN pattern differs"
+        m = ~np.isnan(x)
+        assert np.array_equal(x[m], y[m]), f"{c}: values differ"
+
+
+@pytest.mark.parametrize("groups", ["coverage", ["coverage", "age_band", "channel"]])
+@pytest.mark.parametrize("recent", [6, 12])
+def test_recent_matches_exposure_driven(exp, groups, recent):
+    # recent is the data-intact diagonal fit-mask: factors from the recent-N
+    # wedge, projection seed from the full triangle -- must reproduce the old
+    # ExposureDriven(recent=N) bit-for-bit on the shared loss columns.
+    tri = lr.Triangle(exp, groups=groups)
+    ref = _pl(lr.ExposureDriven(recent=recent).fit(tri))
+    got = _pl(PooledLoss(recent=recent).fit(tri))
+    keys = (groups if isinstance(groups, list) else [groups]) + ["cohort", "duration"]
+    _assert_shared_parity(ref, got, keys)
+
+
+def test_recent_none_matches_no_arg(exp):
+    # recent=None is the no-filter path -- byte-identical to omitting it.
+    tri = lr.Triangle(exp, groups="coverage")
+    a = _pl(PooledLoss().fit(tri))
+    b = _pl(PooledLoss(recent=None).fit(tri))
+    _assert_shared_parity(a, b, ["coverage", "cohort", "duration"])
+
+
+def test_recent_validates(exp):
+    with pytest.raises(ValueError):
+        PooledLoss(recent=0)
 
 
 def test_summary_shape(exp):

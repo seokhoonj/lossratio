@@ -47,6 +47,7 @@ from ._mack import (
     _mack_step_ed,
     _fit_mack,
 )
+from ._recent import recent_link_mask, validate_recent
 from ._sigma import extrapolate_tail_sigma2
 from .model_frame import ModelFrame
 
@@ -60,9 +61,11 @@ if TYPE_CHECKING:
 class _EstimatorBase:
     """Fields shared by every loss-side estimator (charter Sec.3.1).
 
-    ``recent`` (calendar-diagonal window) is declared for surface parity but
-    not yet implemented on the redesigned path -- its semantics are settled in
-    the validation layer (charter Sec.7-4). ``regime`` is the cohort-axis cut.
+    ``recent`` (calendar-diagonal window) is the data-intact fit mask: only the
+    most-recent ``N`` calendar diagonals feed factor estimation (``g_k`` /
+    ``f_k``), while the point projection stays seeded from the full triangle
+    (charter Sec.7-4 -- the same diagonal mask, opposite polarity, as a
+    backtest holdout). ``regime`` is the cohort-axis cut.
     Subclasses overriding ``__post_init__`` should call ``super().__post_init__()``.
     """
 
@@ -73,11 +76,7 @@ class _EstimatorBase:
     conf_level: float = 0.95
 
     def __post_init__(self) -> None:
-        if self.recent is not None:
-            raise NotImplementedError(
-                "`recent` is not yet wired on the redesigned path; its "
-                "calendar-wedge semantics land in the validation layer."
-            )
+        validate_recent(self.recent)
         if self.borrow not in (False, "pooled"):
             raise ValueError(
                 f"borrow must be False or 'pooled', got {self.borrow!r}"
@@ -123,7 +122,9 @@ def _locf_forward(arr: np.ndarray) -> np.ndarray:
 
 
 def _segment_factor_links(
-    loss_obs: np.ndarray, premium_obs: np.ndarray
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    link_mask: np.ndarray | None = None,
 ) -> tuple[list[float], list[float], list[int]]:
     """Flatten the observed loss links into ``(response, exposure, duration)``
     arrays for :func:`_engine.saturated_intensity`.
@@ -135,6 +136,11 @@ def _segment_factor_links(
     exactly the cohort subset the ``_mack`` ED fit keys off. The engine sums
     these per ``duration`` key (the from-duration ``k``), so the returned
     intensity dict is keyed by from-duration.
+
+    ``link_mask`` (the recent-diagonal fit mask, shape
+    ``(n_cohorts, n_durations - 1)``) further restricts the feed to links
+    inside the wedge: since the intensity is additive, masking the engine
+    here is exactly dropping the masked-out cells from the feed.
     """
     n_cohorts, n_durations = loss_obs.shape
     resp: list[float] = []
@@ -144,6 +150,8 @@ def _segment_factor_links(
         ck = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         for i in np.flatnonzero(mask):
             resp.append(float(dl[i]))
             expo.append(float(ck[i]))
@@ -155,6 +163,8 @@ def _fit_segment_ed(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
+    *,
+    recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Saturated-mode ED fit for one segment's loss / premium matrices.
@@ -164,12 +174,20 @@ def _fit_segment_ed(
     the shared Mack dispersion kernel (``sigma2 = sum(dL - g P)^2 / P /
     (n-1)``, tail-extrapolated, ``Var(g) = sigma2 / sum P``); the premium
     projection is the kept chain ladder on cumulative premium.
+
+    ``recent`` (calendar-diagonal window) restricts factor estimation to the
+    most-recent ``N`` diagonals: the loss links feeding ``g_k`` / its
+    dispersion and the premium links feeding the inner chain ladder are both
+    masked, while the projection stays seeded from the full matrices.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+
     # 1. engine intensity g_k (keyed by from-duration 1..n_links)
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
+    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
     g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
 
@@ -180,6 +198,8 @@ def _fit_segment_ed(
         ck = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        if loss_mask is not None:
+            mask = mask & loss_mask[:, k]
         n_k = int(mask.sum())
         if n_k == 0:
             continue                                  # g_k already NaN here
@@ -193,7 +213,9 @@ def _fit_segment_ed(
     var_g_k = _mack_factor_var(sigma2_g_k, sum_premium_k)
 
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
-    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    premium_proj = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    ).loss_proj
 
     # 4. loss projection + Mack variance recursion (ED additive). With a
     # borrow donor, the tail beyond the segment's own g_k switches to the
@@ -287,6 +309,8 @@ def _fit_segment_cl(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
+    *,
+    recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Link-ratio (Mack chain ladder) fit for one segment.
@@ -298,15 +322,27 @@ def _fit_segment_cl(
     so ``ratio_proj`` and the premium columns stay populated, matching the
     PooledLoss schema. CL is own-loss-anchored -- it does not read premium for
     the loss projection.
+
+    ``recent`` (calendar-diagonal window) restricts factor estimation to the
+    most-recent ``N`` diagonals: the loss-link wedge gates ``f_k`` (via the
+    engine ``include`` flag, since the link ratio cumulates internally) and its
+    dispersion, and the premium chain ladder masks its own links; the
+    projection stays seeded from the full matrices.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+
     # 1. engine link ratio f_k (keyed by from-duration 1..n_links). The engine
-    # cumulates the incremental response, so pass per-cell increments.
+    # cumulates the incremental response, so pass per-cell increments; the
+    # recent wedge gates which source cells (i, k) feed the f_k sums via
+    # `include` (keyed on the link's source duration, like `loss_mask[:, k]`).
     resp: list[float] = []
     coh: list[int] = []
     dur: list[int] = []
+    include: list[bool] = []
     for i in range(n_cohorts):
         prev = 0.0
         for k in range(n_durations):
@@ -316,8 +352,14 @@ def _fit_segment_cl(
             resp.append(float(c - prev))
             coh.append(i)
             dur.append(k + 1)
+            # source of the outgoing link k -> k+1; last column has none.
+            include.append(True if loss_mask is None or k >= n_links
+                           else bool(loss_mask[i, k]))
             prev = c
-    f_map = _engine.link_ratios(response=resp, cohort=coh, duration=dur)
+    f_map = _engine.link_ratios(
+        response=resp, cohort=coh, duration=dur,
+        include=None if loss_mask is None else include,
+    )
     f_k = np.array([f_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
 
     # 2. dispersion sigma2_f_k + parameter-variance denominator (shared kernel)
@@ -327,6 +369,8 @@ def _fit_segment_cl(
         ck = loss_obs[:, k]
         ck1 = loss_obs[:, k + 1]
         mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
+        if loss_mask is not None:
+            mask = mask & loss_mask[:, k]
         n_k = int(mask.sum())
         if n_k == 0:
             continue                                  # f_k already NaN here
@@ -340,7 +384,9 @@ def _fit_segment_cl(
     var_f_k = _mack_factor_var(sigma2_f_k, sum_col_k)
 
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
-    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    premium_proj = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    ).loss_proj
 
     # 4. loss projection + Mack variance recursion (CL multiplicative). With a
     # borrow donor, the tail beyond the segment's own f_k switches to the
@@ -643,6 +689,7 @@ def _fit_loss(
     mechanism: str,
     sigma_method: str,
     regime: "Any" = None,
+    recent: int | None = None,
     conf_level: float = 0.95,
     borrow: "bool | str" = False,
 ) -> "LossFit":
@@ -653,8 +700,11 @@ def _fit_loss(
     ladder, link ratio ``f_k``). Both share this driver, the long-frame
     assembly, and the :class:`LossFit` schema. ``regime`` is a RESOLVED cohort
     cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
-    :class:`ModelFrame`; ``recent`` is deliberately absent (settled in the
-    validation layer, charter Sec.7-4).
+    :class:`ModelFrame`. ``recent`` (calendar-diagonal window) is the data-intact
+    fit mask -- only the most-recent ``N`` diagonals feed each segment's factor
+    estimation, the projection seed stays full (charter Sec.7-4). It applies to
+    each segment's OWN factors; a ``borrow`` donor stays full-history (the donor
+    exists precisely to lend the data-rich older shape).
 
     ``borrow`` (``False`` / ``"pooled"``) fills a segment's links beyond its
     own data with the level-invariant donor link ratio pooled over the full
@@ -717,7 +767,9 @@ def _fit_loss(
             premium_obs = _pad_cols(premium_obs, full_n_dur)
             donor = (d_f, d_sig, d_var)
 
-        fit = fit_segment(loss_obs, premium_obs, sigma_method, donor=donor)
+        fit = fit_segment(
+            loss_obs, premium_obs, sigma_method, recent=recent, donor=donor
+        )
 
         obs_mask = ~np.isnan(fit["loss_obs"])
         # projected = own projections only; borrowed is a disjoint category so
