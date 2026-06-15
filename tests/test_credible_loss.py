@@ -1,0 +1,133 @@
+"""CredibleLoss -- partial-pooling credibility estimator (charter Sec.4.3-4.4).
+
+Pooled intensity g_k + per-cohort credibility level u_i (Buhlmann-Straub
+conjugate), projecting u_i * g_k * P. Tests pin the exact ladder collapse to
+PooledLoss at psi=0, the per-cohort level scaling, point-only SE, and the
+config guards.
+"""
+from __future__ import annotations
+
+import polars as pl
+import pytest
+
+import lossratio as lr
+from lossratio.credible_loss import CredibleLoss
+from lossratio.pooled_loss import PooledLoss
+
+KEY = ["coverage", "cohort", "duration"]
+PROJ_COLS = ["loss_proj", "ratio_proj", "premium_proj"]
+
+
+@pytest.fixture(scope="module")
+def tri():
+    return lr.Triangle(lr.load_experience(), groups="coverage")
+
+
+def _pl(obj) -> pl.DataFrame:
+    return obj if isinstance(obj, pl.DataFrame) else pl.from_pandas(obj)
+
+
+def test_psi_zero_collapses_to_pooled(tri):
+    # psi = 0 -> no between-cohort variance -> u = 1 -> exactly PooledLoss
+    # (the ladder's automatic collapse). Byte-identical on every projection col.
+    pooled = PooledLoss().fit(tri).to_polars()
+    cred0 = CredibleLoss(psi=0).fit(tri).to_polars()
+    j = pooled.select(KEY + PROJ_COLS).join(
+        cred0.select(KEY + PROJ_COLS), on=KEY, suffix="_c0"
+    )
+    for c in PROJ_COLS:
+        diff = (j[c].fill_null(0.0) - j[f"{c}_c0"].fill_null(0.0)).abs().max()
+        assert diff == 0.0
+
+
+def test_psi_auto_is_credibility_active(tri):
+    # On the real book psi_hat > 0, so the credible projection departs from the
+    # pooled one.
+    pooled = PooledLoss().fit(tri).to_polars()
+    cred = CredibleLoss().fit(tri).to_polars()
+    j = pooled.select(KEY + ["loss_proj"]).join(
+        cred.select(KEY + ["loss_proj"]), on=KEY, suffix="_c"
+    )
+    assert (j["loss_proj"].fill_null(0.0) - j["loss_proj_c"].fill_null(0.0)).abs().max() > 0.0
+
+
+def test_credible_scales_pooled_increment_by_cohort_level(tri):
+    # The credible increment is u_i * g_k * P_k, the pooled increment is
+    # g_k * P_k (same g_k, same premium projection), so their ratio on the
+    # projected cells is the cohort level u_i -- CONSTANT within a cohort.
+    pooled = PooledLoss().fit(tri).to_polars()
+    cred = CredibleLoss().fit(tri).to_polars()
+    j = (
+        pooled.select(KEY + ["incr_loss_proj", "source"])
+        .join(cred.select(KEY + ["incr_loss_proj"]), on=KEY, suffix="_c")
+        .filter((pl.col("source") == "own") & (pl.col("incr_loss_proj").abs() > 1e-9))
+        .with_columns((pl.col("incr_loss_proj_c") / pl.col("incr_loss_proj")).alias("u"))
+    )
+    assert j.height > 0
+    spread = j.group_by(["coverage", "cohort"]).agg(
+        (pl.col("u").max() - pl.col("u").min()).alias("spread")
+    )
+    assert spread["spread"].max() == pytest.approx(0.0, abs=1e-9)   # u_i constant per cohort
+    assert (j["u"] - 1.0).abs().max() > 1e-6                        # and not all 1 (credibility active)
+
+
+def test_point_only_se_is_null(tri):
+    # The credibility level's estimation variance breaks the Mack analytical
+    # recursion, so v1 leaves SE / CI null (bootstrap comes later).
+    cred = _pl(CredibleLoss().fit(tri).df)
+    for c in ("loss_proc_se", "loss_param_se", "loss_total_se",
+              "loss_ci_lo", "loss_ci_hi"):
+        assert cred[c].is_null().all()
+
+
+def test_model_label(tri):
+    fit = CredibleLoss().fit(tri)
+    assert fit.model == "credible_loss"
+    assert fit.method == "credible"
+
+
+def test_rejects_unsupported_and_bad_psi():
+    with pytest.raises(NotImplementedError):
+        CredibleLoss(recent=6)
+    with pytest.raises(NotImplementedError):
+        CredibleLoss(borrow="pooled")
+    for bad in (-1.0, "nope"):
+        with pytest.raises(ValueError):
+            CredibleLoss(psi=bad)
+
+
+def _single_cohort_input() -> pl.DataFrame:
+    # one underwriting cohort observed over four months -> every from-duration
+    # has a single cell (df-deficient dispersion) and there is only one cohort:
+    # the charter Sec.4.4 degenerate cases that must collapse to pooled, not crash.
+    return pl.DataFrame({
+        "uy_m": ["2024-01-01"] * 4,
+        "cy_m": ["2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01"],
+        "incr_loss": [100.0, 80.0, 60.0, 40.0],
+        "incr_premium": [100.0, 100.0, 100.0, 100.0],
+    })
+
+
+def test_degenerate_single_cohort_collapses_to_pooled():
+    tri1 = lr.Triangle(_single_cohort_input())
+    cred = CredibleLoss().fit(tri1).to_polars()      # must not raise
+    pooled = PooledLoss().fit(tri1).to_polars()
+    key = ["cohort", "duration"]
+    j = pooled.select(key + ["loss_proj"]).join(
+        cred.select(key + ["loss_proj"]), on=key, suffix="_c"
+    )
+    diff = (j["loss_proj"].fill_null(0.0) - j["loss_proj_c"].fill_null(0.0)).abs().max()
+    assert diff == 0.0
+
+
+def test_gate_clears_naive_floor(tri):
+    # CredibleLoss must beat the non-negotiable naive carry-forward baseline.
+    from lossratio.gate import gate
+    from lossratio.naive_baseline import NaiveBaseline
+    cmp = lr.EstimatorComparison(
+        {"naive": NaiveBaseline(), "credible": CredibleLoss()},
+        holdouts=(6, 12, 18), target="ratio", baseline="naive",
+    ).fit(tri)
+    g = gate(cmp, challenger="credible", primary="abs_err")
+    assert g.verdict == "PASS"
+    assert g.improvement > 0.0

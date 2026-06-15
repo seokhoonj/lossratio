@@ -472,6 +472,149 @@ def _project_cl(
     return loss_proj, proc_se, param_se, total_se
 
 
+def _fit_segment_credible(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    *,
+    recent: int | None = None,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    psi: "float | str" = "auto",
+) -> dict[str, np.ndarray]:
+    """Credibility (partial-pooling) fit for one segment.
+
+    Pooled intensity ``g_k`` (the same closed-form saturated mode as
+    ``PooledLoss``) plus a per-cohort credibility LEVEL ``u_i`` -- the
+    dispersion-scaled Buhlmann-Straub conjugate (charter Sec.4.3-4.4) computed
+    by the oracle-verified engine primitives. The cohort's projected increment
+    is ``u_i * g_k * P_k`` (additive, premium-anchored): own loss-ratio level
+    shrunk toward the pooled level by its credibility.
+
+    ``psi`` is the between-cohort variance: ``"auto"`` estimates it by the
+    Buhlmann-Straub moment (``psi_hat = 0`` degenerates to ``u = 1`` = exact
+    ``PooledLoss`` -- the ladder's automatic collapse), or a fixed
+    non-negative float.
+
+    SE is left null in v1: the credibility level's estimation variance makes
+    the Mack analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
+    rides the ResidualBootstrap, wired in a later step). ``recent`` / ``donor``
+    (borrow) are not supported and rejected by the ``CredibleLoss`` config.
+    """
+    if recent is not None:
+        raise NotImplementedError("CredibleLoss does not support recent yet")
+    if donor is not None:
+        raise NotImplementedError("CredibleLoss does not support borrow yet")
+
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    # 1. pooled intensity g_k (keyed by from-duration 1..n_links)
+    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
+    g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+    g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
+
+    # 2. credibility level u_i (dispersion-scaled conjugate). The estimation
+    # "cells" are the observed loss increments: response = dLoss, the u=1 fitted
+    # mean m0 = g_k * P_from, keyed by (cohort, from-duration).
+    coh: list[int] = []
+    for k in range(n_links):
+        ck = premium_obs[:, k]
+        dl = loss_obs[:, k + 1] - loss_obs[:, k]
+        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        coh.extend(int(i) for i in np.flatnonzero(mask))
+    m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
+
+    u_vec = np.ones(n_cohorts, dtype=np.float64)
+    finite = [j for j, v in enumerate(m0) if np.isfinite(v)]
+    if finite:
+        resp_f = [resp[j] for j in finite]
+        m0_f = [m0[j] for j in finite]
+        coh_f = [coh[j] for j in finite]
+        dur_f = [dur[j] for j in finite]
+        phi = _engine.pearson_dispersion(
+            response=resp_f, fitted=m0_f, duration=dur_f, sigma_method=sigma_method
+        )
+        # Degenerate cases (charter Sec.4.4) collapse to pooled (u = 1) instead
+        # of crashing the conjugate: phi is None for a present duration when NO
+        # link is edf-rich enough to estimate dispersion (and locf has nothing
+        # to carry), and the Buhlmann-Straub psi moment is undefined (0/0) with
+        # a single cohort. Both leave u = 1 = exactly PooledLoss.
+        phi_ok = all(phi.get(d) is not None for d in set(dur_f))
+        n_coh = len(set(coh_f))
+        if phi_ok:
+            if psi == "auto":
+                psi_hat = (
+                    _engine.buhlmann_straub_psi(
+                        response=resp_f, fitted=m0_f, phi=phi,
+                        cohort=coh_f, duration=dur_f,
+                    )
+                    if n_coh >= 2
+                    else 0.0
+                )
+            else:
+                psi_hat = float(psi)
+            levels = _engine.conjugate_levels(
+                response=resp_f, fitted=m0_f, phi=phi, psi=psi_hat,
+                cohort=coh_f, duration=dur_f,
+            )
+            for i, u in levels.u.items():
+                u_vec[i] = max(u, 0.0)     # recovery-dominated floor (Sec.4.3)
+
+    # 3. premium chain ladder (kept Mack kernel) for the exposure projection
+    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+
+    # 4. credibility-scaled additive projection (SE null in v1)
+    loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+    nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
+
+    return {
+        "loss_obs": loss_obs,
+        "loss_proj": loss_proj,
+        "premium_obs": premium_obs,
+        "premium_proj": premium_proj,
+        "proc_se": nan_se,
+        "param_se": nan_se.copy(),
+        "total_se": nan_se.copy(),
+        "borrowed": np.zeros(loss_obs.shape, dtype=bool),
+        "g_k": g_k,
+    }
+
+
+def _project_credible(
+    loss_obs: np.ndarray,
+    premium_proj: np.ndarray,
+    g_k: np.ndarray,
+    u_vec: np.ndarray,
+) -> np.ndarray:
+    """Credibility-scaled additive cumulative-loss projection.
+
+    ``loss_{k+1}[i] = loss_k[i] + u_i * g_k * P_k[i]`` seeded from each cohort's
+    last observed cell -- the pure-ED recursion (``_project_ed``) with the
+    cohort's credibility level scaling its intensity. No variance recursion
+    (SE deferred to the bootstrap)."""
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    loss_proj = loss_obs.copy()
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
+
+    for k in range(n_links):
+        active = eligible & (last_obs <= k)
+        if not active.any():
+            continue
+        ck = loss_proj[:, k]
+        pk = premium_proj[:, k]
+        pos = active & ~np.isnan(pk) & (pk > 0)
+        if pos.any() and np.isfinite(g_k[k]):
+            loss_proj[pos, k + 1] = ck[pos] + u_vec[pos] * g_k[k] * pk[pos]
+    return loss_proj
+
+
 def _project_borrow(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
@@ -641,6 +784,7 @@ def _segment_long_df(
 _MECHANISMS = {
     "pooled": (_fit_segment_ed, "pooled", "pooled_loss"),
     "link_ratio": (_fit_segment_cl, "link_ratio", "link_ratio"),
+    "credible": (_fit_segment_credible, "credible", "credible_loss"),
 }
 
 
@@ -692,6 +836,7 @@ def _fit_loss(
     recent: int | None = None,
     conf_level: float = 0.95,
     borrow: "bool | str" = False,
+    psi: "float | str" = "auto",
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
@@ -767,8 +912,9 @@ def _fit_loss(
             premium_obs = _pad_cols(premium_obs, full_n_dur)
             donor = (d_f, d_sig, d_var)
 
+        extra = {"psi": psi} if mechanism == "credible" else {}
         fit = fit_segment(
-            loss_obs, premium_obs, sigma_method, recent=recent, donor=donor
+            loss_obs, premium_obs, sigma_method, recent=recent, donor=donor, **extra
         )
 
         obs_mask = ~np.isnan(fit["loss_obs"])
