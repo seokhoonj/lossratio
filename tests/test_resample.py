@@ -136,14 +136,55 @@ def test_pooled_none_preserves_analytical(tri):
 
 def test_pooled_bootstrap_tracks_analytical(tri):
     # for the pooled rung (where Mack is valid) the bootstrap SE should sit
-    # close to the analytical SE -- a calibration sanity check
+    # close to the analytical SE -- a calibration sanity check. Compared
+    # apples-to-apples: drift=False, since the analytical Mack SE has no
+    # calendar-drift term.
     a = PooledLoss().fit(tri).to_polars()
-    b = PooledLoss(uncertainty=ResidualBootstrap(n_replicates=300, seed=1)).fit(tri).to_polars()
+    b = PooledLoss(
+        uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)
+    ).fit(tri).to_polars()
     j = a.join(b, on=["coverage", "cohort", "duration"], suffix="_b").filter(
         pl.col("source") == "own"
     )
     ratio = (j["loss_total_se_b"] / j["loss_total_se"]).median()
     assert 0.7 < float(ratio) < 1.5
+
+
+# --- calendar drift band (Sec.5.3) -----------------------------------------
+
+
+def test_drift_widens_band_but_keeps_mean(tri):
+    on = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=200, seed=7, drift=True)
+    ).fit(tri).to_polars()
+    off = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=200, seed=7, drift=False)
+    ).fit(tri).to_polars()
+    j = on.join(off, on=["coverage", "cohort", "duration"], suffix="_off").filter(
+        pl.col("source") == "own"
+    )
+    # the mean path is unchanged -- drift lives in the band, not the projection
+    assert (j["loss_proj"] - j["loss_proj_off"]).abs().max() == 0.0
+    # in aggregate the band is wider with drift on
+    assert float((j["loss_total_se"] / j["loss_total_se_off"]).median()) > 1.0
+
+
+def test_drift_grows_with_calendar_horizon(tri):
+    # the drift term accumulates with calendar horizon: long durations (deep,
+    # far-future calendar) inflate more than short ones
+    on = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=200, seed=7, drift=True)
+    ).fit(tri).to_polars()
+    off = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=200, seed=7, drift=False)
+    ).fit(tri).to_polars()
+    j = on.join(off, on=["coverage", "cohort", "duration"], suffix="_off").filter(
+        pl.col("source") == "own"
+    ).with_columns(ratio=pl.col("loss_total_se") / pl.col("loss_total_se_off"))
+    by_dur = j.group_by("duration").agg(pl.col("ratio").median()).sort("duration")
+    early = float(by_dur.head(3)["ratio"].mean())
+    late = float(by_dur.tail(3)["ratio"].mean())
+    assert late > early + 0.5
 
 
 # --- scope guards ----------------------------------------------------------

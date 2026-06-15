@@ -78,6 +78,15 @@ class ResidualBootstrap:
         Predictive process-noise distribution on the projected increments:
         ``"gamma"`` (default, over-dispersed-Poisson sibling) or ``"none"``
         (parameter spread only -- a CI, not a predictive interval).
+    drift
+        Add the calendar RW-with-drift band term (charter Sec.5.3, default
+        ``True``). A random-walk-with-drift is fit to the calendar-diagonal
+        mean-residual series; its drift-parameter uncertainty ``SE(mu_hat)`` is
+        injected into the predictive draws, centred at zero so the mean path
+        stays cohort x duration while the band widens with calendar horizon.
+        Without it the bootstrap re-narrows to overconfidence at long horizons
+        (the published CBD quantum: half the long-horizon variance is
+        drift-parameter uncertainty).
     """
 
     n_replicates: int = 499
@@ -85,6 +94,7 @@ class ResidualBootstrap:
     min_pool: int = 5
     hat_adjust: bool = True
     process: str = "gamma"
+    drift: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.n_replicates, int) or isinstance(self.n_replicates, bool):
@@ -172,6 +182,34 @@ def _valid_cells(
     )
 
 
+def _calendar_drift_se(
+    resid: np.ndarray, ii: np.ndarray, kk: np.ndarray, res_ok: np.ndarray
+) -> float:
+    """SE of the RW-with-drift on the calendar-diagonal mean-residual series.
+
+    Each residual's increment arrives at calendar antidiagonal ``a = i + (k+1)``
+    (0-based). The per-diagonal mean Pearson residual ``d_a`` is the calendar
+    trend series; the drift is ``mu_hat = mean(diff(d))`` and its parameter SE
+    is ``sigma / sqrt(n - 1)`` (``sigma`` = sd of the first differences, ``n`` =
+    diagonals) -- the charter Sec.5.3 closed form. Returns ``0.0`` when there
+    are too few diagonals to estimate a drift (< 3)."""
+    ok = res_ok & np.isfinite(resid)
+    if not ok.any():
+        return 0.0
+    a = (ii + kk + 1)[ok]
+    r = resid[ok]
+    by: dict[int, list[float]] = {}
+    for t, v in zip(a.tolist(), r.tolist()):
+        by.setdefault(int(t), []).append(v)
+    diags = sorted(by)
+    if len(diags) < 3:
+        return 0.0
+    d = np.array([float(np.mean(by[t])) for t in diags], dtype=np.float64)
+    dd = np.diff(d)
+    sigma = float(np.std(dd, ddof=1))
+    return sigma / np.sqrt(dd.size)              # sigma / sqrt(n - 1)
+
+
 def bootstrap_segment(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -255,6 +293,15 @@ def bootstrap_segment(
         has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
     )
 
+    # calendar RW-with-drift band (Sec.5.3): SE of the drift on the
+    # calendar-diagonal mean-residual series, and the observed calendar
+    # frontier (last antidiagonal). A projected cell at antidiagonal `a` is
+    # `a - frontier` calendar steps into the future.
+    drift_se = _calendar_drift_se(resid, ii, kk, res_ok) if spec.drift else 0.0
+    oi, ok_ = np.where(obs_mask)
+    frontier = int((oi + ok_).max()) if oi.size else 0
+    rows = np.arange(n_cohorts)
+
     orig_incr = np.diff(loss_obs, axis=1)                 # (N, n_links)
     B = spec.n_replicates
     param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
@@ -292,6 +339,9 @@ def bootstrap_segment(
             continue
         pred_cum = loss_obs.copy()
         phi_b = _refit_phi(cum, premium_obs, g_b, u_b, sigma_method, credible, n_links)
+        # one drift draw per replicate (parameter uncertainty), centred at 0 so
+        # the mean path is unchanged and only the band widens with horizon
+        eps_b = rng.normal(0.0, drift_se) if drift_se > 0.0 else 0.0
         for k in range(n_links):
             active = has_obs & (last_obs <= k) & ~np.isnan(param_cum[:, k + 1]) \
                 & ~np.isnan(pred_cum[:, k])
@@ -299,6 +349,12 @@ def bootstrap_segment(
                 continue
             mean_inc = param_cum[:, k + 1] - param_cum[:, k]
             draw = _process_draw(mean_inc, phi_b[k], active, rng)
+            if eps_b != 0.0 and np.isfinite(phi_b[k]):
+                # accumulated calendar drift at this cell's antidiagonal,
+                # on the Pearson scale -> loss units via sqrt(phi * mean)
+                c = np.maximum((rows + (k + 1)) - frontier, 0)
+                shift = c * eps_b * np.sqrt(phi_b[k] * np.maximum(mean_inc, 0.0))
+                draw = draw + shift
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
@@ -359,10 +415,12 @@ def _summarize(
 ) -> dict[str, np.ndarray]:
     """Collapse the replicate cube into SE / CI matrices (projected cells only).
 
-    ``param_se`` = spread of the no-process projection (parameter uncertainty);
-    ``total_se`` = spread of the predictive draw; ``proc_se`` =
-    ``sqrt(total^2 - param^2)`` (law of total variance -- the process draw is
-    conditionally independent of the refit). The CI band is the empirical
+    ``param_se`` = spread of the no-process projection (refit parameter
+    uncertainty); ``total_se`` = spread of the predictive draw; ``proc_se`` =
+    ``sqrt(total^2 - param^2)`` (law of total variance -- everything in the
+    predictive draw beyond the refit spread, i.e. the process noise and, when
+    enabled, the calendar-drift band term, which both ride the predictive draw
+    not the parameter spread). The CI band is the empirical
     predictive quantile SHAPE re-centred on the headline point projection
     (bias-corrected: ``ci = point + (quantile - mean_pred)``) so the reported
     band brackets its own point estimate -- the resampling bias and the gamma
