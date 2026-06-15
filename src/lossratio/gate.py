@@ -101,11 +101,13 @@ class GateReport:
         matched win did not survive on the own population). Empty when the
         verdict is decided by the primary bootstrap alone.
     sensitivity
-        The matched-vs-own read of the primary metric:
-        ``own_improvement`` / ``own_improvement_ci`` (unpaired own-population
-        bootstrap), ``own_superiority``, ``matched_superiority``, and
-        ``split`` (``True`` when the matched superiority did not hold on the
-        own population).
+        The matched-vs-own read of the primary metric: ``own_improvement`` /
+        ``own_improvement_ci`` (the unpaired own-population bootstrap -- CI
+        reported, not gated), ``own_superiority`` (the own point improvement
+        meets ``practical_tol``), ``matched_superiority``, and ``split``
+        (``True`` when the matched win did not survive as an effect on the own
+        population). When both estimators reach the same cells the own point
+        equals the matched point, so no split is possible.
     n_nonconverged
         Number of ``(estimator, holdout)`` folds (over challenger + baseline)
         whose refit did not converge.
@@ -466,8 +468,15 @@ def gate(
             )
         own_point = float(own[0])
         own_lo, own_hi = ci(own)
-        own_superiority = (own_lo > 0.0) and (own_point >= practical_tol)
-        # Split = the matched win did not reproduce on the own population.
+        # POINT-based survival: the own comparison is UNPAIRED (challenger and
+        # baseline resampled independently), so its CI is far wider than the
+        # paired matched CI and gating on it would fire spuriously even when the
+        # two estimators reach the SAME cells -- there own_point == matched_point
+        # exactly, so the effect-size survival is the faithful check (the CI is
+        # reported for transparency, not gated). When reaches differ, own_point
+        # measures whether the win survives on the full own population.
+        own_superiority = own_point >= practical_tol
+        # Split = the matched win did not survive on the own population.
         sens_split = superiority and not own_superiority
 
     sensitivity = {
