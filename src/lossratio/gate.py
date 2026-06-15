@@ -59,7 +59,10 @@ class GateReport:
         ``"PASS"`` / ``"PASS_WITH_TRADEOFF"`` / ``"FAIL"``.
     no_winner
         ``True`` when the verdict is ``FAIL`` because the primary improvement
-        CI straddles 0 (the simpler rung is not beaten at all).
+        CI INCLUDES 0 -- the simpler rung is not distinguishably beaten. A CI
+        entirely below 0 (challenger decidedly worse) and a CI entirely above 0
+        but below ``practical_tol`` (a real-but-immaterial win) are also
+        ``FAIL`` but are NOT flagged ``no_winner``.
     challenger, baseline
         The estimator labels compared (challenger vs the simpler rung).
     primary
@@ -305,7 +308,12 @@ def gate(
     imp_point = float(imp[0])
     imp_lo, imp_hi = ci(imp)
     superiority = (imp_lo > 0.0) and (imp_point >= practical_tol)
-    no_winner = not (imp_lo > 0.0)          # CI straddles 0 -> baseline holds
+    # NO_WINNER (charter Sec.6.4): the improvement CI INCLUDES 0, so the
+    # baseline is not beaten. A CI entirely BELOW 0 is a decided baseline win
+    # (challenger worse), and a CI entirely ABOVE 0 but with the point below
+    # practical_tol is a real-but-immaterial win -- both are FAIL, but neither
+    # is a no-winner.
+    no_winner = (imp_lo <= 0.0) and (imp_hi >= 0.0)
 
     panel_reads: dict[str, dict[str, Any]] = {}
     degraded: list[str] = []
@@ -332,7 +340,7 @@ def gate(
 
     return GateReport(
         verdict=verdict,
-        no_winner=no_winner and not superiority,
+        no_winner=no_winner,
         challenger=challenger,
         baseline=baseline,
         primary=primary,
