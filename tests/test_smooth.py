@@ -136,6 +136,44 @@ def test_fixed_lambda_is_used(cells):
     assert sm.lam == 42.0
 
 
+def test_wide_range_shape_does_not_collapse():
+    # a wide intensity range (high early, low late -- like a real book) must not
+    # collapse to g_k = 1: the seed level has to live in beta (consistent with
+    # eta), else every line-search step drops it and the fit false-converges at
+    # beta = 0. Narrow-range synthetic data hides this; real data does not.
+    rng = np.random.default_rng(3)
+    true_g = {1: 0.85, 2: 0.40, 3: 0.22, 4: 0.13, 5: 0.08, 6: 0.05, 7: 0.03}
+    dur, y, P = [], [], []
+    for k in true_g:
+        for _ in range(8):
+            p = rng.uniform(5e5, 2e6)
+            dur.append(k); P.append(p)
+            y.append(true_g[k] * p * rng.uniform(0.85, 1.15))
+    sm = smooth_intensity(response=y, exposure=P, duration=dur)
+    sat = _engine.saturated_intensity(response=y, exposure=P, duration=dur)
+    assert sm.converged
+    # the smooth shape tracks the saturated level (not flat at 1.0)
+    rel = np.array([abs(sm.g[k] / sat[k] - 1.0) for k in sorted(sat)])
+    assert np.median(rel) < 0.10
+    assert sm.g[1] > 5 * sm.g[7]          # the wide range is preserved
+
+
+def test_grid_reaches_meaningful_smoothing():
+    # the data-scaled GCV grid must be able to smooth a noisy shape well below
+    # the saturated edf (not max out under-smoothed on large-premium data)
+    rng = np.random.default_rng(4)
+    base = {k: 0.30 * np.exp(-0.15 * k) for k in range(1, 21)}
+    dur, y, P = [], [], []
+    for k in base:
+        for _ in range(6):
+            p = rng.uniform(1e6, 3e6)
+            dur.append(k); P.append(p)
+            y.append(base[k] * p * rng.uniform(0.7, 1.3))
+    sm = smooth_intensity(response=y, exposure=P, duration=dur)
+    assert sm.converged
+    assert sm.edf < 0.6 * len(set(dur))   # genuinely regularised, not saturated
+
+
 def test_nonpositive_exposure_cells_are_dropped(cells):
     # cells with P <= 0 are filtered before the duration key set / basis sizing
     # / boundary gate are derived, so a duration present only in zero-exposure

@@ -129,11 +129,16 @@ def penalized_irls(
     the floor."""
     n = y.size
     p = B.shape[1]
-    beta = np.zeros(p, dtype=np.float64)
-    # seed eta from a crude pooled rate so the first mu is sensible
+    # seed beta at the crude pooled log-rate so the seed eta is CONSISTENT with
+    # beta: B @ (s0 * ones) = s0 (the basis is a partition of unity), so a
+    # line-search step toward the Newton point never silently drops the level.
+    # (Seeding s0 into eta but leaving beta = 0 was the bug: tiny steps lost s0,
+    # so every step looked worse than the seed -> false convergence at beta = 0
+    # for wide-range shapes.)
     tot_y, tot_e = float(y.sum()), float(np.exp(offset).sum())
     s0 = np.log(max(tot_y, 1e-6) / tot_e) if tot_e > 0 else 0.0
-    eta = np.clip(offset + s0, _ETA_FLOOR, _ETA_CEIL)
+    beta = np.full(p, s0, dtype=np.float64)
+    eta = np.clip(B @ beta + offset, _ETA_FLOOR, _ETA_CEIL)
 
     def _neg_obj(bx: np.ndarray, ex: np.ndarray) -> float:
         # negative penalized quasi-Poisson log-likelihood (charter Sec.4.5
@@ -265,11 +270,19 @@ def smooth_intensity(
         fit = penalized_irls(y, offset, B, penalty, float(lam))
         best_lam = float(lam)
     else:
+        # scale the grid to the data: the penalty lam*beta'P beta competes with
+        # B'WB (weights ~ mu ~ premium, so 1e5+), so a fixed grid would never
+        # bite on large-premium books. Reference scale = tr(B'WB)/tr(P) from an
+        # unpenalized fit makes lam dimensionless (light -> heavy smoothing).
+        f0 = penalized_irls(y, offset, B, penalty, 0.0)
+        BtWB = (B.T * f0.mu) @ B
+        tr_p = float(np.trace(penalty))
+        scale = (float(np.trace(BtWB)) / tr_p) if tr_p > 0 else 1.0
         grid = (lam_grid if lam_grid is not None
-                else np.geomspace(1e-4, 1e4, 13))
+                else scale * np.geomspace(1e-4, 1e4, 13))
         best_gcv = np.inf
-        fit = None
-        best_lam = float(grid[0])
+        fit = f0
+        best_lam = 0.0
         n = y.size
         for lg in grid:
             f = penalized_irls(y, offset, B, penalty, float(lg))
@@ -277,8 +290,6 @@ def smooth_intensity(
             gcv = np.inf if denom <= 0 else n * f.pearson / denom ** 2
             if gcv < best_gcv:
                 best_gcv, fit, best_lam = gcv, f, float(lg)
-        if fit is None:                          # all candidates ill-posed
-            fit = penalized_irls(y, offset, B, penalty, float(grid[-1]))
 
     # evaluate g_k = exp(s(k)) at each distinct duration (offset excluded)
     Bk, _ = bspline_design(np.array(durs, dtype=np.int64), nb, degree)
