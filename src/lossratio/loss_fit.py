@@ -663,6 +663,9 @@ def _project_credible(
     return loss_proj
 
 
+_BACKFIT_RELAX = 0.7        # damping for the smooth backfitting (anti-oscillation)
+
+
 def _fit_segment_smooth(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -673,7 +676,7 @@ def _fit_segment_smooth(
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
-    max_outer: int = 50,
+    max_outer: int = 100,
     tol: float = 1e-4,
 ) -> dict[str, np.ndarray]:
     """Smooth (GLMM) fit for one segment -- the top ladder rung.
@@ -773,14 +776,19 @@ def _fit_segment_smooth(
             lam_used, edf, inner_converged = sm.lam, sm.edf, sm.converged
             cur_lam = sm.lam                  # freeze the smoothness after pass 1
             # u-step: dispersion-scaled conjugate on the smooth fitted mean.
-            # g_k here was fit with the current u_vec; if the u-update is within
-            # tol the two stay mutually consistent, so break BEFORE re-syncing.
-            u_new, z_vec, psi_hat = _credible_levels(
+            # g_k here was fit with the current u_vec; the convergence test is on
+            # the UNDAMPED fixed-point residual so g_k stays consistent with the
+            # stored u at the break.
+            u_conj, z_vec, psi_hat = _credible_levels(
                 loss_obs, premium_obs, g_k, sigma_method, psi
             )
-            converged_step = float(np.max(np.abs(u_new - u_vec))) < tol
-            u_vec = u_new
-            if converged_step:
+            resid = float(np.max(np.abs(u_conj - u_vec)))
+            # damped update: the GCV/frozen-lambda s-step is not the exact
+            # h-likelihood shape ascent, so the raw alternation can OSCILLATE on
+            # some books; relaxation gives the same fixed point on a monotone
+            # path (oscillation -> convergence) without changing the solution.
+            u_vec = u_vec + _BACKFIT_RELAX * (u_conj - u_vec)
+            if resid < tol:
                 backfit_converged = True
                 break
         else:
@@ -796,6 +804,11 @@ def _fit_segment_smooth(
                 if sm.representable:
                     g_k = gk_final
                     lam_used, edf, inner_converged = sm.lam, sm.edf, sm.converged
+                    # resync the credibility diagnostics to the final g_k (the
+                    # u level stays the backfitting's final; only z / psi follow)
+                    _, z_vec, psi_hat = _credible_levels(
+                        loss_obs, premium_obs, g_k, sigma_method, psi
+                    )
             backfit_converged = False
 
     smooth_converged = inner_converged and backfit_converged
