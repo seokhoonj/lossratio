@@ -92,9 +92,41 @@ def test_config_guards(tri):
         SmoothLoss(recent=12).fit(tri)
     with pytest.raises(NotImplementedError):
         SmoothLoss(borrow="pooled").fit(tri)
+
+
+def test_point_only_when_no_uncertainty(tri):
+    # default (no uncertainty) stays point-only -- SE / CI null
+    d = SmoothLoss().fit(tri).to_polars()
+    assert d["loss_total_se"].is_null().all()
+
+
+def test_bootstrap_populates_se_ci_and_coverage(tri):
     from lossratio._resample import ResidualBootstrap
-    with pytest.raises(NotImplementedError):
-        SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=10))
+    from lossratio.backtest import Backtest
+    from lossratio.metric_panel import metric_panel
+    est = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=15, seed=7))
+    d = est.fit(tri).to_polars()
+    proj = d.filter(pl.col("source") == "own")
+    assert proj["loss_total_se"].is_not_null().all()
+    assert (proj["loss_total_se"] > 0).all()
+    assert (proj["loss_proc_se"] <= proj["loss_total_se"] + 1e-9).all()
+    assert (proj["loss_ci_lo"] <= proj["loss_proj"] + 1e-9).all()
+    assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-9).all()
+    assert proj["ratio_se"].is_not_null().all()
+    # coverage lane flows through a backtest
+    ae = _pl(Backtest(estimator=est, holdout=6, target="loss").fit(tri).ae_err)
+    assert "expected_se" in ae.columns
+    panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.95,)))
+    cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))
+    cov = cum["coverage_95"].drop_nulls()
+    assert cov.len() > 0 and ((cov >= 0) & (cov <= 1)).all()
+
+
+def test_bootstrap_reproducible(tri):
+    from lossratio._resample import ResidualBootstrap
+    a = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=12, seed=4)).fit(tri).to_polars()
+    b = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=12, seed=4)).fit(tri).to_polars()
+    assert (a["loss_total_se"].fill_null(-1) - b["loss_total_se"].fill_null(-1)).abs().max() == 0.0
 
 
 @pytest.mark.parametrize("kwargs", [

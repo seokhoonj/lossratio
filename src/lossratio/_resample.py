@@ -9,11 +9,13 @@ cannot carry shows up in the spread. That is the charter's headline correction
 to the 86%-overconfident analytical band (Sec.5.2 item 1: "u fixed + residuals
 only" reintroduces the overconfidence; the selection stays inside the loop).
 
-Scope (v1): the additive intensity mechanisms ``"pooled"`` and ``"credible"``.
-``CredibleLoss`` is the point of the exercise -- it has no analytical SE at
-all (the credibility level's estimation variance breaks the Mack recursion),
-so the bootstrap is its only interval. ``"link_ratio"`` keeps its analytical
-Mack SE and is rejected here.
+Scope: the additive intensity mechanisms ``"pooled"``, ``"credible"``, and
+``"smooth"``. ``CredibleLoss`` / ``SmoothLoss`` have no analytical SE at all
+(the credibility level -- and, for smooth, the shape selection -- estimation
+variance breaks the Mack recursion), so the bootstrap is their only interval;
+for ``"smooth"`` each replicate re-runs the whole backfitting (shape + lambda),
+which is materially heavier. ``"link_ratio"`` keeps its analytical Mack SE and
+is rejected here.
 
 Algorithm (per segment, England-Verrall residual bootstrap adapted to the
 premium-anchored intensity model):
@@ -48,7 +50,12 @@ import numpy as np
 
 from . import _engine
 from ._mack import _fit_mack
-from .loss_fit import _credible_levels, _project_credible, _segment_factor_links
+from .loss_fit import (
+    _credible_levels,
+    _project_credible,
+    _segment_factor_links,
+    _smooth_backfit,
+)
 
 
 @dataclass(kw_only=True)
@@ -131,19 +138,28 @@ def _estimate(
     premium_obs: np.ndarray,
     sigma_method: str,
     psi: "float | str",
-    credible: bool,
+    mechanism: str,
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Refit the intensity pipeline on one (pseudo)triangle: ``(g_k, u_vec)``.
 
-    The full pipeline the charter requires re-estimated per replicate -- pooled
-    intensity ``g_k`` always, plus the credibility level ``u_i`` (which itself
-    re-runs ``phi`` / ``psi``) when ``credible``. Pooled keeps ``u = 1``.
+    The full pipeline the charter requires re-estimated per replicate. ``pooled``
+    -- saturated ``g_k``, ``u = 1``. ``credible`` -- saturated ``g_k`` + the
+    credibility level (which itself re-runs ``phi`` / ``psi``). ``smooth`` -- the
+    full smooth backfitting (shape ``s(k)`` + ``lambda`` selection + level), so
+    the lambda / shape selection rides inside the bootstrap loop (Sec.5.2).
     """
+    if mechanism == "smooth":
+        bf = _smooth_backfit(
+            loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+        )
+        return bf["g_k"], bf["u"]
     n_links = loss_obs.shape[1] - 1
     resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
     g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
-    if credible:
+    if mechanism == "credible":
         u_vec = _credible_levels(loss_obs, premium_obs, g_k, sigma_method, psi)[0]
     else:
         u_vec = np.ones(loss_obs.shape[0], dtype=np.float64)
@@ -220,13 +236,16 @@ def bootstrap_segment(
     spec: ResidualBootstrap,
     conf_level: float,
     rng: np.random.Generator,
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
 ) -> dict[str, np.ndarray]:
     """Residual-bootstrap SE / CI matrices for one segment.
 
     Returns ``proc_se`` / ``param_se`` / ``total_se`` / ``ci_lo`` / ``ci_hi``
     (each ``(n_cohorts, n_durations)``), reported on projected cells only
     (observed cells -> NaN, matching the analytical convention). A cell with
-    fewer than two finite replicates stays NaN.
+    fewer than two finite replicates stays NaN. ``n_basis`` / ``lam`` are the
+    smooth-shape controls (used only for ``mechanism="smooth"``).
     """
     credible = mechanism == "credible"
     n_cohorts, n_durations = loss_obs.shape
@@ -237,7 +256,9 @@ def bootstrap_segment(
 
     # --- point quantities: fitted mean, dispersion, standardized residuals ---
     ii, kk, y, p = _valid_cells(loss_obs, premium_obs)
-    g_k, u_vec = _estimate(loss_obs, premium_obs, sigma_method, psi, credible)
+    g_k, u_vec = _estimate(
+        loss_obs, premium_obs, sigma_method, psi, mechanism, n_basis, lam
+    )
     point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
     dur1 = (kk + 1).tolist()                              # 1-based from-duration
@@ -328,7 +349,9 @@ def bootstrap_segment(
             inc = np.where(np.isnan(dY[:, k]), orig_incr[:, k], dY[:, k])
             cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
         # 4. refit the full pipeline on the pseudo triangle
-        g_b, u_b = _estimate(cum, premium_obs, sigma_method, psi, credible)
+        g_b, u_b = _estimate(
+            cum, premium_obs, sigma_method, psi, mechanism, n_basis, lam
+        )
         # 5. project from the REAL observed seed (existing-cohort, u_hat-cond.)
         param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
         param_draws[b] = param_cum

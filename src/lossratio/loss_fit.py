@@ -666,46 +666,33 @@ def _project_credible(
 _BACKFIT_RELAX = 0.7        # damping for the smooth backfitting (anti-oscillation)
 
 
-def _fit_segment_smooth(
+def _smooth_backfit(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
     *,
-    recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
     max_outer: int = 100,
     tol: float = 1e-4,
-) -> dict[str, np.ndarray]:
-    """Smooth (GLMM) fit for one segment -- the top ladder rung.
+) -> dict:
+    """Smooth shape + credibility backfitting (charter Sec.4.5) for one segment.
 
-    The credible rung with the saturated per-duration ``g_k`` replaced by the
-    smooth shape ``g_k = exp(s(k))`` (:func:`lossratio._smooth.smooth_intensity`).
-    The shape and the per-cohort credibility level are fit by the charter
-    Sec.4.5 block coordinate ascent (backfitting): the s-step refits the smooth
-    shape on the ``u``-adjusted exposure (``u_i * P``, so the late-duration
-    cells -- seen only by old cohorts whose ``E[u] != 1`` -- stop biasing the
-    shape), the u-step is the same dispersion-scaled conjugate the credible rung
-    uses. The two alternate to convergence in ``max |du|`` (Sec.4.5: 2-5 passes
-    typical). ``psi = 0`` keeps ``u = 1``, so it collapses to a single smooth
-    pass (no contamination to remove).
+    The single source of truth for the smooth fit: the point fit
+    (:func:`_fit_segment_smooth`) and every ResidualBootstrap replicate
+    (:mod:`lossratio._resample`) call this, so the bootstrap re-runs the full
+    smooth pipeline (s-spline + lambda selection + conjugate level) per replicate
+    (charter Sec.5.2). The s-step refits the smooth shape on the ``u``-adjusted
+    exposure (``u_i * P``, decontaminating the late-duration wedge), the u-step
+    is the dispersion-scaled conjugate; the two alternate (damped) to
+    convergence in ``max |du|``. ``psi = 0`` keeps ``u = 1`` (a single smooth
+    pass). Non-representable (Sec.4.2): a segment whose pooled total is ``<= 0``
+    falls back to the saturated ``g_k`` (ED) and is flagged.
 
-    Non-representable (Sec.4.2): a segment whose pooled total is ``<= 0`` cannot
-    be log-link fit, so it falls back to the saturated ``g_k`` (ED) and is
-    flagged. ``recent`` / ``donor`` (borrow) are not supported.
-
-    Point-only in v1 (SE / CI null): the smooth shape + credibility estimation
-    variance breaks the Mack recursion; interval coverage rides a later smooth
-    ResidualBootstrap. SE is left null, like the credible rung before its
-    bootstrap.
+    Returns ``g_k`` / ``u`` / ``Z`` / ``psi`` / ``lam`` / ``edf`` /
+    ``representable`` / ``converged``.
     """
-    if recent is not None:
-        raise NotImplementedError("SmoothLoss does not support recent yet")
-    if donor is not None:
-        raise NotImplementedError("SmoothLoss does not support borrow yet")
-
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
@@ -812,6 +799,43 @@ def _fit_segment_smooth(
             backfit_converged = False
 
     smooth_converged = inner_converged and backfit_converged
+    return {
+        "g_k": g_k, "u": u_vec, "Z": z_vec, "psi": psi_hat,
+        "lam": lam_used, "edf": edf,
+        "representable": representable, "converged": smooth_converged,
+    }
+
+
+def _fit_segment_smooth(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    *,
+    recent: int | None = None,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    psi: "float | str" = "auto",
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
+) -> dict[str, np.ndarray]:
+    """Smooth (GLMM) fit for one segment -- the top ladder rung.
+
+    The credible rung with the saturated per-duration ``g_k`` replaced by the
+    smooth shape ``g_k = exp(s(k))``, fit by the backfitting core
+    :func:`_smooth_backfit` (the shared source of truth with the bootstrap).
+    The projection is the credibility-scaled additive recursion. SE / CI are
+    null unless a ResidualBootstrap is attached (the smooth shape + credibility
+    estimation variance breaks the Mack analytical recursion). ``recent`` /
+    ``donor`` (borrow) are not supported.
+    """
+    if recent is not None:
+        raise NotImplementedError("SmoothLoss does not support recent yet")
+    if donor is not None:
+        raise NotImplementedError("SmoothLoss does not support borrow yet")
+
+    bf = _smooth_backfit(
+        loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+    )
+    g_k, u_vec = bf["g_k"], bf["u"]
     premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
     loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
@@ -827,12 +851,12 @@ def _fit_segment_smooth(
         "borrowed": np.zeros(loss_obs.shape, dtype=bool),
         "g_k": g_k,
         "u": u_vec,
-        "Z": z_vec,
-        "psi": psi_hat,
-        "lam": lam_used,
-        "edf": edf,
-        "representable": representable,
-        "smooth_converged": smooth_converged,
+        "Z": bf["Z"],
+        "psi": bf["psi"],
+        "lam": bf["lam"],
+        "edf": bf["edf"],
+        "representable": bf["representable"],
+        "smooth_converged": bf["converged"],
     }
 
 
@@ -1138,13 +1162,12 @@ def _fit_loss(
     boot_spec = None
     seg_seeds: dict[Any, np.random.SeedSequence] = {}
     if uncertainty is not None:
-        if mechanism not in ("pooled", "credible"):
+        if mechanism not in ("pooled", "credible", "smooth"):
             raise NotImplementedError(
                 f"ResidualBootstrap is only wired for the intensity mechanisms "
-                f"('pooled', 'credible'); {model!r} keeps its analytical SE."
+                f"('pooled', 'credible', 'smooth'); {model!r} keeps its "
+                f"analytical SE."
             )
-        # note: 'smooth' bootstrap (refit s + lambda per replicate) is a later
-        # step; SmoothLoss is point-only in v1 (rejected at config time).
         if borrow:
             raise NotImplementedError(
                 "ResidualBootstrap with borrow= is not supported yet (the "
@@ -1235,6 +1258,7 @@ def _fit_loss(
                 mechanism=mechanism, sigma_method=sigma_method, psi=psi,
                 spec=boot_spec, conf_level=conf_level,
                 rng=np.random.default_rng(seg_seeds[sid]),
+                n_basis=n_basis, lam=lam,
             )
             # replace the analytical / null SE with the bootstrap spread and
             # carry the empirical quantile band (Sec.5.2 -- predictive interval)

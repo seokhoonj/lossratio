@@ -15,9 +15,12 @@ Exact ladder relation: with ``psi = 0`` the credibility level is ``u = 1``, so
 shape with no penalty would in turn reduce the smooth shape to the saturated
 ``g_k`` -- the chain back to the golden anchor.
 
-v1 is point-only: the smooth-shape + credibility estimation variance breaks the
-Mack recursion, so SE / CI are null (a smooth ResidualBootstrap is a later
-step). ``recent``, ``borrow``, and ``uncertainty`` are rejected at config time.
+The smooth-shape + credibility estimation variance breaks the Mack analytical
+recursion, so SE / CI are null UNLESS a :class:`~lossratio._resample.ResidualBootstrap`
+is attached -- the bootstrap re-runs the whole smooth pipeline (shape +
+``lambda`` selection + level) per replicate, so the interval and the coverage
+lane are available for ``SmoothLoss`` like the credible rung. ``recent`` and
+``borrow`` are not supported.
 """
 
 from __future__ import annotations
@@ -52,7 +55,15 @@ class SmoothLoss(_EstimatorBase):
     regime
         Resolved cohort cut: ``None``, a ``date``, or a ``dict[segment -> date]``.
     conf_level
-        Two-sided confidence level (unused in v1 -- SE / CI are null).
+        Two-sided confidence level for the bootstrap band (used when an
+        ``uncertainty=ResidualBootstrap(...)`` is attached; SE / CI are null
+        otherwise).
+    uncertainty
+        ``None`` (point-only) or a :class:`~lossratio._resample.ResidualBootstrap`
+        -- a full smooth-pipeline refit per replicate. Each replicate re-runs the
+        shape + ``lambda`` selection + backfitting, so the selection uncertainty
+        is captured (charter Sec.5.2). NOTE: this is materially heavier than the
+        pooled / credible bootstrap (a backfitting per replicate).
     """
 
     psi: "float | str" = "auto"
@@ -83,11 +94,6 @@ class SmoothLoss(_EstimatorBase):
             raise NotImplementedError("SmoothLoss does not support recent yet")
         if self.borrow is not False:
             raise NotImplementedError("SmoothLoss does not support borrow yet")
-        if self.uncertainty is not None:
-            raise NotImplementedError(
-                "SmoothLoss is point-only in v1 (a smooth ResidualBootstrap is "
-                "a later step); leave uncertainty=None."
-            )
 
     def fit(self, triangle: "Triangle") -> LossFit:
         """Fit the smooth (GLMM) loss projection on a :class:`Triangle`."""
@@ -102,5 +108,5 @@ class SmoothLoss(_EstimatorBase):
             psi=self.psi,
             n_basis=self.n_basis,
             lam=self.lam,
-            uncertainty=None,
+            uncertainty=self.uncertainty,
         )
