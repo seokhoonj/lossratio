@@ -86,9 +86,10 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
 
     # --- backtest ---
     bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
-    # `anchor_value` is a later additive column (anchored metric lane); drop it
-    # so this oracle keeps pinning the original numeric surface unchanged.
-    out["bt_ae_err"] = _frame(bt.ae_err).drop("anchor_value")
+    # `anchor_value` / `expected_se` are later additive columns (anchored +
+    # coverage metric lanes); drop them so this oracle keeps pinning the
+    # original numeric surface unchanged.
+    out["bt_ae_err"] = _frame(bt.ae_err).drop("anchor_value", "expected_se")
     out["bt_col_summary"] = bt.col_summary
     out["bt_diag_summary"] = bt.diag_summary
 
@@ -149,7 +150,7 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["mc_loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=mc_reg_bb).fit(mc))
 
     mc_bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(mc)
-    out["mc_bt_ae_err"] = _frame(mc_bt.ae_err).drop("anchor_value")
+    out["mc_bt_ae_err"] = _frame(mc_bt.ae_err).drop("anchor_value", "expected_se")
     out["mc_bt_col_summary"] = mc_bt.col_summary
     out["mc_bt_diag_summary"] = mc_bt.diag_summary
 

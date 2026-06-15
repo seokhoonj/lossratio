@@ -33,6 +33,7 @@ def test_panel_structure(single_ae):
     assert panel.columns == [
         "coverage", "population", "lane",
         "n", "bias", "bias_wt", "mae", "rmse", "deviance",
+        "coverage_80", "coverage_95",
     ]
     # cumulative + incremental + anchored lanes (the backtest emitted
     # anchor_value), full population only (no terminal arg)
@@ -40,6 +41,85 @@ def test_panel_structure(single_ae):
     assert set(panel["population"].unique()) == {"all"}
     # one row per (coverage, lane)
     assert panel.height == single_ae["coverage"].n_unique() * 3
+
+
+def test_coverage_lane_cum_only(single_ae):
+    # coverage is a cumulative-projection property: real on the cum lane (in
+    # [0, 1]), null on the incremental and anchored lanes.
+    assert "expected_se" in single_ae.columns
+    panel = _pl(metric_panel(single_ae, groups="coverage"))
+    cum = panel.filter(pl.col("lane") == "cum")
+    for col in ("coverage_80", "coverage_95"):
+        assert cum[col].is_not_null().all()
+        assert ((cum[col] >= 0.0) & (cum[col] <= 1.0)).all()
+    assert panel.filter(pl.col("lane") == "incr")["coverage_95"].is_null().all()
+    assert panel.filter(pl.col("lane") == "anchored")["coverage_95"].is_null().all()
+    # nominal 95 band covers at least as often as the 80 band
+    assert (cum["coverage_95"] >= cum["coverage_80"]).all()
+
+
+def test_coverage_matches_manual(single_ae):
+    from statistics import NormalDist
+    z = NormalDist().inv_cdf(0.975)                       # 95% two-sided
+    panel = _pl(metric_panel(single_ae, groups="coverage"))
+    cov = single_ae["coverage"][0]
+    # coverage's valid set is the usable-SE cells, NOT gated by ae_err being
+    # defined (a cell with expected==0 still has a measurable interval).
+    valid = single_ae.filter(
+        (pl.col("coverage") == cov)
+        & pl.col("expected_se").is_finite()
+        & (pl.col("expected_se") > 0)
+    )
+    inside = valid.filter(
+        (pl.col("actual") - pl.col("expected")).abs()
+        <= z * pl.col("expected_se")
+    )
+    manual = inside.height / valid.height
+    got = panel.filter(
+        (pl.col("coverage") == cov)
+        & (pl.col("lane") == "cum")
+        & (pl.col("population") == "all")
+    )["coverage_95"][0]
+    assert got == pytest.approx(manual)
+
+
+def test_coverage_counts_zero_expected_cell():
+    # A cell with expected==0 has no defined ae_err (dropped from the
+    # relative-error metrics) but a perfectly measurable interval -- coverage
+    # must still count it (the valid set is SE-valid, not ae_err-gated).
+    df = pl.DataFrame({
+        "cohort": [1, 1],
+        "duration": [1, 2],
+        "actual": [100.0, 22.0],
+        "expected": [0.0, 20.0],            # cell 1: ae_err undefined
+        "aeg": [100.0, 2.0],
+        "ae_err": [None, 0.1],
+        "expected_se": [1.0, 5.0],          # cell 1 far outside; cell 2 inside
+    })
+    panel = _pl(metric_panel(df))
+    cum = panel.filter(pl.col("lane") == "cum")
+    assert cum["n"][0] == 1                  # relative metrics: only the defined cell
+    assert cum["coverage_95"][0] == pytest.approx(0.5)   # coverage: both SE-valid cells
+
+
+def test_coverage_levels_param(single_ae):
+    panel = _pl(metric_panel(single_ae, groups="coverage", coverage_levels=(0.5, 0.9)))
+    assert "coverage_50" in panel.columns and "coverage_90" in panel.columns
+    assert "coverage_95" not in panel.columns
+    for bad in ((0.0,), (1.0,), (1.5,), (True,)):
+        with pytest.raises(ValueError):
+            metric_panel(single_ae, groups="coverage", coverage_levels=bad)
+
+
+def test_coverage_absent_without_se():
+    # No expected_se -> no coverage columns (point-only honesty).
+    df = pl.DataFrame({
+        "cohort": [1, 1], "duration": [1, 2],
+        "actual": [10.0, 22.0], "expected": [10.0, 20.0],
+        "aeg": [0.0, 2.0], "ae_err": [0.0, 0.1],
+    })
+    panel = _pl(metric_panel(df))
+    assert not [c for c in panel.columns if c.startswith("coverage_")]
 
 
 def test_anchored_lane_rebases_against_origin(single_ae):

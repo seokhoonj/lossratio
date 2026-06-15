@@ -179,6 +179,24 @@ def _resolve_incr_expected_column(
     return col if col in fit_df_columns else None
 
 
+def _resolve_se_column(target: str, fit_df_columns: list[str]) -> str | None:
+    """Map ``target`` to the refit's projection standard-error column.
+
+    The loss / premium projections carry ``{role}_total_se`` (process +
+    parameter); the ratio composition carries ``ratio_se``. Returns ``None``
+    when the refit emitted no SE for the target -- a point-only fit (charter
+    Sec.5.1: no uncertainty columns), which leaves the coverage lane absent
+    rather than fabricated.
+    """
+    direct = {
+        "ratio":   "ratio_se",
+        "loss":    "loss_total_se",
+        "premium": "premium_total_se",
+    }
+    col = direct[target]
+    return col if col in fit_df_columns else None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -331,6 +349,7 @@ class BacktestFit:
         refit_df = refit.to_polars()
         exp_col = _resolve_expected_column(bt.target, refit_df.columns)
         incr_exp_col = _resolve_incr_expected_column(bt.target, refit_df.columns)
+        se_col = _resolve_se_column(bt.target, refit_df.columns)
         self.target = bt.target
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
@@ -351,13 +370,19 @@ class BacktestFit:
             renames[incr_actual_col] = "incr_actual"
         held_out = held_out.rename(renames)
 
-        # Pull cumulative + (optional) incremental projection columns.
+        # Pull cumulative + (optional) incremental projection columns, plus the
+        # projection SE (when the refit carried uncertainty) for the coverage
+        # lane.
         sel_exp = keys + [exp_col]
         if incr_exp_col is not None:
             sel_exp.append(incr_exp_col)
+        if se_col is not None:
+            sel_exp.append(se_col)
         refit_exp = refit_df.select(sel_exp).rename({exp_col: "expected"})
         if incr_exp_col is not None:
             refit_exp = refit_exp.rename({incr_exp_col: "incr_expected"})
+        if se_col is not None:
+            refit_exp = refit_exp.rename({se_col: "expected_se"})
 
         # Drop unreachable cells: cohorts whose observations are wholly
         # within the held-out diagonals have no anchor for projection,
@@ -422,6 +447,8 @@ class BacktestFit:
             col_order += [
                 "incr_actual", "incr_expected", "incr_aeg", "incr_ae_err",
             ]
+        if se_col is not None:
+            col_order.append("expected_se")
         col_order += ["anchor_value", "cal_idx"]
         ae_err = ae_err.select(col_order)
         self._ae_err = ae_err.sort(keys + ["cal_idx"])

@@ -79,7 +79,7 @@ def test_backtest_ae_err_columns():
     )
     assert set(bt.ae_err.columns) >= {
         "cohort", "duration", "cal_idx", "actual", "expected", "ae_err",
-        "anchor_value",
+        "anchor_value", "expected_se",
     }
 
 
