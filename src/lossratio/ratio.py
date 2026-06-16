@@ -132,15 +132,29 @@ class Ratio:
                 + ratio_proj**2 * seP**2
                 - 2.0 * self.rho * ratio_proj * seL * seP
             )
-            ratio_se = pl.max_horizontal(radicand, pl.lit(0.0)).sqrt() / safe_pp.abs()
+            # clamp a negative radicand to 0 while PRESERVING null: a missing
+            # loss/premium SE (e.g. on an observed cell) must yield a null
+            # ratio_se, matching the "fixed" path -- pl.max_horizontal would
+            # swallow the null into 0 (a spurious zero-width band).
+            clamped = pl.when(radicand < 0.0).then(pl.lit(0.0)).otherwise(radicand)
+            ratio_se = clamped.sqrt() / safe_pp.abs()
 
         composed = joined.with_columns(
             ratio_proj.alias("ratio_proj"),
         ).with_columns(
             ratio_se.alias("ratio_se"),
         ).with_columns(
-            ratio_ci_lo=pl.max_horizontal(
-                pl.col("ratio_proj") - z * pl.col("ratio_se"), pl.lit(0.0)
+            # floor the lower bound at 0 (a loss ratio is non-negative) only
+            # when the band exists; a null projection or null SE -> null bounds
+            # (no spurious ci_lo=0 sitting against a null ci_hi).
+            ratio_ci_lo=pl.when(
+                pl.col("ratio_proj").is_null() | pl.col("ratio_se").is_null()
+            )
+            .then(None)
+            .otherwise(
+                pl.max_horizontal(
+                    pl.col("ratio_proj") - z * pl.col("ratio_se"), pl.lit(0.0)
+                )
             ),
             ratio_ci_hi=pl.col("ratio_proj") + z * pl.col("ratio_se"),
         )
