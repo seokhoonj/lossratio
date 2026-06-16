@@ -15,6 +15,7 @@ from .backtest import Backtest, BacktestFit
 from .calendar import Calendar
 from .comparison import EstimatorComparison, EstimatorComparisonFit
 from .credible_loss import CredibleLoss
+from .credible_premium import CrediblePremium
 from .datasets import load_experience, make_experience
 from .experience import validate_experience
 from .inception import inception_stability
@@ -28,6 +29,7 @@ from .premium_fit import PremiumFit
 from .ratio import Ratio, RatioFit
 from .regime import Regime
 from .smooth_loss import SmoothLoss
+from .smooth_premium import SmoothPremium
 from .total import Total
 from .triangle import Triangle, TriangleValidation
 
@@ -39,6 +41,7 @@ __all__ = [
     "BacktestFit",
     "Calendar",
     "CredibleLoss",
+    "CrediblePremium",
     "EstimatorComparison",
     "EstimatorComparisonFit",
     "Intensity",
@@ -53,6 +56,7 @@ __all__ = [
     "Regime",
     "ResidualBootstrap",
     "SmoothLoss",
+    "SmoothPremium",
     "Total",
     "Triangle",
     "TriangleValidation",

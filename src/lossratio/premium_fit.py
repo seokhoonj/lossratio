@@ -41,6 +41,11 @@ from ._io import (
 )
 from ._mack import _build_value_matrices, _fit_mack
 from ._recent import recent_link_mask, validate_recent
+from .loss_fit import (
+    _credible_levels,
+    _segment_credibility_df,
+    _smooth_backfit,
+)
 from .model_frame import ModelFrame
 
 if TYPE_CHECKING:
@@ -143,6 +148,124 @@ def _segment_premium_df(
     return df.select(order)
 
 
+def _project_self_exposure(
+    premium_obs: np.ndarray, h_k: np.ndarray, u_vec: np.ndarray
+) -> np.ndarray:
+    """Self-exposure multiplicative premium projection.
+
+    Premium is its own exposure, so the (per-cohort credibility-scaled)
+    intensity ``h_k = dP / P_from`` projects multiplicatively:
+    ``P_{k+1}[i] = P_k[i] * (1 + u_i * h_k)``, seeded from each cohort's last
+    observed cell. At ``u_i = 1`` and ``h_k = f^P_k - 1`` this is exactly the
+    pooled chain-ladder recursion ``P_{k+1} = P_k * f^P_k`` (used only for the
+    psi>0 path; the degenerate psi<=0 path returns the kernel projection
+    directly to stay byte-identical to PooledPremium).
+    """
+    n_cohorts, n_durations = premium_obs.shape
+    n_links = n_durations - 1
+    proj = premium_obs.copy()
+    obs_mask = ~np.isnan(premium_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
+    for k in range(n_links):
+        active = eligible & (last_obs <= k)
+        if not active.any():
+            continue
+        pk = proj[:, k]
+        pos = active & ~np.isnan(pk) & (pk > 0)
+        if pos.any() and np.isfinite(h_k[k]):
+            proj[pos, k + 1] = pk[pos] * (1.0 + u_vec[pos] * h_k[k])
+    return proj
+
+
+def _fit_segment_credible_premium(
+    premium_obs: np.ndarray, sigma_method: str, *, psi: "float | str" = "auto"
+) -> dict[str, np.ndarray]:
+    """Credibility (partial-pooling) premium fit for one segment.
+
+    Premium self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled
+    chain-ladder link ratio minus one) and the per-cohort credibility LEVEL
+    ``u_i`` is the dispersion-scaled Buhlmann-Straub conjugate on the premium
+    increments with premium as its own exposure -- the exact mirror of
+    ``CredibleLoss``. The projected link factor is ``1 + u_i * (f^P_k - 1)``.
+    ``psi <= 0`` (degenerate / no between-cohort signal) returns the pooled
+    chain-ladder projection directly, byte-identical to ``PooledPremium``. SE is
+    null (the credibility level's estimation variance breaks the Mack analytical
+    recursion, like the loss side); coverage rides a later ResidualBootstrap.
+    """
+    mk = _fit_mack(premium_obs, sigma_method=sigma_method)
+    h_k = mk.f_k - 1.0
+
+    u_vec, z_vec, psi_hat = _credible_levels(
+        premium_obs, premium_obs, h_k, sigma_method, psi
+    )
+
+    if psi_hat <= 0.0:
+        premium_proj = mk.loss_proj            # exact PooledPremium
+    else:
+        premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
+
+    nan_se = np.full(premium_obs.shape, np.nan, dtype=np.float64)
+    return {
+        "premium_obs": premium_obs,
+        "premium_proj": premium_proj,
+        "proc_se": nan_se,
+        "param_se": nan_se.copy(),
+        "total_se": nan_se.copy(),
+        "u": u_vec,
+        "Z": z_vec,
+        "psi": psi_hat,
+    }
+
+
+def _fit_segment_smooth_premium(
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    *,
+    psi: "float | str" = "auto",
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
+) -> dict[str, np.ndarray]:
+    """Smooth premium fit for one segment -- the top denominator rung.
+
+    The credible premium rung with the saturated self-exposure intensity
+    ``h_k = f^P_k - 1`` replaced by a smooth P-spline shape ``h_k = exp(s(k))``,
+    fit by the shared backfitting core (smooth shape + lambda selection +
+    conjugate level) on premium-as-its-own-exposure. The projection is the
+    self-exposure multiplicative recursion ``P_{k+1} = P_k * (1 + u_i * h_k)``.
+    Point-only (SE null, like the loss smooth rung).
+    """
+    bf = _smooth_backfit(
+        premium_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+    )
+    h_k, u_vec = bf["g_k"], bf["u"]
+    premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
+
+    nan_se = np.full(premium_obs.shape, np.nan, dtype=np.float64)
+    return {
+        "premium_obs": premium_obs,
+        "premium_proj": premium_proj,
+        "proc_se": nan_se,
+        "param_se": nan_se.copy(),
+        "total_se": nan_se.copy(),
+        "u": u_vec,
+        "Z": bf["Z"],
+        "psi": bf["psi"],
+        "smooth_converged": bf["converged"],
+    }
+
+
+# mechanism -> public model name
+_PREMIUM_MODELS = {
+    "pooled": "pooled_premium",
+    "credible": "credible_premium",
+    "smooth": "smooth_premium",
+}
+
+
 def _fit_premium(
     triangle: "Triangle",
     *,
@@ -151,20 +274,26 @@ def _fit_premium(
     regime: "Any" = None,
     recent: int | None = None,
     conf_level: float = 0.95,
+    psi: "float | str" = "auto",
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
 ) -> "PremiumFit":
     """Fit a single-mechanism premium projection on a :class:`Triangle`.
 
     ``mechanism="pooled"`` is the volume-weighted pooled link ratio (Mack chain
-    ladder on cumulative premium). ``regime`` is a RESOLVED cohort cut applied
-    through :class:`ModelFrame`; ``recent`` is the calendar-diagonal fit mask
-    (most-recent ``N`` diagonals feed the link-ratio estimation, the projection
-    seed stays full).
+    ladder on cumulative premium). ``"credible"`` adds a per-cohort credibility
+    LEVEL on the self-exposure intensity ``h_k = f^P_k - 1`` (the premium mirror
+    of ``CredibleLoss``); ``"smooth"`` replaces the saturated ``h_k`` with a
+    smooth P-spline shape. ``regime`` is a RESOLVED cohort cut applied through
+    :class:`ModelFrame`; ``recent`` (pooled only) is the calendar-diagonal fit
+    mask (most-recent ``N`` diagonals feed the link-ratio estimation, the
+    projection seed stays full). Credible / smooth are point-only (SE null).
     """
-    if mechanism != "pooled":
+    model_name = _PREMIUM_MODELS.get(mechanism)
+    if model_name is None:
         raise NotImplementedError(
-            "the premium side currently has one mechanism ('pooled', the "
-            "self-anchored link ratio); credible / smooth premium rungs are "
-            "not built in v1."
+            f"unknown premium mechanism {mechanism!r} "
+            "(pooled / credible / smooth)."
         )
     groups = triangle.groups
     mf = ModelFrame.from_triangle(triangle, regime=regime)
@@ -177,7 +306,9 @@ def _fit_premium(
     seg_cols = normalize_groups(groups)
 
     long_parts: list[pl.DataFrame] = []
+    cred_parts: list[pl.DataFrame] = []
     n_observed = n_projected = n_unfittable = 0
+    converged = True
 
     for sid in frame.get_column("_segment_id").unique().sort().to_list():
         sub = frame.filter(pl.col("_segment_id") == sid).sort(["cohort", "duration"])
@@ -191,39 +322,67 @@ def _fit_premium(
         (premium_obs,), cohorts, _ = _build_value_matrices(
             sub, value_cols=("premium",)
         )
-        mask = recent_link_mask(premium_obs, recent)
-        mk = _fit_mack(premium_obs, sigma_method=sigma_method, link_mask=mask)
+
+        if mechanism == "pooled":
+            mask = recent_link_mask(premium_obs, recent)
+            mk = _fit_mack(premium_obs, sigma_method=sigma_method, link_mask=mask)
+            mk_proj = mk.loss_proj
+            proc_se, param_se, total_se = mk.proc_se, mk.param_se, mk.total_se
+        elif mechanism == "credible":
+            res = _fit_segment_credible_premium(premium_obs, sigma_method, psi=psi)
+            mk_proj = res["premium_proj"]
+            proc_se, param_se, total_se = (
+                res["proc_se"], res["param_se"], res["total_se"]
+            )
+            cred_parts.append(
+                _segment_credibility_df(res, cohorts, groups, group_value)
+            )
+        else:  # smooth
+            res = _fit_segment_smooth_premium(
+                premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+            )
+            mk_proj = res["premium_proj"]
+            proc_se, param_se, total_se = (
+                res["proc_se"], res["param_se"], res["total_se"]
+            )
+            cred_parts.append(
+                _segment_credibility_df(res, cohorts, groups, group_value)
+            )
+            converged = converged and bool(res["smooth_converged"])
 
         obs_mask = ~np.isnan(premium_obs)
-        proj_mask = ~np.isnan(mk.loss_proj) & ~obs_mask
+        proj_mask = ~np.isnan(mk_proj) & ~obs_mask
         n_observed += int(obs_mask.sum())
         n_projected += int(proj_mask.sum())
 
-        n_dur = mk.loss_proj.shape[1]
+        n_dur = mk_proj.shape[1]
         has_obs = obs_mask.any(axis=1)
         last_obs = np.where(
             has_obs, n_dur - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
         )
         dur_idx = np.arange(n_dur)[None, :]
         should_proj = (dur_idx > last_obs[:, None]) & has_obs[:, None]
-        n_unfittable += int((should_proj & np.isnan(mk.loss_proj)).sum())
+        n_unfittable += int((should_proj & np.isnan(mk_proj)).sum())
 
         long_parts.append(
             _segment_premium_df(
-                premium_obs, mk.loss_proj, mk.proc_se, mk.param_se, mk.total_se,
+                premium_obs, mk_proj, proc_se, param_se, total_se,
                 cohorts, groups, group_value, conf_level,
             )
         )
 
     long_df = pl.concat(long_parts)
     reasons = ["projection_gap"] if n_unfittable else []
+    if not converged:
+        reasons.append("smooth_not_converged")
     status = "degraded" if reasons else "valid"
+    credibility = pl.concat(cred_parts) if cred_parts else None
 
     return PremiumFit(
         long_df,
         groups=collapse_groups(groups),
-        method="pooled",
-        model="pooled_premium",
+        method=mechanism,
+        model=model_name,
         sigma_method=sigma_method,
         regime=regime,
         conf_level=conf_level,
@@ -235,6 +394,8 @@ def _fit_premium(
             "projected": n_projected,
             "unfittable": n_unfittable,
         },
+        credibility=credibility,
+        converged=converged,
     )
 
 
@@ -265,6 +426,8 @@ class PremiumFit:
         status: str,
         status_reasons: list[str],
         cell_counts: dict[str, int],
+        credibility: "pl.DataFrame | None" = None,
+        converged: bool = True,
     ) -> None:
         self._df = df
         self._output_type = output_type
@@ -277,10 +440,21 @@ class PremiumFit:
         self.status = status
         self.status_reasons = status_reasons
         self.cell_counts = cell_counts
+        self._credibility = credibility
+        self.converged = converged
 
     @property
     def df(self) -> "FrameLike":
         return mirror_output(self._df, self._output_type)
+
+    @property
+    def credibility(self) -> "FrameLike | None":
+        """Per-cohort credibility diagnostics ``[groups?, cohort, u, Z, psi]``
+        for ``CrediblePremium`` / ``SmoothPremium``; ``None`` for the pooled
+        link ratio (no per-cohort level)."""
+        if self._credibility is None:
+            return None
+        return mirror_output(self._credibility, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

@@ -73,12 +73,12 @@ def test_regime_and_recent_accepted(tri):
     assert isinstance(pf, lr.PremiumFit)
 
 
-def test_credible_smooth_premium_not_built():
+def test_unknown_premium_mechanism_rejected():
     from lossratio.premium_fit import _fit_premium
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     with pytest.raises(NotImplementedError):
-        _fit_premium(tri, mechanism="credible")
+        _fit_premium(tri, mechanism="bogus")
 
 
 def test_ungrouped_triangle():
