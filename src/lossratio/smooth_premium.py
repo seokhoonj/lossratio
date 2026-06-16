@@ -73,8 +73,6 @@ class SmoothPremium(_PremiumEstimatorBase):
             raise ValueError(
                 f"n_basis must be None or an int >= 4, got {self.n_basis!r}"
             )
-        if self.recent is not None:
-            raise NotImplementedError("SmoothPremium does not support recent yet")
 
     def fit(self, triangle: "Triangle") -> PremiumFit:
         """Fit the smooth premium projection on a :class:`Triangle`."""
@@ -83,6 +81,7 @@ class SmoothPremium(_PremiumEstimatorBase):
             mechanism="smooth",
             sigma_method=self.sigma_method,
             regime=self.regime,
+            recent=self.recent,
             conf_level=self.conf_level,
             psi=self.psi,
             n_basis=self.n_basis,

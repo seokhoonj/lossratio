@@ -116,13 +116,30 @@ def test_model_label(tri):
 
 
 def test_rejects_unsupported_and_bad_psi():
-    with pytest.raises(NotImplementedError):
-        CredibleLoss(recent=6)
+    # recent is supported (calendar-diagonal fit window); borrow is not.
+    assert CredibleLoss(recent=6).recent == 6
     with pytest.raises(NotImplementedError):
         CredibleLoss(borrow="pooled")
     for bad in (-1.0, "nope"):
         with pytest.raises(ValueError):
             CredibleLoss(psi=bad)
+
+
+def test_recent_window_changes_the_fit():
+    import lossratio as lr
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    full = CredibleLoss().fit(tri).to_polars()
+    rec = CredibleLoss(recent=12).fit(tri).to_polars()
+    j = (full.select(["coverage", "cohort", "duration", "loss_proj"])
+         .rename({"loss_proj": "f"})
+         .join(rec.select(["coverage", "cohort", "duration", "loss_proj"])
+               .rename({"loss_proj": "r"}),
+               on=["coverage", "cohort", "duration"]).drop_nulls())
+    assert ((j["f"] - j["r"]).abs() > 1e-6).sum() > 0      # recent re-estimates factors
+    # recent=None is the unchanged full-triangle fit
+    assert CredibleLoss().fit(tri).to_polars().equals(
+        CredibleLoss(recent=None).fit(tri).to_polars())
 
 
 def _single_cohort_input() -> pl.DataFrame:

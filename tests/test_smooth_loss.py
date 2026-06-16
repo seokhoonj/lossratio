@@ -88,8 +88,12 @@ def test_multi_group(tri):
 
 
 def test_config_guards(tri):
-    with pytest.raises(NotImplementedError):
-        SmoothLoss(recent=12).fit(tri)
+    # recent is supported (re-estimates factors on the recent diagonals); borrow
+    # is not.
+    full = SmoothLoss().fit(tri).to_polars()
+    rec = SmoothLoss(recent=12).fit(tri).to_polars()
+    assert not full.equals(rec)
+    assert full.equals(SmoothLoss(recent=None).fit(tri).to_polars())
     with pytest.raises(NotImplementedError):
         SmoothLoss(borrow="pooled").fit(tri)
 

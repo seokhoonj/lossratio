@@ -54,9 +54,12 @@ def test_pooled_premium_has_no_credibility(tri):
     assert lr.PooledPremium().fit(tri).credibility is None
 
 
-def test_recent_rejected():
-    with pytest.raises(NotImplementedError):
-        lr.CrediblePremium(recent=6)
+def test_recent_supported():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    full = lr.CrediblePremium().fit(tri).to_polars()
+    rec = lr.CrediblePremium(recent=12).fit(tri).to_polars()
+    assert not full.equals(rec)                       # recent re-estimates factors
+    assert full.equals(lr.CrediblePremium(recent=None).fit(tri).to_polars())
 
 
 def test_invalid_psi_rejected():

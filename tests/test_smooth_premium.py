@@ -39,9 +39,12 @@ def test_point_only_se_null(tri):
     assert df["premium_ci_lo"].is_null().all()
 
 
-def test_recent_rejected():
-    with pytest.raises(NotImplementedError):
-        lr.SmoothPremium(recent=6)
+def test_recent_supported():
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    full = lr.SmoothPremium().fit(tri).to_polars()
+    rec = lr.SmoothPremium(recent=12).fit(tri).to_polars()
+    assert not full.equals(rec)                       # recent re-estimates factors
+    assert full.equals(lr.SmoothPremium(recent=None).fit(tri).to_polars())
 
 
 def test_invalid_params_rejected():

@@ -57,10 +57,6 @@ class CrediblePremium(_PremiumEstimatorBase):
                 raise ValueError(
                     f'psi must be "auto" or a non-negative float, got {self.psi!r}'
                 )
-        if self.recent is not None:
-            raise NotImplementedError(
-                "CrediblePremium does not support recent yet"
-            )
 
     def fit(self, triangle: "Triangle") -> PremiumFit:
         """Fit the credibility premium projection on a :class:`Triangle`."""
@@ -69,6 +65,7 @@ class CrediblePremium(_PremiumEstimatorBase):
             mechanism="credible",
             sigma_method=self.sigma_method,
             regime=self.regime,
+            recent=self.recent,
             conf_level=self.conf_level,
             psi=self.psi,
         )

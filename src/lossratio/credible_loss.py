@@ -60,10 +60,6 @@ class CredibleLoss(_EstimatorBase):
                 raise ValueError(
                     f'psi must be "auto" or a non-negative float, got {self.psi!r}'
                 )
-        if self.recent is not None:
-            raise NotImplementedError(
-                "CredibleLoss does not support recent yet"
-            )
         if self.borrow is not False:
             raise NotImplementedError(
                 "CredibleLoss does not support borrow yet"
@@ -76,7 +72,7 @@ class CredibleLoss(_EstimatorBase):
             mechanism="credible",
             sigma_method=self.sigma_method,
             regime=self.regime,
-            recent=None,
+            recent=self.recent,
             conf_level=self.conf_level,
             borrow=False,
             psi=self.psi,

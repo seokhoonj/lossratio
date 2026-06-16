@@ -90,8 +90,6 @@ class SmoothLoss(_EstimatorBase):
             raise ValueError(
                 f"n_basis must be None or an int >= 4, got {self.n_basis!r}"
             )
-        if self.recent is not None:
-            raise NotImplementedError("SmoothLoss does not support recent yet")
         if self.borrow is not False:
             raise NotImplementedError("SmoothLoss does not support borrow yet")
 
@@ -102,7 +100,7 @@ class SmoothLoss(_EstimatorBase):
             mechanism="smooth",
             sigma_method=self.sigma_method,
             regime=self.regime,
-            recent=None,
+            recent=self.recent,
             conf_level=self.conf_level,
             borrow=False,
             psi=self.psi,

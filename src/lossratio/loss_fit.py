@@ -487,6 +487,7 @@ def _credible_levels(
     g_k: np.ndarray,
     sigma_method: str,
     psi: "float | str",
+    link_mask: np.ndarray | None = None,
 ) -> "tuple[np.ndarray, np.ndarray, float]":
     """Per-cohort credibility level ``u_i``, weight ``Z_i``, and ``psi_hat``.
 
@@ -508,12 +509,14 @@ def _credible_levels(
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
+    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, link_mask)
     coh: list[int] = []
     for k in range(n_links):
         ck = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         coh.extend(int(i) for i in np.flatnonzero(mask))
     m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
 
@@ -584,29 +587,35 @@ def _fit_segment_credible(
 
     SE is left null in v1: the credibility level's estimation variance makes
     the Mack analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
-    rides the ResidualBootstrap, wired in a later step). ``recent`` / ``donor``
-    (borrow) are not supported and rejected by the ``CredibleLoss`` config.
+    rides the ResidualBootstrap, wired in a later step). ``recent``
+    (calendar-diagonal window) masks the links feeding both the pooled ``g_k``
+    and the per-cohort credibility estimation, while the projection stays seeded
+    from the full matrices. ``donor`` (borrow) is not supported (subsumed by the
+    credibility level for level-shift regimes; useless for shape change).
     """
-    if recent is not None:
-        raise NotImplementedError("CredibleLoss does not support recent yet")
     if donor is not None:
         raise NotImplementedError("CredibleLoss does not support borrow yet")
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+
     # 1. pooled intensity g_k (keyed by from-duration 1..n_links)
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
+    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
     g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
 
     # 2. credibility level u_i / weight Z_i / between-cohort variance psi_hat
     u_vec, z_vec, psi_hat = _credible_levels(
-        loss_obs, premium_obs, g_k, sigma_method, psi
+        loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=loss_mask
     )
 
     # 3. premium chain ladder (kept Mack kernel) for the exposure projection
-    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    premium_proj = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    ).loss_proj
 
     # 4. credibility-scaled additive projection (SE null in v1)
     loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
@@ -676,6 +685,7 @@ def _smooth_backfit(
     lam: "float | str" = "auto",
     max_outer: int = 100,
     tol: float = 1e-4,
+    link_mask: np.ndarray | None = None,
 ) -> dict:
     """Smooth shape + credibility backfitting (charter Sec.4.5) for one segment.
 
@@ -706,6 +716,8 @@ def _smooth_backfit(
         ck = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         for i in np.flatnonzero(mask):
             resp.append(float(dl[i])); expo.append(float(ck[i]))
             dur.append(k + 1); coh.append(int(i))
@@ -756,7 +768,7 @@ def _smooth_backfit(
                     dtype=np.float64,
                 )
                 u_vec, z_vec, psi_hat = _credible_levels(
-                    loss_obs, premium_obs, g_k, sigma_method, psi
+                    loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
                 )
                 backfit_converged = True          # fell back deterministically
                 break
@@ -767,7 +779,7 @@ def _smooth_backfit(
             # the UNDAMPED fixed-point residual so g_k stays consistent with the
             # stored u at the break.
             u_conj, z_vec, psi_hat = _credible_levels(
-                loss_obs, premium_obs, g_k, sigma_method, psi
+                loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
             )
             resid = float(np.max(np.abs(u_conj - u_vec)))
             # damped update: the GCV/frozen-lambda s-step is not the exact
@@ -794,7 +806,8 @@ def _smooth_backfit(
                     # resync the credibility diagnostics to the final g_k (the
                     # u level stays the backfitting's final; only z / psi follow)
                     _, z_vec, psi_hat = _credible_levels(
-                        loss_obs, premium_obs, g_k, sigma_method, psi
+                        loss_obs, premium_obs, g_k, sigma_method, psi,
+                        link_mask=link_mask,
                     )
             backfit_converged = False
 
@@ -824,19 +837,25 @@ def _fit_segment_smooth(
     :func:`_smooth_backfit` (the shared source of truth with the bootstrap).
     The projection is the credibility-scaled additive recursion. SE / CI are
     null unless a ResidualBootstrap is attached (the smooth shape + credibility
-    estimation variance breaks the Mack analytical recursion). ``recent`` /
-    ``donor`` (borrow) are not supported.
+    estimation variance breaks the Mack analytical recursion). ``recent``
+    (calendar-diagonal window) masks the links feeding the smooth shape + the
+    credibility level, while the projection stays seeded from the full matrices.
+    ``donor`` (borrow) is not supported (subsumed by the credibility level).
     """
-    if recent is not None:
-        raise NotImplementedError("SmoothLoss does not support recent yet")
     if donor is not None:
         raise NotImplementedError("SmoothLoss does not support borrow yet")
 
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+
     bf = _smooth_backfit(
-        loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+        loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
+        link_mask=loss_mask,
     )
     g_k, u_vec = bf["g_k"], bf["u"]
-    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    premium_proj = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    ).loss_proj
     loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
 

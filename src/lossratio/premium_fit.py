@@ -182,7 +182,8 @@ def _project_self_exposure(
 
 
 def _fit_segment_credible_premium(
-    premium_obs: np.ndarray, sigma_method: str, *, psi: "float | str" = "auto"
+    premium_obs: np.ndarray, sigma_method: str, *, psi: "float | str" = "auto",
+    recent: int | None = None,
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) premium fit for one segment.
 
@@ -196,11 +197,12 @@ def _fit_segment_credible_premium(
     null (the credibility level's estimation variance breaks the Mack analytical
     recursion, like the loss side); coverage rides a later ResidualBootstrap.
     """
-    mk = _fit_mack(premium_obs, sigma_method=sigma_method)
+    premium_mask = recent_link_mask(premium_obs, recent)
+    mk = _fit_mack(premium_obs, sigma_method=sigma_method, link_mask=premium_mask)
     h_k = mk.f_k - 1.0
 
     u_vec, z_vec, psi_hat = _credible_levels(
-        premium_obs, premium_obs, h_k, sigma_method, psi
+        premium_obs, premium_obs, h_k, sigma_method, psi, link_mask=premium_mask
     )
 
     if psi_hat <= 0.0:
@@ -228,6 +230,7 @@ def _fit_segment_smooth_premium(
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
+    recent: int | None = None,
 ) -> dict[str, np.ndarray]:
     """Smooth premium fit for one segment -- the top denominator rung.
 
@@ -239,7 +242,8 @@ def _fit_segment_smooth_premium(
     Point-only (SE null, like the loss smooth rung).
     """
     bf = _smooth_backfit(
-        premium_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+        premium_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
+        link_mask=recent_link_mask(premium_obs, recent),
     )
     h_k, u_vec = bf["g_k"], bf["u"]
     premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
@@ -329,7 +333,9 @@ def _fit_premium(
             mk_proj = mk.loss_proj
             proc_se, param_se, total_se = mk.proc_se, mk.param_se, mk.total_se
         elif mechanism == "credible":
-            res = _fit_segment_credible_premium(premium_obs, sigma_method, psi=psi)
+            res = _fit_segment_credible_premium(
+                premium_obs, sigma_method, psi=psi, recent=recent
+            )
             mk_proj = res["premium_proj"]
             proc_se, param_se, total_se = (
                 res["proc_se"], res["param_se"], res["total_se"]
@@ -339,7 +345,8 @@ def _fit_premium(
             )
         else:  # smooth
             res = _fit_segment_smooth_premium(
-                premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+                premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
+                recent=recent,
             )
             mk_proj = res["premium_proj"]
             proc_se, param_se, total_se = (
