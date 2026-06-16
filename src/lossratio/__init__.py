@@ -30,6 +30,7 @@ from .ratio import Ratio, RatioFit
 from .regime import Regime
 from .smooth_loss import SmoothLoss
 from .smooth_premium import SmoothPremium
+from .stability import Stability, StabilityReport
 from .total import Total
 from .triangle import Triangle, TriangleValidation
 
@@ -57,6 +58,8 @@ __all__ = [
     "ResidualBootstrap",
     "SmoothLoss",
     "SmoothPremium",
+    "Stability",
+    "StabilityReport",
     "Total",
     "Triangle",
     "TriangleValidation",
