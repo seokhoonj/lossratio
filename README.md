@@ -1,15 +1,17 @@
 # lossratio (Python)
 
-Loss ratio analytics
-for long-term health insurance — cohort development analysis,
-exposure-driven and stage-adaptive projection, regime detection, and
-backtest validation on long-format experience data. The
-exposure-driven (ED) model is the default, safe baseline; a
-stage-adaptive (SA) fit can opt in to an ED->CL switch that hands off
-to chain ladder (CL) past a chosen duration.
+Loss ratio analytics for long-term health insurance — cohort development
+analysis, a ladder of loss-side projection models, a denominator (premium)
+model, loss-ratio composition with an uncertainty band, regime detection, and
+out-of-sample backtest validation on long-format experience data.
 
-This Python implementation is in active development; install from GitHub
-(see below). The PyPI build is an earlier, now-discarded methodology.
+The package treats each underwriting cohort's loss and premium as ongoing flows
+that keep developing with duration (elapsed time since inception): it *projects*
+loss, premium, and the loss ratio forward along the duration axis and quantifies
+how reliable those projections are out of sample.
+
+This Python implementation is in active development; install from GitHub (see
+below). The PyPI build is an earlier, now-discarded methodology.
 
 ## Install
 
@@ -23,48 +25,48 @@ pip install "git+https://github.com/seokhoonj/lossratio.git"              # pola
 pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"      # add pandas / pyarrow support
 ```
 
-## Current status
+## Components
 
-Working components:
-
-- `Triangle` — cohort × duration aggregation. Accepts a long-format
-  experience frame (`uy_m`, `cy_m`, `duration_m`, `incr_loss`,
-  `incr_premium`) and validates schema + adds derived period columns
-  inline. (`duration_m` is auto-derived from `uy_m` and `cy_m` if absent.) Cumulative is
-  the unmarked default (`loss`, `premium`, `ratio`); per-period values
-  carry an `incr_` prefix (`incr_loss`, `incr_premium`, `incr_ratio`).
-- `ChainLadder`, `ExposureDriven`, `StageAdaptive`, `Ratio` —
-  sklearn-style estimators for chain-ladder, exposure-driven, and
-  stage-adaptive projection. `ExposureDriven` is the default, safe
-  baseline; `StageAdaptive` with no `switch` is identical to it, and
-  opts in to an ED->CL handoff only when given a `switch=`. The three
-  loss models return a `LossFit`, `Ratio` returns a `RatioFit`; each
-  exposes `summary()`, a `df` projection frame, and per-cohort SE / CV.
-- `SwitchPoint` — locates the ED->CL handoff for a stage-adaptive fit
-  by backtesting: it picks the boundary that minimises out-of-sample
-  loss-projection error, instead of an in-sample factor heuristic.
-  `SwitchPoint.detect()` is a leakage-safe lazy spec (resolved on the
-  consumer's own triangle, so it is safe inside a backtest fold);
-  `SwitchPoint.at(k)` fixes the boundary. It is deliberately
-  conservative — on thin or quarterly data it usually defers to a pure
-  ED fit (the safe baseline).
-- `Triangle.link()` — builds the long-format `Link` table (one row
-  per cohort × adjacent duration pair). Method chain `tri.link().ata()` /
-  `tri.link().intensity()` returns paired factor-level diagnostics
-  (multiplicative ATA factors with per-link `f` / `cv` / `rse`,
-  additive ED intensities).
-- `Triangle.detect_regime()` — detects structural shifts across the
-  cohort sequence via E-Divisive or Ward hierarchical clustering
-  (returns a `Regime` result).
-- `Backtest` — calendar-diagonal hold-out backtest of any of the
-  above estimators (returns a `BacktestFit` with per-cell, by-duration,
-  and by-diagonal A/E Error summaries — `ae_err = actual /
-  predicted - 1`).
-
-- `Calendar` / `Total` — calendar-year and portfolio-total
-  aggregations of a Triangle. `RatioFit.convergence()` returns a
-  `Convergence` diagnostic (the duration at which the
-  projected loss ratio stabilises).
+- `Triangle` — cohort x duration aggregation. Accepts a long-format experience
+  frame (`uy_m`, `cy_m`, `duration_m`, `incr_loss`, `incr_premium`) and
+  validates schema + adds derived period columns inline (`duration_m` is
+  auto-derived from `uy_m` and `cy_m` if absent). Cumulative is the unmarked
+  default (`loss`, `premium`, `ratio`); per-period values carry an `incr_`
+  prefix (`incr_loss`, `incr_premium`, `incr_ratio`).
+- **Loss-side ladder** — sklearn-style estimators, each returning a `LossFit`:
+  - `PooledLoss` — complete pooling: one shared development shape (the
+    incremental loss intensity per unit premium), premium-anchored additive
+    projection. The default, safe baseline.
+  - `CredibleLoss` — `PooledLoss` plus a per-cohort credibility level
+    (empirical-Bayes / Buhlmann-Straub shrinkage toward the pooled shape).
+    Partial pooling; exposes per-cohort `u` / `Z` / `psi` via `.credibility`.
+  - `SmoothLoss` — `CredibleLoss` with a smooth (penalized P-spline)
+    development shape in place of the saturated one.
+  - `LinkRatio` — the chain-ladder benchmark: own-loss multiplicative link
+    ratios (Mack), no premium anchor.
+- **Premium side** — `PooledPremium` returns a `PremiumFit`. Premium has no
+  external exposure, so it self-develops by its own volume-weighted link ratio.
+- **Loss-ratio composition** — `Ratio(loss=..., premium=...)` pairs a loss-side
+  and a premium-side estimator into `ratio_proj = loss_proj / premium_proj`
+  (returns a `RatioFit`). `se_method="fixed"` treats premium as known;
+  `se_method="delta"` adds premium variance and an optional loss-premium
+  correlation `rho`.
+- **Uncertainty** — pass `uncertainty=ResidualBootstrap(...)` to a loss
+  estimator for a full-refit residual bootstrap (with a calendar-drift band)
+  that fills `loss_total_se` / `loss_ci_lo` / `loss_ci_hi` and the ratio band;
+  `PooledLoss` / `LinkRatio` also carry an analytical SE. The default
+  `uncertainty=None` is point-only.
+- `Triangle.link()` — builds the long-format `Link` table (one row per cohort x
+  adjacent duration pair). `tri.link().ata()` / `tri.link().intensity()` return
+  paired factor-level diagnostics (multiplicative ATA factors with per-link `f`
+  / `cv` / `rse`, additive intensities).
+- `Triangle.detect_regime()` — detects structural shifts across the cohort
+  sequence via E-Divisive or Ward hierarchical clustering (returns a `Regime`).
+- `Backtest` — calendar-diagonal hold-out backtest of any estimator. A single
+  `holdouts=N` is one origin (per-cell / by-duration / by-diagonal A/E
+  summaries); a sequence `holdouts=(6, 12, ...)` runs a rolling-origin backtest
+  with `reliable_horizon()`. `EstimatorComparison` scores several estimators
+  head-to-head against a baseline.
 
 ## Quick Start
 
@@ -72,10 +74,10 @@ Working components:
 import polars as pl
 import lossratio as lr
 
-# Built-in synthetic experience: four coverages (CI / CANCER / INPATIENT / SURGERY),
-# monthly cohorts up to 36 duration months, with the full M/Q/H/Y grain
-# enrichment. SURGERY carries one regime shift at 2024-07; we focus on SURGERY
-# for this walk-through.
+# Built-in synthetic experience: four coverages (CI / CANCER / INPATIENT /
+# SURGERY), monthly cohorts up to 36 duration months, with the full M/Q/H/Y
+# grain enrichment. SURGERY carries one regime shift at 2024-07; we focus on
+# SURGERY for this walk-through.
 df = lr.load_experience()
 df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"]).head(3)
 #> shape: (3, 6)
@@ -89,19 +91,17 @@ df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"
 #> │ CI       ┆ 2023-01-01 ┆ 2023-03-01 ┆ 3          ┆ 420092    ┆ 1384735      │
 #> └──────────┴────────────┴────────────┴────────────┴───────────┴──────────────┘
 
-# 1. Subset to SURGERY (the coverage with the planted regime shift), then
-#    build the cohort x duration triangle. Triangle's constructor validates
-#    schema and adds derived period columns inline.
+# 1. Subset to SURGERY (the coverage with the planted regime shift), then build
+#    the cohort x duration triangle. Triangle's constructor validates schema and
+#    adds derived period columns inline.
 df_sur = df.filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df_sur, groups="coverage")
+tri
+#> <Triangle: 666 rows, 1 groups, 36 cohorts x 36 durations (M)>
 
-# 2. Factor-level diagnostics via the link chain. Build the link table
-#    once, derive both ATA factors and ED intensities from it.
-link = tri.link()
-link
-#> <Link: 1 groups, 630 total links, dual-mode>
-
-ata = link.ata()
+# 2. Factor-level diagnostics via the link chain. Build the link table once,
+#    derive ATA factors (and additive intensities) from it.
+ata = tri.link().ata()
 ata.df.head(3)
 #> shape: (3, 7)
 #> ┌──────────┬──────────┬──────────┬───────────────┬──────────┬──────────┬───────────┐
@@ -114,89 +114,97 @@ ata.df.head(3)
 #> │ SURGERY  ┆ 3        ┆ 1.448392 ┆ 111593.578463 ┆ 0.029951 ┆ 0.004935 ┆ 33        │
 #> └──────────┴──────────┴──────────┴───────────────┴──────────┴──────────┴───────────┘
 
-# 3. Project loss ratios. `lr.Ratio()` defaults to method="ed" — the
-#    exposure-driven, safe baseline.
-fit = lr.Ratio(method="ed").fit(tri)
+# 3. Project loss. `PooledLoss` is the safe baseline; `CredibleLoss` /
+#    `SmoothLoss` add per-cohort credibility and a smooth shape, and `LinkRatio`
+#    is the chain-ladder benchmark. Each returns a LossFit. The fully observed
+#    first cohort has nothing to project, so its SE is null.
+loss = lr.PooledLoss().fit(tri)
+loss.summary().head(3)
+#> shape: (3, 7)
+#> ┌──────────┬────────────┬──────────────┬───────────┬───────────────┬───────────────┬──────────────────────┐
+#> │ coverage ┆ cohort     ┆ latest       ┆ loss_proj ┆ loss_total_se ┆ loss_total_cv ┆ loss_proj_remaining  │
+#> │ str      ┆ date       ┆ f64          ┆ f64       ┆ f64           ┆ f64           ┆ f64                  │
+#> ╞══════════╪════════════╪══════════════╪═══════════╪═══════════════╪═══════════════╪══════════════════════╡
+#> │ SURGERY  ┆ 2023-01-01 ┆ 1.6746e9     ┆ 1.6746e9  ┆ null          ┆ null          ┆ 0.0                  │
+#> │ SURGERY  ┆ 2023-02-01 ┆ 4.0048e9     ┆ 4.1196e9  ┆ 1.1485e7      ┆ 0.002788      ┆ 1.1474e8             │
+#> │ SURGERY  ┆ 2023-03-01 ┆ 8.34789306e8 ┆ 8.8364e8  ┆ 4.6272e6      ┆ 0.005236      ┆ 4.8854e7             │
+#> └──────────┴────────────┴──────────────┴───────────┴───────────────┴───────────────┴──────────────────────┘
 
-#    To opt into a stage-adaptive ED->CL switch, pass a `switch=` — an
-#    int fixes the handoff duration, `lr.SwitchPoint.detect()` selects it by
-#    backtesting. Here the switch is fixed at duration 12.
-fit = lr.Ratio(method="sa", switch=12).fit(tri)
-fit.switch_point
-#> {'SURGERY': 12}
-fit.summary().select(["coverage", "cohort", "ratio_proj", "switch_from"]).head(3)
-#> shape: (3, 4)
-#> ┌──────────┬────────────┬────────────┬─────────────┐
-#> │ coverage ┆ cohort     ┆ ratio_proj ┆ switch_from │
-#> │ ---      ┆ ---        ┆ ---        ┆ ---         │
-#> │ str      ┆ date       ┆ f64        ┆ i64         │
-#> ╞══════════╪════════════╪════════════╪═════════════╡
-#> │ SURGERY  ┆ 2023-01-01 ┆ 1.509562   ┆ 12          │
-#> │ SURGERY  ┆ 2023-02-01 ┆ 1.508976   ┆ 12          │
-#> │ SURGERY  ┆ 2023-03-01 ┆ 1.522523   ┆ 12          │
-#> └──────────┴────────────┴────────────┴─────────────┘
+# 4. Compose the loss ratio from a loss model and a premium model. The premium
+#    defaults to PooledPremium(); se_method="fixed" treats premium as known.
+fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
+fit
+#> RatioFit(loss_model='pooled_loss', premium_model='pooled_premium', se_method='fixed', rows=1296)
+fit.summary().head(3)
+#> shape: (3, 6)
+#> ┌──────────┬────────────┬───────────┬──────────────┬────────────┬──────────┐
+#> │ coverage ┆ cohort     ┆ loss_proj ┆ premium_proj ┆ ratio_proj ┆ ratio_se │
+#> │ str      ┆ date       ┆ f64       ┆ f64          ┆ f64        ┆ f64      │
+#> ╞══════════╪════════════╪═══════════╪══════════════╪════════════╪══════════╡
+#> │ SURGERY  ┆ 2023-01-01 ┆ 1.6746e9  ┆ 1.1093e9     ┆ 1.509562   ┆ null     │
+#> │ SURGERY  ┆ 2023-02-01 ┆ 4.1196e9  ┆ 2.7300e9     ┆ 1.508992   ┆ 0.004207 │
+#> │ SURGERY  ┆ 2023-03-01 ┆ 8.8364e8  ┆ 5.8066e8     ┆ 1.521789   ┆ 0.007969 │
+#> └──────────┴────────────┴───────────┴──────────────┴────────────┴──────────┘
 
-# 4. Detect cohort regime shifts (E-Divisive over the cohort ratio path).
+# 5. Add an uncertainty band with a residual bootstrap, and read the per-cohort
+#    credibility (u = level, Z = credibility weight, psi = between-cohort var).
+cred = lr.CredibleLoss(uncertainty=lr.ResidualBootstrap(n_replicates=200, seed=1)).fit(tri)
+cred.credibility.head(3)
+#> shape: (3, 5)
+#> ┌──────────┬────────────┬──────────┬──────────┬──────────┐
+#> │ coverage ┆ cohort     ┆ u        ┆ Z        ┆ psi      │
+#> │ str      ┆ date       ┆ f64      ┆ f64      ┆ f64      │
+#> ╞══════════╪════════════╪══════════╪══════════╪══════════╡
+#> │ SURGERY  ┆ 2023-01-01 ┆ 1.015829 ┆ 0.982995 ┆ 0.014626 │
+#> │ SURGERY  ┆ 2023-02-01 ┆ 1.020378 ┆ 0.992758 ┆ 0.014626 │
+#> │ SURGERY  ┆ 2023-03-01 ┆ 1.037056 ┆ 0.965518 ┆ 0.014626 │
+#> └──────────┴────────────┴──────────┴──────────┴──────────┘
+
+# 6. Detect cohort regime shifts (E-Divisive over the cohort ratio path).
 reg = tri.detect_regime(target="ratio", window=12)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
-# 5. Calendar-diagonal hold-out backtest. The last 6 diagonals are
-#    masked, the estimator is refitted on the remaining cells, and
-#    the projection is compared with actual loss.
-#    ae_err = actual / predicted - 1 (signed relative error).
-bt = lr.Backtest(estimator=lr.Ratio(method="ed"), holdout=6).fit(tri)
-bt.diag_summary.select(
-    ["coverage", "cal_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt"]
-).head(3)
-#> shape: (3, 6)
-#> ┌──────────┬─────────┬─────┬─────────────┬────────────┬───────────┐
-#> │ coverage ┆ cal_idx ┆ n   ┆ ae_err_mean ┆ ae_err_med ┆ ae_err_wt │
-#> │ ---      ┆ ---     ┆ --- ┆ ---         ┆ ---        ┆ ---       │
-#> │ str      ┆ i64     ┆ u32 ┆ f64         ┆ f64        ┆ f64       │
-#> ╞══════════╪═════════╪═════╪═════════════╪════════════╪═══════════╡
-#> │ SURGERY  ┆ 31      ┆ 29  ┆ -0.038762   ┆ -0.004586  ┆ -0.026285 │
-#> │ SURGERY  ┆ 32      ┆ 28  ┆ -0.060688   ┆ -0.011492  ┆ -0.04627  │
-#> │ SURGERY  ┆ 33      ┆ 27  ┆ -0.08139    ┆ -0.010749  ┆ -0.065249 │
-#> └──────────┴─────────┴─────┴─────────────┴────────────┴───────────┘
+# 7. Out-of-sample validation. A sequence of holdouts runs a rolling-origin
+#    backtest; reliable_horizon() reports how many durations ahead the
+#    projection stays within tolerance.
+bt = lr.Backtest(estimator=lr.PooledLoss(), holdouts=(6, 12), target="loss").fit(tri)
+bt.reliable_horizon()
+#> shape: (1, 3)
+#> ┌──────────┬──────────────────┬─────────────┐
+#> │ coverage ┆ reliable_horizon ┆ max_horizon │
+#> │ str      ┆ i64              ┆ i64         │
+#> ╞══════════╪══════════════════╪═════════════╡
+#> │ SURGERY  ┆ 3                ┆ 12          │
+#> └──────────┴──────────────────┴─────────────┘
 ```
 
-When a `SwitchPoint.detect()` spec defers to a pure ED fit (it often
-does on thin or quarterly data), `switch_point` is `None` and the
-`switch_from` column is null — the projection is the ED baseline, which
-is the intended conservative behaviour.
+To analyse multiple coverages jointly, drop the upfront filter; every estimator
+and detector then fits per group, with `coverage` already labelling each output
+row.
 
-To analyse multiple coverages jointly, drop the upfront filter; every
-estimator and detector then fits per group, with `coverage` already
-labelling each output row.
-
-To plug in your own data, build a long-format frame with these
-columns and pass it to `lr.Triangle(df, groups=...)`:
+To plug in your own data, build a long-format frame with these columns and pass
+it to `lr.Triangle(df, groups=...)`:
 
 - `uy_m` (date) — underwriting year-month (cohort)
 - `cy_m` (date) — calendar year-month
-- `duration_m` (int, optional) — duration (months); auto-derived from
-  `uy_m` and `cy_m` if absent
+- `duration_m` (int, optional) — duration (months); auto-derived from `uy_m`
+  and `cy_m` if absent
 - `incr_loss` (numeric) — per-period claim amount
 - `incr_premium` (numeric) — per-period premium
 
-The shipped `lr.load_experience()` dataset includes the full
-12-column M/Q/H/Y grain enrichment. Coarser granularities (`duration_q`,
-`duration_h`, `duration_y` — quarterly, half-yearly, yearly) can also be
-derived from a bare monthly frame via `derive_grain_columns(df)`,
-which produces `uy/uy_h/uy_q/uy_m`, `cy/cy_h/cy_q/cy_m`,
-`duration_y/duration_h/duration_q/duration_m`. Pass `grain="Q"` / `"H"` / `"Y"` to
-`Triangle()` to aggregate at a coarser grain (default `"auto"`
-detects from data spacing).
+The shipped `lr.load_experience()` dataset includes the full 12-column M/Q/H/Y
+grain enrichment. Coarser granularities (`duration_q`, `duration_h`,
+`duration_y` — quarterly, half-yearly, yearly) can also be derived from a bare
+monthly frame via `derive_grain_columns(df)`, which produces
+`uy/uy_h/uy_q/uy_m`, `cy/cy_h/cy_q/cy_m`,
+`duration_y/duration_h/duration_q/duration_m`. Pass `grain="Q"` / `"H"` / `"Y"`
+to `Triangle()` to aggregate at a coarser grain (default `"auto"` detects from
+data spacing).
 
-`Triangle` also accepts an optional `groups` argument (coverage,
-product, age band, ...) — each estimator and detector then fits per
-group.
-
-Pandas inputs are accepted too; outputs mirror the input type
-(pandas in → pandas out, polars in → polars out). Use the
-``[pandas]`` install extra (see above) to pull in `pandas` and
-`pyarrow`.
+Pandas inputs are accepted too; outputs mirror the input type (pandas in ->
+pandas out, polars in -> polars out). Use the ``[pandas]`` install extra (see
+above) to pull in `pandas` and `pyarrow`.
 
 ## Sibling R package
 
