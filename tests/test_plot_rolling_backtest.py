@@ -16,7 +16,7 @@ import lossratio as lr
 @pytest.fixture
 def rbt_multi():
     tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
-    return lr.RollingBacktest(
+    return lr.Backtest(
         estimator=lr.LinkRatio(), holdouts=(4, 8, 12), target="loss"
     ).fit(tri)
 
@@ -25,7 +25,7 @@ def rbt_multi():
 def rbt_single():
     df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     tri = lr.Triangle(df)
-    return lr.RollingBacktest(
+    return lr.Backtest(
         estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(tri)
 
@@ -39,7 +39,7 @@ def test_plot_by_axis(rbt_multi, by):
     fig = rbt_multi.plot(by=by)
     try:
         assert isinstance(fig, plt.Figure)
-        assert "RollingBacktest reliability" in fig._suptitle.get_text()
+        assert "Backtest reliability" in fig._suptitle.get_text()
         assert by in fig._suptitle.get_text()
     finally:
         _close(fig)

@@ -207,7 +207,7 @@ def test_common_holdouts_and_fits(cmp_fit):
     assert cmp_fit.holdouts == (4, 8)
     assert set(cmp_fit.fits) == {"cl", "ed"}
     for f in cmp_fit.fits.values():
-        assert type(f).__name__ == "RollingBacktestFit"
+        assert type(f).__name__ == "BacktestFit"
     assert cmp_fit.skipped_holdouts == {"cl": [], "ed": []}
 
 

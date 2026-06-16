@@ -55,7 +55,7 @@ def test_fit_identity_on_observed(exp):
 def test_backtest_scores_naive(exp):
     # NaiveBaseline slots into Backtest as a ratio-target estimator.
     tri = lr.Triangle(exp, groups="coverage")
-    bt = lr.Backtest(estimator=NaiveBaseline(), holdout=6, target="ratio").fit(tri)
+    bt = lr.Backtest(estimator=NaiveBaseline(), holdouts=6, target="ratio").fit(tri)
     ae = _pl(bt.ae_err)
     assert ae.height > 0
     assert {"actual", "expected", "ae_err"}.issubset(ae.columns)

@@ -1,7 +1,7 @@
 """Out-of-sample estimator comparison on a shared rolling-origin backtest.
 
 :class:`EstimatorComparison` runs one
-:class:`~lossratio.rolling_backtest.RollingBacktest` per labelled estimator
+:class:`~lossratio.backtest.Backtest` per labelled estimator
 on the SAME triangle and the same hold-out depths, then compares the
 estimators on the MATCHED cell population only -- the ``(group, holdout,
 cohort, duration)`` keys that EVERY estimator scored. The matching is what
@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from ._io import mirror_output, normalize_groups
-from .rolling_backtest import RollingBacktest, RollingBacktestFit
+from .backtest import Backtest, BacktestFit
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 class EstimatorComparison:
     """Out-of-sample comparison of several labelled estimators.
 
-    Runs a :class:`~lossratio.rolling_backtest.RollingBacktest` per
+    Runs a :class:`~lossratio.backtest.Backtest` per
     labelled estimator on the same triangle / hold-out depths / target, and
     assembles the per-cell A/E errors into matched-population comparison
     frames (see the module docstring). The headline outputs are the
@@ -69,13 +69,13 @@ class EstimatorComparison:
         so no name can be derived automatically); insertion order is
         canonical -- it fixes the estimator order in every output frame and
         plot. At least two entries are required; for a single estimator use
-        :class:`~lossratio.rolling_backtest.RollingBacktest` directly. Each
+        :class:`~lossratio.backtest.Backtest` directly. Each
         value must satisfy the same estimator / target compatibility rules
         as :class:`~lossratio.backtest.Backtest` (enforced per label by the
-        inner ``RollingBacktest``).
+        inner ``Backtest``).
     holdouts
         The shared hold-out depths, forwarded to every inner
-        ``RollingBacktest`` (de-duplicated and sorted ascending there).
+        ``Backtest`` (de-duplicated and sorted ascending there).
         Sharing the depths is the by-construction comparability guarantee:
         every estimator is scored on the same as-of origins.
     target
@@ -124,7 +124,7 @@ class EstimatorComparison:
         if len(estimators) == 1:
             raise ValueError(
                 "estimators must contain at least two labelled estimators; "
-                "for a single estimator use lr.RollingBacktest directly"
+                "for a single estimator use lr.Backtest directly"
             )
         for label in estimators:
             if not isinstance(label, str):
@@ -137,12 +137,12 @@ class EstimatorComparison:
                     f"estimator labels must be non-empty; got {label!r}"
                 )
 
-        # One inner RollingBacktest per label: this REUSES its validation
+        # One inner Backtest per label: this REUSES its validation
         # (holdout normalization, target enum, .fit presence, and the probe
         # Backtest's estimator / target / bootstrap-leakage compatibility
         # checks) with identical error messages -- no duplicated logic.
         rbts = {
-            label: RollingBacktest(
+            label: Backtest(
                 estimator=est, holdouts=holdouts, target=target
             )
             for label, est in estimators.items()
@@ -164,7 +164,7 @@ class EstimatorComparison:
         self._rbts = rbts
 
     def fit(self, triangle: "Triangle") -> "EstimatorComparisonFit":
-        # Every inner RollingBacktest runs on the SAME triangle object --
+        # Every inner Backtest runs on the SAME triangle object --
         # the by-construction comparability guarantee.
         fits = {
             label: rbt.fit(triangle) for label, rbt in self._rbts.items()
@@ -192,7 +192,7 @@ class EstimatorComparisonFit:
         population (not the per-fit summaries): ``[groups?, estimator,
         <axis>, n, abs_err_mean, ae_err_mean, ae_err_med, ae_err_wt]`` plus
         the ``incr_*`` block when available -- the same statistics as
-        :class:`~lossratio.rolling_backtest.RollingBacktestFit`.
+        :class:`~lossratio.backtest.BacktestFit`.
     horizon_comparison, anchor_comparison, holdout_comparison : DataFrame
         Baseline-relative comparison, one row per (group x challenger x
         axis value); the baseline never appears as a row -- its statistics
@@ -231,13 +231,13 @@ class EstimatorComparisonFit:
         warned about once at fit time.
     skipped_holdouts : dict[str, list[int]]
         Each estimator's own skipped depths, keyed by label.
-    fits : dict[str, RollingBacktestFit]
+    fits : dict[str, BacktestFit]
         The per-estimator inner fit, keyed by label -- the drill-down for
         the unmatched, per-estimator evidence.
     """
 
     # The incremental companion columns the inner fits may carry through.
-    _INCR_CELL_COLS = RollingBacktestFit._INCR_CELL_COLS
+    _INCR_CELL_COLS = BacktestFit._INCR_CELL_COLS
 
     # crossover(): metric name -> (challenger column, baseline column) on
     # the comparison frames; "bias" compares the absolute values.
@@ -256,7 +256,7 @@ class EstimatorComparisonFit:
 
     @classmethod
     def _from_fits(
-        cls, fits: "dict[str, RollingBacktestFit]", baseline: str
+        cls, fits: "dict[str, BacktestFit]", baseline: str
     ) -> "EstimatorComparisonFit":
         self = cls.__new__(cls)
         labels = list(fits)
@@ -315,7 +315,7 @@ class EstimatorComparisonFit:
         # The incremental lane is all-or-nothing: available only if EVERY
         # estimator's matched frame carries all four incr cell columns (a
         # heterogeneous mix would null-fill -- same rationale as
-        # RollingBacktestFit).
+        # BacktestFit).
         has_incr = all(
             all(c in matched[label].columns for c in cls._INCR_CELL_COLS)
             for label in labels
@@ -387,8 +387,8 @@ class EstimatorComparisonFit:
     def _aggregate_matched(self, axis: str) -> pl.DataFrame:
         """Per-estimator summary over the MATCHED cells along one axis.
 
-        Reuses :meth:`RollingBacktestFit._agg_exprs` /
-        :meth:`RollingBacktestFit._summary_stat_names` verbatim (single
+        Reuses :meth:`BacktestFit._agg_exprs` /
+        :meth:`BacktestFit._summary_stat_names` verbatim (single
         source of truth for the summary statistics), grouped by ``[groups?,
         estimator, axis]`` -- so each estimator's curve is computed on the
         same matched population, unlike the per-fit summaries.
@@ -402,14 +402,14 @@ class EstimatorComparisonFit:
             schema.update(
                 {
                     name: pl.Float64
-                    for name in RollingBacktestFit._summary_stat_names(
+                    for name in BacktestFit._summary_stat_names(
                         self._has_incr
                     )
                 }
             )
             return pl.DataFrame(schema=schema)
         out = cells.group_by(by).agg(
-            RollingBacktestFit._agg_exprs(self._has_incr)
+            BacktestFit._agg_exprs(self._has_incr)
         )
         return self._sort_with_estimator(out, gcols, [axis])
 
@@ -716,7 +716,7 @@ class EstimatorComparisonFit:
         }
 
     @property
-    def fits(self) -> "dict[str, RollingBacktestFit]":
+    def fits(self) -> "dict[str, BacktestFit]":
         return dict(self._fits)
 
     # -- crossover reader ------------------------------------------------------

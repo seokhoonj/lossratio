@@ -222,7 +222,7 @@ def test_estimator_rejects_non_bootstrap_uncertainty():
 
 def test_coverage_lane_flows_through_backtest(tri):
     est = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=50, seed=3))
-    ae = _pl(Backtest(estimator=est, holdout=6, target="loss").fit(tri).ae_err)
+    ae = _pl(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
     assert "expected_se" in ae.columns
     panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
     assert {"coverage_80", "coverage_95"}.issubset(panel.columns)
@@ -257,7 +257,7 @@ def test_pooled_analytical_has_ratio_se(tri):
 
 def test_ratio_coverage_lane_flows_through_backtest(tri):
     est = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=50, seed=2))
-    ae = _pl(Backtest(estimator=est, holdout=6, target="ratio").fit(tri).ae_err)
+    ae = _pl(Backtest(estimator=est, holdouts=6, target="ratio").fit(tri).ae_err)
     assert "expected_se" in ae.columns
     panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.95,)))
     cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))

@@ -25,7 +25,7 @@ def exp() -> pl.DataFrame:
 @pytest.fixture(scope="module")
 def single_ae(exp) -> pl.DataFrame:
     tri = lr.Triangle(exp, groups="coverage")
-    return _pl(lr.Backtest(estimator=PooledLoss(), holdout=6, target="loss").fit(tri).ae_err)
+    return _pl(lr.Backtest(estimator=PooledLoss(), holdouts=6, target="loss").fit(tri).ae_err)
 
 
 def test_panel_structure(single_ae):
@@ -235,7 +235,7 @@ def test_rolling_groups_by_holdout_no_double_count(exp):
     # group by `holdout` so depths are not pooled into a double-counted row.
     tri = lr.Triangle(exp, groups="coverage")
     rae = _pl(
-        lr.RollingBacktest(estimator=PooledLoss(), holdouts=(6, 12), target="loss")
+        lr.Backtest(estimator=PooledLoss(), holdouts=(6, 12), target="loss")
         .fit(tri).ae_err
     )
     panel = _pl(metric_panel(rae, groups="coverage"))
@@ -278,6 +278,6 @@ def test_point_only_fit_emits_no_coverage_columns(exp):
     # to keep the "no SE -> no coverage column" contract (charter Sec.5.1)
     from lossratio.credible_loss import CredibleLoss
     tri = lr.Triangle(exp, groups="coverage")
-    ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdout=6, target="loss").fit(tri).ae_err)
+    ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)
     panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
     assert not [c for c in panel.columns if c.startswith("coverage_")]

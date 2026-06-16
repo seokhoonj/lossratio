@@ -114,7 +114,7 @@ def test_bootstrap_populates_se_ci_and_coverage(tri):
     assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-9).all()
     assert proj["ratio_se"].is_not_null().all()
     # coverage lane flows through a backtest
-    ae = _pl(Backtest(estimator=est, holdout=6, target="loss").fit(tri).ae_err)
+    ae = _pl(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
     assert "expected_se" in ae.columns
     panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.95,)))
     cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))

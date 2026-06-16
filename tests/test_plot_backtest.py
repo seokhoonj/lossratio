@@ -27,11 +27,11 @@ def tri_single():
 
 @pytest.fixture
 def bt_multi(tri_multi):
-    return lr.Backtest(estimator=lr.LinkRatio(), holdout=4, target="loss").fit(tri_multi)
+    return lr.Backtest(estimator=lr.LinkRatio(), holdouts=4, target="loss").fit(tri_multi)
 
 @pytest.fixture
 def bt_single(tri_single):
-    return lr.Backtest(estimator=lr.LinkRatio(), holdout=4, target="loss").fit(tri_single)
+    return lr.Backtest(estimator=lr.LinkRatio(), holdouts=4, target="loss").fit(tri_single)
 
 def _close(fig):
     plt.close(fig)
@@ -163,7 +163,7 @@ def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single)
     # Backtest built on a LinkRatio with recent=12 -- usage view should
     # respect that recent without the caller re-passing it.
     bt = lr.Backtest(
-        estimator=lr.LinkRatio(recent=12), holdout=4, target="loss"
+        estimator=lr.LinkRatio(recent=12), holdouts=4, target="loss"
     ).fit(tri_single)
     assert bt._infer_recent() == 12
     fig = bt.plot_triangle(kind="usage")

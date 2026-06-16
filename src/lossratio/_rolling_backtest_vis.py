@@ -1,6 +1,6 @@
-"""RollingBacktest result visualisation -- matplotlib backend.
+"""Backtest result visualisation -- matplotlib backend.
 
-Implements ``RollingBacktestFit.plot(by=...)`` -- the reliability curve as a
+Implements ``BacktestFit.plot(by=...)`` -- the reliability curve as a
 line plot of A/E error against one of the rolling axes (``horizon`` /
 ``anchor_duration`` / hold-out depth), with the cumulative and per-period
 (``incr_*``) lanes overlaid.
@@ -14,7 +14,7 @@ from ._io import _iter_group_frames, format_group_value
 from ._plot import _hide_unused, _resolve_grid
 
 if TYPE_CHECKING:
-    from .rolling_backtest import RollingBacktestFit
+    from .backtest import BacktestFit
 
 
 _VALID_BY = ("horizon", "anchor", "holdout")
@@ -32,7 +32,7 @@ _BY_XLABEL = {
 
 
 def plot_rolling_backtest(
-    fit: "RollingBacktestFit",
+    fit: "BacktestFit",
     by: str = "horizon",
     metric: str = "ae_err",
     nrow: int | None = None,
@@ -110,7 +110,7 @@ def plot_rolling_backtest(
 
     metric_word = "relative A/E error" if metric == "ae_err" else "absolute A/E error"
     fig.suptitle(
-        f"RollingBacktest reliability -- {metric_word} vs {by}",
+        f"Backtest reliability -- {metric_word} vs {by}",
         fontsize=12, fontweight="bold",
     )
     fig.supxlabel(_BY_XLABEL[by], fontsize=10)

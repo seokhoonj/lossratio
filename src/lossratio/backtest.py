@@ -1,7 +1,9 @@
-"""Calendar-diagonal hold-out backtest."""
+"""Calendar-diagonal hold-out backtest -- single-fold (_FoldBacktest/_FoldFit) and
+rolling-origin (Backtest/BacktestFit) public API."""
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -183,7 +185,7 @@ def _resolve_se_column(target: str, fit_df_columns: list[str]) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-class Backtest:
+class _FoldBacktest:
     """Calendar-diagonal hold-out backtest of a fit estimator.
 
     Holds out the ``holdout`` most recent calendar diagonals from the
@@ -218,7 +220,7 @@ class Backtest:
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr.Backtest(estimator=lr.CredibleLoss(), holdout=6, target="loss").fit(tri)
+    >>> bt = lr._FoldBacktest(estimator=lr.CredibleLoss(), holdout=6, target="loss").fit(tri)
     >>> bt.ae_err
     >>> bt.col_summary
     >>> bt.diag_summary
@@ -250,11 +252,11 @@ class Backtest:
         self.holdout = holdout
         self.target = target
 
-    def fit(self, triangle: "Triangle") -> "BacktestFit":
-        return BacktestFit._from_triangle(triangle, self)
+    def fit(self, triangle: "Triangle") -> "_FoldFit":
+        return _FoldFit._from_triangle(triangle, self)
 
 
-class BacktestFit:
+class _FoldFit:
     """Result of a calendar-diagonal hold-out backtest.
 
     Properties
@@ -281,11 +283,11 @@ class BacktestFit:
 
     def __init__(self) -> None:
         raise TypeError(
-            "BacktestFit is the result of `Backtest(...).fit(triangle)`, not a direct constructor."
+            "_FoldFit is an internal per-fold building block. Use Backtest(...).fit(triangle)."
         )
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle", bt: "Backtest") -> "BacktestFit":
+    def _from_triangle(cls, triangle: "Triangle", bt: "_FoldBacktest") -> "_FoldFit":
         from .triangle import Triangle
 
         self = cls.__new__(cls)
@@ -635,4 +637,877 @@ class BacktestFit:
     def __repr__(self) -> str:
         n_cells = self._ae_err.height
         est_name = type(self.estimator).__name__
-        return f"<BacktestFit: estimator={est_name}, holdout={self.holdout}, n_held_out_cells={n_cells}>"
+        return f"<_FoldFit: estimator={est_name}, holdout={self.holdout}, n_held_out_cells={n_cells}>"
+
+def _normalize_holdouts_seq(holdouts):
+    """Validate, de-duplicate, and sort a sequence of hold-out depths."""
+    items = list(holdouts)
+    if not items:
+        raise ValueError("holdouts must contain at least one hold-out depth")
+    clean = set()
+    for h in items:
+        if isinstance(h, bool) or not isinstance(h, int):
+            raise TypeError(
+                f"each hold-out depth must be a positive int; got {h!r} "
+                f"({type(h).__name__})"
+            )
+        if h < 1:
+            raise ValueError(f"each hold-out depth must be >= 1, got {h}")
+        clean.add(h)
+    return tuple(sorted(clean))
+
+
+
+# ---------------------------------------------------------------------------
+# Public API: unified Backtest (single- and multi-origin)
+# ---------------------------------------------------------------------------
+
+class Backtest:
+    """Calendar-diagonal hold-out backtest of a fit estimator.
+
+    When ``holdouts`` is a single integer (or a 1-tuple), this is a
+    single-origin backtest equivalent to the former ``Backtest(holdout=H)``
+    interface. When ``holdouts`` has multiple depths, this is a rolling-origin
+    backtest that evaluates all depths in one call.
+
+    Parameters
+    ----------
+    estimator
+        A fit estimator (e.g. ``lr.LinkRatio()``, ``lr.PooledLoss()``,
+        ``lr.CredibleLoss()``, ``lr.SmoothLoss()``). Must implement
+        ``.fit(triangle)``.
+    holdouts
+        One or more hold-out depths. An ``int`` is normalised to a
+        1-tuple. A sequence is de-duplicated, sorted ascending, and
+        validated (each >= 1, no booleans). Default ``(6, 12, 18, 24)``.
+    target
+        Which projection to score: ``"ratio"`` (default), ``"loss"``, or
+        ``"premium"``.
+
+    Examples
+    --------
+    >>> import lossratio as lr
+    >>> tri = lr.Triangle(df, groups="coverage")
+    >>> # Single-origin (equivalent to old Backtest(holdout=6)):
+    >>> bt = lr.Backtest(lr.CredibleLoss(), holdouts=6).fit(tri)
+    >>> bt.col_summary      # single-origin convenience property
+    >>> bt.plot()           # A/E heatmap
+    >>> # Multi-origin (rolling):
+    >>> bt = lr.Backtest(lr.LinkRatio(), holdouts=(6, 12, 18, 24)).fit(tri)
+    >>> bt.horizon_summary  # reliability curve
+    >>> bt.fits[6].col_summary
+    """
+
+    def __init__(
+        self,
+        estimator,
+        holdouts=(6, 12, 18, 24),
+        *,
+        target="ratio",
+    ):
+        if not hasattr(estimator, "fit"):
+            raise TypeError(
+                f"estimator must implement .fit(triangle); got "
+                f"{type(estimator).__name__}"
+            )
+        if target not in _VALID_TARGETS:
+            raise ValueError(
+                f"target must be one of {_VALID_TARGETS}, got {target!r}"
+            )
+        # Normalise: int -> 1-tuple, else any sequence of ints (range / generator
+        # / tuple / list) -> deduplicate+sort+validate.
+        if isinstance(holdouts, bool):
+            raise TypeError("holdouts must be an int or a sequence of ints")
+        if isinstance(holdouts, int):
+            if holdouts < 1:
+                raise ValueError(f"holdout must be >= 1, got {holdouts}")
+            norm = (holdouts,)
+        else:
+            try:
+                items = tuple(holdouts)
+            except TypeError:
+                raise TypeError(
+                    f"holdouts must be an int or a sequence of ints; got "
+                    f"{type(holdouts).__name__}"
+                )
+            norm = _normalize_holdouts_seq(items)
+
+        # Probe the first depth for early estimator / target / bootstrap checks
+        _FoldBacktest(estimator=estimator, holdout=norm[0], target=target)
+
+        self.estimator = estimator
+        self.holdouts = norm
+        self.target = target
+
+    def fit(self, triangle):
+        return BacktestFit._from_triangle(triangle, self)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+class BacktestFit:
+    """Result of a rolling-origin hold-out backtest.
+
+    Properties
+    ----------
+    ae_err : DataFrame
+        Combined per-cell hold-out comparison across all hold-out depths
+        ``[groups?, holdout, horizon, anchor_duration, cohort, duration,
+        actual, expected, aeg, ae_err, incr_actual, incr_expected, incr_aeg,
+        incr_ae_err]``. ``holdout`` is the depth the cell was scored under;
+        ``horizon`` (>= 1) is the number of calendar periods the cell is
+        projected past that depth's as-of date; ``anchor_duration``
+        (= ``duration - horizon``) is the duration the cohort was observed to
+        at that as-of date. A physical ``(cohort, duration)`` cell recurs once
+        per hold-out depth that holds it out (scored at a different horizon
+        each time) -- so pooling over all rows without grouping by ``holdout``
+        double-counts cells; ``holdout`` is carried so a caller can
+        de-duplicate. The ``incr_*`` columns are carried through when the refit
+        emits an incremental projection (the same condition as
+        :class:`_FoldFit`); the internal ``cal_idx`` is
+        dropped (``horizon`` supersedes it).
+    horizon_summary : DataFrame
+        The reliability curve -- error aggregated by ``horizon`` (within
+        group): ``[groups?, horizon, n, abs_err_mean, ae_err_mean, ae_err_med,
+        ae_err_wt]`` plus the incremental block ``[incr_abs_err_mean,
+        incr_ae_err_mean, incr_ae_err_med, incr_ae_err_wt]`` when available.
+        ``abs_err_mean = mean(|actual - expected|)`` is the cumulative
+        target-unit absolute error; ``ae_err_*`` are the relative ``actual /
+        expected - 1`` statistics; ``ae_err_wt = sum(actual - expected) /
+        sum(expected)`` is the exposure-weighted pooled A/E - 1 (as in
+        :class:`_FoldFit`). The ``incr_*`` companions
+        are the per-period counterparts. Because the per-horizon cell
+        population drifts toward higher durations as horizon grows (see the
+        module docstring), prefer the **incremental** lane to read the curve
+        free of the cumulative-magnitude confound; for ``target="ratio"`` the
+        relative ``ae_err_*`` / ``incr_ae_err_*`` are more interpretable than
+        the unit-bearing ``abs_err_mean`` (a ratio gap, not currency).
+    anchor_summary : DataFrame
+        Error aggregated by ``anchor_duration`` (within group), same
+        statistics as ``horizon_summary``. Shows how projection error depends
+        on how much history a cohort had when it was projected: a cohort with a
+        single observation (``anchor_duration = 1``) is projected far less
+        reliably than a mature one. Complements the horizon curve -- error is
+        driven as much by how little history anchored the projection as by how
+        far ahead it reaches.
+    holdout_summary : DataFrame
+        Error aggregated by hold-out depth ``holdout`` (within group), same
+        statistics as ``horizon_summary``.
+    skipped_holdouts : list[int]
+        Hold-out depths that produced no reachable held-out cells (e.g. a
+        depth at or beyond the triangle's calendar span) and were dropped.
+    fits : dict[int, _FoldFit]
+        The inner per-fold ``_FoldFit`` for each depth that produced
+        cells, keyed by hold-out depth -- for drill-down / inspection.
+    """
+
+    # The incremental companion columns the inner Backtest may carry through.
+    _INCR_CELL_COLS = ("incr_actual", "incr_expected", "incr_aeg", "incr_ae_err")
+
+    def __init__(self) -> None:
+        raise TypeError(
+            "BacktestFit is the result of Backtest(...).fit(triangle), not a direct constructor."
+        )
+
+    @classmethod
+    def _from_triangle(
+        cls, triangle: "Triangle", rbt: "Backtest"
+    ) -> "BacktestFit":
+        self = cls.__new__(cls)
+        self._output_type = triangle._output_type
+        self._groups = triangle._groups
+        self.estimator = rbt.estimator
+        self.target = rbt.target
+        self.holdouts = rbt.holdouts
+
+        gcols = normalize_groups(triangle._groups)
+
+        # Per-group max calendar index over the FULL (unmasked) triangle.
+        # A depth H masks cells with cal_idx > max_cal - H, so a held-out
+        # cell's horizon is `cal_idx - (max_cal - H)`, ranging 1..H. Computing
+        # max_cal from the full triangle (not from a fold's surviving cells)
+        # keeps the horizon anchored to the true as-of date even when the
+        # oldest cohort does not reach the latest diagonal.
+        full = _add_cal_idx(triangle._df, triangle._groups)
+        max_cal_scalar = 0
+        max_cal: pl.DataFrame | None = None
+        if gcols:
+            max_cal = full.group_by(gcols).agg(
+                pl.col("cal_idx").max().alias("_max_cal")
+            )
+        else:
+            max_cal_scalar = int(full["cal_idx"].max())
+
+        per_holdout: list[pl.DataFrame] = []
+        fits: dict[int, Any] = {}
+        skipped: list[int] = []
+
+        for h in rbt.holdouts:
+            bt_fit = cls._run_holdout(rbt, triangle, h)
+            if bt_fit is None:
+                skipped.append(h)
+                continue
+
+            ae = bt_fit._ae_err  # internal polars frame: keeps cal_idx
+            if ae.height == 0:
+                skipped.append(h)
+                continue
+
+            # horizon = cal_idx - (max_cal - h); 1..h on held cells.
+            if gcols:
+                assert max_cal is not None
+                ae = ae.join(max_cal, on=gcols, how="left")
+                ae = ae.with_columns(
+                    (pl.col("cal_idx") - (pl.col("_max_cal") - h)).alias(
+                        "horizon"
+                    )
+                ).drop("_max_cal")
+            else:
+                ae = ae.with_columns(
+                    (pl.col("cal_idx") - (max_cal_scalar - h)).alias("horizon")
+                )
+
+            ae = ae.with_columns(
+                pl.lit(h, dtype=pl.Int64).alias("holdout"),
+                # how much history the cohort had at this as-of date.
+                (pl.col("duration") - pl.col("horizon")).alias(
+                    "anchor_duration"
+                ),
+            )
+            # `cal_idx` has done its job (horizon is derived) -- drop it so the
+            # public per-cell frame is keyed by the rolling annotations
+            # (holdout, horizon, anchor_duration) not the internal index.
+            per_holdout.append(ae.drop("cal_idx"))
+            fits[h] = bt_fit
+
+        self._skipped = skipped
+        self._fits = fits
+
+        # The incremental lane is available only if every surviving fold
+        # carried it (a heterogeneous mix would null-fill -- avoid that).
+        has_incr = bool(per_holdout) and all(
+            all(c in df.columns for c in cls._INCR_CELL_COLS)
+            for df in per_holdout
+        )
+
+        if per_holdout:
+            # vertical concat is intentional: a single estimator refit across
+            # folds emits a stable column set, so a column mismatch here is a
+            # real bug we want surfaced, not silently null-unioned.
+            combined = pl.concat(per_holdout, how="vertical")
+            lead = [*gcols, "holdout", "horizon", "anchor_duration"]
+            rest = [c for c in combined.columns if c not in lead]
+            combined = combined.select(lead + rest).sort(
+                [*gcols, "holdout", "cohort", "duration"]
+            )
+        else:
+            # No depth produced cells -- emit an empty, well-typed frame so
+            # downstream code (and input-mirroring) still works.
+            combined = cls._empty_ae_err(gcols, triangle)
+
+        self._ae_err = combined
+        self._has_incr = has_incr
+
+        self._horizon_summary = self._aggregate(
+            combined, [*gcols, "horizon"], has_incr
+        )
+        self._anchor_summary = self._aggregate(
+            combined, [*gcols, "anchor_duration"], has_incr
+        )
+        self._holdout_summary = self._aggregate(
+            combined, [*gcols, "holdout"], has_incr
+        )
+
+        return self
+
+
+    # ---- single-origin convenience API ------------------------------------
+
+    @property
+    def is_single_origin(self):
+        """True when this result comes from a single hold-out depth."""
+        return len(self.holdouts) == 1
+
+    @property
+    def ae_err(self):
+        """Per-cell A/E error.
+
+        For single-origin, returns the fold-level ae_err (which includes
+        ``cal_idx`` and ``anchor_value``) -- or the empty rolling frame if
+        the single fold was skipped. For multi-origin, returns the rolling
+        combined frame (with ``holdout``, ``horizon``, ``anchor_duration``).
+        """
+        if self.is_single_origin:
+            h = self.holdouts[0]
+            fold = self._fits.get(h)
+            if fold is not None:
+                return fold.ae_err
+        return mirror_output(self._ae_err, self._output_type)
+
+
+    def _single_only(self, name):
+        """Raise a teaching ValueError for multi-origin access."""
+        sorted_hs = sorted(self._fits)
+        raise ValueError(
+            f"{name!r} is a per-forecast view undefined across multiple "
+            f"hold-out depths (it would double-count cells). "
+            f"Use .fits[h].{name} where h is one of {sorted_hs}."
+        )
+
+    def _get_single_fold(self):
+        """Return the single fold's _FoldFit, or None if it was skipped."""
+        if not self.is_single_origin:
+            return None
+        return self._fits.get(self.holdouts[0])
+
+    @property
+    def col_summary(self):
+        if self.is_single_origin:
+            fold = self._get_single_fold()
+            if fold is not None:
+                return fold.col_summary
+            return None
+        self._single_only("col_summary")
+
+    @property
+    def diag_summary(self):
+        if self.is_single_origin:
+            fold = self._get_single_fold()
+            if fold is not None:
+                return fold.diag_summary
+            return None
+        self._single_only("diag_summary")
+
+    @property
+    def fit(self):
+        if self.is_single_origin:
+            fold = self._get_single_fold()
+            if fold is not None:
+                return fold.fit
+            return None
+        self._single_only("fit")
+
+    def _single_fold_or_raise(self, name):
+        """The single fold for a plot delegation -- raise if multi-origin
+        (teaching error) or if the single hold-out was skipped (no forecast)."""
+        if not self.is_single_origin:
+            self._single_only(name)               # raises (multi-origin)
+        fold = self._fits.get(self.holdouts[0])
+        if fold is None:
+            raise ValueError(
+                f"the single hold-out (depth {self.holdouts[0]}) produced no "
+                f"reachable held-out cells, so {name} has nothing to show."
+            )
+        return fold
+
+    def plot_triangle(self, **kwargs):
+        """Delegate to the fold's plot_triangle (single-origin only)."""
+        return self._single_fold_or_raise("plot_triangle").plot_triangle(**kwargs)
+
+    def plot(self, kind="auto", **kwargs):
+        """A/E error plot (single-origin) or reliability curve (multi-origin).
+
+        Parameters
+        ----------
+        kind
+            ``"auto"`` (default): draws the single-fold A/E plot when
+            ``is_single_origin``, otherwise draws the reliability curve.
+            ``"reliability"``: always the rolling reliability line plot.
+            ``"col"``, ``"diag"``, ``"cell"``, ``"triangle"``: single-origin
+            fold views (raise when multi-origin).
+        **kwargs
+            Forwarded to the underlying plot function.
+        """
+        FOLD_KINDS = {"triangle", "cell", "col", "diag"}
+        if kind == "auto":
+            if self.is_single_origin:
+                # the single-origin primary deliverable is the A/E heatmap
+                return self._single_fold_or_raise("plot").plot_triangle(**kwargs)
+            else:
+                from ._rolling_backtest_vis import plot_rolling_backtest
+                return plot_rolling_backtest(self, **kwargs)
+        elif kind == "reliability":
+            from ._rolling_backtest_vis import plot_rolling_backtest
+            return plot_rolling_backtest(self, **kwargs)
+        elif kind in FOLD_KINDS:
+            if self.is_single_origin:
+                fold = self._single_fold_or_raise("plot")
+                if kind == "triangle":
+                    return fold.plot_triangle(**kwargs)
+                return fold.plot(kind=kind, **kwargs)
+            sorted_hs = sorted(self._fits)
+            raise ValueError(
+                f"kind={kind!r} is a per-fold view undefined across multiple "
+                f"hold-out depths. Use .fits[h].plot(kind={kind!r}) "
+                f"where h is one of {sorted_hs}."
+            )
+        else:
+            raise ValueError(
+                f"kind must be \'auto\', \'reliability\', or one of "
+                f"{{\'cell\', \'col\', \'diag\', \'triangle\'}}; got {kind!r}"
+            )
+
+    @staticmethod
+    def _run_holdout(
+        rbt: "Backtest", triangle: "Triangle", holdout: int
+    ) -> Any | None:
+        """Run one depth's inner Backtest, returning ``None`` if unrunnable.
+
+        A depth that meets or exceeds the calendar span produces a 0-height
+        ``ae_err`` rather than raising (the caller treats a 0-height frame as a
+        skip), so the common skip path needs no exception handling. We narrowly
+        guard only :class:`ValueError` (the package's own "no anchor" /
+        degenerate-fold signal) so a genuinely unrunnable fold is skipped
+        without masking unrelated failures (an estimator bug, a polars schema
+        error, an OOM, a keyboard interrupt) -- those propagate.
+
+        Caveat: a misconfigured-estimator error that itself surfaces as a
+        fit-time ``ValueError`` would be absorbed here as a silent skip. The
+        ``__init__`` probe ``Backtest`` only *constructs* on ``holdouts[0]`` (it
+        does not ``.fit``), so a config error that raises only at fit time is
+        not caught up front. In practice an over-deep depth yields a 0-height
+        frame rather than raising, so ``ValueError`` is rarely the actual skip
+        trigger; the narrow catch is the deliberate trade.
+        """
+        try:
+            return _FoldBacktest(
+                estimator=rbt.estimator,
+                holdout=holdout,
+                target=rbt.target,
+            ).fit(triangle)
+        except ValueError:
+            return None
+
+    # -- aggregation ---------------------------------------------------------
+
+    @classmethod
+    def _aggregate(
+        cls, ae_err: pl.DataFrame, by_cols: list[str], has_incr: bool
+    ) -> pl.DataFrame:
+        """Aggregate the combined per-cell frame to a per-key summary.
+
+        Always emits the cumulative block ``(n, abs_err_mean, ae_err_mean,
+        ae_err_med, ae_err_wt)``; emits the incremental companion block
+        (``incr_abs_err_mean`` / ``incr_ae_err_*``) when ``has_incr``. The
+        cumulative ``abs_err_mean = mean(|actual - expected|)`` is target-unit
+        absolute error (currency for ``"loss"`` / ``"premium"``, a ratio gap
+        for ``"ratio"``); the relative ``ae_err_*`` are dimensionless. Because
+        the per-horizon cell population drifts toward higher durations as
+        horizon grows, the incremental lane is the confound-free reading of the
+        reliability curve.
+        """
+        agg_exprs = cls._agg_exprs(has_incr)
+        if ae_err.height == 0:
+            schema = {c: ae_err.schema[c] for c in by_cols}
+            schema["n"] = pl.UInt32
+            schema.update(
+                {name: pl.Float64 for name in cls._summary_stat_names(has_incr)}
+            )
+            return pl.DataFrame(schema=schema)
+        return ae_err.group_by(by_cols).agg(agg_exprs).sort(by_cols)
+
+    @staticmethod
+    def _summary_stat_names(has_incr: bool) -> list[str]:
+        """Ordered names of the float summary columns (single source of truth
+        for both the populated and the empty-frame schema)."""
+        names = ["abs_err_mean", "ae_err_mean", "ae_err_med", "ae_err_wt"]
+        if has_incr:
+            names += [
+                "incr_abs_err_mean",
+                "incr_ae_err_mean",
+                "incr_ae_err_med",
+                "incr_ae_err_wt",
+            ]
+        return names
+
+    @staticmethod
+    def _agg_exprs(has_incr: bool) -> list[pl.Expr]:
+        """The aggregation expressions matching :meth:`_summary_stat_names`."""
+        exprs: list[pl.Expr] = [
+            pl.len().alias("n"),
+            (pl.col("actual") - pl.col("expected")).abs().mean().alias(
+                "abs_err_mean"
+            ),
+            pl.col("ae_err").mean().alias("ae_err_mean"),
+            pl.col("ae_err").median().alias("ae_err_med"),
+            (
+                (pl.col("actual") - pl.col("expected")).sum()
+                / pl.col("expected").sum()
+            ).alias("ae_err_wt"),
+        ]
+        if has_incr:
+            exprs += [
+                (pl.col("incr_actual") - pl.col("incr_expected"))
+                .abs()
+                .mean()
+                .alias("incr_abs_err_mean"),
+                pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
+                pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
+                (
+                    (pl.col("incr_actual") - pl.col("incr_expected")).sum()
+                    / pl.col("incr_expected").sum()
+                ).alias("incr_ae_err_wt"),
+            ]
+        return exprs
+
+    @staticmethod
+    def _empty_ae_err(gcols: list[str], triangle: "Triangle") -> pl.DataFrame:
+        """A 0-row combined frame with the expected schema.
+
+        ``cohort`` / ``duration`` dtypes are read from the source triangle
+        (cohort may be a ``Date`` underwriting period or an integer
+        underwriting year -- never hardcoded), so an all-skipped result labels
+        its empty frame consistently with a populated one.
+        """
+        tri_schema = triangle._df.schema
+        cohort_dt = tri_schema.get("cohort", pl.Date)
+        duration_dt = tri_schema.get("duration", pl.Int64)
+        schema: dict[str, Any] = {c: tri_schema.get(c, pl.Utf8) for c in gcols}
+        schema.update(
+            {
+                "holdout": pl.Int64,
+                "horizon": pl.Int64,
+                "anchor_duration": pl.Int64,
+                "cohort": cohort_dt,
+                "duration": duration_dt,
+                "actual": pl.Float64,
+                "expected": pl.Float64,
+                "aeg": pl.Float64,
+                "ae_err": pl.Float64,
+            }
+        )
+        return pl.DataFrame(schema=schema)
+
+    # -- accessors -----------------------------------------------------------
+
+    @property
+    def horizon_summary(self):
+        return mirror_output(self._horizon_summary, self._output_type)
+
+    @property
+    def anchor_summary(self):
+        return mirror_output(self._anchor_summary, self._output_type)
+
+    @property
+    def holdout_summary(self):
+        return mirror_output(self._holdout_summary, self._output_type)
+
+    @property
+    def skipped_holdouts(self) -> list[int]:
+        return list(self._skipped)
+
+    @property
+    def fits(self) -> dict[int, Any]:
+        return dict(self._fits)
+
+    # -- evidence readers ----------------------------------------------------
+
+    def _resolve_bias_col(self, tol: float, lane: str) -> str:
+        """Validate the shared ``tol`` / ``lane`` arguments of the evidence
+        readers and return the pooled signed-bias column to walk."""
+        if (
+            isinstance(tol, bool)
+            or not isinstance(tol, (int, float))
+            or not math.isfinite(tol)
+            or tol <= 0
+        ):
+            raise ValueError(
+                f"tol must be a positive finite number, got {tol!r}"
+            )
+        if lane not in ("cumulative", "incremental"):
+            raise ValueError(
+                f'lane must be "cumulative" or "incremental", got {lane!r}'
+            )
+        if lane == "incremental" and not self._has_incr:
+            raise ValueError(
+                'lane="incremental" is unavailable for this fit: not every '
+                "surviving hold-out depth carried an incremental projection, "
+                "so the summaries have no incr_* lane (see the module "
+                "docstring)"
+            )
+        return "ae_err_wt" if lane == "cumulative" else "incr_ae_err_wt"
+
+    @staticmethod
+    def _threshold_walk(
+        summ: pl.DataFrame,
+        gcols: list[str],
+        axis: str,
+        bias: str,
+        tol: float,
+        mode: str,
+        value_col: str,
+        max_col: str,
+        min_run: int = 1,
+    ) -> pl.DataFrame:
+        """Per-group tolerance walk over a summary axis.
+
+        ``mode="suffix"`` finds the smallest axis value from which EVERY
+        observed entry at or beyond it keeps ``|bias| <= tol`` (null when the
+        walk never starts -- including a violation at the very last entry),
+        and additionally requires the in-band suffix to hold at least
+        ``min_run`` observed entries (null otherwise; ``min_run`` is ignored
+        in prefix mode). ``mode="prefix"`` finds the largest axis value
+        reached while every entry from the front stays within tolerance (0
+        when the first entry already violates). A null bias counts as a
+        violation in both modes. The summaries are tiny, so a clear per-group
+        Python walk is preferred over a window-expression formulation.
+        """
+        axis_dt = summ.schema[axis]
+        schema: dict[str, Any] = {c: summ.schema[c] for c in gcols}
+        schema[value_col] = axis_dt
+        schema[max_col] = axis_dt
+        if summ.height == 0:
+            return pl.DataFrame(schema=schema)
+        parts = (
+            summ.partition_by(gcols, maintain_order=True) if gcols else [summ]
+        )
+        rows: list[dict[str, Any]] = []
+        for part in parts:
+            part = part.sort(axis)
+            values = part[axis].to_list()
+            within = [
+                b is not None and abs(b) <= tol for b in part[bias].to_list()
+            ]
+            result: Any
+            if mode == "suffix":
+                result = None
+                run = 0
+                for v, ok in zip(reversed(values), reversed(within)):
+                    if not ok:
+                        break
+                    result = v
+                    run += 1
+                if run < min_run:
+                    result = None
+            else:  # prefix
+                result = 0
+                for v, ok in zip(values, within):
+                    if not ok:
+                        break
+                    result = v
+            row: dict[str, Any] = {c: part[c][0] for c in gcols}
+            row[value_col] = result
+            row[max_col] = values[-1]
+            rows.append(row)
+        out = pl.DataFrame(rows, schema=schema)
+        return out.sort(gcols) if gcols else out
+
+    def convergence(
+        self, tol: float = 0.03, lane: str = "cumulative", min_run: int = 6
+    ):
+        """Smallest anchor duration from which the pooled bias stays in band.
+
+        Reads the ANCHOR axis of the rolling backtest: how much observed
+        history a cohort needs before its out-of-sample projections settle.
+        Per group, the ``anchor_summary`` pooled signed bias (``ae_err_wt``
+        for ``lane="cumulative"``, ``incr_ae_err_wt`` for
+        ``lane="incremental"``) is walked over ``anchor_duration``;
+        ``converged_at`` is the smallest observed anchor duration such that
+        EVERY observed anchor duration at or beyond it keeps
+        ``|bias| <= tol`` (a null bias counts as a violation) AND the
+        in-band suffix holds at least ``min_run`` observed anchor durations.
+        When no such anchor exists -- including when the largest observed
+        anchor still violates -- ``converged_at`` is null. That null is
+        honest, not a failure: the bias never settles within the observed
+        range, and ``max_anchor`` (the largest observed anchor duration) is
+        reported so the null can be judged against how far that range
+        actually reaches.
+
+        Why a SIGNED pooled bias rather than absolute error: on a lumpy
+        low-frequency book the per-period absolute error never shrinks (it
+        is irreducible noise), so an absolute-error criterion would never
+        trigger. Systematic over/under-projection, by contrast, averages out
+        across the many pooled out-of-sample cells, so the exposure-weighted
+        signed bias is the statistic that can actually settle. And why the
+        tolerance defaults TIGHT: the cumulative lane's denominator keeps
+        growing with duration, so an apparent flattening of the cumulative
+        loss ratio is an inertia illusion -- eyeballing that curve is not
+        evidence; the out-of-sample bias is. ``lane`` selects which bias to
+        walk: the cumulative lane is the smoother headline read, while the
+        incremental lane strips the cumulative-magnitude confound (see the
+        module docstring's lane discussion).
+
+        Why ``min_run`` guards the walk: the suffix-all test alone fails
+        OPEN at the data edge. Two mechanisms make the deepest observed
+        anchors unreliable witnesses on the cumulative lane. First, few
+        rolling-origin cells reach a deep anchor, so the pooled bias there
+        is computed from a handful of cells -- noise, not evidence. Second,
+        a cohort observed to a deep anchor carries a large accumulated
+        denominator, so projecting a few periods ahead moves its cumulative
+        ratio mechanically little: denominator inertia damps the relative
+        bias toward zero regardless of model quality (the same inertia that
+        makes the cumulative loss-ratio curve LOOK settled). A thin, damped
+        tail of a few in-band anchors can therefore fire the unguarded read
+        even when every anchor before it violates badly. Raising a
+        minimum-cell filter does not fix this: on a book whose bias never
+        settles, the spurious point simply chases the truncation edge as
+        the filter rises, whereas a genuine convergence point is
+        edge-stable under any such filter. ``min_run`` instead demands a
+        sustained in-band run, so a thin damped tail cannot fire the call
+        on its own. A young triangle whose whole observed anchor range is
+        shorter than ``min_run`` honestly reads null -- not enough evidence
+        yet -- and ``anchor_summary``'s ``n`` column is the drill-down for
+        judging how much pooled evidence each anchor carries.
+
+        This is an anchor-axis question (how much history until the
+        projection settles), not a horizon-axis question (how far ahead is
+        trustworthy) -- the two must not be conflated; see
+        :meth:`reliable_horizon` for the horizon axis.
+
+        Parameters
+        ----------
+        tol
+            Tolerance band on the pooled signed bias, ``|bias| <= tol``.
+            Must be a positive finite number. Default ``0.03``.
+        lane
+            ``"cumulative"`` (default) or ``"incremental"``. The incremental
+            lane is available only when every surviving hold-out depth
+            carried an incremental projection.
+        min_run
+            Minimum number of observed anchor durations the in-band suffix
+            must hold before ``converged_at`` fires. Must be an int >= 1;
+            ``1`` reproduces the unguarded suffix-all read. Default ``6``.
+
+        Returns
+        -------
+        DataFrame
+            Input-mirrored, one row per group, sorted by the group columns:
+            ``[groups?, converged_at, max_anchor]``. ``converged_at`` keeps
+            the ``anchor_duration`` dtype and is null when the bias never
+            settles within the observed range (or settles over fewer than
+            ``min_run`` observed anchors); ``max_anchor`` is non-null.
+        """
+        if (
+            isinstance(min_run, bool)
+            or not isinstance(min_run, int)
+            or min_run < 1
+        ):
+            raise ValueError(
+                f"min_run must be an int >= 1, got {min_run!r}"
+            )
+        bias = self._resolve_bias_col(tol, lane)
+        gcols = normalize_groups(self._groups)
+        out = self._threshold_walk(
+            self._anchor_summary,
+            gcols,
+            axis="anchor_duration",
+            bias=bias,
+            tol=tol,
+            mode="suffix",
+            value_col="converged_at",
+            max_col="max_anchor",
+            min_run=min_run,
+        )
+        return mirror_output(out, self._output_type)
+
+    def reliable_horizon(self, tol: float = 0.03, lane: str = "cumulative"):
+        """Largest horizon the projections stay in band for, from the front.
+
+        Reads the HORIZON axis of the rolling backtest: how far past the
+        as-of date a projection can be pushed before the pooled signed bias
+        leaves the tolerance band. Per group, the ``horizon_summary`` bias
+        (``ae_err_wt`` for ``lane="cumulative"``, ``incr_ae_err_wt`` for
+        ``lane="incremental"``) is walked over ``horizon`` from the smallest
+        observed horizon upward; ``reliable_horizon`` is the largest observed
+        horizon ``H`` such that EVERY observed horizon up to and including
+        ``H`` keeps ``|bias| <= tol`` -- a contiguous-from-the-front
+        definition that stops at the first violation (a null bias counts as
+        a violation). Reliability must be contiguous: a horizon that drifts
+        back into band beyond an out-of-band stretch is not trustworthy,
+        since reaching it means trusting the stretch that was not. When the
+        very first observed horizon already violates, ``reliable_horizon``
+        is ``0`` -- an honest "not reliable even one step ahead". (The ``0``
+        here versus :meth:`convergence`'s null is semantic, not cosmetic:
+        this method reports the largest contiguous reach, which can
+        legitimately be none; ``convergence`` reports the smallest point
+        FROM which the bias settles, which may simply not exist within the
+        observed range.)
+
+        The signed-pooled-bias rationale of :meth:`convergence` applies
+        unchanged -- on a lumpy book the per-period absolute error never
+        shrinks, so the bias band, not the absolute error, is what carries
+        the evidence. ``lane`` selects which bias to walk: the cumulative
+        lane is the smoother headline read, while the incremental lane
+        strips the cumulative-magnitude confound (the per-horizon population
+        drifts toward higher durations as horizon grows -- see the module
+        docstring's lane discussion). Unlike :meth:`convergence` there is no
+        ``min_run`` guard here: the prefix walk starts where the pooled data
+        is densest (the shallowest horizons) and stops at the first
+        violation, so it fails CLOSED at the thin data edge rather than open.
+
+        This is a horizon-axis question (how far ahead is trustworthy), not
+        an anchor-axis question (how much history until the projection
+        settles) -- the two must not be conflated; see :meth:`convergence`
+        for the anchor axis.
+
+        Parameters
+        ----------
+        tol
+            Tolerance band on the pooled signed bias, ``|bias| <= tol``.
+            Must be a positive finite number. Default ``0.03``.
+        lane
+            ``"cumulative"`` (default) or ``"incremental"``. The incremental
+            lane is available only when every surviving hold-out depth
+            carried an incremental projection.
+
+        Returns
+        -------
+        DataFrame
+            Input-mirrored, one row per group, sorted by the group columns:
+            ``[groups?, reliable_horizon, max_horizon]``. ``reliable_horizon``
+            keeps the ``horizon`` dtype and is ``0`` (non-null) when the
+            first observed horizon already violates; ``max_horizon`` is the
+            largest observed horizon.
+        """
+        bias = self._resolve_bias_col(tol, lane)
+        gcols = normalize_groups(self._groups)
+        out = self._threshold_walk(
+            self._horizon_summary,
+            gcols,
+            axis="horizon",
+            bias=bias,
+            tol=tol,
+            mode="prefix",
+            value_col="reliable_horizon",
+            max_col="max_horizon",
+        )
+        return mirror_output(out, self._output_type)
+
+
+
+    def _infer_recent(self):
+        """Extract `recent` from `self.estimator`, if present."""
+        return getattr(self.estimator, "recent", None)
+
+    def _infer_regime(self):
+        """Extract the regime from `self.estimator`, if any."""
+        est = self.estimator
+        if hasattr(est, "loss_regime"):
+            return getattr(est, "loss_regime")
+        return getattr(est, "regime", None)
+
+    def _infer_switch(self):
+        """Switch boundary for the usage overlay."""
+        if self.is_single_origin:
+            fold = self._fits.get(self.holdouts[0])
+            if fold is not None:
+                refit = getattr(fold, "_refit", None)
+                if refit is not None:
+                    sp = getattr(refit, "switch_point", None)
+                    if sp is not None:
+                        return sp
+        return getattr(self.estimator, "switch", None)
+
+    def __repr__(self) -> str:
+        est_name = type(self.estimator).__name__
+        used = sorted(self._fits)
+        n_cells = self._ae_err.height
+        skipped = f", skipped={self._skipped}" if self._skipped else ""
+        return (
+            f"<BacktestFit: estimator={est_name}, "
+            f"holdouts={used}, target={self.target!r}, "
+            f"n_cells={n_cells}{skipped}>"
+        )

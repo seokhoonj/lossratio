@@ -24,7 +24,6 @@ from .link_ratio import LinkRatio
 from .loss_fit import LossFit
 from .pooled_loss import PooledLoss
 from .regime import Regime
-from .rolling_backtest import RollingBacktest, RollingBacktestFit
 from .smooth_loss import SmoothLoss
 from .total import Total
 from .triangle import Triangle, TriangleValidation
@@ -46,8 +45,6 @@ __all__ = [
     "PooledLoss",
     "Regime",
     "ResidualBootstrap",
-    "RollingBacktest",
-    "RollingBacktestFit",
     "SmoothLoss",
     "Total",
     "Triangle",
