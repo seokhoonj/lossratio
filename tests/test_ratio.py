@@ -157,3 +157,36 @@ def test_extend_invalid_horizon():
     fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     with pytest.raises(ValueError, match="horizon"):
         fit.extend(horizon=0)
+
+
+def test_extend_amounts_columns_and_consistency():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    ext = fit.extend(horizon=30, amounts=True)
+    ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
+    assert {"loss", "premium", "ratio"} <= set(ext.columns)
+    frozen = ext.filter(pl.col("status") == "frozen")
+    assert frozen.height > 0
+    # ratio is frozen flat; loss == ratio * premium exactly
+    assert frozen["ratio"].std() == pytest.approx(0.0, abs=1e-9)
+    err = (frozen["loss"] - frozen["ratio"] * frozen["premium"]).abs().max()
+    assert err == pytest.approx(0.0, abs=1e-6)
+    # premium keeps growing (or is flat), never shrinks across the extension
+    prem = frozen.sort("duration")["premium"]
+    assert (prem.diff().drop_nulls() >= -1e-6).all()
+
+
+def test_extend_amounts_developing_null():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=True))
+    ext = fit.extend(horizon=30, amounts=True)
+    ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
+    beyond = ext.filter(pl.col("status") == "uncertain")
+    assert beyond.height > 0
+    assert beyond["loss"].null_count() == beyond.height
+    assert beyond["premium"].null_count() == beyond.height
+
+
+def test_extend_amounts_off_has_no_amount_columns():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    ext = fit.extend(horizon=20)
+    ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
+    assert "loss" not in ext.columns and "premium" not in ext.columns

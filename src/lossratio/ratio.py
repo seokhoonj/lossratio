@@ -31,6 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import polars as pl
 from scipy.stats import norm
 
@@ -185,6 +186,30 @@ def _default_premium() -> "_PremiumEstimatorBase":
     return PooledPremium()
 
 
+def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:
+    """Recent per-period premium growth factor at the frontier.
+
+    Geometric mean of the last ``window`` volume-weighted premium link ratios
+    ``f^P_k = sum P_{k+1} / sum P_k``. Returns ~1.0 if premium has plateaued
+    (no new premium coming in), > 1 if premium is still being paid in. Used to
+    grow the frozen-ratio amount projection beyond the frontier.
+    """
+    from .stability import _segment_matrices
+
+    _, P, _ = _segment_matrices(sub.select(["cohort", "duration", "loss", "premium"]))
+    fp: list[float] = []
+    for k in range(P.shape[1] - 1):
+        both = ~np.isnan(P[:, k]) & ~np.isnan(P[:, k + 1])
+        sk = np.nansum(P[both, k])
+        if both.sum() >= 1 and sk > 0:
+            r = np.nansum(P[both, k + 1]) / sk
+            if np.isfinite(r) and r > 0:
+                fp.append(r)
+    if not fp:
+        return 1.0
+    return float(np.exp(np.mean(np.log(fp[-window:]))))
+
+
 # ---------------------------------------------------------------------------
 # Result object
 # ---------------------------------------------------------------------------
@@ -246,7 +271,8 @@ class RatioFit:
         return mirror_output(agg, self._output_type)
 
     def extend(
-        self, *, horizon: int, window: int = 6, tol: float = 0.01
+        self, *, horizon: int, window: int = 6, tol: float = 0.01,
+        amounts: bool = False,
     ) -> "FrameLike":
         """Extend the projected loss ratio flat to a target ``horizon`` duration.
 
@@ -265,9 +291,17 @@ class RatioFit:
           is left ``null`` with ``status="uncertain"``. The ratio has not settled,
           so NO flat value is fabricated -- the go-forward is genuinely unknown.
 
+        With ``amounts=True`` the extension also carries ``loss`` and ``premium``:
+        the loss ratio is frozen, but premium keeps being paid in, so premium is
+        grown by its recent per-period growth factor (``~1`` once premium has
+        plateaued, ``>1`` while still inflowing) and ``loss = ratio * premium``.
+        Amounts are emitted only where the verdict is ``frozen``; ``uncertain``
+        rows leave them ``null`` too.
+
         Returns a long frame (segment keys, ``cohort``, ``duration``, ``ratio``,
-        ``status``): observed/within-frontier rows carry ``status="projected"``,
-        extension rows carry ``frozen`` / ``uncertain``.
+        ``status`` [+ ``loss`` / ``premium`` when ``amounts``]): observed /
+        within-frontier rows carry ``status="projected"``, extension rows carry
+        ``frozen`` / ``uncertain``.
         """
         if self._triangle is None:
             raise ValueError(
@@ -281,9 +315,11 @@ class RatioFit:
         seg_cols = normalize_groups(self.groups) or []
         base = self._df
 
-        base_out = base.select(
-            [*seg_cols, "cohort", "duration", pl.col("ratio_proj").alias("ratio")]
-        ).with_columns(status=pl.lit("projected"))
+        base_cols = [*seg_cols, "cohort", "duration", pl.col("ratio_proj").alias("ratio")]
+        if amounts:
+            base_cols += [pl.col("loss_proj").alias("loss"),
+                          pl.col("premium_proj").alias("premium")]
+        base_out = base.select(base_cols).with_columns(status=pl.lit("projected"))
 
         # per (segment, cohort) freeze point = deepest non-null projected ratio
         keys = seg_cols + ["cohort"]
@@ -293,16 +329,21 @@ class RatioFit:
             .agg(
                 freeze_dur=pl.col("duration").max(),
                 freeze_ratio=pl.col("ratio_proj").sort_by("duration").last(),
+                freeze_premium=pl.col("premium_proj").sort_by("duration").last(),
             )
         )
 
-        # segment stability verdict
+        # segment stability verdict + (for amounts) recent premium growth
         rep = Stability(window=window, tol=tol).assess(self._triangle).to_polars()
         if seg_cols:
             froze = froze.join(rep.select([*seg_cols, "stable"]), on=seg_cols, how="left")
         else:
             sv = rep.get_column("stable")[0]
             froze = froze.with_columns(stable=pl.lit(bool(sv) if sv is not None else False))
+        if amounts:
+            froze = froze.join(self._premium_growth(seg_cols, window),
+                               on=seg_cols if seg_cols else None,
+                               how="cross" if not seg_cols else "left")
 
         ext = (
             froze.with_columns(
@@ -311,21 +352,49 @@ class RatioFit:
             .explode("duration")
             .filter(pl.col("duration").is_not_null())
             .with_columns(is_stable=pl.col("stable").fill_null(False))
-            .with_columns(
-                ratio=pl.when(pl.col("is_stable"))
-                .then(pl.col("freeze_ratio"))
+        )
+        ext = ext.with_columns(
+            ratio=pl.when(pl.col("is_stable")).then(pl.col("freeze_ratio")).otherwise(None),
+            status=pl.when(pl.col("is_stable")).then(pl.lit("frozen")).otherwise(pl.lit("uncertain")),
+        )
+        if amounts:
+            steps = (pl.col("duration") - pl.col("freeze_dur")).cast(pl.Float64)
+            prem = pl.col("freeze_premium") * pl.col("_gP").pow(steps)
+            ext = ext.with_columns(
+                premium=pl.when(pl.col("is_stable")).then(prem).otherwise(None),
+            ).with_columns(
+                loss=pl.when(pl.col("is_stable"))
+                .then(pl.col("ratio") * pl.col("premium"))
                 .otherwise(None),
-                status=pl.when(pl.col("is_stable"))
-                .then(pl.lit("frozen"))
-                .otherwise(pl.lit("uncertain")),
             )
-            .select([*seg_cols, "cohort", "duration", "ratio", "status"])
-        )
-
-        out = pl.concat([base_out, ext], how="vertical_relaxed").sort(
-            [*seg_cols, "cohort", "duration"]
-        )
+        out_cols = [*seg_cols, "cohort", "duration", "ratio", "status"]
+        if amounts:
+            out_cols = [*seg_cols, "cohort", "duration", "loss", "premium", "ratio", "status"]
+        out = pl.concat(
+            [base_out.select(out_cols), ext.select(out_cols)], how="vertical_relaxed"
+        ).sort([*seg_cols, "cohort", "duration"])
         return mirror_output(out, self._output_type)
+
+    def _premium_growth(self, seg_cols: list[str], window: int) -> pl.DataFrame:
+        """Per-segment recent premium growth factor (``_gP``) for amount
+        extension."""
+        df_tri = self._triangle.to_polars()
+        if seg_cols:
+            seg_keys = df_tri.select(seg_cols).unique(maintain_order=True).rows()
+        else:
+            seg_keys = [()]
+        rows = []
+        for key in seg_keys:
+            if seg_cols:
+                m = pl.lit(True)
+                for col, val in zip(seg_cols, key):
+                    m = m & (pl.col(col) == val)
+                sub = df_tri.filter(m)
+            else:
+                sub = df_tri
+            g = _segment_premium_growth(sub, window)
+            rows.append({**{c: v for c, v in zip(seg_cols, key)}, "_gP": g})
+        return pl.DataFrame(rows)
 
     def __repr__(self) -> str:
         return (
