@@ -173,6 +173,7 @@ class Ratio:
             output_type=triangle._output_type,
             loss_fit=loss_fit,
             premium_fit=premium_fit,
+            triangle=triangle,
         )
 
 
@@ -211,9 +212,11 @@ class RatioFit:
         output_type: str,
         loss_fit: LossFit,
         premium_fit: PremiumFit,
+        triangle: "Triangle | None" = None,
     ) -> None:
         self._df = df
         self._output_type = output_type
+        self._triangle = triangle
         self.groups = groups
         self.loss_model = loss_model
         self.premium_model = premium_model
@@ -241,6 +244,88 @@ class RatioFit:
             ratio_se=pl.col("ratio_se").drop_nulls().last(),
         )
         return mirror_output(agg, self._output_type)
+
+    def extend(
+        self, *, horizon: int, window: int = 6, tol: float = 0.01
+    ) -> "FrameLike":
+        """Extend the projected loss ratio flat to a target ``horizon`` duration.
+
+        Beyond the observed development frontier the honest go-forward is to hold
+        the frontier loss ratio flat -- but only once the development has settled
+        (real-data OOS: loss and premium co-develop and their tails cancel in the
+        ratio, so a flat freeze beats extrapolating the components). This runs the
+        :class:`~lossratio.stability.Stability` gate (same ``window`` / ``tol``)
+        and, per segment, extends each cohort's last projected ratio out to
+        ``horizon``:
+
+        * **stable** segment -> the frontier ratio is held flat
+          (``status="frozen"``); every duration past the frontier carries the
+          same value.
+        * **developing** (or ``insufficient_depth``) segment -> the forward ratio
+          is left ``null`` with ``status="uncertain"``. The ratio has not settled,
+          so NO flat value is fabricated -- the go-forward is genuinely unknown.
+
+        Returns a long frame (segment keys, ``cohort``, ``duration``, ``ratio``,
+        ``status``): observed/within-frontier rows carry ``status="projected"``,
+        extension rows carry ``frozen`` / ``uncertain``.
+        """
+        if self._triangle is None:
+            raise ValueError(
+                "extend requires the source triangle; build the fit via "
+                "Ratio(...).fit(triangle)."
+            )
+        if not isinstance(horizon, int) or horizon < 1:
+            raise ValueError(f"horizon must be a positive int, got {horizon!r}")
+        from .stability import Stability
+
+        seg_cols = normalize_groups(self.groups) or []
+        base = self._df
+
+        base_out = base.select(
+            [*seg_cols, "cohort", "duration", pl.col("ratio_proj").alias("ratio")]
+        ).with_columns(status=pl.lit("projected"))
+
+        # per (segment, cohort) freeze point = deepest non-null projected ratio
+        keys = seg_cols + ["cohort"]
+        froze = (
+            base.filter(pl.col("ratio_proj").is_not_null())
+            .group_by(keys, maintain_order=True)
+            .agg(
+                freeze_dur=pl.col("duration").max(),
+                freeze_ratio=pl.col("ratio_proj").sort_by("duration").last(),
+            )
+        )
+
+        # segment stability verdict
+        rep = Stability(window=window, tol=tol).assess(self._triangle).to_polars()
+        if seg_cols:
+            froze = froze.join(rep.select([*seg_cols, "stable"]), on=seg_cols, how="left")
+        else:
+            sv = rep.get_column("stable")[0]
+            froze = froze.with_columns(stable=pl.lit(bool(sv) if sv is not None else False))
+
+        ext = (
+            froze.with_columns(
+                duration=pl.int_ranges(pl.col("freeze_dur") + 1, horizon + 1)
+            )
+            .explode("duration")
+            .filter(pl.col("duration").is_not_null())
+            .with_columns(is_stable=pl.col("stable").fill_null(False))
+            .with_columns(
+                ratio=pl.when(pl.col("is_stable"))
+                .then(pl.col("freeze_ratio"))
+                .otherwise(None),
+                status=pl.when(pl.col("is_stable"))
+                .then(pl.lit("frozen"))
+                .otherwise(pl.lit("uncertain")),
+            )
+            .select([*seg_cols, "cohort", "duration", "ratio", "status"])
+        )
+
+        out = pl.concat([base_out, ext], how="vertical_relaxed").sort(
+            [*seg_cols, "cohort", "duration"]
+        )
+        return mirror_output(out, self._output_type)
 
     def __repr__(self) -> str:
         return (

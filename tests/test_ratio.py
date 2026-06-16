@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import polars as pl
 import pytest
 
@@ -106,3 +108,52 @@ def test_summary_columns(tri):
     s = lr.Ratio(loss=lr.PooledLoss()).fit(tri).summary()
     for c in ("coverage", "cohort", "ratio_proj", "ratio_se"):
         assert c in s.columns
+
+
+def _flat_or_rising(rising: bool):
+    """Single-segment triangle: flat loss ratio (stable) or rising (developing)."""
+    def month(m0):
+        return date(2018 + m0 // 12, 1 + m0 % 12, 1)
+    rows = []
+    for i in range(13):
+        for d in range(1, 18 - i + 1):
+            loss = (30.0 + 8.0 * d) if rising else 50.0
+            rows.append({
+                "uy_m": month(i), "cy_m": month(i + d - 1),
+                "incr_loss": loss, "incr_premium": 100.0,
+            })
+    return lr.Triangle(pl.DataFrame(rows))
+
+
+def test_extend_stable_freezes_flat():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    ext = fit.extend(horizon=30)
+    ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
+    frozen = ext.filter(pl.col("status") == "frozen")
+    assert frozen.height > 0
+    # every frozen value equals the frontier ratio (0.5) and is flat
+    assert frozen["ratio"].drop_nulls().std() == pytest.approx(0.0, abs=1e-9)
+    assert frozen["ratio"][0] == pytest.approx(0.5, abs=1e-6)
+
+
+def test_extend_developing_is_null_uncertain():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=True))
+    ext = fit.extend(horizon=30)
+    ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
+    beyond = ext.filter(pl.col("status") != "projected")
+    assert beyond.height > 0
+    assert (beyond["status"] == "uncertain").all()
+    assert beyond["ratio"].null_count() == beyond.height       # no fabricated value
+
+
+def test_extend_horizon_within_frontier_adds_nothing():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    ext = fit.extend(horizon=3)
+    ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
+    assert (ext["status"] == "projected").all()
+
+
+def test_extend_invalid_horizon():
+    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    with pytest.raises(ValueError, match="horizon"):
+        fit.extend(horizon=0)
