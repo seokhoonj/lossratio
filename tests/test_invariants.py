@@ -55,12 +55,12 @@ def test_ed_unit_invariance():
     """ED: scale loss AND premium by C -> projections scale by C, the loss
     ratio and CV are invariant."""
     df = _experience()
-    base = _fit_df(lr.ExposureDriven(), df)
+    base = _fit_df(lr.PooledLoss(), df)
     scaled = df.with_columns(
         incr_loss=pl.col("incr_loss") * C,
         incr_premium=pl.col("incr_premium") * C,
     )
-    sc = _fit_df(lr.ExposureDriven(), scaled)
+    sc = _fit_df(lr.PooledLoss(), scaled)
     assert base.height == sc.height
 
     _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())
@@ -76,9 +76,9 @@ def test_cl_loss_equivariance():
     """CL: scale loss alone by C -> loss projection scales by C, CV invariant
     (f_k is a ratio of losses, scale-free)."""
     df = _experience()
-    base = _fit_df(lr.ChainLadder(), df)
+    base = _fit_df(lr.LinkRatio(), df)
     scaled = df.with_columns(incr_loss=pl.col("incr_loss") * C)
-    sc = _fit_df(lr.ChainLadder(), scaled)
+    sc = _fit_df(lr.LinkRatio(), scaled)
     assert base.height == sc.height
 
     _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())
@@ -89,7 +89,7 @@ def test_row_order_invariance():
     """Shuffling input rows does not change the fitted projection (a fit is a
     function of the cells, not their order)."""
     df = _experience()
-    base = _fit_df(lr.ExposureDriven(), df)
+    base = _fit_df(lr.PooledLoss(), df)
     shuffled = df.sample(fraction=1.0, shuffle=True, seed=20260614)
-    sc = _fit_df(lr.ExposureDriven(), shuffled)
+    sc = _fit_df(lr.PooledLoss(), shuffled)
     _close(sc["loss_proj"].to_numpy(), base["loss_proj"].to_numpy())

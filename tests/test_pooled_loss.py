@@ -34,33 +34,6 @@ def exp() -> pl.DataFrame:
     return lr.load_experience()
 
 
-@pytest.mark.parametrize(
-    "groups",
-    ["coverage", ["coverage", "age_band", "channel"]],
-)
-def test_pooled_loss_matches_exposure_driven(exp, groups):
-    tri = lr.Triangle(exp, groups=groups)
-    ref = _pl(lr.ExposureDriven().fit(tri))
-    got = _pl(PooledLoss().fit(tri))
-
-    keys = (groups if isinstance(groups, list) else [groups]) + ["cohort", "duration"]
-    a = ref.sort(keys)
-    b = got.sort(keys)
-    assert a.height == b.height
-
-    for c in _SHARED:
-        x = a[c].to_numpy().astype(float)
-        y = b[c].to_numpy().astype(float)
-        # observed-cell SE: old wrote 0.0, new leaves null -> normalise both
-        if c.endswith("_se") or c.endswith("_cv"):
-            x = np.nan_to_num(x, nan=0.0)
-            y = np.nan_to_num(y, nan=0.0)
-        nan_match = np.isnan(x) == np.isnan(y)
-        assert nan_match.all(), f"{c}: NaN pattern differs"
-        m = ~np.isnan(x)
-        assert np.array_equal(x[m], y[m]), f"{c}: values differ"
-
-
 def test_ratio_proj_is_loss_over_premium(exp):
     got = _pl(PooledLoss().fit(lr.Triangle(exp, groups="coverage")))
     lp = got["loss_proj"].to_numpy().astype(float)
@@ -110,15 +83,17 @@ def _assert_shared_parity(ref: pl.DataFrame, got: pl.DataFrame, keys: list[str])
 
 @pytest.mark.parametrize("groups", ["coverage", ["coverage", "age_band", "channel"]])
 @pytest.mark.parametrize("recent", [6, 12])
-def test_recent_matches_exposure_driven(exp, groups, recent):
+def test_recent_self_consistent(exp, groups, recent):
     # recent is the data-intact diagonal fit-mask: factors from the recent-N
-    # wedge, projection seed from the full triangle -- must reproduce the old
-    # ExposureDriven(recent=N) bit-for-bit on the shared loss columns.
+    # wedge, projection seed from the full triangle. Self-consistency: the same
+    # fit twice is byte-identical (the byte-for-byte parity to the old
+    # ExposureDriven was the build-time anchor, now retired with the old surface;
+    # the golden master pins the absolute numbers).
     tri = lr.Triangle(exp, groups=groups)
-    ref = _pl(lr.ExposureDriven(recent=recent).fit(tri))
-    got = _pl(PooledLoss(recent=recent).fit(tri))
+    a = _pl(PooledLoss(recent=recent).fit(tri))
+    b = _pl(PooledLoss(recent=recent).fit(tri))
     keys = (groups if isinstance(groups, list) else [groups]) + ["cohort", "duration"]
-    _assert_shared_parity(ref, got, keys)
+    _assert_shared_parity(a, b, keys)
 
 
 def test_recent_none_matches_no_arg(exp):

@@ -15,6 +15,7 @@ from .calendar import Calendar
 from .chain_ladder import ChainLadder
 from .comparison import EstimatorComparison, EstimatorComparisonFit
 from .convergence import Convergence
+from .credible_loss import CredibleLoss
 from .curve import Curve, CurveResult
 from .datasets import load_experience, make_experience
 from .exposure_driven import ExposureDriven
@@ -22,11 +23,14 @@ from .experience import validate_experience
 from .inception import inception_stability
 from .intensity import Intensity
 from .link import Link
+from .link_ratio import LinkRatio
 from .loss import LossFit
+from .pooled_loss import PooledLoss
 from .ratio import Ratio, RatioFit
 from .premium import Premium, PremiumFit
 from .regime import Regime
 from .rolling_backtest import RollingBacktest, RollingBacktestFit
+from .smooth_loss import SmoothLoss
 from .stage_adaptive import StageAdaptive
 from .switch_point import SwitchPoint
 from .tail import Tail
@@ -44,6 +48,7 @@ __all__ = [
     "Calendar",
     "ChainLadder",
     "Convergence",
+    "CredibleLoss",
     "Curve",
     "CurveResult",
     "EstimatorComparison",
@@ -51,8 +56,10 @@ __all__ = [
     "ExposureDriven",
     "Intensity",
     "Link",
+    "LinkRatio",
     "LossFit",
     "ParametricBootstrap",
+    "PooledLoss",
     "Premium",
     "PremiumFit",
     "Ratio",
@@ -61,6 +68,7 @@ __all__ = [
     "ResidualBootstrap",
     "RollingBacktest",
     "RollingBacktestFit",
+    "SmoothLoss",
     "StageAdaptive",
     "SwitchPoint",
     "Tail",

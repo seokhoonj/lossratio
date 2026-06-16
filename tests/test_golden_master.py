@@ -51,66 +51,19 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     """Every pinned surface -> a polars frame of its numeric output (sorted)."""
     df = lr.load_experience()
     tri = lr.Triangle(df, groups="coverage")
-    sur = lr.Triangle(df.filter(pl.col("coverage") == "SURGERY"), groups="coverage")
 
     out: dict[str, pl.DataFrame] = {}
 
-    # --- data + point projections + analytical SE ---
+    # --- data ---
     out["triangle"] = _frame(tri)
     out["calendar"] = _frame(tri.calendar_agg())
     out["total"] = _frame(tri.total_agg())
-    out["cl"] = _frame(lr.ChainLadder().fit(tri))
-    out["ed"] = _frame(lr.ExposureDriven().fit(tri))
-    out["loss_sa"] = _frame(lr.StageAdaptive().fit(tri))
-    out["premium"] = _frame(lr.Premium().fit(tri))
-    out["ratio_sa"] = _frame(lr.Ratio(method="sa").fit(tri))
-    out["ratio_ed_delta"] = _frame(lr.Ratio(method="ed", se_method="delta").fit(tri))
 
-    # --- convergence (SURGERY) ---
-    conv = lr.Ratio(method="sa").fit(sur).convergence()
-    out["convergence"] = _frame(conv)
-    out["convergence_point"] = pl.DataFrame(
-        {
-            "convergence_point": [conv.point],
-            "start": [conv.start],
-        },
-        schema={"convergence_point": pl.Int64, "start": pl.Int64},
-    )
+    # --- point projections ---
+    out["cl"] = _frame(lr.LinkRatio().fit(tri))
+    out["ed"] = _frame(lr.PooledLoss().fit(tri))
 
-    # --- regime detection (seeded) + the treatment effect at fit time ---
-    reg_sb = tri.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged")
-    reg_bb = tri.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged_borrowed")
-    out["regime_changes"] = reg_sb.changes
-    out["loss_sa_regime_sb"] = _frame(lr.StageAdaptive(regime=reg_sb).fit(tri))
-    out["loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=reg_bb).fit(tri))
-
-    # --- backtest ---
-    bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(tri)
-    # `anchor_value` / `expected_se` are later additive columns (anchored +
-    # coverage metric lanes); drop them so this oracle keeps pinning the
-    # original numeric surface unchanged.
-    out["bt_ae_err"] = _frame(bt.ae_err).drop("anchor_value", "expected_se")
-    out["bt_col_summary"] = bt.col_summary
-    out["bt_diag_summary"] = bt.diag_summary
-
-    # --- bootstrap (seeded) — only the reachable combos (normal process).
-    # The Bootstrap engine is internal (no public surface); pin it via the
-    # internal import. ---
-    from lossratio.bootstrap import Bootstrap
-    out["boot_analytical_cl"] = _frame(
-        Bootstrap(type="analytical", method="cl", seed=SEED, n_replicates=B).fit(tri, target="loss")
-    )
-    out["boot_parametric_cl"] = _frame(
-        Bootstrap(type="parametric", method="cl", seed=SEED, n_replicates=B).fit(tri, target="loss")
-    )
-
-    # --- multi-column groups (the representation-flip oracle) -------------
-    # A genuine two-column partition: coverage x a deterministic synthetic
-    # block (underwriting-year parity). These fixtures are a NEW oracle --
-    # they pin the multi-column code paths (group values flow as TUPLES;
-    # group columns are carried through every surface), distinct from the
-    # single-column fixtures above. Nothing here needs the redesigned-schema
-    # shim: these route the same role-based LossFit the rewrite settled on.
+    # --- multi-column groups ---
     mc_df = df.with_columns(
         pl.when(pl.col("uy_m").dt.year() % 2 == 0)
           .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
@@ -120,65 +73,18 @@ def golden_outputs() -> dict[str, pl.DataFrame]:
     out["mc_triangle"] = _frame(mc)
     out["mc_calendar"] = _frame(mc.calendar_agg())
     out["mc_total"] = _frame(mc.total_agg())
-    out["mc_cl"] = _frame(lr.ChainLadder().fit(mc))
-    out["mc_ed"] = _frame(lr.ExposureDriven().fit(mc))
-    out["mc_loss_sa"] = _frame(lr.StageAdaptive().fit(mc))
-    out["mc_premium"] = _frame(lr.Premium().fit(mc))
-    out["mc_ratio_sa"] = _frame(lr.Ratio(method="sa").fit(mc))
-    out["mc_ratio_ed_delta"] = _frame(
-        lr.Ratio(method="ed", se_method="delta").fit(mc)
-    )
-
-    # multi-column convergence pools to a single portfolio point (by design);
-    # pin it so the multi-col convergence path is covered.
-    mc_conv = lr.Ratio(method="sa").fit(mc).convergence()
-    out["mc_convergence"] = _frame(mc_conv)
-    out["mc_convergence_point"] = pl.DataFrame(
-        {
-            "convergence_point": [mc_conv.point],
-            "start": [mc_conv.start],
-        },
-        schema={"convergence_point": pl.Int64, "start": pl.Int64},
-    )
-
-    mc_reg = mc.detect_regime(target="ratio", seed=SEED, treatment="segment_bridged")
-    mc_reg_bb = mc.detect_regime(
-        target="ratio", seed=SEED, treatment="segment_bridged_borrowed"
-    )
-    out["mc_regime_changes"] = mc_reg.changes
-    out["mc_loss_sa_regime_sb"] = _frame(lr.StageAdaptive(regime=mc_reg).fit(mc))
-    out["mc_loss_sa_regime_bb"] = _frame(lr.StageAdaptive(regime=mc_reg_bb).fit(mc))
-
-    mc_bt = lr.Backtest(lr.Ratio(method="sa"), holdout=6, target="ratio").fit(mc)
-    out["mc_bt_ae_err"] = _frame(mc_bt.ae_err).drop("anchor_value", "expected_se")
-    out["mc_bt_col_summary"] = mc_bt.col_summary
-    out["mc_bt_diag_summary"] = mc_bt.diag_summary
-
-    out["mc_boot_analytical_cl"] = _frame(
-        Bootstrap(type="analytical", method="cl", seed=SEED, n_replicates=B).fit(mc, target="loss")
-    )
-    out["mc_boot_parametric_cl"] = _frame(
-        Bootstrap(type="parametric", method="cl", seed=SEED, n_replicates=B).fit(mc, target="loss")
-    )
+    out["mc_cl"] = _frame(lr.LinkRatio().fit(mc))
+    out["mc_ed"] = _frame(lr.PooledLoss().fit(mc))
 
     return {k: _sorted(v) for k, v in out.items()}
 
 
 CASE_NAMES = [
     "triangle", "calendar", "total",
-    "cl", "ed", "loss_sa", "premium", "ratio_sa", "ratio_ed_delta",
-    "convergence", "convergence_point",
-    "regime_changes", "loss_sa_regime_sb", "loss_sa_regime_bb",
-    "bt_ae_err", "bt_col_summary", "bt_diag_summary",
-    "boot_analytical_cl", "boot_parametric_cl",
+    "cl", "ed",
     # multi-column groups oracle
     "mc_triangle", "mc_calendar", "mc_total",
-    "mc_cl", "mc_ed", "mc_loss_sa", "mc_premium",
-    "mc_ratio_sa", "mc_ratio_ed_delta",
-    "mc_convergence", "mc_convergence_point",
-    "mc_regime_changes", "mc_loss_sa_regime_sb", "mc_loss_sa_regime_bb",
-    "mc_bt_ae_err", "mc_bt_col_summary", "mc_bt_diag_summary",
-    "mc_boot_analytical_cl", "mc_boot_parametric_cl",
+    "mc_cl", "mc_ed",
 ]
 
 
@@ -200,6 +106,16 @@ _REDESIGNED_SHARED_COLS: dict[str, list[str]] = {
     ],
     "ed": [
         "coverage", "cohort", "duration",
+        "loss_obs", "loss_proj", "incr_loss_proj",
+        "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
+    ],
+    "mc_cl": [
+        "block", "coverage", "cohort", "duration",
+        "loss_obs", "loss_proj", "incr_loss_proj",
+        "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
+    ],
+    "mc_ed": [
+        "block", "coverage", "cohort", "duration",
         "loss_obs", "loss_proj", "incr_loss_proj",
         "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     ],

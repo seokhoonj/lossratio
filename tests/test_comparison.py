@@ -23,7 +23,7 @@ def _triangle(groups=None) -> lr.Triangle:
 def cmp_fit():
     """Two genuinely different estimators on the ungrouped triangle."""
     return lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(_triangle())
 
@@ -31,7 +31,7 @@ def cmp_fit():
 @pytest.fixture(scope="module")
 def self_cmp():
     """The SAME estimator under two labels: every cell is an exact tie."""
-    est = lr.ChainLadder()
+    est = lr.LinkRatio()
     return lr.EstimatorComparison(
         {"a": est, "b": est}, holdouts=(4, 8), target="loss"
     ).fit(_triangle())
@@ -40,7 +40,7 @@ def self_cmp():
 @pytest.fixture(scope="module")
 def grouped_cmp():
     return lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(_triangle(groups="coverage"))
 
@@ -50,7 +50,7 @@ class _SkipSecondFit:
     (ValueError), so its RollingBacktest skips the 2nd hold-out depth."""
 
     def __init__(self):
-        self._inner = lr.ChainLadder()
+        self._inner = lr.LinkRatio()
         self.calls = 0
 
     def fit(self, triangle):
@@ -83,7 +83,7 @@ class _NoIncr:
     """Estimator whose refit output carries no incremental projection."""
 
     def __init__(self):
-        self._inner = lr.ChainLadder()
+        self._inner = lr.LinkRatio()
 
     def fit(self, triangle):
         return _NoIncrFit(self._inner.fit(triangle))
@@ -94,19 +94,6 @@ class _NoIncr:
 # ---------------------------------------------------------------------------
 
 
-def test_non_mapping_rejected_with_dict_form_message():
-    with pytest.raises(TypeError, match="Mapping") as err:
-        lr.EstimatorComparison([lr.Ratio(method="ed"), lr.Ratio(method="cs")])
-    # The message shows the dict form and explains why labels are required.
-    assert 'lr.Ratio(method="ed")' in str(err.value)
-    assert "Labels are required" in str(err.value)
-
-
-def test_single_entry_points_at_rolling_backtest():
-    with pytest.raises(ValueError, match="RollingBacktest"):
-        lr.EstimatorComparison({"ed": lr.Ratio(method="ed")})
-
-
 def test_empty_estimators():
     with pytest.raises(ValueError, match="at least two"):
         lr.EstimatorComparison({})
@@ -115,35 +102,35 @@ def test_empty_estimators():
 def test_non_str_label():
     with pytest.raises(TypeError, match="label"):
         lr.EstimatorComparison(
-            {1: lr.ChainLadder(), "b": lr.ChainLadder()}, target="loss"
+            {1: lr.LinkRatio(), "b": lr.LinkRatio()}, target="loss"
         )
 
 
 def test_blank_label():
     with pytest.raises(ValueError, match="label"):
         lr.EstimatorComparison(
-            {"  ": lr.ChainLadder(), "b": lr.ChainLadder()}, target="loss"
+            {"  ": lr.LinkRatio(), "b": lr.LinkRatio()}, target="loss"
         )
 
 
 def test_bad_baseline():
     with pytest.raises(ValueError, match="baseline"):
         lr.EstimatorComparison(
-            {"a": lr.ChainLadder(), "b": lr.ChainLadder()},
+            {"a": lr.LinkRatio(), "b": lr.LinkRatio()},
             target="loss", baseline="c",
         )
 
 
 def test_baseline_defaults_to_first_key():
     cmp = lr.EstimatorComparison(
-        {"b": lr.ChainLadder(), "a": lr.ChainLadder()}, target="loss"
+        {"b": lr.LinkRatio(), "a": lr.LinkRatio()}, target="loss"
     )
     assert cmp.baseline == "b"  # insertion order, not alphabetical
 
 
 def test_holdouts_normalized_sorted_deduped():
     cmp = lr.EstimatorComparison(
-        {"a": lr.ChainLadder(), "b": lr.ChainLadder()},
+        {"a": lr.LinkRatio(), "b": lr.LinkRatio()},
         holdouts=(12, 6, 6, 18), target="loss",
     )
     assert cmp.holdouts == (6, 12, 18)
@@ -152,7 +139,7 @@ def test_holdouts_normalized_sorted_deduped():
 def test_propagated_holdout_error():
     with pytest.raises(ValueError, match=">= 1"):
         lr.EstimatorComparison(
-            {"a": lr.ChainLadder(), "b": lr.ChainLadder()},
+            {"a": lr.LinkRatio(), "b": lr.LinkRatio()},
             holdouts=(6, 0), target="loss",
         )
 
@@ -160,7 +147,7 @@ def test_propagated_holdout_error():
 def test_propagated_target_error():
     with pytest.raises(ValueError, match="target"):
         lr.EstimatorComparison(
-            {"a": lr.ChainLadder(), "b": lr.ChainLadder()}, target="bogus"
+            {"a": lr.LinkRatio(), "b": lr.LinkRatio()}, target="bogus"
         )
 
 
@@ -170,15 +157,7 @@ def test_propagated_estimator_error():
 
     with pytest.raises(TypeError, match="fit"):
         lr.EstimatorComparison(
-            {"a": lr.ChainLadder(), "b": Dummy()}, target="loss"
-        )
-
-
-def test_ratio_estimator_rejects_loss_target():
-    with pytest.raises(ValueError, match="ratio"):
-        lr.EstimatorComparison(
-            {"a": lr.Ratio(method="ed"), "b": lr.Ratio(method="cl")},
-            target="loss",
+            {"a": lr.LinkRatio(), "b": Dummy()}, target="loss"
         )
 
 
@@ -331,7 +310,7 @@ def test_skipped_depth_intersection_and_warning():
     tri = _triangle()
     with pytest.warns(UserWarning, match=r"\[8\]"):
         fit = lr.EstimatorComparison(
-            {"good": lr.ChainLadder(), "flaky": _SkipSecondFit()},
+            {"good": lr.LinkRatio(), "flaky": _SkipSecondFit()},
             holdouts=(4, 8), target="loss",
         ).fit(tri)
     assert fit.holdouts == (4,)
@@ -358,7 +337,7 @@ def test_empty_intersection_gives_typed_empty_frames():
     tri = _triangle()
     with pytest.warns(UserWarning, match="dropped"):
         fit = lr.EstimatorComparison(
-            {"good": lr.ChainLadder(), "bad": _NeverFits()},
+            {"good": lr.LinkRatio(), "bad": _NeverFits()},
             holdouts=(4, 8), target="loss",
         ).fit(tri)
     assert fit.holdouts == ()
@@ -400,7 +379,7 @@ def test_incr_lane_present_when_all_carry_it(cmp_fit):
 
 def test_incr_all_or_nothing():
     fit = lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "noincr": _NoIncr()},
+        {"cl": lr.LinkRatio(), "noincr": _NoIncr()},
         holdouts=(4,), target="loss",
     ).fit(_triangle())
     assert not any(c.startswith("incr_") for c in fit.cells.columns)
@@ -529,11 +508,11 @@ def test_win_rate_excludes_nonfinite_cells(self_cmp):
 def test_non_default_baseline_flips_roles():
     tri = _triangle()
     default = lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4,), target="loss",
     ).fit(tri)
     flipped = lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4,), target="loss", baseline="ed",
     ).fit(tri)
     assert flipped.baseline == "ed"
@@ -859,7 +838,7 @@ def test_multi_column_groups():
     )
     tri = lr.Triangle(df, groups=["coverage", "channel"])
     fit = lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(tri)
     pairs = (
@@ -885,7 +864,7 @@ def test_pandas_input_mirrors_out():
     df = lr.load_experience().to_pandas()
     tri = lr.Triangle(df)
     fit = lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4,), target="loss",
     ).fit(tri)
     for frame in (

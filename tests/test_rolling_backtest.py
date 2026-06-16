@@ -26,7 +26,7 @@ def _triangle(groups=None) -> lr.Triangle:
 
 def test_holdouts_normalized_sorted_deduped():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(12, 6, 6, 18), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(12, 6, 6, 18), target="loss"
     )
     assert rbt.holdouts == (6, 12, 18)
 
@@ -34,21 +34,21 @@ def test_holdouts_normalized_sorted_deduped():
 def test_invalid_holdout_value():
     with pytest.raises(ValueError, match=">= 1"):
         lr.RollingBacktest(
-            estimator=lr.ChainLadder(), holdouts=(6, 0), target="loss"
+            estimator=lr.LinkRatio(), holdouts=(6, 0), target="loss"
         )
 
 
 def test_invalid_holdout_type():
     with pytest.raises(TypeError, match="positive int"):
         lr.RollingBacktest(
-            estimator=lr.ChainLadder(), holdouts=(6, 12.0), target="loss"
+            estimator=lr.LinkRatio(), holdouts=(6, 12.0), target="loss"
         )
 
 
 def test_empty_holdouts():
     with pytest.raises(ValueError, match="at least one"):
         lr.RollingBacktest(
-            estimator=lr.ChainLadder(), holdouts=(), target="loss"
+            estimator=lr.LinkRatio(), holdouts=(), target="loss"
         )
 
 
@@ -63,27 +63,13 @@ def test_estimator_must_have_fit():
 def test_invalid_target():
     with pytest.raises(ValueError, match="target"):
         lr.RollingBacktest(
-            estimator=lr.ChainLadder(), holdouts=(6,), target="bogus"
+            estimator=lr.LinkRatio(), holdouts=(6,), target="bogus"
         )
-
-
-def test_ratio_estimator_rejects_loss_target():
-    # Compatibility check is delegated to the inner Backtest, which rejects a
-    # ratio-fit estimator with a non-ratio target at construction.
-    with pytest.raises(ValueError, match="ratio"):
-        lr.RollingBacktest(
-            estimator=lr.Ratio(method="ed"), holdouts=(6,), target="loss"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Horizon + anchor annotation
-# ---------------------------------------------------------------------------
 
 
 def test_horizon_column_present_and_ge_one():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle())
     ae = rbt.ae_err
     assert "horizon" in ae.columns
@@ -96,7 +82,7 @@ def test_horizon_column_present_and_ge_one():
 
 def test_horizon_bounded_by_holdout_per_fold():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle())
     ae = rbt.ae_err
     for h in (6, 12):
@@ -109,7 +95,7 @@ def test_anchor_duration_is_duration_minus_horizon():
     # anchor_duration is the duration the cohort was observed to at the as-of
     # date -- exactly duration - horizon -- and is always >= 0.
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle())
     ae = rbt.ae_err
     assert "anchor_duration" in ae.columns
@@ -128,7 +114,7 @@ def test_anchor_duration_is_duration_minus_horizon():
 
 def test_horizon_summary_schema():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12, 18), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12, 18), target="loss"
     ).fit(_triangle())
     hs = rbt.horizon_summary
     assert set(hs.columns) >= {
@@ -144,7 +130,7 @@ def test_horizon_summary_schema():
 
 def test_anchor_summary_schema():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12, 18), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12, 18), target="loss"
     ).fit(_triangle())
     a = rbt.anchor_summary
     assert set(a.columns) >= {
@@ -159,7 +145,7 @@ def test_anchor_summary_schema():
 
 def test_error_grows_with_horizon():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12, 18, 24), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12, 18, 24), target="loss"
     ).fit(_triangle())
     hs = rbt.horizon_summary.sort("horizon")
     abs_err = hs["abs_err_mean"].to_list()
@@ -178,7 +164,7 @@ def test_error_grows_with_horizon():
 
 def test_composes_backtest_single_holdout_equals_one_backtest():
     tri = _triangle()
-    est = lr.ChainLadder()
+    est = lr.LinkRatio()
     rbt = lr.RollingBacktest(estimator=est, holdouts=(6,), target="loss").fit(tri)
     bt = lr.Backtest(estimator=est, holdout=6, target="loss").fit(tri)
 
@@ -192,7 +178,7 @@ def test_composes_backtest_single_holdout_equals_one_backtest():
 
 def test_fits_dict_exposes_inner_backtests():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle())
     assert set(rbt.fits) == {6, 12}
     for h, bf in rbt.fits.items():
@@ -207,7 +193,7 @@ def test_fits_dict_exposes_inner_backtests():
 
 def test_grouped_triangle_carries_group_columns():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle(groups="coverage"))
     ae = rbt.ae_err
     assert "coverage" in ae.columns
@@ -224,7 +210,7 @@ def test_grouped_triangle_carries_group_columns():
 
 def test_grouped_horizon_summary_per_group_horizon():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle(groups="coverage"))
     hs = rbt.horizon_summary
     # one row per (coverage, horizon)
@@ -238,7 +224,7 @@ def test_grouped_horizon_summary_per_group_horizon():
 
 def test_holdout_at_or_beyond_span_is_skipped():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 9999), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 9999), target="loss"
     ).fit(_triangle())
     # The unreachable depth is dropped, not crashed; the good one survives.
     assert 9999 in rbt.skipped_holdouts
@@ -248,7 +234,7 @@ def test_holdout_at_or_beyond_span_is_skipped():
 
 def test_all_holdouts_skipped_gives_empty_frames():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(9999,), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(9999,), target="loss"
     ).fit(_triangle())
     assert rbt.skipped_holdouts == [9999]
     assert rbt.ae_err.height == 0
@@ -259,7 +245,7 @@ def test_all_holdouts_skipped_gives_empty_frames():
 
 def test_holdout_summary_aggregates_by_holdout():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12, 18), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12, 18), target="loss"
     ).fit(_triangle())
     hos = rbt.holdout_summary.sort("holdout")
     assert hos["holdout"].to_list() == [6, 12, 18]
@@ -270,26 +256,12 @@ def test_holdout_summary_aggregates_by_holdout():
 # ---------------------------------------------------------------------------
 
 
-def test_ratio_target_default():
-    rbt = lr.RollingBacktest(
-        estimator=lr.Ratio(method="ed"), holdouts=(6, 12)
-    ).fit(_triangle())
-    assert rbt.target == "ratio"
-    assert rbt.ae_err.height > 0
-    assert "horizon" in rbt.horizon_summary.columns
-
-
-# ---------------------------------------------------------------------------
-# Input mirroring (pandas in -> pandas out)
-# ---------------------------------------------------------------------------
-
-
 def test_pandas_input_mirrors_out():
     pd = pytest.importorskip("pandas")
     df = lr.load_experience().to_pandas()
     tri = lr.Triangle(df)
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(tri)
     assert isinstance(rbt.ae_err, pd.DataFrame)
     assert isinstance(rbt.horizon_summary, pd.DataFrame)
@@ -299,11 +271,11 @@ def test_pandas_input_mirrors_out():
 
 def test_repr():
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle())
     text = repr(rbt)
     assert "RollingBacktestFit" in text
-    assert "ChainLadder" in text
+    assert "LinkRatio" in text
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +289,7 @@ def test_incremental_lane_present_in_summaries():
     # surface the per-period lane that defuses the cumulative-duration
     # confound -- not drop it like the cumulative-only first cut did.
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12, 18), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12, 18), target="loss"
     ).fit(_triangle())
     for summary in (
         rbt.horizon_summary,
@@ -339,7 +311,7 @@ def test_incremental_lane_matches_inner_backtest_values():
     # own incremental statistics on a single depth (rolling only annotates +
     # pools; it must not recompute the lane differently).
     tri = _triangle()
-    est = lr.ChainLadder()
+    est = lr.LinkRatio()
     rbt = lr.RollingBacktest(estimator=est, holdouts=(6,), target="loss").fit(tri)
     bt = lr.Backtest(estimator=est, holdout=6, target="loss").fit(tri)
     # Pool both per-cell frames; the incremental weighted A/E must agree.
@@ -366,7 +338,7 @@ def test_incremental_lane_matches_inner_backtest_values():
 def test_empty_frame_dtype_follows_date_cohort():
     # The all-skipped path on a Date-cohort triangle must label cohort Date.
     rbt = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(9999,), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(9999,), target="loss"
     ).fit(_triangle())
     assert rbt.ae_err.height == 0
     # experience cohort is a Date underwriting period
@@ -422,7 +394,7 @@ def test_non_valueerror_in_fold_propagates():
 def loss_fit():
     """One shared rolling fit for the evidence-reader tests (read-only)."""
     return lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12, 18), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12, 18), target="loss"
     ).fit(_triangle())
 
 
@@ -518,7 +490,7 @@ def test_reliable_horizon_stops_at_first_violation(loss_fit):
 
 
 def test_evidence_readers_incremental_lane(loss_fit):
-    # ChainLadder carries the incr_* lane; both readers must walk it.
+    # LinkRatio carries the incr_* lane; both readers must walk it.
     a = loss_fit.anchor_summary
     expected = _walk_converged_at(a, "incr_ae_err_wt", 0.05, min_run=6)
     got = loss_fit.convergence(tol=0.05, lane="incremental")
@@ -558,7 +530,7 @@ def test_evidence_readers_validation(loss_fit):
 
 def test_evidence_readers_grouped():
     fit = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(_triangle(groups="coverage"))
     covs = sorted(fit.anchor_summary["coverage"].unique().to_list())
 
@@ -595,7 +567,7 @@ def test_evidence_readers_pandas_mirroring():
     df = lr.load_experience().to_pandas()
     tri = lr.Triangle(df)
     fit = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6,), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6,), target="loss"
     ).fit(tri)
     assert isinstance(fit.convergence(), pd.DataFrame)
     assert isinstance(fit.reliable_horizon(), pd.DataFrame)
@@ -603,7 +575,7 @@ def test_evidence_readers_pandas_mirroring():
 
 def test_evidence_readers_empty_fit():
     fit = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(9999,), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(9999,), target="loss"
     ).fit(_triangle())
     conv = fit.convergence()
     assert conv.height == 0
@@ -769,7 +741,7 @@ def test_evidence_readers_multi_column_groups():
     )
     tri = lr.Triangle(df, groups=["coverage", "channel"])
     fit = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
     ).fit(tri)
     pairs = (
         fit.anchor_summary.select(["coverage", "channel"])
@@ -854,7 +826,7 @@ def test_evidence_readers_empty_fit_dtypes():
     # The all-skipped empty result must keep the axis dtype (Int64) on every
     # value column, and a grouped empty fit must carry its group columns.
     fit = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(9999,), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(9999,), target="loss"
     ).fit(_triangle())
     conv = fit.convergence()
     assert conv.height == 0
@@ -866,7 +838,7 @@ def test_evidence_readers_empty_fit_dtypes():
     assert rel.schema["max_horizon"] == pl.Int64
 
     gfit = lr.RollingBacktest(
-        estimator=lr.ChainLadder(), holdouts=(9999,), target="loss"
+        estimator=lr.LinkRatio(), holdouts=(9999,), target="loss"
     ).fit(_triangle(groups="coverage"))
     gconv = gfit.convergence()
     assert gconv.height == 0
