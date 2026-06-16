@@ -270,3 +270,14 @@ def test_ungrouped_frame():
     row = panel.filter(pl.col("lane") == "cum")
     assert row["n"][0] == 4
     assert row["bias_wt"][0] == pytest.approx((0 + 2 + 0 - 1) / (10 + 20 + 12 + 25))
+
+
+def test_point_only_fit_emits_no_coverage_columns(exp):
+    # the new LossFit schema always carries the SE column (null for a point-only
+    # fit), so the coverage lane must gate on a USABLE SE, not column existence,
+    # to keep the "no SE -> no coverage column" contract (charter Sec.5.1)
+    from lossratio.credible_loss import CredibleLoss
+    tri = lr.Triangle(exp, groups="coverage")
+    ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdout=6, target="loss").fit(tri).ae_err)
+    panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
+    assert not [c for c in panel.columns if c.startswith("coverage_")]

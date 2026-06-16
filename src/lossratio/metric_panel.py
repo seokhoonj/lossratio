@@ -200,7 +200,14 @@ def metric_panel(
         lanes.append(_INCR_LANE)
     anchored = "anchor_value" in df.columns
 
-    has_se = "expected_se" in df.columns
+    # coverage is emitted only when the backtest carries a USABLE SE -- the new
+    # LossFit schema always has the `expected_se` column (it is null for a
+    # point-only fit), so gate on a finite positive value, not column existence,
+    # to keep the "no SE -> no coverage column" contract (charter Sec.5.1).
+    has_se = "expected_se" in df.columns and bool(
+        (df.get_column("expected_se").is_finite()
+         & (df.get_column("expected_se") > 0)).any()
+    )
     if has_se:
         for q in coverage_levels:
             if not isinstance(q, (int, float)) or isinstance(q, bool) or not (0.0 < q < 1.0):
