@@ -274,10 +274,10 @@ def test_backtest_pandas_input_mirror():
 # ---------------------------------------------------------------------------
 
 
-def test_backtest_refit_is_cl_fit():
+def test_backtest_refit_is_loss_fit():
     bt = lr.Backtest(estimator=lr.LinkRatio(), holdout=1, target="loss").fit(
         lr.Triangle(_toy_triangle_input())
     )
-    assert type(bt.fit).__name__ == "LossFit"
+    assert isinstance(bt.fit, lr.LossFit)
 
 

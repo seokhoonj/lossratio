@@ -113,42 +113,23 @@ def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
     bootstrap = getattr(estimator, "bootstrap", None)
     if bootstrap is None:
         return
-    # Late import to avoid a circular dependency at module load time.
-    from .bootstrap import BootstrapTriangle
-
-    if isinstance(bootstrap, BootstrapTriangle):
-        raise ValueError(
-            "estimator carries a pre-built BootstrapTriangle, which was "
-            "fitted on the full (unmasked) triangle and would leak the "
-            "held-out cells into every backtest fold's residual pool. "
-            "Use a leakage-safe form instead: an uncertainty strategy "
-            "(ResidualBootstrap / ParametricBootstrap) on a public model, or a "
-            "callable function(tri) -> strategy -- each rebuilds the "
-            "bootstrap on the masked triangle per fold."
-        )
-
-
-def _is_ratio_fit_estimator(estimator: Any) -> bool:
-    """Only ``Ratio`` is a ratio-fit -- it composes loss + premium into a
-    ``ratio_proj`` column. The loss models (ChainLadder / ExposureDriven /
-    StageAdaptive) project loss (and premium) but carry no ``ratio_proj``,
-    so they are scored on ``target="loss"`` / ``"premium"`` directly.
-    """
-    # Late import to avoid circular dependency at module load time.
-    from .ratio import Ratio
-
-    return isinstance(estimator, Ratio)
+    # The redesign estimators carry uncertainty via `uncertainty=` (rebuilt per
+    # fold on the masked triangle, leakage-safe); a pre-built `.bootstrap` object
+    # fitted on the full triangle would leak the held-out cells, so reject it.
+    raise ValueError(
+        "estimator carries a pre-built bootstrap object fitted on the full "
+        "(unmasked) triangle, which would leak the held-out cells into every "
+        "backtest fold. Use an `uncertainty=ResidualBootstrap(...)` strategy "
+        "instead -- it rebuilds the bootstrap on the masked triangle per fold."
+    )
 
 
 def _resolve_expected_column(target: str, fit_df_columns: list[str]) -> str:
     """Map ``target`` to the projection column on the refit output frame.
 
-    The loss models (ChainLadder / ExposureDriven / StageAdaptive) emit a
-    ``LossFit`` carrying ``loss_proj`` + ``premium_proj``; ``Ratio``
-    emits a ``RatioFit`` that additionally carries ``ratio_proj``. So a
-    role-named direct lookup suffices; ``target="ratio"`` is only
-    reachable for a Ratio backtest (a loss model has no ``ratio_proj``
-    and raises here, which the estimator guard anticipates).
+    Every estimator emits a ``LossFit`` carrying ``loss_proj`` /
+    ``premium_proj`` / ``ratio_proj``, so a role-named direct lookup
+    resolves all three targets.
     """
     if target not in _VALID_TARGETS:
         raise ValueError(
@@ -217,37 +198,27 @@ class Backtest:
     Parameters
     ----------
     estimator
-        An ``lr.ChainLadder`` / ``lr.ExposureDriven`` / ``lr.StageAdaptive``
-        / ``lr.Ratio`` instance (or any estimator whose
-        ``fit(triangle)`` returns a result class with a ``loss_proj``
-        column in ``.df``).
+        A ``lr.PooledLoss`` / ``lr.CredibleLoss`` / ``lr.SmoothLoss`` /
+        ``lr.LinkRatio`` instance (or any estimator whose ``fit(triangle)``
+        returns a ``LossFit`` carrying ``loss_proj`` / ``premium_proj`` /
+        ``ratio_proj``).
 
-        If the estimator carries a ``bootstrap`` config, only the
-        *rebuild-per-fit* forms are leakage-safe: ``bootstrap='auto'``,
-        a :class:`~lossratio.bootstrap.Bootstrap` config, or a callable
-        ``f(tri) -> BootstrapTriangle``. Each rebuilds the bootstrap on
-        the masked triangle every fold, so no held-out cell enters the
-        residual pool. A *pre-built*
-        :class:`~lossratio.bootstrap.BootstrapTriangle` is rejected with
-        a :class:`ValueError`: it was fitted on the unmasked triangle and
-        would leak the hold-out cells. The bootstrap only ever touches
-        the SE / CI columns, never the point projection, so a
-        bootstrap-configured estimator produces the *same* ``ae_err`` as
-        an analytical one -- the only effect is extra compute per fold.
+        Attach uncertainty with ``uncertainty=lr.ResidualBootstrap(...)``:
+        it is rebuilt on the masked triangle every fold, so no held-out
+        cell enters the residual pool, and it only touches the SE / CI
+        columns -- the point projection (and hence ``ae_err``) is the same
+        as an analytical fit, at the cost of extra compute per fold.
     holdout
         Number of most recent calendar diagonals to mask.
     target
-        Which projection to score: ``"ratio"`` (default), ``"loss"``,
-        or ``"premium"``. A ratio-fit estimator (``lr.Ratio``) only
-        supports ``target="ratio"``; use a loss model (``lr.ChainLadder``
-        / ``lr.ExposureDriven`` / ``lr.StageAdaptive``) to score the loss
-        or premium projection directly.
+        Which projection to score: ``"ratio"`` (default), ``"loss"``, or
+        ``"premium"`` -- every estimator carries all three.
 
     Examples
     --------
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr.Backtest(estimator=lr.Ratio(method="sa"), holdout=6).fit(tri)
+    >>> bt = lr.Backtest(estimator=lr.CredibleLoss(), holdout=6, target="loss").fit(tri)
     >>> bt.ae_err
     >>> bt.col_summary
     >>> bt.diag_summary
@@ -272,16 +243,9 @@ class Backtest:
             raise ValueError(
                 f"target must be one of {_VALID_TARGETS}, got {target!r}"
             )
-        # Only Ratio is a ratio-fit -- the ratio lane is its meaningful
-        # target; use a loss model to backtest the loss / premium projection.
-        if _is_ratio_fit_estimator(estimator) and target != "ratio":
-            raise ValueError(
-                f"estimator is a ratio-fit ({type(estimator).__name__}); "
-                f"only target='ratio' is supported. Use a loss model "
-                f"(lr.ChainLadder() / lr.ExposureDriven() / "
-                f"lr.StageAdaptive()) instead to backtest the loss or "
-                f"premium projection directly."
-            )
+        # Every redesign estimator carries loss_proj / premium_proj / ratio_proj,
+        # so all three targets are resolvable from the refit frame -- no
+        # ratio-only estimator to special-case.
         self.estimator = estimator
         self.holdout = holdout
         self.target = target
@@ -312,8 +276,7 @@ class BacktestFit:
         Aggregated by cal_idx with the same statistics as
         ``col_summary``.
     fit :
-        The refitted estimator's result (e.g. LossFit / RatioFit /
-        PremiumFit).
+        The refitted estimator's result (a ``LossFit``).
     """
 
     def __init__(self) -> None:
@@ -592,12 +555,9 @@ class BacktestFit:
         recent, regime, switch
             (``kind='usage'`` only) override values for the filter
             overlays. By default the usage view reads ``recent`` and
-            ``regime`` from the estimator that drove the backtest
-            (``recent`` from the loss model / ``Ratio``; ``regime``
-            from the loss-side of ``Ratio``, or ``regime`` of the
-            loss model), and ``switch`` from the estimator's ``switch``
-            slot (a :class:`SwitchPoint` or scalar) to draw the ED->CL
-            boundary; pass an explicit value to override.
+            ``regime`` from the estimator that drove the backtest; pass an
+            explicit value to override. (``switch`` is unused by the current
+            estimators and kept only for the overlay signature.)
         x
             (``kind='value'`` only) horizontal axis: ``"duration"`` (default;
             cohort x development period) or ``"calendar"`` (cohort x calendar
@@ -644,14 +604,13 @@ class BacktestFit:
         return getattr(self.estimator, "recent", None)
 
     def _infer_regime(self) -> Any:
-        """Extract the loss-side regime from `self.estimator`, if any.
+        """Extract the regime from `self.estimator`, if any.
 
-        For ``lr.Ratio``, prefer ``loss_regime`` (its loss-side);
-        for the loss models (ChainLadder / ExposureDriven /
-        StageAdaptive), ``regime``. The
-        Triangle renderer accepts ``"auto"`` directly and runs
-        :meth:`Triangle.detect_regime` inline, so a literal
-        ``"auto"`` is forwarded as-is.
+        Reads the estimator's ``regime`` (a resolved cohort cut). A legacy
+        ``loss_regime`` slot is honoured first if present. The Triangle
+        renderer accepts ``"auto"`` directly and runs
+        :meth:`Triangle.detect_regime` inline, so a literal ``"auto"`` is
+        forwarded as-is.
         """
         est = self.estimator
         if hasattr(est, "loss_regime"):
@@ -661,13 +620,10 @@ class BacktestFit:
     def _infer_switch(self) -> Any:
         """Switch boundary for the usage overlay.
 
-        Prefer the switch the REFIT model actually used -- the effective
-        ``switch_point`` of the masked / holdout-fold fit -- so the overlay
-        reflects the fold, not a re-run of the original estimator's
-        ``SwitchPoint.detect()`` spec on the full (unmasked) triangle. Fall
-        back to the estimator's configured ``switch`` (an int / SwitchPoint;
-        a detect() spec would re-resolve on full data -- last resort).
-        ChainLadder / ExposureDriven have no switch and yield ``None``.
+        Reads the refit fold's ``switch_point`` if present, else the
+        estimator's configured ``switch``. The current estimators carry no
+        switch, so this yields ``None`` -- the slot is kept for the overlay
+        signature.
         """
         refit = getattr(self, "_refit", None)
         if refit is not None:

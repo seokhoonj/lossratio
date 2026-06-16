@@ -17,7 +17,7 @@ import lossratio as lr
 def cmp_multi():
     tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
     return lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(tri)
 
@@ -27,7 +27,7 @@ def cmp_single():
     df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     tri = lr.Triangle(df)
     return lr.EstimatorComparison(
-        {"cl": lr.ChainLadder(), "ed": lr.ExposureDriven()},
+        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(tri)
 
@@ -127,7 +127,7 @@ def test_plot_empty_fit_does_not_raise():
         lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     )
     fit = lr.EstimatorComparison(
-        {"a": lr.ChainLadder(), "b": lr.ExposureDriven()},
+        {"a": lr.LinkRatio(), "b": lr.PooledLoss()},
         holdouts=(9999,), target="loss",
     ).fit(tri)
     assert fit.cells.height == 0

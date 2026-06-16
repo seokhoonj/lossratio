@@ -35,7 +35,7 @@ def test_load_experience_grouped_pipeline_runs():
     df = lr.load_experience()
     tri = lr.Triangle(df, groups="coverage")
 
-    fit = lr.Ratio().fit(tri)
+    fit = lr.PooledLoss().fit(tri)
     summary = fit.summary()
     # 4 groups * 36 cohorts = 144 rows
     assert summary.height == 144

@@ -21,31 +21,10 @@ if TYPE_CHECKING:
     from typing import Literal
 
     from .regime import Regime
-    from .switch_point import SwitchPoint
-    from .tail import Tail
     from .triangle import Triangle
-    from .uncertainty import Analytical, ParametricBootstrap, ResidualBootstrap
-
-    # Uncertainty strategy: a strategy instance, a callable producing one,
-    # or None (the fit keeps its closed-form analytical SE).
-    UncertaintyArg = (
-        Analytical
-        | ResidualBootstrap
-        | ParametricBootstrap
-        | Callable[[Triangle], object]
-        | None
-    )
 
     # Regime (cohort-axis) filter: a concrete Regime, a lazy recipe, the
     # "auto" sentinel, or None (no filter).
     RegimeArg = (
         Regime | Callable[[Triangle], Regime] | Literal["auto"] | None
     )
-
-    # Tail extrapolation: off (False), an explicit multiplicative factor,
-    # or a Tail spec (True resolves to the default Tail()).
-    TailArg = bool | float | Tail
-
-    # Stage-adaptive switch point: an explicit SwitchPoint, an integer duration,
-    # a SwitchPoint.detect() spec, or None (no discretionary switch -> pure ED).
-    SwitchArg = SwitchPoint | int | Callable[[Triangle], SwitchPoint] | None
