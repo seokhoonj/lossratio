@@ -205,11 +205,24 @@ def test_borrow_plus_bootstrap_rejected(tri):
         ).fit(tri)
 
 
-def test_recent_plus_bootstrap_rejected(tri):
-    with pytest.raises(NotImplementedError):
-        PooledLoss(
-            recent=12, uncertainty=ResidualBootstrap(n_replicates=10)
-        ).fit(tri)
+def test_recent_plus_bootstrap_supported(tri):
+    # recent and the residual bootstrap compose: the bootstrap re-estimates the
+    # factors on the recent-diagonal wedge per replicate and resamples only the
+    # recent-cell residuals, while the projection stays seeded from the full
+    # triangle.
+    fit = PooledLoss(
+        recent=12, uncertainty=ResidualBootstrap(n_replicates=20, seed=3)
+    ).fit(tri)
+    se = fit.to_polars()["loss_total_se"].drop_nulls()
+    assert se.len() > 0 and bool((se >= 0).all())
+    # recent=None bootstrap is the unchanged full-triangle path
+    a = PooledLoss(
+        uncertainty=ResidualBootstrap(n_replicates=20, seed=3)
+    ).fit(tri).to_polars()
+    b = PooledLoss(
+        recent=None, uncertainty=ResidualBootstrap(n_replicates=20, seed=3)
+    ).fit(tri).to_polars()
+    assert a.equals(b)
 
 
 def test_estimator_rejects_non_bootstrap_uncertainty():

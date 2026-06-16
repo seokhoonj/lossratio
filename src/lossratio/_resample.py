@@ -51,6 +51,7 @@ import numpy as np
 
 from . import _engine
 from ._mack import _fit_mack
+from ._recent import recent_link_mask
 from .loss_fit import (
     _credible_levels,
     _project_credible,
@@ -142,6 +143,7 @@ def _estimate(
     mechanism: str,
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
+    link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Refit the intensity pipeline on one (pseudo)triangle: ``(g_k, u_vec)``.
 
@@ -153,22 +155,26 @@ def _estimate(
     """
     if mechanism == "smooth":
         bf = _smooth_backfit(
-            loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam
+            loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
+            link_mask=link_mask,
         )
         return bf["g_k"], bf["u"]
     n_links = loss_obs.shape[1] - 1
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs)
+    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, link_mask)
     g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
     if mechanism == "credible":
-        u_vec = _credible_levels(loss_obs, premium_obs, g_k, sigma_method, psi)[0]
+        u_vec = _credible_levels(
+            loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
+        )[0]
     else:
         u_vec = np.ones(loss_obs.shape[0], dtype=np.float64)
     return g_k, u_vec
 
 
 def _valid_cells(
-    loss_obs: np.ndarray, premium_obs: np.ndarray
+    loss_obs: np.ndarray, premium_obs: np.ndarray,
+    link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Index arrays of the estimation cells (the observed loss links).
 
@@ -186,6 +192,8 @@ def _valid_cells(
         ck = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
         mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        if link_mask is not None:
+            mask = mask & link_mask[:, k]
         for i in np.flatnonzero(mask):
             ii.append(int(i))
             kk.append(k)
@@ -239,6 +247,7 @@ def bootstrap_segment(
     rng: np.random.Generator,
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
+    recent: int | None = None,
 ) -> dict[str, np.ndarray]:
     """Residual-bootstrap SE / CI matrices for one segment.
 
@@ -252,13 +261,19 @@ def bootstrap_segment(
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+
     # premium projection is deterministic (premium is not bootstrapped in v1)
-    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    premium_proj = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    ).loss_proj
 
     # --- point quantities: fitted mean, dispersion, standardized residuals ---
     ii, kk, y, p = _valid_cells(loss_obs, premium_obs)
     g_k, u_vec = _estimate(
-        loss_obs, premium_obs, sigma_method, psi, mechanism, n_basis, lam
+        loss_obs, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
+        link_mask=loss_mask,
     )
     point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
@@ -278,6 +293,12 @@ def bootstrap_segment(
 
     scale = np.sqrt(phi_cell * mu)                        # Pearson denominator
     res_ok = usable & np.isfinite(scale) & (scale > 0.0)
+    if loss_mask is not None:
+        # recent window: only the recent-diagonal cells produce / receive
+        # residuals; non-recent cells keep their original increment in the
+        # pseudo triangle (their value still carries the cumulative base, but
+        # the refit g_k / phi key off the recent links only).
+        res_ok = res_ok & loss_mask[ii, kk]
     resid = np.full(mu.shape, np.nan, dtype=np.float64)
     resid[res_ok] = (y[res_ok] - mu[res_ok]) / scale[res_ok]
 
@@ -351,7 +372,8 @@ def bootstrap_segment(
             cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
         # 4. refit the full pipeline on the pseudo triangle
         g_b, u_b = _estimate(
-            cum, premium_obs, sigma_method, psi, mechanism, n_basis, lam
+            cum, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
+            link_mask=loss_mask,
         )
         # 5. project from the REAL observed seed (existing-cohort, u_hat-cond.)
         param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
@@ -362,7 +384,10 @@ def bootstrap_segment(
             pred_draws[b] = param_cum
             continue
         pred_cum = loss_obs.copy()
-        phi_b = _refit_phi(cum, premium_obs, g_b, u_b, sigma_method, credible, n_links)
+        phi_b = _refit_phi(
+            cum, premium_obs, g_b, u_b, sigma_method, credible, n_links,
+            link_mask=loss_mask,
+        )
         # one drift draw per replicate (parameter uncertainty), centred at 0 so
         # the mean path is unchanged and only the band widens with horizon
         eps_b = rng.normal(0.0, drift_se) if drift_se > 0.0 else 0.0
@@ -472,6 +497,7 @@ def bootstrap_segment_cl(
     spec: ResidualBootstrap,
     conf_level: float,
     rng: np.random.Generator,
+    recent: int | None = None,
 ) -> dict[str, np.ndarray]:
     """England-Verrall ODP residual bootstrap for the chain ladder (LinkRatio).
 
@@ -483,9 +509,13 @@ def bootstrap_segment_cl(
     Returns the same SE / CI matrices as the intensity bootstrap."""
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
-    premium_proj = _fit_mack(premium_obs, sigma_method=sigma_method).loss_proj
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+    premium_proj = _fit_mack(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    ).loss_proj
 
-    f_k = _fit_mack(loss_obs, sigma_method=sigma_method).f_k
+    f_k = _fit_mack(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
     point_proj = _project_cl_cum(loss_obs, f_k)
     m_mat = _ev_fitted_increments(loss_obs, f_k)
     ii, jj, y = _cl_increments(loss_obs)
@@ -503,6 +533,14 @@ def bootstrap_segment_cl(
     )
     scale = np.sqrt(phi_cell * m)
     res_ok = usable & np.isfinite(scale) & (scale > 0.0)
+    if recent is not None and ii.size:
+        # recent calendar wedge on the increment cells (diagonal a = i + j,
+        # which equals the source-link cal_idx of the link feeding the cell):
+        # only recent-diagonal cells produce / receive residuals. Non-recent
+        # cells keep their original increment, preserving the cumulative base
+        # for the (recent-link-masked) chain-ladder refit.
+        cal = ii + jj
+        res_ok = res_ok & (cal > int(cal.max()) - recent)
     resid = np.full(m.shape, np.nan, dtype=np.float64)
     resid[res_ok] = (y[res_ok] - m[res_ok]) / scale[res_ok]
 
@@ -560,7 +598,7 @@ def bootstrap_segment_cl(
             run[i] += ystar[t]
             cum[i, j] = run[i]
             seen[i] = True
-        f_b = _fit_mack(cum, sigma_method=sigma_method).f_k
+        f_b = _fit_mack(cum, sigma_method=sigma_method, link_mask=loss_mask).f_k
         param_cum = _project_cl_cum(loss_obs, f_b)
         param_draws[b] = param_cum
         if spec.process == "none":
@@ -608,9 +646,10 @@ def _refit_phi(
     sigma_method: str,
     credible: bool,
     n_links: int,
+    link_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per-duration dispersion of the refit fitted mean (process-noise scale)."""
-    ii, kk, y, p = _valid_cells(cum, premium_obs)
+    ii, kk, y, p = _valid_cells(cum, premium_obs, link_mask)
     if ii.size == 0:
         return np.full(n_links, np.nan, dtype=np.float64)
     mu = u_b[ii] * g_b[kk] * p
