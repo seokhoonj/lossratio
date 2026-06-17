@@ -370,9 +370,12 @@ def _fit_mack(
             param_acc = param_acc + (vp ** 2) * f_var_k[k - 1]
         param_var[upd, k] = param_acc
 
-    proc_se = np.sqrt(proc_var)
-    param_se = np.sqrt(param_var)
-    total_se = np.sqrt(proc_var + param_var)
+    # a thin (e.g. recent-masked) refit can leave NaN variance cells; sqrt(NaN)
+    # is the intended NaN-propagation, so silence the benign invalid-value warn.
+    with np.errstate(invalid="ignore"):
+        proc_se = np.sqrt(proc_var)
+        param_se = np.sqrt(param_var)
+        total_se = np.sqrt(proc_var + param_var)
 
     return _MackResult(
         cohorts=[],  # filled by caller (with cohort identifiers)

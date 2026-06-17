@@ -112,6 +112,26 @@ def _perturb_donor(
     return (fb, sig, var)
 
 
+def _donor_process_draw(
+    mean_inc: np.ndarray, sigma2_k: float, c_from: np.ndarray,
+    active: np.ndarray, rng: np.random.Generator,
+) -> np.ndarray:
+    """Process draw of a BORROWED-tail increment from the donor's Mack
+    dispersion: ``Var(C_{k+1} | C_k) = sigma2_donor_k * C_from`` (alpha=1).
+
+    Beyond the own-data boundary the refit has no cells, so the own ODP
+    dispersion is undefined (`phi` NaN) and the predictive increment would
+    otherwise be deterministic -- the borrowed tail's process variance would
+    not grow with horizon. The donor IS a Mack chain ladder, so its per-link
+    ``sigma2`` gives the right tail process scale on the predictive cumulative.
+    """
+    out = np.array(mean_inc, dtype=np.float64)
+    sd = np.sqrt(np.maximum(sigma2_k * np.maximum(c_from, 0.0), 0.0))
+    noise = rng.standard_normal(out.shape[0]) * sd
+    out[active] = out[active] + noise[active]
+    return out
+
+
 @dataclass(kw_only=True)
 class ResidualBootstrap:
     """Full-refit residual bootstrap uncertainty (charter Sec.5.2, 1st grade).
@@ -460,7 +480,16 @@ def bootstrap_segment(
             if not active.any():
                 continue
             mean_inc = param_cum[:, k + 1] - param_cum[:, k]
-            draw = _process_draw(mean_inc, phi_b[k], active, rng)
+            if (donor is not None and not np.isfinite(phi_b[k])
+                    and k < donor[1].size and np.isfinite(donor[1][k])
+                    and donor[1][k] > 0.0):
+                # borrowed-tail link: own dispersion is undefined -> use the
+                # donor's Mack process variance so the tail band grows.
+                draw = _donor_process_draw(
+                    mean_inc, donor[1][k], pred_cum[:, k], active, rng
+                )
+            else:
+                draw = _process_draw(mean_inc, phi_b[k], active, rng)
             if eps_b != 0.0 and np.isfinite(phi_b[k]):
                 # accumulated calendar drift at this cell's antidiagonal,
                 # on the Pearson scale -> loss units via sqrt(phi * mean)
@@ -684,11 +713,19 @@ def bootstrap_segment_cl(
             if not active.any():
                 continue
             mean_inc = param_cum[:, k + 1] - param_cum[:, k]
-            draw = _process_draw(mean_inc, _phi_at_dur(phi_cell, jj, k + 1),
-                                 active, rng)
+            phi_kp1 = _phi_at_dur(phi_cell, jj, k + 1)
+            if (donor is not None and not np.isfinite(phi_kp1)
+                    and k < donor[1].size and np.isfinite(donor[1][k])
+                    and donor[1][k] > 0.0):
+                # borrowed-tail link: no observed residual column -> use the
+                # donor's Mack process variance so the tail band grows.
+                draw = _donor_process_draw(
+                    mean_inc, donor[1][k], pred_cum[:, k], active, rng
+                )
+            else:
+                draw = _process_draw(mean_inc, phi_kp1, active, rng)
             if eps_b != 0.0:
                 c = np.maximum((rows + (k + 1)) - frontier, 0)
-                phi_kp1 = _phi_at_dur(phi_cell, jj, k + 1)
                 if np.isfinite(phi_kp1):
                     draw = draw + c * eps_b * np.sqrt(
                         phi_kp1 * np.maximum(mean_inc, 0.0)

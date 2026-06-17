@@ -333,6 +333,19 @@ class RatioFit:
             )
         )
 
+        # base owns durations up to each cohort's freeze point; `ext` owns
+        # (freeze_dur, horizon]. A cohort with a null-ratio TAIL (an unfittable
+        # projection gap above its deepest non-null ratio) would otherwise emit
+        # those tail cells twice -- once here as "projected", once in `ext` --
+        # so trim base to <= freeze_dur (cohorts with no projection at all, not
+        # in `froze`, keep every base row).
+        base_out = base_out.join(
+            froze.select([*keys, "freeze_dur"]), on=keys, how="left"
+        ).filter(
+            pl.col("freeze_dur").is_null()
+            | (pl.col("duration") <= pl.col("freeze_dur"))
+        ).drop("freeze_dur")
+
         # segment stability verdict + (for amounts) recent premium growth
         rep = Stability(window=window, tol=tol).assess(self._triangle).to_polars()
         if seg_cols:
