@@ -12,7 +12,7 @@ engine-backed :class:`~lossratio.premium_fit.PremiumFit`.
 Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 ``u = 1``, so ``CrediblePremium(psi=0)`` reproduces ``PooledPremium``
 cell-for-cell. Point-only in v1 (SE / CI null, like the loss credible rung);
-``recent`` is rejected.
+``recent`` (the calendar-diagonal fit window) is supported.
 """
 
 from __future__ import annotations

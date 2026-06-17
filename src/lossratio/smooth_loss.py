@@ -19,8 +19,8 @@ The smooth-shape + credibility estimation variance breaks the Mack analytical
 recursion, so SE / CI are null UNLESS a :class:`~lossratio._resample.ResidualBootstrap`
 is attached -- the bootstrap re-runs the whole smooth pipeline (shape +
 ``lambda`` selection + level) per replicate, so the interval and the coverage
-lane are available for ``SmoothLoss`` like the credible rung. ``recent`` and
-``borrow`` are not supported.
+lane are available for ``SmoothLoss`` like the credible rung. ``recent`` (the
+calendar-diagonal fit window) is supported; ``borrow`` is not.
 """
 
 from __future__ import annotations

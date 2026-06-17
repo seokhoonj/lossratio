@@ -89,6 +89,29 @@ def _project_borrow_cum(
     )[0]
 
 
+def _perturb_donor(
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray]", rng: np.random.Generator
+) -> "tuple[np.ndarray, np.ndarray, np.ndarray]":
+    """Parametric (Mack) per-replicate draw of the borrowed donor link ratios:
+    ``f_b = f + N(0, sqrt(Var f))``.
+
+    Holding the donor fixed leaves a WHOLLY-borrowed cohort (the thinnest
+    post-regime cohort, whose entire tail is donor-driven) with a degenerate
+    zero-width band -- the very cohort borrow targets. Drawing the donor from
+    its Mack parameter variance restores the donor's parameter uncertainty in
+    the borrowed tail without a second residual-bootstrap stream on the donor's
+    own data. ``donor = (f_k, sigma2_k, Var f_k)``; only ``Var f_k`` is used."""
+    f, sig, var = donor
+    ok = np.isfinite(f) & np.isfinite(var) & (var > 0.0)
+    fb = f.copy()
+    if ok.any():
+        fb[ok] = f[ok] + rng.standard_normal(int(ok.sum())) * np.sqrt(var[ok])
+    # keep finite draws positive (a development factor < 0 would flip the
+    # cumulative sign); leaves NaN/non-drawn links untouched.
+    fb = np.where(np.isfinite(fb), np.maximum(fb, 1e-9), fb)
+    return (fb, sig, var)
+
+
 @dataclass(kw_only=True)
 class ResidualBootstrap:
     """Full-refit residual bootstrap uncertainty (charter Sec.5.2, 1st grade).
@@ -414,7 +437,9 @@ def bootstrap_segment(
         if donor is None:
             param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
         else:
-            param_cum = _project_borrow_cum(loss_obs, premium_proj, "ed", g_b, donor)
+            param_cum = _project_borrow_cum(
+                loss_obs, premium_proj, "ed", g_b, _perturb_donor(donor, rng)
+            )
         param_draws[b] = param_cum
         # 6. predictive draw = param path + over-dispersed process noise on the
         #    future increments (refit dispersion for the pseudo fit)
@@ -644,7 +669,9 @@ def bootstrap_segment_cl(
         if donor is None:
             param_cum = _project_cl_cum(loss_obs, f_b)
         else:
-            param_cum = _project_borrow_cum(loss_obs, premium_proj, "cl", f_b, donor)
+            param_cum = _project_borrow_cum(
+                loss_obs, premium_proj, "cl", f_b, _perturb_donor(donor, rng)
+            )
         param_draws[b] = param_cum
         if spec.process == "none":
             pred_draws[b] = param_cum

@@ -15,7 +15,8 @@ Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 v1 is point-only: the credibility level's estimation variance makes the Mack
 analytical recursion invalid (charter Sec.5.1/5.2), so the SE / CI columns are
 null -- interval coverage rides the ResidualBootstrap, wired in a later step.
-``recent`` and ``borrow`` are not supported yet and are rejected at config time.
+``recent`` (the calendar-diagonal fit window) is supported; ``borrow`` is not
+(subsumed by the credibility level for level-shift regimes).
 """
 
 from __future__ import annotations

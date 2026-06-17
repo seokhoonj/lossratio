@@ -289,7 +289,7 @@ def _fit_premium(
     LEVEL on the self-exposure intensity ``h_k = f^P_k - 1`` (the premium mirror
     of ``CredibleLoss``); ``"smooth"`` replaces the saturated ``h_k`` with a
     smooth P-spline shape. ``regime`` is a RESOLVED cohort cut applied through
-    :class:`ModelFrame`; ``recent`` (pooled only) is the calendar-diagonal fit
+    :class:`ModelFrame`; ``recent`` (all mechanisms) is the calendar-diagonal fit
     mask (most-recent ``N`` diagonals feed the link-ratio estimation, the
     projection seed stays full). Credible / smooth are point-only (SE null).
     """

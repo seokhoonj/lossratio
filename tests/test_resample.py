@@ -208,15 +208,37 @@ def test_borrow_plus_bootstrap_bands_the_tail():
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     for est in (
         lr.PooledLoss(regime=date(2024, 7, 1), borrow="pooled",
-                      uncertainty=ResidualBootstrap(n_replicates=20, seed=2)),
+                      uncertainty=ResidualBootstrap(n_replicates=40, seed=2)),
         lr.LinkRatio(regime=date(2024, 7, 1), borrow="pooled",
-                     uncertainty=ResidualBootstrap(n_replicates=20, seed=2)),
+                     uncertainty=ResidualBootstrap(n_replicates=40, seed=2)),
     ):
         df = est.fit(tri).to_polars()
         borrowed = df.filter(pl.col("source") == "borrowed")
         assert borrowed.height > 0
         se = borrowed["loss_total_se"].drop_nulls()
         assert se.len() == borrowed.height and bool((se >= 0).all())
+        # the band must be NON-DEGENERATE even on the WHOLLY-borrowed cohort (the
+        # thinnest post-regime cohort, whose entire tail is donor-driven): the
+        # parametric donor draw gives it real parameter uncertainty.
+        coh = df.filter(pl.col("source") == "borrowed").select("cohort").to_series().max()
+        tail = df.filter((pl.col("cohort") == coh) & (pl.col("source") == "borrowed"))
+        assert (tail["loss_total_se"].drop_nulls() > 0.0).all()
+        assert ((tail["loss_ci_hi"] - tail["loss_ci_lo"]).drop_nulls() > 0.0).all()
+
+
+def test_recent_borrow_bootstrap_triple_combo():
+    # all three compose: recent drives own-factor estimation, borrow lends the
+    # tail (donor parametric draw), the bootstrap bands it.
+    import lossratio as lr
+    from datetime import date
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    for Est in (lr.PooledLoss, lr.LinkRatio):
+        df = Est(recent=18, regime=date(2024, 7, 1), borrow="pooled",
+                 uncertainty=ResidualBootstrap(n_replicates=20, seed=4)).fit(tri).to_polars()
+        borrowed = df.filter(pl.col("source") == "borrowed")
+        assert borrowed.height > 0
+        assert (borrowed["loss_total_se"].drop_nulls() >= 0.0).all()
 
 
 def test_recent_plus_bootstrap_supported(tri):
