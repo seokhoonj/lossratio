@@ -8,7 +8,7 @@ credible premium rung with the saturated self-exposure intensity
 by the shared backfitting core (smooth shape + GCV ``lambda`` + conjugate level)
 on premium as its own exposure. The projection is the self-exposure
 multiplicative recursion ``P_{k+1} = P_k * (1 + u_i * h_k)``. It returns the
-engine-backed :class:`~lossratio.premium_fit.PremiumFit`.
+engine-backed :class:`~lossratio.premium.PremiumFit`.
 
 Point-only in v1 (SE / CI null, like the loss smooth rung); ``recent`` (the
 calendar-diagonal fit window) is supported.
@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .premium_fit import PremiumFit, _PremiumEstimatorBase, _fit_premium
+from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
 
 if TYPE_CHECKING:
     from .triangle import Triangle

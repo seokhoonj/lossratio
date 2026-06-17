@@ -7,7 +7,7 @@ self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled chain-ladder
 link ratio minus one) and a per-cohort credibility LEVEL ``u_i`` (the
 dispersion-scaled Buhlmann-Straub conjugate, premium as its own exposure) scales
 it: the projected link factor is ``1 + u_i * (f^P_k - 1)``. It returns the
-engine-backed :class:`~lossratio.premium_fit.PremiumFit`.
+engine-backed :class:`~lossratio.premium.PremiumFit`.
 
 Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 ``u = 1``, so ``CrediblePremium(psi=0)`` reproduces ``PooledPremium``
@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .premium_fit import PremiumFit, _PremiumEstimatorBase, _fit_premium
+from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
 
 if TYPE_CHECKING:
     from .triangle import Triangle

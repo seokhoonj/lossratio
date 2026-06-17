@@ -22,10 +22,10 @@ from .inception import inception_stability
 from .intensity import Intensity
 from .link import Link
 from .link_ratio import LinkRatio
-from .loss_fit import LossFit
+from .loss import LossFit
 from .pooled_loss import PooledLoss
 from .pooled_premium import PooledPremium
-from .premium_fit import PremiumFit
+from .premium import PremiumFit
 from .ratio import Ratio, RatioFit
 from .regime import Regime
 from .smooth_loss import SmoothLoss

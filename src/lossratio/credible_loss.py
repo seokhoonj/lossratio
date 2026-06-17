@@ -6,7 +6,7 @@
 Buhlmann-Straub conjugate), so a cohort's projected increment is
 ``u_i * g_k * P_k`` -- its own loss-ratio level shrunk toward the pooled level
 by its credibility. It returns the engine-backed
-:class:`~lossratio.loss_fit.LossFit`.
+:class:`~lossratio.loss.LossFit`.
 
 Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 ``u = 1``, i.e. ``CredibleLoss(psi=0)`` reproduces ``PooledLoss`` cell-for-cell
@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .loss_fit import LossFit, _EstimatorBase, _fit_loss
+from .loss import LossFit, _EstimatorBase, _fit_loss
 
 if TYPE_CHECKING:
     from .triangle import Triangle

@@ -11,7 +11,7 @@ the loss fits already carry internally, now exposed as a first-class,
 swappable, separately-inspectable result.
 
 ``PremiumFit`` is the denominator analogue of
-:class:`~lossratio.loss_fit.LossFit`: a long-format frame (one row per cohort x
+:class:`~lossratio.loss.LossFit`: a long-format frame (one row per cohort x
 duration cell) with ``premium_proj`` + the Mack SE block + an analytical CI,
 plus the same machine-readable ``status`` / ``cell_counts`` diagnostics.
 
@@ -41,7 +41,7 @@ from ._io import (
 )
 from ._mack import _build_value_matrices, _fit_mack
 from ._recent import recent_link_mask, validate_recent
-from .loss_fit import (
+from .loss import (
     _credible_levels,
     _segment_credibility_df,
     _smooth_backfit,

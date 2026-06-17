@@ -36,8 +36,8 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output, normalize_groups
-from .loss_fit import LossFit, _EstimatorBase
-from .premium_fit import PremiumFit, _PremiumEstimatorBase
+from .loss import LossFit, _EstimatorBase
+from .premium import PremiumFit, _PremiumEstimatorBase
 
 if TYPE_CHECKING:
     from ._io import FrameLike

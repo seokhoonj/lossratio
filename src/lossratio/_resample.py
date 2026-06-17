@@ -52,7 +52,7 @@ import numpy as np
 from . import _engine
 from ._mack import _fit_mack
 from ._recent import recent_link_mask
-from .loss_fit import (
+from .loss import (
     _credible_levels,
     _project_borrow,
     _project_credible,

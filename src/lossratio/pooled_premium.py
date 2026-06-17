@@ -5,7 +5,7 @@ volume-weighted pooled link ratio ``f^P_k = sum P_{k+1} / sum P_k`` (Mack chain
 ladder on cumulative premium). Premium has no external exposure -- it is its
 own volume base -- so it self-develops by a multiplicative link ratio, the
 denominator analogue of the loss-side ``PooledLoss``. It returns the
-engine-backed :class:`~lossratio.premium_fit.PremiumFit` and feeds the
+engine-backed :class:`~lossratio.premium.PremiumFit` and feeds the
 :class:`~lossratio.ratio.Ratio` composition as the chosen denominator model.
 
 Thin config dataclass + ``.fit(triangle)`` (sklearn-style), the shared
@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .premium_fit import PremiumFit, _PremiumEstimatorBase, _fit_premium
+from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
 
 if TYPE_CHECKING:
     from .triangle import Triangle

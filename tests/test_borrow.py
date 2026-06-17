@@ -111,7 +111,7 @@ def test_borrow_false_is_default(tri):
 def test_project_borrow_interior_nan_donor_does_not_truncate():
     """An interior NaN donor link is LOCF-filled, so the borrowed tail does not
     break mid-way (the boundary-indexed switch + donor carry-forward fix)."""
-    from lossratio.loss_fit import _project_borrow
+    from lossratio.loss import _project_borrow
 
     # one cohort observed at durations 1, 2 only (boundary link 0), 5 durations.
     loss_obs = np.array([[100.0, 200.0, np.nan, np.nan, np.nan]])

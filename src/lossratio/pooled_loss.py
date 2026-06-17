@@ -5,7 +5,7 @@ closed-form saturated mode ``g_k = sum dLoss / sum P`` with no cohort
 credibility and no smooth shape -- the anchor rung of the structure ladder
 (``PooledLoss`` -> ``CredibleLoss`` -> ``SmoothLoss``). It is the redesigned
 successor of the ``ExposureDriven`` config class and returns the engine-backed
-:class:`~lossratio.loss_fit.LossFit`.
+:class:`~lossratio.loss.LossFit`.
 
 Thin config dataclass + ``.fit(triangle)`` (sklearn-style), the shared estimator
 contract: a pure-config object (free ``repr`` / ``eq``, keyword-only) whose
@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .loss_fit import LossFit, _EstimatorBase, _fit_loss
+from .loss import LossFit, _EstimatorBase, _fit_loss
 
 if TYPE_CHECKING:
     from .triangle import Triangle
