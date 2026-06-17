@@ -38,7 +38,7 @@ lossratio는 장기 건강보험의 **손해율(loss ratio)**, 곧
 :::
 
 :::{grid-item-card} 진단과 탐지
-ATA 인자(age-to-age factor)·수렴점(convergence point) 진단, 그리고
+ATA 인자(age-to-age factor)·안정성(stability) 진단, 그리고
 인수 코호트의 구조 변화(regime) 탐지까지 한 인터페이스로.
 :::
 
