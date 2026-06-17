@@ -54,10 +54,39 @@ from ._mack import _fit_mack
 from ._recent import recent_link_mask
 from .loss_fit import (
     _credible_levels,
+    _project_borrow,
     _project_credible,
     _segment_factor_links,
     _smooth_backfit,
 )
+
+
+def _project_borrow_cum(
+    loss_obs: np.ndarray,
+    premium_proj: np.ndarray,
+    body: str,
+    own: np.ndarray,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray]",
+) -> np.ndarray:
+    """Cumulative-loss path with the segment's own body + the FIXED donor tail.
+
+    For the bootstrap the donor (the segment's data-rich full-history link ratio)
+    is held at its point estimate -- only the segment's OWN factors (``own`` =
+    ``g_k`` for ``body="ed"`` or ``f_k`` for ``body="cl"``) are re-estimated per
+    replicate; the borrowed tail rides the fixed donor shape on the replicate's
+    own boundary. Returns only the projection (the analytical SE arms of
+    :func:`_project_borrow` are unused here -- the spread is the empirical
+    bootstrap)."""
+    z = np.zeros_like(own)
+    nan = np.full_like(own, np.nan)
+    own_g, own_f = (own, nan) if body == "ed" else (nan, own)
+    dz = np.zeros_like(donor[0])
+    return _project_borrow(
+        loss_obs, premium_proj, body=body,
+        own_g=own_g, own_sig_g=z, own_var_g=z,
+        own_f=own_f, own_sig_f=z, own_var_f=z,
+        donor_f=donor[0], donor_sig_f=dz, donor_var_f=dz,
+    )[0]
 
 
 @dataclass(kw_only=True)
@@ -248,6 +277,7 @@ def bootstrap_segment(
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
     recent: int | None = None,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Residual-bootstrap SE / CI matrices for one segment.
 
@@ -275,7 +305,10 @@ def bootstrap_segment(
         loss_obs, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
         link_mask=loss_mask,
     )
-    point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+    if donor is None:
+        point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+    else:
+        point_proj = _project_borrow_cum(loss_obs, premium_proj, "ed", g_k, donor)
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
     dur1 = (kk + 1).tolist()                              # 1-based from-duration
 
@@ -375,8 +408,13 @@ def bootstrap_segment(
             cum, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
             link_mask=loss_mask,
         )
-        # 5. project from the REAL observed seed (existing-cohort, u_hat-cond.)
-        param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
+        # 5. project from the REAL observed seed (existing-cohort, u_hat-cond.).
+        #    With a borrow donor the own body rides the replicate's g_b, the tail
+        #    rides the FIXED donor shape (donor held at its point estimate).
+        if donor is None:
+            param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
+        else:
+            param_cum = _project_borrow_cum(loss_obs, premium_proj, "ed", g_b, donor)
         param_draws[b] = param_cum
         # 6. predictive draw = param path + over-dispersed process noise on the
         #    future increments (refit dispersion for the pseudo fit)
@@ -498,6 +536,7 @@ def bootstrap_segment_cl(
     conf_level: float,
     rng: np.random.Generator,
     recent: int | None = None,
+    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """England-Verrall ODP residual bootstrap for the chain ladder (LinkRatio).
 
@@ -516,7 +555,10 @@ def bootstrap_segment_cl(
     ).loss_proj
 
     f_k = _fit_mack(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
-    point_proj = _project_cl_cum(loss_obs, f_k)
+    if donor is None:
+        point_proj = _project_cl_cum(loss_obs, f_k)
+    else:
+        point_proj = _project_borrow_cum(loss_obs, premium_proj, "cl", f_k, donor)
     m_mat = _ev_fitted_increments(loss_obs, f_k)
     ii, jj, y = _cl_increments(loss_obs)
     m = m_mat[ii, jj]
@@ -599,7 +641,10 @@ def bootstrap_segment_cl(
             cum[i, j] = run[i]
             seen[i] = True
         f_b = _fit_mack(cum, sigma_method=sigma_method, link_mask=loss_mask).f_k
-        param_cum = _project_cl_cum(loss_obs, f_b)
+        if donor is None:
+            param_cum = _project_cl_cum(loss_obs, f_b)
+        else:
+            param_cum = _project_borrow_cum(loss_obs, premium_proj, "cl", f_b, donor)
         param_draws[b] = param_cum
         if spec.process == "none":
             pred_draws[b] = param_cum

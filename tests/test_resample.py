@@ -198,11 +198,25 @@ def test_link_ratio_uses_odp_bootstrap(tri):
     assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()
 
 
-def test_borrow_plus_bootstrap_rejected(tri):
-    with pytest.raises(NotImplementedError):
-        PooledLoss(
-            borrow="pooled", uncertainty=ResidualBootstrap(n_replicates=10)
-        ).fit(tri)
+def test_borrow_plus_bootstrap_bands_the_tail():
+    # borrow + bootstrap composes: the band must EXIST on the borrowed tail so a
+    # borrow model is comparable (variance-wise) to non-borrow models. The donor
+    # is held fixed (its full-history shape rides the replicate's own boundary).
+    import lossratio as lr
+    from datetime import date
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    for est in (
+        lr.PooledLoss(regime=date(2024, 7, 1), borrow="pooled",
+                      uncertainty=ResidualBootstrap(n_replicates=20, seed=2)),
+        lr.LinkRatio(regime=date(2024, 7, 1), borrow="pooled",
+                     uncertainty=ResidualBootstrap(n_replicates=20, seed=2)),
+    ):
+        df = est.fit(tri).to_polars()
+        borrowed = df.filter(pl.col("source") == "borrowed")
+        assert borrowed.height > 0
+        se = borrowed["loss_total_se"].drop_nulls()
+        assert se.len() == borrowed.height and bool((se >= 0).all())
 
 
 def test_recent_plus_bootstrap_supported(tri):

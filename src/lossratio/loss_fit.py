@@ -1185,11 +1185,6 @@ def _fit_loss(
             raise NotImplementedError(
                 f"ResidualBootstrap is not wired for {model!r}."
             )
-        if borrow:
-            raise NotImplementedError(
-                "ResidualBootstrap with borrow= is not supported yet (the "
-                "donor-borrowed tail is not resampled)."
-            )
         boot_spec = uncertainty
 
     donors = None
@@ -1270,7 +1265,7 @@ def _fit_loss(
                 boot = bootstrap_segment_cl(
                     fit["loss_obs"], fit["premium_obs"],
                     sigma_method=sigma_method, spec=boot_spec,
-                    conf_level=conf_level, rng=rng, recent=recent,
+                    conf_level=conf_level, rng=rng, recent=recent, donor=donor,
                 )
             else:
                 from ._resample import bootstrap_segment
@@ -1278,7 +1273,7 @@ def _fit_loss(
                     fit["loss_obs"], fit["premium_obs"],
                     mechanism=mechanism, sigma_method=sigma_method, psi=psi,
                     spec=boot_spec, conf_level=conf_level, rng=rng,
-                    n_basis=n_basis, lam=lam, recent=recent,
+                    n_basis=n_basis, lam=lam, recent=recent, donor=donor,
                 )
             # replace the analytical / null SE with the bootstrap spread and
             # carry the empirical quantile band (Sec.5.2 -- predictive interval)
