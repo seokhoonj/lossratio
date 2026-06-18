@@ -255,7 +255,7 @@ def test_engine_link_ratios():
 @requires_engine
 def test_engine_link_ratios_excludes_zero_base_cohort():
     # A cohort whose SOURCE cumulative is 0 carries no defined link ratio and
-    # must be dropped from both sums (standard Mack), not inflate the numerator.
+    # must be dropped from both sums (standard link-ratio), not inflate the numerator.
     # cohort 0: increments [0, 10] -> cumulative [0, 10] (zero base at dur 1);
     # cohort 1: increments [5, 3] -> cumulative [5, 8].
     # Link 1->2 must use cohort 1 only: f = 8 / 5 = 1.6 (NOT 18 / 5 = 3.6).

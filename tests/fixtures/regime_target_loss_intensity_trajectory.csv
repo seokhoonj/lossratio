@@ -1,4 +1,4 @@
-coverage,cohort,duration,loss,premium,loss_ed
+coverage,cohort,duration,loss,premium,loss_intensity
 surgery,2023-01-01,1,14030514,15168591,1.61332327784215
 surgery,2023-01-01,2,24427715,22794364,0.685442767887934
 surgery,2023-01-01,3,34672477,31558907,0.449442765764379

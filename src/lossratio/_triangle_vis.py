@@ -678,7 +678,7 @@ def _compute_triangle_usage(
 
     # Build a per-row `_switch_k` so a grouped switch filters each group on
     # its OWN boundary (a scalar applies to every group); a group with no
-    # switch (null) behaves as ED throughout (geq=False, lt=True).
+    # switch (null) behaves as the intensity region throughout (geq=False, lt=True).
     has_switch_k = switch_k is not None
     if isinstance(switch_k, dict):
         keys = list(switch_k.keys())

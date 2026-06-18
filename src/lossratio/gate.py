@@ -118,7 +118,7 @@ class GateReport:
     max_nonconverged_frac
         The excluded-share threshold above which the verdict is forced to
         ``FAIL`` (default 0.05).
-    n_clusters, n_matched, n_boot, seed
+    n_clusters, n_matched, n_replicates, seed
         The resampling provenance (``n_clusters`` is post convergence filter).
     """
 
@@ -142,7 +142,7 @@ class GateReport:
     max_nonconverged_frac: float
     n_clusters: int
     n_matched: int
-    n_boot: int
+    n_replicates: int
     seed: int
 
     def __repr__(self) -> str:
@@ -235,7 +235,7 @@ def gate(
     practical_tol: float = 0.05,
     ni_delta: float = 0.02,
     max_nonconverged_frac: float = 0.05,
-    n_boot: int = 2000,
+    n_replicates: int = 2000,
     seed: int = 0,
 ) -> GateReport:
     """Decide whether ``challenger`` earns its place over the baseline rung.
@@ -269,7 +269,7 @@ def gate(
         Convergence hygiene: if the share of matched cells dropped for landing
         in a non-converged fold exceeds this (default 0.05 = 5%), the verdict
         is forced to ``FAIL``.
-    n_boot, seed
+    n_replicates, seed
         Bootstrap replicate count (default 2000) and RNG seed (recorded in the
         report).
 
@@ -293,8 +293,8 @@ def gate(
             'lane="incremental" is unavailable: not every estimator carried '
             "an incremental projection on the matched cells"
         )
-    if n_boot < 1:
-        raise ValueError(f"n_boot must be >= 1, got {n_boot}")
+    if n_replicates < 1:
+        raise ValueError(f"n_replicates must be >= 1, got {n_replicates}")
 
     baseline = comparison.baseline
     labels = [lbl for lbl in comparison._labels if lbl != baseline]
@@ -389,7 +389,7 @@ def gate(
         # replacement, the SAME draw applied to both estimators).
         point = np.ones((1, n_clusters), dtype=np.float64)
         boot = rng.multinomial(
-            n_clusters, np.full(n_clusters, 1.0 / n_clusters), size=n_boot
+            n_clusters, np.full(n_clusters, 1.0 / n_clusters), size=n_replicates
         ).astype(np.float64)
         counts = np.vstack([point, boot])
 
@@ -449,7 +449,7 @@ def gate(
         cnts = np.vstack([
             np.ones((1, k), dtype=np.float64),
             rng.multinomial(
-                k, np.full(k, 1.0 / k), size=n_boot
+                k, np.full(k, 1.0 / k), size=n_replicates
             ).astype(np.float64),
         ])
         return _metric_values(cnts, stat)[primary]
@@ -521,6 +521,6 @@ def gate(
         max_nonconverged_frac=max_nonconverged_frac,
         n_clusters=n_clusters,
         n_matched=comparison._n_matched,
-        n_boot=n_boot,
+        n_replicates=n_replicates,
         seed=seed,
     )

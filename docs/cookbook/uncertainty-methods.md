@@ -31,8 +31,8 @@ lossratio는 두 가지로 이 둘을 계산합니다.
   - 무엇
 * - 해석적(기본)
   - 아니오 (닫힌형)
-  - Mack/ED 해석식으로 `loss_proc_se` / `loss_param_se` / `loss_total_se`를
-    바로 채움. 인자를 추가로 줄 필요가 없는 기본 출력.
+  - 링크비·완전 풀링 강도의 해석식으로 `loss_proc_se` / `loss_param_se` /
+    `loss_total_se`를 바로 채움. 인자를 추가로 줄 필요가 없는 기본 출력.
 * - `ResidualBootstrap`
   - 예
   - 적합 잔차를 재표집해 pseudo-삼각형을 만들고 **전체 파이프라인을 재적합** —
@@ -40,10 +40,10 @@ lossratio는 두 가지로 이 둘을 계산합니다.
     경험적 분위수 예측밴드를 함께 냄.
 ```
 
-`PooledLoss`(완전 풀링)·`LinkRatio`(체인 사다리)는 둘 다 됩니다 — 기본이
+`PooledLoss`(완전 풀링)·`ChainLadder`(링크비)는 둘 다 됩니다 — 기본이
 해석적, `uncertainty=lr.ResidualBootstrap(...)`로 재표집 대안. 반면
 `CredibleLoss`·`SmoothLoss`는 **해석적 SE가 없습니다**(신뢰도 레벨·평활 형상의
-추정 분산이 Mack 재귀를 깨므로) — 그 둘은 ResidualBootstrap이 *유일한* 밴드입니다.
+추정 분산이 해석적 재귀를 깨므로) — 그 둘은 ResidualBootstrap이 *유일한* 밴드입니다.
 
 ## 3. 손계산 예제 — 3x3 삼각형
 
@@ -56,7 +56,7 @@ cohort2       150    240     ?
 cohort3       200     ?      ?
 ```
 
-체인 사다리(CL = `LinkRatio`) 적합:
+링크비(link-ratio `f_k`) 적합 — `ChainLadder`:
 
 - **인자**: $f_1 = (150+240)/(100+150) = 1.56$, $f_2 = 165/150 = 1.10$
 - **예측**: c2.duration3 $= 240 \times 1.10 = 264$, c3.duration2 $= 200 \times 1.56 = 312$,
@@ -66,7 +66,7 @@ cohort3       200     ?      ?
 772.2는 *점추정 하나*입니다. 두 방법은 "이 값이 얼마나 흔들리나"를 서로 다르게
 계산합니다.
 
-### 3.1 해석적 — Mack 분산(alpha = 1)
+### 3.1 해석적 — 분산 분해(alpha = 1)
 
 데이터를 건드리지 않고 닫힌형으로 분해합니다.
 
@@ -74,10 +74,10 @@ cohort3       200     ?      ?
   = 0.60/250 = 0.0024$, $\operatorname{SE}(f_1) = 0.049$
 - duration2는 링크가 하나뿐이라 $\sigma^2_2$를 직접 못 구함 -> LOCF로
   $\sigma^2_2 = 0.60$, $\operatorname{Var}(\hat f_2) = 0.60/150 = 0.004$
-- 이 인자 분산을 Mack 재귀로 미래 셀까지 전파하면 모수오차 SE가, 셀 분산
+- 이 인자 분산을 해석적 재귀로 미래 셀까지 전파하면 모수오차 SE가, 셀 분산
   $\sigma^2_k C_k$를 더하면 과정오차 SE가, 둘의 제곱합 제곱근이 총 SE가 됩니다.
 
-이게 `uncertainty=` 없이 `lr.LinkRatio().fit(tri)`가 채우는 `loss_proc_se`
+이게 `uncertainty=` 없이 `lr.ChainLadder().fit(tri)`가 채우는 `loss_proc_se`
 / `loss_param_se` / `loss_total_se`입니다.
 
 ### 3.2 `ResidualBootstrap` — 잔차를 재표집해 재적합
@@ -86,7 +86,7 @@ cohort3       200     ?      ?
 (duration1): cohort1 $= -0.7746$, cohort2 $= +0.6325$.
 
 - **Stage 1 (모수오차)**: 각 관측 링크마다 풀에서 잔차를 복원추출해 pseudo
-  누적값을 재구성하고, 그 pseudo 과거삼각형에 CL을 **재적합**:
+  누적값을 재구성하고, 그 pseudo 과거삼각형에 `ChainLadder`를 **재적합**:
 
   $$C^\ast_{i,k+1} = f_k C_{i,k} + r^\ast \cdot \sigma_k\sqrt{C_{i,k}}$$
 
@@ -121,7 +121,7 @@ fit.to_polars().select(["cohort", "duration", "ratio_proj", "ratio_se",
 
 방법 선택:
 
-- **밴드(SE/CI)만 필요하고 모델이 `PooledLoss`/`LinkRatio`** -> 기본(해석적).
+- **밴드(SE/CI)만 필요하고 모델이 `PooledLoss`/`ChainLadder`** -> 기본(해석적).
   가장 싸고 안정적이며 점추정과 정합.
 - **`CredibleLoss`/`SmoothLoss`를 쓰거나, 예측분포 밴드가 필요** ->
   `uncertainty=lr.ResidualBootstrap(...)`. 신뢰도 레벨·평활 형상의 추정 분산은
@@ -129,7 +129,8 @@ fit.to_polars().select(["cohort", "duration", "ratio_proj", "ratio_se",
 
 ```{important}
 부트스트랩의 밴드는 손해 측 estimator를 그대로 따라갑니다 — `PooledLoss`면
-ED 부트스트랩, `LinkRatio`면 CL(England-Verrall ODP) 부트스트랩. 그래서 분포의
+완전 풀링 강도(`g_k`) 부트스트랩, `ChainLadder`면 링크비(England-Verrall ODP)
+부트스트랩. 그래서 분포의
 중심이 점추정과 같은 예측에서 나옵니다(점추정에 밴드가 어긋나는 mismatch 없음).
 포트폴리오 손해율 불확실성에는 셀 단위 해석적 SE를 단순 합산하지 말고
 부트스트랩을 쓰십시오 — 코호트들이 같은 인자를 공유하는 상관(parameter

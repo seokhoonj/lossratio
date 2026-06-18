@@ -17,7 +17,9 @@ The ``sigma_method`` option set:
   each unestimated link receives ``exp(a + b * its_own_position)``
   squared back to a ``sigma2`` value -- trend-aware, least conservative
   when sigma keeps decaying.
-* ``"mack"``: Mack (1993) Appendix B tail estimator. Covers only the
+* ``"geometric"``: geometric tail extrapolation
+  (``sigma2_tail = min(sigma2_last^2/sigma2_prev, sigma2_last, sigma2_prev)``).
+  Covers only the
   last unestimated link; any earlier unestimated links fall back to
   LOCF with a warning. Requires at least three valid values, otherwise
   falls back to LOCF entirely with a warning.
@@ -35,7 +37,7 @@ VALID_SIGMA_METHODS: tuple[str, ...] = (
     "min_last2",
     "locf",
     "loglinear",
-    "mack",
+    "geometric",
     "none",
 )
 
@@ -111,13 +113,15 @@ def extrapolate_tail_sigma2(
         s[idx_pred] = sigma_pred ** 2
         return s
 
-    if sigma_method == "mack":
-        # Mack (1993) Appendix B tail estimator. Covers only the last
+    if sigma_method == "geometric":
+        # geometric tail extrapolation
+        # (sigma2_tail = min(sigma2_last^2/sigma2_prev, sigma2_last, sigma2_prev)).
+        # Covers only the last
         # unestimated link; earlier gaps fall back to LOCF.
         last_valid = s[idx_valid[-1]]
         if idx_valid.size < 3:
             warnings.warn(
-                "Mack tail estimator requires >= 3 valid sigma values; "
+                "geometric tail estimator requires >= 3 valid sigma values; "
                 "falling back to LOCF.",
                 stacklevel=2,
             )
@@ -133,7 +137,7 @@ def extrapolate_tail_sigma2(
         if idx_pred.size > 1:
             s[idx_pred[:-1]] = last_valid
             warnings.warn(
-                "Mack tail estimator covers only the last link; "
+                "geometric tail estimator covers only the last link; "
                 f"{idx_pred.size - 1} earlier unestimated link(s) "
                 "filled by LOCF.",
                 stacklevel=2,

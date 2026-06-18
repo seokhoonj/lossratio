@@ -1,6 +1,6 @@
 """lossratio -- loss ratio analytics for long-term health insurance.
 
-Cohort development triangles, projection (CL / ED / SA), uncertainty
+Cohort development triangles, a loss-ratio projection ladder, uncertainty
 quantification, regime detection, and backtesting.
 
 See also
@@ -13,6 +13,7 @@ from ._resample import ResidualBootstrap
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .calendar import Calendar
+from .chain_ladder import ChainLadder
 from .comparison import EstimatorComparison, EstimatorComparisonFit
 from .credible_loss import CredibleLoss
 from .credible_premium import CrediblePremium
@@ -21,7 +22,6 @@ from .experience import validate_experience
 from .inception import inception_stability
 from .intensity import Intensity
 from .link import Link
-from .link_ratio import LinkRatio
 from .loss import LossFit
 from .pooled_loss import PooledLoss
 from .pooled_premium import PooledPremium
@@ -41,13 +41,13 @@ __all__ = [
     "Backtest",
     "BacktestFit",
     "Calendar",
+    "ChainLadder",
     "CredibleLoss",
     "CrediblePremium",
     "EstimatorComparison",
     "EstimatorComparisonFit",
     "Intensity",
     "Link",
-    "LinkRatio",
     "LossFit",
     "PooledLoss",
     "PooledPremium",

@@ -1,9 +1,9 @@
-"""LinkRatio self-anchor — the redesigned engine-backed chain ladder must
-reproduce the current ``ChainLadder`` projection bit-for-bit (charter Sec.7-3).
+"""ChainLadder self-anchor — the redesigned engine-backed link-ratio fit must
+reproduce the golden projection bit-for-bit (charter Sec.7-3).
 
 The link ratio ``f_k`` is driven by ``_engine.link_ratios`` and the variance /
-premium machinery reuses the kept ``_mack`` kernel; this pins that the new
-``LinkRatio`` -> ``LossFit`` surface is numerically identical to the old path
+premium machinery reuses the kept ``_recursion`` kernel; this pins that the new
+``ChainLadder`` -> ``LossFit`` surface is numerically identical to the old path
 on every shared loss column, for single- and multi-column groups.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.link_ratio import LinkRatio
+from lossratio.chain_ladder import ChainLadder
 
 _SHARED = [
     "loss_obs", "loss_proj", "incr_loss_proj",
@@ -32,10 +32,10 @@ def exp() -> pl.DataFrame:
     return lr.load_experience()
 
 
-def test_link_ratio_model_label(exp):
-    fit = LinkRatio().fit(lr.Triangle(exp, groups="coverage"))
-    assert fit.model == "link_ratio"
-    assert fit.method == "link_ratio"
+def test_chain_ladder_model_label(exp):
+    fit = ChainLadder().fit(lr.Triangle(exp, groups="coverage"))
+    assert fit.model == "chain_ladder"
+    assert fit.method == "chain_ladder"
     assert fit.status == "valid"
     assert fit.converged is True
 
@@ -60,34 +60,34 @@ def _assert_shared_parity(ref: pl.DataFrame, got: pl.DataFrame, keys: list[str])
 def test_recent_self_consistent(exp, groups, recent):
     # recent gates f_k to the recent-N diagonal wedge (via the engine `include`
     # flag), projection seed from the full triangle. Self-consistency check; the
-    # byte-for-byte parity to the old ChainLadder was the build-time anchor, now
+    # byte-for-byte parity to the old link-ratio fit was the build-time anchor, now
     # retired with the old surface (the golden master pins the absolute numbers).
     tri = lr.Triangle(exp, groups=groups)
-    a = _pl(LinkRatio(recent=recent).fit(tri))
-    b = _pl(LinkRatio(recent=recent).fit(tri))
+    a = _pl(ChainLadder(recent=recent).fit(tri))
+    b = _pl(ChainLadder(recent=recent).fit(tri))
     keys = (groups if isinstance(groups, list) else [groups]) + ["cohort", "duration"]
     _assert_shared_parity(a, b, keys)
 
 
 def test_recent_none_matches_no_arg(exp):
     tri = lr.Triangle(exp, groups="coverage")
-    a = _pl(LinkRatio().fit(tri))
-    b = _pl(LinkRatio(recent=None).fit(tri))
+    a = _pl(ChainLadder().fit(tri))
+    b = _pl(ChainLadder(recent=None).fit(tri))
     _assert_shared_parity(a, b, ["coverage", "cohort", "duration"])
 
 
 def test_recent_validates(exp):
     with pytest.raises(ValueError):
-        LinkRatio(recent=-1)
+        ChainLadder(recent=-1)
 
 
-# --- ODP residual bootstrap (England-Verrall) for the chain ladder ---------
+# --- ODP residual bootstrap (England-Verrall) for the link-ratio fit -------
 
 
 def test_odp_bootstrap_populates_se_ci(exp):
     from lossratio._resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
-    d = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)).fit(tri))
+    d = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)).fit(tri))
     proj = d.filter(pl.col("source") == "own")
     assert proj["loss_total_se"].is_not_null().all()
     assert (proj["loss_total_se"] > 0).all()
@@ -100,19 +100,19 @@ def test_odp_bootstrap_populates_se_ci(exp):
 def test_odp_bootstrap_reproducible(exp):
     from lossratio._resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
-    a = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
-    b = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
+    a = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
+    b = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
     assert (a["loss_total_se"].fill_null(-1) - b["loss_total_se"].fill_null(-1)).abs().max() == 0.0
 
 
 def test_odp_bootstrap_in_calibration_range(exp):
-    # the ODP bootstrap and the analytical Mack SE are different variance models
-    # (ODP Var ~ mean vs Mack Var ~ C^alpha), so they need not match -- but the
+    # the ODP bootstrap and the analytical SE are different variance models
+    # (ODP Var ~ mean vs link-ratio Var ~ C^alpha), so they need not match -- but the
     # bootstrap SE should stay in a sane band around the analytical one
     from lossratio._resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
-    ana = _pl(LinkRatio().fit(tri))
-    boot = _pl(LinkRatio(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))
+    ana = _pl(ChainLadder().fit(tri))
+    boot = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))
     j = ana.join(boot, on=["coverage", "cohort", "duration"], suffix="_b").filter(
         pl.col("source") == "own"
     )
@@ -121,7 +121,7 @@ def test_odp_bootstrap_in_calibration_range(exp):
 
 
 def test_analytical_default_unchanged_by_bootstrap_wiring(exp):
-    # LinkRatio() with no uncertainty must still carry its analytical Mack SE
+    # ChainLadder() with no uncertainty must still carry its analytical SE
     tri = lr.Triangle(exp, groups="coverage")
-    d = _pl(LinkRatio().fit(tri))
+    d = _pl(ChainLadder().fit(tri))
     assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()

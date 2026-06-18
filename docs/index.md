@@ -31,10 +31,10 @@ lossratio는 장기 건강보험의 **손해율(loss ratio)**, 곧
 바로 구축. 누적·증분, 다양한 집계 주기를 일관되게 처리.
 :::
 
-:::{grid-item-card} 노출 기반 예측
-기본은 노출 기반(exposure-driven, ED)의 안전한 베이스라인.
-코호트별 수준 차이는 cohort-scaled(CS)가 신뢰도 가중으로 보정.
-초기 변동성에 강건한 손해율 예측.
+:::{grid-item-card} 손해 예측 사다리
+완전 풀링(`PooledLoss`)의 안전한 베이스라인에서, 코호트별 수준을 신뢰도
+가중으로 보정하는 `CredibleLoss`, 형상을 평활하는 `SmoothLoss`로 올라가는
+구조 사다리. 초기 변동성에 강건한 손해율 예측.
 :::
 
 :::{grid-item-card} 진단과 탐지

@@ -45,7 +45,7 @@ def test_ratio_is_loss_over_premium(tri):
 
 
 def test_fixed_reproduces_lossfit_internal_ratio(tri):
-    # PooledPremium == the loss fit's internal CL premium, so se_method="fixed"
+    # PooledPremium == the loss fit's internal link-ratio premium, so se_method="fixed"
     # is bit-identical to the band LossFit already carries.
     lf = lr.PooledLoss().fit(tri).to_polars().select(
         ["coverage", "cohort", "duration", "ratio_proj", "ratio_se"]
@@ -79,9 +79,9 @@ def test_ci_brackets_point(tri):
     assert (df["ratio_ci_lo"] >= -1e-12).all()
 
 
-def test_link_ratio_loss_side_allowed(tri):
-    rf = lr.Ratio(loss=lr.LinkRatio()).fit(tri)
-    assert rf.loss_model == "link_ratio"
+def test_chain_ladder_loss_side_allowed(tri):
+    rf = lr.Ratio(loss=lr.ChainLadder()).fit(tri)
+    assert rf.loss_model == "chain_ladder"
 
 
 def test_invalid_se_method():

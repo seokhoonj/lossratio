@@ -23,7 +23,7 @@ def _triangle(groups=None) -> lr.Triangle:
 def cmp_fit():
     """Two genuinely different estimators on the ungrouped triangle."""
     return lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(_triangle())
 
@@ -31,7 +31,7 @@ def cmp_fit():
 @pytest.fixture(scope="module")
 def self_cmp():
     """The SAME estimator under two labels: every cell is an exact tie."""
-    est = lr.LinkRatio()
+    est = lr.ChainLadder()
     return lr.EstimatorComparison(
         {"a": est, "b": est}, holdouts=(4, 8), target="loss"
     ).fit(_triangle())
@@ -40,7 +40,7 @@ def self_cmp():
 @pytest.fixture(scope="module")
 def grouped_cmp():
     return lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(_triangle(groups="coverage"))
 
@@ -50,7 +50,7 @@ class _SkipSecondFit:
     (ValueError), so its RollingBacktest skips the 2nd hold-out depth."""
 
     def __init__(self):
-        self._inner = lr.LinkRatio()
+        self._inner = lr.ChainLadder()
         self.calls = 0
 
     def fit(self, triangle):
@@ -83,7 +83,7 @@ class _NoIncr:
     """Estimator whose refit output carries no incremental projection."""
 
     def __init__(self):
-        self._inner = lr.LinkRatio()
+        self._inner = lr.ChainLadder()
 
     def fit(self, triangle):
         return _NoIncrFit(self._inner.fit(triangle))
@@ -102,35 +102,35 @@ def test_empty_estimators():
 def test_non_str_label():
     with pytest.raises(TypeError, match="label"):
         lr.EstimatorComparison(
-            {1: lr.LinkRatio(), "b": lr.LinkRatio()}, target="loss"
+            {1: lr.ChainLadder(), "b": lr.ChainLadder()}, target="loss"
         )
 
 
 def test_blank_label():
     with pytest.raises(ValueError, match="label"):
         lr.EstimatorComparison(
-            {"  ": lr.LinkRatio(), "b": lr.LinkRatio()}, target="loss"
+            {"  ": lr.ChainLadder(), "b": lr.ChainLadder()}, target="loss"
         )
 
 
 def test_bad_baseline():
     with pytest.raises(ValueError, match="baseline"):
         lr.EstimatorComparison(
-            {"a": lr.LinkRatio(), "b": lr.LinkRatio()},
+            {"a": lr.ChainLadder(), "b": lr.ChainLadder()},
             target="loss", baseline="c",
         )
 
 
 def test_baseline_defaults_to_first_key():
     cmp = lr.EstimatorComparison(
-        {"b": lr.LinkRatio(), "a": lr.LinkRatio()}, target="loss"
+        {"b": lr.ChainLadder(), "a": lr.ChainLadder()}, target="loss"
     )
     assert cmp.baseline == "b"  # insertion order, not alphabetical
 
 
 def test_holdouts_normalized_sorted_deduped():
     cmp = lr.EstimatorComparison(
-        {"a": lr.LinkRatio(), "b": lr.LinkRatio()},
+        {"a": lr.ChainLadder(), "b": lr.ChainLadder()},
         holdouts=(12, 6, 6, 18), target="loss",
     )
     assert cmp.holdouts == (6, 12, 18)
@@ -139,7 +139,7 @@ def test_holdouts_normalized_sorted_deduped():
 def test_propagated_holdout_error():
     with pytest.raises(ValueError, match=">= 1"):
         lr.EstimatorComparison(
-            {"a": lr.LinkRatio(), "b": lr.LinkRatio()},
+            {"a": lr.ChainLadder(), "b": lr.ChainLadder()},
             holdouts=(6, 0), target="loss",
         )
 
@@ -147,7 +147,7 @@ def test_propagated_holdout_error():
 def test_propagated_target_error():
     with pytest.raises(ValueError, match="target"):
         lr.EstimatorComparison(
-            {"a": lr.LinkRatio(), "b": lr.LinkRatio()}, target="bogus"
+            {"a": lr.ChainLadder(), "b": lr.ChainLadder()}, target="bogus"
         )
 
 
@@ -157,7 +157,7 @@ def test_propagated_estimator_error():
 
     with pytest.raises(TypeError, match="fit"):
         lr.EstimatorComparison(
-            {"a": lr.LinkRatio(), "b": Dummy()}, target="loss"
+            {"a": lr.ChainLadder(), "b": Dummy()}, target="loss"
         )
 
 
@@ -178,7 +178,7 @@ def test_cells_long_layout(cmp_fit):
         "cohort", "duration", "actual", "expected", "aeg", "ae_err",
     ]
     assert cells.columns[: len(lead)] == lead
-    assert set(cells["estimator"].unique().to_list()) == {"cl", "ed"}
+    assert set(cells["estimator"].unique().to_list()) == {"link_ratio", "pooled"}
     # one row per (matched key x estimator)
     n_keys = cells.select(["holdout", "cohort", "duration"]).n_unique()
     assert cells.height == 2 * n_keys
@@ -205,10 +205,10 @@ def test_matched_keys_identical_across_estimators(cmp_fit):
 
 def test_common_holdouts_and_fits(cmp_fit):
     assert cmp_fit.holdouts == (4, 8)
-    assert set(cmp_fit.fits) == {"cl", "ed"}
+    assert set(cmp_fit.fits) == {"link_ratio", "pooled"}
     for f in cmp_fit.fits.values():
         assert type(f).__name__ == "BacktestFit"
-    assert cmp_fit.skipped_holdouts == {"cl": [], "ed": []}
+    assert cmp_fit.skipped_holdouts == {"link_ratio": [], "pooled": []}
 
 
 def test_match_summary_consistency(cmp_fit):
@@ -239,28 +239,28 @@ def test_matched_summary_recompute(cmp_fit):
     cells = cmp_fit.cells
     hs = cmp_fit.horizon_summary
     sub = cells.filter(
-        (pl.col("estimator") == "cl") & (pl.col("horizon") == 1)
+        (pl.col("estimator") == "link_ratio") & (pl.col("horizon") == 1)
     )
     expected = (
         (sub["actual"] - sub["expected"]).abs().mean()
     )
     got = hs.filter(
-        (pl.col("estimator") == "cl") & (pl.col("horizon") == 1)
+        (pl.col("estimator") == "link_ratio") & (pl.col("horizon") == 1)
     )["abs_err_mean"][0]
     assert got == pytest.approx(expected)
     assert hs.filter(
-        (pl.col("estimator") == "cl") & (pl.col("horizon") == 1)
+        (pl.col("estimator") == "link_ratio") & (pl.col("horizon") == 1)
     )["n"][0] == sub.height
 
 
 def test_summary_estimator_insertion_order(cmp_fit):
-    # Insertion order ("cl" before "ed") is canonical, not alphabetical --
+    # Insertion order ("link_ratio" before "pooled") is canonical, not alphabetical --
     # check the first block of rows belongs to the first label.
     hs = cmp_fit.horizon_summary
-    assert hs["estimator"][0] == "cl"
+    assert hs["estimator"][0] == "link_ratio"
     hc = cmp_fit.horizon_comparison
     # comparison frames carry challengers only -- never the baseline
-    assert set(hc["estimator"].unique().to_list()) == {"ed"}
+    assert set(hc["estimator"].unique().to_list()) == {"pooled"}
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +310,7 @@ def test_skipped_depth_intersection_and_warning():
     tri = _triangle()
     with pytest.warns(UserWarning, match=r"\[8\]"):
         fit = lr.EstimatorComparison(
-            {"good": lr.LinkRatio(), "flaky": _SkipSecondFit()},
+            {"good": lr.ChainLadder(), "flaky": _SkipSecondFit()},
             holdouts=(4, 8), target="loss",
         ).fit(tri)
     assert fit.holdouts == (4,)
@@ -337,7 +337,7 @@ def test_empty_intersection_gives_typed_empty_frames():
     tri = _triangle()
     with pytest.warns(UserWarning, match="dropped"):
         fit = lr.EstimatorComparison(
-            {"good": lr.LinkRatio(), "bad": _NeverFits()},
+            {"good": lr.ChainLadder(), "bad": _NeverFits()},
             holdouts=(4, 8), target="loss",
         ).fit(tri)
     assert fit.holdouts == ()
@@ -379,7 +379,7 @@ def test_incr_lane_present_when_all_carry_it(cmp_fit):
 
 def test_incr_all_or_nothing():
     fit = lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "noincr": _NoIncr()},
+        {"link_ratio": lr.ChainLadder(), "noincr": _NoIncr()},
         holdouts=(4,), target="loss",
     ).fit(_triangle())
     assert not any(c.startswith("incr_") for c in fit.cells.columns)
@@ -414,7 +414,7 @@ def test_comparison_frame_layout(cmp_fit):
     cells = cmp_fit.cells
     for h in hc["horizon"].to_list()[:3]:
         n_keys = cells.filter(
-            (pl.col("estimator") == "ed") & (pl.col("horizon") == h)
+            (pl.col("estimator") == "pooled") & (pl.col("horizon") == h)
         ).height
         assert hc.filter(pl.col("horizon") == h)["n"][0] == n_keys
     # win_rate lives in [0, 1]
@@ -508,18 +508,18 @@ def test_win_rate_excludes_nonfinite_cells(self_cmp):
 def test_non_default_baseline_flips_roles():
     tri = _triangle()
     default = lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4,), target="loss",
     ).fit(tri)
     flipped = lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
-        holdouts=(4,), target="loss", baseline="ed",
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
+        holdouts=(4,), target="loss", baseline="pooled",
     ).fit(tri)
-    assert flipped.baseline == "ed"
+    assert flipped.baseline == "pooled"
     hc_d = default.horizon_comparison.sort("horizon")
     hc_f = flipped.horizon_comparison.sort("horizon")
     # the challenger row set excludes the (non-first) baseline label
-    assert set(hc_f["estimator"].unique().to_list()) == {"cl"}
+    assert set(hc_f["estimator"].unique().to_list()) == {"link_ratio"}
     # base_* now carries ed's stats (the default fit's challenger column)
     # and the challenger column carries cl's (the default fit's base_*)
     assert hc_f["base_abs_err_mean"].to_list() == pytest.approx(
@@ -795,7 +795,7 @@ def test_crossover_by_anchor(self_cmp):
 def test_crossover_real_fit_shape(cmp_fit):
     out = cmp_fit.crossover()
     assert out.height == 1  # one challenger, ungrouped
-    assert out["estimator"][0] == "ed"
+    assert out["estimator"][0] == "pooled"
     assert out["max_horizon"][0] == cmp_fit.horizon_comparison["horizon"].max()
 
 
@@ -819,7 +819,7 @@ def test_grouped_frames_carry_group_columns(grouped_cmp):
     ]
     n_cov = grouped_cmp.cells["coverage"].n_unique()
     assert co.height == n_cov  # one row per (group x challenger)
-    assert co["estimator"].unique().to_list() == ["ed"]
+    assert co["estimator"].unique().to_list() == ["pooled"]
 
 
 def test_grouped_matching_is_within_group(grouped_cmp):
@@ -838,7 +838,7 @@ def test_multi_column_groups():
     )
     tri = lr.Triangle(df, groups=["coverage", "channel"])
     fit = lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(tri)
     pairs = (
@@ -864,7 +864,7 @@ def test_pandas_input_mirrors_out():
     df = lr.load_experience().to_pandas()
     tri = lr.Triangle(df)
     fit = lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4,), target="loss",
     ).fit(tri)
     for frame in (
@@ -886,8 +886,8 @@ def test_pandas_input_mirrors_out():
 def test_repr(cmp_fit):
     text = repr(cmp_fit)
     assert "EstimatorComparisonFit" in text
-    assert "estimators=['cl', 'ed']" in text
-    assert "baseline='cl'" in text
+    assert "estimators=['link_ratio', 'pooled']" in text
+    assert "baseline='link_ratio'" in text
     assert "holdouts=[4, 8]" in text
     assert "target='loss'" in text
     assert "n_matched_cells=" in text

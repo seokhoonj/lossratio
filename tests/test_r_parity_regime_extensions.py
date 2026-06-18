@@ -9,7 +9,7 @@ Covers:
 2. ``detect_regime(by=...)`` -- per-group dispatch on a multi-coverage
    Triangle. The combined ``$changes`` and ``$labels`` tables (prefixed
    with the group column) must match R row-for-row.
-3. Derived regime targets (``loss_ata`` / ``premium_ata`` / ``loss_ed``)
+3. Derived regime targets (``loss_ata`` / ``premium_ata`` / ``loss_intensity``)
    -- both (a) the derived trajectory itself (output of
    ``.derive_regime_target``) and (b) the resulting ``detect_regime()``
    change points on that target.
@@ -21,7 +21,7 @@ Fixtures (from ``dev/parity_dump.R``):
 * ``regime_by_group_changes.csv``
 * ``regime_by_group_labels.csv``
 * ``regime_target_<TGT>_trajectory.csv`` for TGT in
-  {``loss_ata``, ``premium_ata``, ``loss_ed``}
+  {``loss_ata``, ``premium_ata``, ``loss_intensity``}
 * ``regime_target_<TGT>_changes.csv`` for the same TGT set
 
 To refresh: ``Rscript -e 'source("dev/parity_dump.R")'`` in the R repo.
@@ -235,11 +235,11 @@ def test_regime_by_group_labels_match_r():
 
 
 # ---------------------------------------------------------------------------
-# 3) Derived regime targets -- loss_ata / premium_ata / loss_ed
+# 3) Derived regime targets -- loss_ata / premium_ata / loss_intensity
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("target", ["loss_ata", "premium_ata", "loss_ed"])
+@pytest.mark.parametrize("target", ["loss_ata", "premium_ata", "loss_intensity"])
 def test_derived_regime_trajectory_matches_r(target: str):
     """The derived per-(group, cohort, duration) trajectory matches R.
 
@@ -286,7 +286,7 @@ def test_derived_regime_trajectory_matches_r(target: str):
         )
 
 
-@pytest.mark.parametrize("target", ["loss_ata", "premium_ata", "loss_ed"])
+@pytest.mark.parametrize("target", ["loss_ata", "premium_ata", "loss_intensity"])
 def test_detect_regime_on_derived_target_changes_match_r(target: str):
     """``detect_regime(target=<derived>)`` ``$changes`` must match R.
 

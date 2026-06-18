@@ -1,8 +1,8 @@
 """Pooled-premium estimator (denominator-side, link-ratio family).
 
 ``PooledPremium`` is the complete-pooling rung of the premium side: the
-volume-weighted pooled link ratio ``f^P_k = sum P_{k+1} / sum P_k`` (Mack chain
-ladder on cumulative premium). Premium has no external exposure -- it is its
+volume-weighted pooled link ratio ``f^P_k = sum P_{k+1} / sum P_k`` on
+cumulative premium. Premium has no external exposure -- it is its
 own volume base -- so it self-develops by a multiplicative link ratio, the
 denominator analogue of the loss-side ``PooledLoss``. It returns the
 engine-backed :class:`~lossratio.premium.PremiumFit` and feeds the

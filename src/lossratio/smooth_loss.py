@@ -15,7 +15,7 @@ Exact ladder relation: with ``psi = 0`` the credibility level is ``u = 1``, so
 shape with no penalty would in turn reduce the smooth shape to the saturated
 ``g_k`` -- the chain back to the golden anchor.
 
-The smooth-shape + credibility estimation variance breaks the Mack analytical
+The smooth-shape + credibility estimation variance breaks the analytical
 recursion, so SE / CI are null UNLESS a :class:`~lossratio._resample.ResidualBootstrap`
 is attached -- the bootstrap re-runs the whole smooth pipeline (shape +
 ``lambda`` selection + level) per replicate, so the interval and the coverage
@@ -28,14 +28,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .loss import LossFit, _EstimatorBase, _fit_loss
+from .loss import LossFit, _LossEstimatorBase, _fit_loss
 
 if TYPE_CHECKING:
     from .triangle import Triangle
 
 
 @dataclass(kw_only=True)
-class SmoothLoss(_EstimatorBase):
+class SmoothLoss(_LossEstimatorBase):
     """Smooth-shape partial-pooling loss estimator (top ladder rung).
 
     Parameters

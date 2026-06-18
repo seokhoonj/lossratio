@@ -1,5 +1,5 @@
 """Full-refit residual bootstrap (charter Sec.5.2): CredibleLoss SE/CI, pooled
-calibration vs the analytical Mack SE, reproducibility, and the coverage lane
+calibration vs the analytical SE, reproducibility, and the coverage lane
 flowing through a backtest."""
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import pytest
 import lossratio as lr
 from lossratio.backtest import Backtest
 from lossratio.credible_loss import CredibleLoss
-from lossratio.link_ratio import LinkRatio
+from lossratio.chain_ladder import ChainLadder
 from lossratio.metric_panel import metric_panel
 from lossratio.pooled_loss import PooledLoss
 from lossratio._resample import ResidualBootstrap
@@ -135,9 +135,9 @@ def test_pooled_none_preserves_analytical(tri):
 
 
 def test_pooled_bootstrap_tracks_analytical(tri):
-    # for the pooled rung (where Mack is valid) the bootstrap SE should sit
+    # for the pooled rung (where the analytical SE is valid) the bootstrap SE should sit
     # close to the analytical SE -- a calibration sanity check. Compared
-    # apples-to-apples: drift=False, since the analytical Mack SE has no
+    # apples-to-apples: drift=False, since the analytical SE has no
     # calendar-drift term.
     a = PooledLoss().fit(tri).to_polars()
     b = PooledLoss(
@@ -190,11 +190,11 @@ def test_drift_grows_with_calendar_horizon(tri):
 # --- scope guards ----------------------------------------------------------
 
 
-def test_link_ratio_uses_odp_bootstrap(tri):
-    # LinkRatio now takes the bootstrap via the separate ODP (England-Verrall)
+def test_chain_ladder_uses_odp_bootstrap(tri):
+    # ChainLadder now takes the bootstrap via the separate ODP (England-Verrall)
     # plug -- it fills SE/CI like the intensity rungs (full coverage in
-    # tests/test_link_ratio.py); here just assert it does NOT reject + populates.
-    d = LinkRatio(uncertainty=ResidualBootstrap(n_replicates=20, seed=1)).fit(tri).to_polars()
+    # tests/test_chain_ladder.py); here just assert it does NOT reject + populates.
+    d = ChainLadder(uncertainty=ResidualBootstrap(n_replicates=20, seed=1)).fit(tri).to_polars()
     assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()
 
 
@@ -209,7 +209,7 @@ def test_borrow_plus_bootstrap_bands_the_tail():
     for est in (
         lr.PooledLoss(regime=date(2024, 7, 1), borrow="pooled",
                       uncertainty=ResidualBootstrap(n_replicates=40, seed=2)),
-        lr.LinkRatio(regime=date(2024, 7, 1), borrow="pooled",
+        lr.ChainLadder(regime=date(2024, 7, 1), borrow="pooled",
                      uncertainty=ResidualBootstrap(n_replicates=40, seed=2)),
     ):
         df = est.fit(tri).to_polars()
@@ -233,7 +233,7 @@ def test_recent_borrow_bootstrap_triple_combo():
     from datetime import date
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    for Est in (lr.PooledLoss, lr.LinkRatio):
+    for Est in (lr.PooledLoss, lr.ChainLadder):
         df = Est(recent=18, regime=date(2024, 7, 1), borrow="pooled",
                  uncertainty=ResidualBootstrap(n_replicates=20, seed=4)).fit(tri).to_polars()
         borrowed = df.filter(pl.col("source") == "borrowed")

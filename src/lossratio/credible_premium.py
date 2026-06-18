@@ -3,8 +3,8 @@
 ``CrediblePremium`` is the partial-pooling rung of the premium ladder
 (``PooledPremium`` -> ``CrediblePremium`` -> ``SmoothPremium``), the
 denominator mirror of :class:`~lossratio.credible_loss.CredibleLoss`. Premium
-self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled chain-ladder
-link ratio minus one) and a per-cohort credibility LEVEL ``u_i`` (the
+self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled link ratio
+minus one) and a per-cohort credibility LEVEL ``u_i`` (the
 dispersion-scaled Buhlmann-Straub conjugate, premium as its own exposure) scales
 it: the projected link factor is ``1 + u_i * (f^P_k - 1)``. It returns the
 engine-backed :class:`~lossratio.premium.PremiumFit`.

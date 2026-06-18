@@ -4,15 +4,15 @@ The premium side has no external exposure: cumulative premium ``P_{i,k}`` is
 its own volume base, so it develops by its OWN multiplicative link ratio
 ``f^P_k = sum P_{k+1} / sum P_k`` (the link-ratio family) rather than the
 intensity ``g_k`` of the loss side. ``PooledPremium`` is the complete-pooling
-rung of that family -- the volume-weighted pooled link ratio (Mack chain
-ladder on premium), reusing the kept ``_mack`` kernel so the premium
-projection and its Mack process / parameter variance match the premium column
+rung of that family -- the volume-weighted pooled link ratio on premium,
+reusing the kept ``_recursion`` kernel so the premium projection and its
+process / parameter variance match the premium column
 the loss fits already carry internally, now exposed as a first-class,
 swappable, separately-inspectable result.
 
 ``PremiumFit`` is the denominator analogue of
 :class:`~lossratio.loss.LossFit`: a long-format frame (one row per cohort x
-duration cell) with ``premium_proj`` + the Mack SE block + an analytical CI,
+duration cell) with ``premium_proj`` + the analytical SE block + an analytical CI,
 plus the same machine-readable ``status`` / ``cell_counts`` diagnostics.
 
 The credibility / smooth premium rungs (``CrediblePremium`` / ``SmoothPremium``
@@ -39,7 +39,7 @@ from ._io import (
     mirror_output,
     normalize_groups,
 )
-from ._mack import _build_value_matrices, _fit_mack
+from ._recursion import _build_value_matrices, _fit_multiplicative
 from ._recent import recent_link_mask, validate_recent
 from .loss import (
     _credible_levels,
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 
 
 # Columns of the assembled long premium frame. Mirrors the premium block of the
-# loss schema, with the full Mack SE decomposition + analytical CI.
+# loss schema, with the full analytical SE decomposition + analytical CI.
 _PREMIUM_COLUMNS = [
     "cohort", "duration",
     "premium_obs", "premium_proj", "incr_premium_proj",
@@ -154,10 +154,10 @@ def _project_self_exposure(
     """Self-exposure multiplicative premium projection.
 
     Premium is its own exposure, so the (per-cohort credibility-scaled)
-    intensity ``h_k = dP / P_from`` projects multiplicatively:
+    growth rate ``h_k = dP / P_from`` projects multiplicatively:
     ``P_{k+1}[i] = P_k[i] * (1 + u_i * h_k)``, seeded from each cohort's last
     observed cell. At ``u_i = 1`` and ``h_k = f^P_k - 1`` this is exactly the
-    pooled chain-ladder recursion ``P_{k+1} = P_k * f^P_k`` (used only for the
+    pooled link-ratio recursion ``P_{k+1} = P_k * f^P_k`` (used only for the
     psi>0 path; the degenerate psi<=0 path returns the kernel projection
     directly to stay byte-identical to PooledPremium).
     """
@@ -187,18 +187,18 @@ def _fit_segment_credible_premium(
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) premium fit for one segment.
 
-    Premium self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled
-    chain-ladder link ratio minus one) and the per-cohort credibility LEVEL
+    Premium self-develops, so the growth rate is ``h_k = f^P_k - 1`` (the pooled
+    link ratio minus one) and the per-cohort credibility LEVEL
     ``u_i`` is the dispersion-scaled Buhlmann-Straub conjugate on the premium
     increments with premium as its own exposure -- the exact mirror of
     ``CredibleLoss``. The projected link factor is ``1 + u_i * (f^P_k - 1)``.
     ``psi <= 0`` (degenerate / no between-cohort signal) returns the pooled
-    chain-ladder projection directly, byte-identical to ``PooledPremium``. SE is
-    null (the credibility level's estimation variance breaks the Mack analytical
+    link-ratio projection directly, byte-identical to ``PooledPremium``. SE is
+    null (the credibility level's estimation variance breaks the analytical
     recursion, like the loss side); coverage rides a later ResidualBootstrap.
     """
     premium_mask = recent_link_mask(premium_obs, recent)
-    mk = _fit_mack(premium_obs, sigma_method=sigma_method, link_mask=premium_mask)
+    mk = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=premium_mask)
     h_k = mk.f_k - 1.0
 
     u_vec, z_vec, psi_hat = _credible_levels(
@@ -206,7 +206,7 @@ def _fit_segment_credible_premium(
     )
 
     if psi_hat <= 0.0:
-        premium_proj = mk.loss_proj            # exact PooledPremium
+        premium_proj = mk.value_proj            # exact PooledPremium
     else:
         premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
 
@@ -234,7 +234,7 @@ def _fit_segment_smooth_premium(
 ) -> dict[str, np.ndarray]:
     """Smooth premium fit for one segment -- the top denominator rung.
 
-    The credible premium rung with the saturated self-exposure intensity
+    The credible premium rung with the saturated self-exposure growth rate
     ``h_k = f^P_k - 1`` replaced by a smooth P-spline shape ``h_k = exp(s(k))``,
     fit by the shared backfitting core (smooth shape + lambda selection +
     conjugate level) on premium-as-its-own-exposure. The projection is the
@@ -284,9 +284,9 @@ def _fit_premium(
 ) -> "PremiumFit":
     """Fit a single-mechanism premium projection on a :class:`Triangle`.
 
-    ``mechanism="pooled"`` is the volume-weighted pooled link ratio (Mack chain
-    ladder on cumulative premium). ``"credible"`` adds a per-cohort credibility
-    LEVEL on the self-exposure intensity ``h_k = f^P_k - 1`` (the premium mirror
+    ``mechanism="pooled"`` is the volume-weighted pooled link ratio on
+    cumulative premium. ``"credible"`` adds a per-cohort credibility
+    LEVEL on the self-exposure growth rate ``h_k = f^P_k - 1`` (the premium mirror
     of ``CredibleLoss``); ``"smooth"`` replaces the saturated ``h_k`` with a
     smooth P-spline shape. ``regime`` is a RESOLVED cohort cut applied through
     :class:`ModelFrame`; ``recent`` (all mechanisms) is the calendar-diagonal fit
@@ -329,8 +329,8 @@ def _fit_premium(
 
         if mechanism == "pooled":
             mask = recent_link_mask(premium_obs, recent)
-            mk = _fit_mack(premium_obs, sigma_method=sigma_method, link_mask=mask)
-            mk_proj = mk.loss_proj
+            mk = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
+            mk_proj = mk.value_proj
             proc_se, param_se, total_se = mk.proc_se, mk.param_se, mk.total_se
         elif mechanism == "credible":
             res = _fit_segment_credible_premium(

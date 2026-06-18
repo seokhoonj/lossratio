@@ -3,7 +3,7 @@
 Implements ``Link.plot()`` / ``ATA.plot()`` / ``Intensity.plot()``,
 dispatching to two internal branches: ``_plot_link_ata`` (5 kinds:
 ``cv`` / ``rse`` / ``summary`` / ``box`` / ``point``) and
-``_plot_link_ed`` (3 kinds: ``summary`` / ``box`` / ``point``).
+``_plot_link_intensity`` (3 kinds: ``summary`` / ``box`` / ``point``).
 
 Per-link summaries (``mean`` / ``median`` / weighted) are derived from
 the Link's per-cell ``ata`` / ``intensity`` column on the fly --
@@ -66,23 +66,23 @@ def plot_link(
     """``Link.plot(model=...)`` dispatcher.
 
     ``model = "ata"`` -> :func:`_plot_link_ata`,
-    ``model = "ed"`` -> :func:`_plot_link_ed`.
-    Default: ``"ed"`` if the Link was built with ``exposure``,
+    ``model = "intensity"`` -> :func:`_plot_link_intensity`.
+    Default: ``"intensity"`` if the Link was built with ``exposure``,
     otherwise ``"ata"``.
     """
     if model is None:
-        model = "ed" if link._premium is not None else "ata"
-    if model not in ("ata", "ed"):
+        model = "intensity" if link._premium is not None else "ata"
+    if model not in ("ata", "intensity"):
         raise ValueError(
-            f"`model` must be 'ata' or 'ed'; got {model!r}."
+            f"`model` must be 'ata' or 'intensity'; got {model!r}."
         )
-    if model == "ed" and link._premium is None:
+    if model == "intensity" and link._premium is None:
         raise ValueError(
-            "`model='ed'` requires a Link built with `exposure`."
+            "`model='intensity'` requires a Link built with `exposure`."
         )
     if model == "ata":
         return _plot_link_ata(link, **kwargs)
-    return _plot_link_ed(link, **kwargs)
+    return _plot_link_intensity(link, **kwargs)
 
 
 def _plot_link_ata(
@@ -172,7 +172,7 @@ def _plot_link_ata(
     )
 
 
-def _plot_link_ed(
+def _plot_link_intensity(
     link: Link,
     kind: str = "summary",
     alpha: float = 1.0,
@@ -180,19 +180,19 @@ def _plot_link_ed(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """ED-mode link diagnostic plot -- 3 kind variants."""
+    """Intensity-mode link diagnostic plot -- 3 kind variants."""
     if kind not in _VALID_ED_TYPES:
         raise ValueError(
             f"`kind` must be one of {_VALID_ED_TYPES!r}; got {kind!r}."
         )
     if link._premium is None:
         raise ValueError(
-            "ED-mode plot requires a Link built with `exposure`."
+            "Intensity-mode plot requires a Link built with `exposure`."
         )
 
     groups = link._groups
     cells = link._df
-    summary = _ed_summary(cells, groups)
+    summary = _intensity_summary(cells, groups)
 
     if kind == "summary":
         return _plot_summary_lines(
@@ -231,16 +231,16 @@ def _plot_link_ed(
 
 
 # ---------------------------------------------------------------------------
-# Per-link summary computation (mean / median / weighted + Mack f / rse)
+# Per-link summary computation (mean / median / weighted f / rse)
 # ---------------------------------------------------------------------------
 
 
 def _ata_summary(
     cells: pl.DataFrame, groups: str | list[str] | None
 ) -> pl.DataFrame:
-    """Per-link ATA summary -- mean, median, weighted Mack f, CV, RSE.
+    """Per-link ATA summary -- mean, median, weighted f, CV, RSE.
 
-    Pooled weighted factor matches the Mack alpha=1 estimator
+    Pooled weighted factor is the volume-weighted (alpha=1) estimator
     (``sum(loss_to) / sum(loss_from)``). CV is the cross-cohort
     coefficient of variation of the per-cell ``ata`` values; RSE is
     ``SE(f) / f`` derived from the cross-cohort variance.
@@ -261,7 +261,7 @@ def _ata_summary(
             pl.col("ata").count().alias("n"),
         )
     )
-    # f = weighted (volume-weighted Mack alpha=1).
+    # f = weighted (volume-weighted alpha=1).
     # CV = SE(ata cell-level) / mean; here we use the unweighted
     # cross-cohort SD divided by the unweighted mean. RSE = SE(f) / f
     # with SE(f) = sd / sqrt(n).
@@ -287,10 +287,10 @@ def _ata_summary(
     return agg.sort(by)
 
 
-def _ed_summary(
+def _intensity_summary(
     cells: pl.DataFrame, groups: str | list[str] | None
 ) -> pl.DataFrame:
-    """Per-link ED intensity summary -- mean, median, weighted g."""
+    """Per-link intensity summary -- mean, median, weighted g."""
     by = [*normalize_groups(groups), "duration_from", "duration_to"]
     valid = cells.filter(
         pl.col("intensity").is_finite() & pl.col("premium_from").is_finite()

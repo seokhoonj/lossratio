@@ -1,7 +1,7 @@
 """Loss-ratio composition (charter Sec.5.3 -- numerator / denominator).
 
 ``Ratio`` pairs a loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
-``SmoothLoss`` / ``LinkRatio``) with a premium-side estimator
+``SmoothLoss`` / ``ChainLadder``) with a premium-side estimator
 (``PooledPremium``) and composes the projected loss ratio
 ``ratio_proj = loss_proj / premium_proj`` cell by cell, propagating the two
 projections' uncertainty into a ratio band.
@@ -36,7 +36,7 @@ import polars as pl
 from scipy.stats import norm
 
 from ._io import mirror_output, normalize_groups
-from .loss import LossFit, _EstimatorBase
+from .loss import LossFit, _LossEstimatorBase
 from .premium import PremiumFit, _PremiumEstimatorBase
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ class Ratio:
     ----------
     loss
         A loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
-        ``SmoothLoss`` / ``LinkRatio``).
+        ``SmoothLoss`` / ``ChainLadder``).
     premium
         A premium-side estimator (``PooledPremium``). Defaults to a plain
         ``PooledPremium()``.
@@ -75,17 +75,17 @@ class Ratio:
         Two-sided confidence level for the ratio CI columns.
     """
 
-    loss: "_EstimatorBase"
+    loss: "_LossEstimatorBase"
     premium: "_PremiumEstimatorBase" = field(default_factory=lambda: _default_premium())
     se_method: str = "fixed"
     rho: float = 0.0
     conf_level: float = 0.95
 
     def __post_init__(self) -> None:
-        if not isinstance(self.loss, _EstimatorBase):
+        if not isinstance(self.loss, _LossEstimatorBase):
             raise TypeError(
                 "loss must be a loss-side estimator (PooledLoss / CredibleLoss "
-                f"/ SmoothLoss / LinkRatio), got {type(self.loss).__name__}"
+                f"/ SmoothLoss / ChainLadder), got {type(self.loss).__name__}"
             )
         if not isinstance(self.premium, _PremiumEstimatorBase):
             raise TypeError(

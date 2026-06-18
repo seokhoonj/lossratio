@@ -11,7 +11,7 @@ import pytest
 
 import lossratio as lr
 from lossratio.gate import GateReport, gate
-from lossratio.link_ratio import LinkRatio
+from lossratio.chain_ladder import ChainLadder
 from lossratio.naive_baseline import NaiveBaseline
 from lossratio.pooled_loss import PooledLoss
 
@@ -23,10 +23,10 @@ def exp():
 
 @pytest.fixture(scope="module")
 def cmp_pooled_link(exp):
-    # PooledLoss = baseline (simpler rung), LinkRatio = challenger.
+    # PooledLoss = baseline (simpler rung), ChainLadder = challenger.
     tri = lr.Triangle(exp, groups="coverage")
     return lr.EstimatorComparison(
-        {"pooled": PooledLoss(), "link": LinkRatio()},
+        {"pooled": PooledLoss(), "link": ChainLadder()},
         holdouts=(6, 12, 18),
         target="loss",
         baseline="pooled",
@@ -55,7 +55,7 @@ def test_gate_returns_report(cmp_pooled_link):
     lo, hi = g.improvement_ci
     assert lo <= g.improvement <= hi          # point inside its own CI
     assert g.n_clusters > 0
-    assert g.n_boot == 2000
+    assert g.n_replicates == 2000
     assert set(g.panel) == {"ae_err", "bias"}
 
 
@@ -83,7 +83,7 @@ def test_seed_determinism(cmp_pooled_link):
 def test_challenger_required_when_ambiguous(exp):
     tri = lr.Triangle(exp, groups="coverage")
     cmp = lr.EstimatorComparison(
-        {"pooled": PooledLoss(), "link": LinkRatio(), "link2": LinkRatio()},
+        {"pooled": PooledLoss(), "link": ChainLadder(), "link2": ChainLadder()},
         holdouts=(6,),
         target="loss",
         baseline="pooled",
@@ -104,7 +104,7 @@ def test_verdict_logic_thresholds(cmp_pooled_link):
 
 def test_validates_args(cmp_pooled_link):
     for kw in ({"primary": "nope"}, {"panel": ("nope",)},
-               {"lane": "sideways"}, {"n_boot": 0}):
+               {"lane": "sideways"}, {"n_replicates": 0}):
         with pytest.raises(ValueError):
             gate(cmp_pooled_link, **kw)
 
@@ -113,10 +113,10 @@ def test_validates_args(cmp_pooled_link):
 
 
 def _fresh_pooled_link(exp):
-    """A function-scoped PooledLoss-vs-LinkRatio comparison, safe to mutate."""
+    """A function-scoped PooledLoss-vs-ChainLadder comparison, safe to mutate."""
     tri = lr.Triangle(exp, groups="coverage")
     return lr.EstimatorComparison(
-        {"pooled": PooledLoss(), "link": LinkRatio()},
+        {"pooled": PooledLoss(), "link": ChainLadder()},
         holdouts=(6, 12, 18),
         target="loss",
         baseline="pooled",

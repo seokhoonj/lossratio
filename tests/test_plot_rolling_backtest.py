@@ -17,7 +17,7 @@ import lossratio as lr
 def rbt_multi():
     tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
     return lr.Backtest(
-        estimator=lr.LinkRatio(), holdouts=(4, 8, 12), target="loss"
+        estimator=lr.ChainLadder(), holdouts=(4, 8, 12), target="loss"
     ).fit(tri)
 
 
@@ -26,7 +26,7 @@ def rbt_single():
     df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     tri = lr.Triangle(df)
     return lr.Backtest(
-        estimator=lr.LinkRatio(), holdouts=(6, 12), target="loss"
+        estimator=lr.ChainLadder(), holdouts=(6, 12), target="loss"
     ).fit(tri)
 
 

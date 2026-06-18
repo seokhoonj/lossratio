@@ -2,13 +2,13 @@
 
 Built via :meth:`Triangle.link`. Carries per-cell age-to-age
 factors and (when an ``exposure`` column is supplied) the
-per-cell exposure-driven intensity.
+per-cell additive intensity.
 
 Diagnostic methods :meth:`ata` and :meth:`intensity` aggregate
 across cohorts to per-link summaries that pair with each other:
 
 * :meth:`Link.ata` — multiplicative ATA factor diagnostic
-* :meth:`Link.intensity` — additive ED intensity diagnostic
+* :meth:`Link.intensity` — additive intensity diagnostic
 """
 
 from __future__ import annotations
@@ -148,7 +148,7 @@ class Link:
     """Long-format link table — one row per (cohort, adjacent duration pair).
 
     Built via :meth:`Triangle.link`. Stores the per-cell ATA factor
-    and, in dual mode, the per-cell ED intensity. Methods
+    and, in dual mode, the per-cell additive intensity. Methods
     :meth:`ata` and :meth:`intensity` aggregate to per-link
     summaries.
 
@@ -172,7 +172,7 @@ class Link:
     >>> link = tri.link(target="loss")                 # ATA-only
     >>> link = tri.link(target="loss", exposure="premium")
     >>> link.ata()         # ATA factor diagnostic
-    >>> link.intensity()   # ED intensity diagnostic
+    >>> link.intensity()   # additive intensity diagnostic
     >>> link.df            # raw long-format link table
     """
 
@@ -260,7 +260,7 @@ class Link:
 
     @property
     def premium(self) -> str | None:
-        """Triangle column used as the ED exposure anchor (or ``None``)."""
+        """Triangle column used as the exposure anchor (or ``None``)."""
         return self._premium
 
     @property
@@ -276,7 +276,8 @@ class Link:
         """ATA factor diagnostic on this link.
 
         Aggregates the per-cell ``ata`` column across cohorts via
-        Mack pooling, returning per-link f, sigma2, cv, rse, n_obs.
+        volume-weighted pooling, returning per-link f, sigma2, cv, rse,
+        n_obs.
 
         Parameters
         ----------
@@ -299,7 +300,7 @@ class Link:
         sigma_method: str = "locf",
         recent: int | None = None,
     ) -> "Intensity":
-        """ED intensity diagnostic on this link.
+        """Additive intensity diagnostic on this link.
 
         Requires the Link to be in dual mode (``exposure`` set).
         Aggregates the per-cell ``intensity`` column via WLS,
@@ -336,17 +337,16 @@ class Link:
         """Link-factor diagnostic plot, backed by matplotlib.
 
         Dispatches on ``model``: ``"ata"`` (multiplicative ATA factor
-        diagnostic, 5 kind variants) or ``"ed"`` (additive exposure-
-        driven intensity diagnostic, 3 kind variants). Default
-        ``model`` is ``"ed"`` when the Link was built with
-        ``exposure``, otherwise ``"ata"``.
+        diagnostic, 5 kind variants) or ``"intensity"`` (additive intensity
+        diagnostic, 3 kind variants). Default ``model`` is ``"intensity"`` when
+        the Link was built with ``exposure``, otherwise ``"ata"``.
 
         For ``model="ata"`` accepts:
         ``kind in {"cv","rse","summary","box","point"}``,
         ``alpha``, ``show_factor_stability``, ``max_cv``, ``max_rse``,
         ``min_run``, ``nrow``, ``ncol``, ``figsize``.
 
-        For ``model="ed"`` accepts:
+        For ``model="intensity"`` accepts:
         ``kind in {"summary","box","point"}``, ``alpha``, ``nrow``,
         ``ncol``, ``figsize``.
 

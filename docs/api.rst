@@ -50,9 +50,15 @@ API 레퍼런스
 손해 예측 (강도 사다리 + 벤치마크)
 ----------------------------------
 
-완전 풀링 → 코호트 신뢰도 → 평활 형상의 구조 사다리(``PooledLoss`` ->
-``CredibleLoss`` -> ``SmoothLoss``)와, 사다리 밖의 자기손해 링크비 벤치마크
-``LinkRatio``. 넷 다 :class:`~lossratio.LossFit` 을 반환합니다.
+손해 예측에는 두 메커니즘이 있습니다. **가법**(intensity ``g_k``, 외부 노출인
+위험보험료에 고정) -- 완전 풀링 → 코호트 신뢰도 → 평활 형상의 구조 사다리
+(``PooledLoss`` -> ``CredibleLoss`` -> ``SmoothLoss``); 그리고 **곱셈**(체인래더
+link ratio ``f_k``, 자기손해로 self-develop) -- 벤치마크 ``ChainLadder``. 넷 다
+:class:`~lossratio.LossFit` 을 반환합니다. 곱셈(체인래더) 메커니즘은 보험료 쪽에도
+그대로 적용됩니다(아래 보험료 사다리) -- ``ChainLadder``(손해)와 보험료 사다리는
+*같은 메커니즘, 다른 타깃*입니다. 형식·분산 primitives(곱셈 recursion, WLS 분산)는
+공유하되, 손해 ``f_k`` 는 engine 링크비(ATA 진단과 동일 원천)에서, 보험료는 자기
+링크비 커널에서 옵니다.
 
 .. autoclass:: lossratio.PooledLoss
    :members:
@@ -63,7 +69,7 @@ API 레퍼런스
 .. autoclass:: lossratio.SmoothLoss
    :members:
 
-.. autoclass:: lossratio.LinkRatio
+.. autoclass:: lossratio.ChainLadder
    :members:
 
 .. autoclass:: lossratio.LossFit

@@ -42,8 +42,8 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
     Partial pooling; exposes per-cohort `u` / `Z` / `psi` via `.credibility`.
   - `SmoothLoss` — `CredibleLoss` with a smooth (penalized P-spline)
     development shape in place of the saturated one.
-  - `LinkRatio` — the chain-ladder benchmark: own-loss multiplicative link
-    ratios (Mack), no premium anchor.
+  - `ChainLadder` — the chain-ladder benchmark: own-loss multiplicative link
+    ratios (age-to-age factors), no premium anchor.
 - **Premium side** — `PooledPremium` returns a `PremiumFit`. Premium has no
   external exposure, so it self-develops by its own volume-weighted link ratio.
 - **Loss-ratio composition** — `Ratio(loss=..., premium=...)` pairs a loss-side
@@ -53,9 +53,10 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
   correlation `rho`.
 - **Uncertainty** — pass `uncertainty=ResidualBootstrap(...)` to a loss
   estimator for a full-refit residual bootstrap (with a calendar-drift band)
-  that fills `loss_total_se` / `loss_ci_lo` / `loss_ci_hi` and the ratio band;
-  `PooledLoss` / `LinkRatio` also carry an analytical SE. The default
-  `uncertainty=None` is point-only.
+  that fills `loss_total_se` / `loss_ci_lo` / `loss_ci_hi` and the ratio band.
+  `PooledLoss` / `ChainLadder` carry an analytical SE by default (no
+  `uncertainty=` needed); `CredibleLoss` / `SmoothLoss` are point-only unless a
+  `ResidualBootstrap` is attached.
 - `Triangle.link()` — builds the long-format `Link` table (one row per cohort x
   adjacent duration pair). `tri.link().ata()` / `tri.link().intensity()` return
   paired factor-level diagnostics (multiplicative ATA factors with per-link `f`
@@ -115,7 +116,7 @@ ata.df.head(3)
 #> └──────────┴──────────┴──────────┴───────────────┴──────────┴──────────┴───────────┘
 
 # 3. Project loss. `PooledLoss` is the safe baseline; `CredibleLoss` /
-#    `SmoothLoss` add per-cohort credibility and a smooth shape, and `LinkRatio`
+#    `SmoothLoss` add per-cohort credibility and a smooth shape, and `ChainLadder`
 #    is the chain-ladder benchmark. Each returns a LossFit. The fully observed
 #    first cohort has nothing to project, so its SE is null.
 loss = lr.PooledLoss().fit(tri)

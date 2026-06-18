@@ -8,7 +8,7 @@ Covered here:
 * **unit invariance** (Sec.4.3 raison d'etre): scaling loss AND premium by
   a common currency factor scales every loss/premium projection by that
   factor while leaving the dimensionless loss ratio and CV unchanged.
-* **loss equivariance** (chain ladder): scaling loss alone scales the loss
+* **loss equivariance** (link-ratio): scaling loss alone scales the loss
   projection by the same factor and leaves the CV unchanged (f_k is a
   ratio of losses, scale-free).
 
@@ -51,9 +51,9 @@ def _close(a: np.ndarray, b: np.ndarray, rtol: float = 1e-9) -> None:
     np.testing.assert_allclose(a[m], b[m], rtol=rtol)
 
 
-def test_ed_unit_invariance():
-    """ED: scale loss AND premium by C -> projections scale by C, the loss
-    ratio and CV are invariant."""
+def test_pooled_loss_unit_invariance():
+    """PooledLoss: scale loss AND premium by C -> projections scale by C, the
+    loss ratio and CV are invariant."""
     df = _experience()
     base = _fit_df(lr.PooledLoss(), df)
     scaled = df.with_columns(
@@ -72,13 +72,13 @@ def test_ed_unit_invariance():
     _close(ratio_sc, ratio_base)
 
 
-def test_cl_loss_equivariance():
-    """CL: scale loss alone by C -> loss projection scales by C, CV invariant
-    (f_k is a ratio of losses, scale-free)."""
+def test_chain_ladder_loss_equivariance():
+    """ChainLadder: scale loss alone by C -> loss projection scales by C, CV
+    invariant (f_k is a ratio of losses, scale-free)."""
     df = _experience()
-    base = _fit_df(lr.LinkRatio(), df)
+    base = _fit_df(lr.ChainLadder(), df)
     scaled = df.with_columns(incr_loss=pl.col("incr_loss") * C)
-    sc = _fit_df(lr.LinkRatio(), scaled)
+    sc = _fit_df(lr.ChainLadder(), scaled)
     assert base.height == sc.height
 
     _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())

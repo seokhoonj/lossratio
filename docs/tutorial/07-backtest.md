@@ -50,8 +50,8 @@
 
 `Backtest`는 예측에 쓸 **추정기**와 가릴 대각선 수(`holdouts`)를 받는다.
 무엇을 검증할지는 `target`으로 고른다(`"ratio"` / `"loss"` / `"premium"`).
-손해율 추정기는 손해쪽 사다리(여기서는 `PooledLoss` — 노출 기반,
-exposure-driven)와 분모쪽 `PooledPremium`을 묶은 `Ratio`로 만든다.
+손해율 추정기는 손해쪽 사다리(여기서는 `PooledLoss` — 완전 풀링)와
+분모쪽 `PooledPremium`을 묶은 `Ratio`로 만든다.
 
 ```python
 import polars as pl
@@ -90,7 +90,7 @@ bt = lr.Backtest(estimator=est, holdouts=3, target="ratio").fit(tri)
 
 .. plot::
    :context: close-figs
-   :caption: ED 예측의 A/E Error 히트맵(가린 3개 분기 대각선). 빨강은 모델이 과소 예측한 칸(실제 > 예측), 파랑은 과대 예측한 칸이다. 데이터가 가장 적은 최근 코호트(맨 위)에서 오차가 두드러진다.
+   :caption: PooledLoss 예측의 A/E Error 히트맵(가린 3개 분기 대각선). 빨강은 모델이 과소 예측한 칸(실제 > 예측), 파랑은 과대 예측한 칸이다. 데이터가 가장 적은 최근 코호트(맨 위)에서 오차가 두드러진다.
 
    bt.plot_triangle()
 ```
@@ -106,15 +106,15 @@ bt = lr.Backtest(estimator=est, holdouts=3, target="ratio").fit(tri)
 데 있다. 같은 hold-out에서 세 방법의 평균 절대 A/E Error를 비교해 본다.
 
 ```python
-losses = {"ed": lr.PooledLoss, "cl": lr.LinkRatio, "cs": lr.CredibleLoss}
+losses = {"pooled": lr.PooledLoss, "linkratio": lr.ChainLadder, "credible": lr.CredibleLoss}
 for name, loss in losses.items():
     est = lr.Ratio(loss=loss(), premium=lr.PooledPremium())
     bt = lr.Backtest(estimator=est, holdouts=3, target="ratio").fit(tri)
     err = float(bt.ae_err["ae_err"].abs().mean()) * 100
-    print(f"{name:>3}: 평균 |A/E Error| = {err:.1f}%")
-#> ed: 평균 |A/E Error| = 11.7%
-#> cl: 평균 |A/E Error| = 4.5%
-#> cs: 평균 |A/E Error| = 11.4%
+    print(f"{name:>9}: 평균 |A/E Error| = {err:.1f}%")
+#>    pooled: 평균 |A/E Error| = 11.7%
+#> linkratio: 평균 |A/E Error| = 4.5%
+#>  credible: 평균 |A/E Error| = 11.4%
 ```
 
 ```{list-table}
@@ -124,20 +124,21 @@ for name, loss in losses.items():
 * - 방법
   - 평균 |A/E Error|
   - 
-* - PooledLoss (ED)
+* - PooledLoss
   - 11.7%
   - 안전한 기본값이나, 경과한 칸에선 노출 앵커가 편향을 부른다
-* - LinkRatio (CL)
+* - ChainLadder
   - 4.5%
   - 진전이 신뢰할 만한 구간을 3분기 내다보니 이 hold-out에선 가장 정확
-* - CredibleLoss (CS)
+* - CredibleLoss
   - 11.4%
   - 코호트 수준 보정이 풀링 형상의 편향을 부분적으로 다룬다 — 이 book에선 소폭
 ```
 
-흥미로운 반전이다. 4장에서 ED를 "안전한 기본값"이라 했지만, 이 검증에서는
-CL이 ED보다 훨씬 정확하다. 가린 칸들이 이미 어느 정도 경과한 코호트의
-3분기 앞이라, 진전 패턴이 신뢰할 만해 CL이 잘 맞기 때문이다. **보편적으로
+흥미로운 반전이다. 4장에서 `PooledLoss`를 "안전한 기본값"이라 했지만, 이
+검증에서는 `ChainLadder`가 `PooledLoss`보다 훨씬 정확하다. 가린 칸들이 이미
+어느 정도 경과한 코호트의 3분기 앞이라, 진전 패턴이 신뢰할 만해 `ChainLadder`가
+잘 맞기 때문이다. **보편적으로
 최선인 방법은 없다** — 코호트가 얼마나 경과했는지와 내다보는 기간에 따라
 달라지고, 그것을 가려 주는 것이 백테스트다.
 
@@ -145,9 +146,9 @@ CL이 ED보다 훨씬 정확하다. 가린 칸들이 이미 어느 정도 경과
 :class: important
 
 `holdouts=3`은 "3분기 앞"을 검증한다. 이 짧은 지평에서는 경과한 칸이 많아
-CL이 유리하다. 그러나 `holdouts`를 크게 잡아 *갓 인수된 코호트의 먼 미래*까지
-예측하게 하면, 얇은 데이터에 외삽하는 CL이 흔들리고 노출에 고정한 ED가
-다시 안전해진다. 검증 결과는 늘 hold-out 길이와 함께 읽어야 한다.
+`ChainLadder`가 유리하다. 그러나 `holdouts`를 크게 잡아 *갓 인수된 코호트의 먼
+미래*까지 예측하게 하면, 얇은 데이터에 외삽하는 `ChainLadder`가 흔들리고 노출에
+고정한 `PooledLoss`가 다시 안전해진다. 검증 결과는 늘 hold-out 길이와 함께 읽어야 한다.
 ```
 
 같은 방식으로 regime 반영 여부(6장)도 백테스트로 비교할 수 있다 —
@@ -233,8 +234,8 @@ bt.convergence(tol=0.03, min_run=3)  # 몇 경과 이력부터 표본 외 편향
 ```python
 cmp = lr.EstimatorComparison(
     {
-        "ed": lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()),
-        "cl": lr.Ratio(loss=lr.LinkRatio(),  premium=lr.PooledPremium()),
+        "pooled":    lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()),
+        "linkratio": lr.Ratio(loss=lr.ChainLadder(),  premium=lr.PooledPremium()),
     },
     holdouts=(2, 4, 6),
 ).fit(tri)
@@ -244,7 +245,7 @@ cmp.crossover(min_run=3)
 #> ┌──────────┬───────────┬──────────────┬──────────────┬─────────────┬────────────────┬─────────┬─────────────┐
 #> │ coverage ┆ estimator ┆ crossover_at ┆ early_winner ┆ late_winner ┆ overall_winner ┆ n_flips ┆ max_horizon │
 #> ╞══════════╪═══════════╪══════════════╪══════════════╪═════════════╪════════════════╪═════════╪═════════════╡
-#> │ SURGERY  ┆ cl        ┆ null         ┆ cl           ┆ null        ┆ cl             ┆ 1       ┆ 5           │
+#> │ SURGERY  ┆ linkratio ┆ null         ┆ linkratio    ┆ null        ┆ linkratio      ┆ 1       ┆ 5           │
 #> └──────────┴───────────┴──────────────┴──────────────┴─────────────┴────────────────┴─────────┴─────────────┘
 ```
 
@@ -254,7 +255,7 @@ cmp.crossover(min_run=3)
 한 줌뿐인 단발 역전이라 `min_run`이 잡음으로 거른다). **"crossover 없음 +
 `overall_winner`"가 가장 정직한 결과다** — 한 방법이 관측 범위 전체에서
 우세하고, 다른 방법은 표본 외에서 보태는 것이 없다는 읽기다. 이 합성
-수술담보의 짧은 hold-out에서는 CL이 그 승자인데, 위의 "hold-out 길이가
+수술담보의 짧은 hold-out에서는 `ChainLadder`가 그 승자인데, 위의 "hold-out 길이가
 결론을 바꾼다"가 여기에도 그대로 적용된다 — 결론은 늘 *내 데이터, 내
 hold-out*에서 다시 가린다.
 

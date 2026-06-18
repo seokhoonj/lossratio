@@ -1,11 +1,11 @@
-"""ED intensity factor diagnostic.
+"""Intensity factor diagnostic.
 
-Parallel to :class:`ATA` (the multiplicative side) for the
-exposure-driven (ED) workflow: exposes the per-link intensity
+Parallel to :class:`ATA` (the multiplicative side) for the additive
+intensity workflow: exposes the per-link intensity
 ``g_k = E[ΔL / C^P]`` along with its standard error and residual sigma,
 computed via weighted least squares on each cohort×link pair.
 
-Unlike the ATA factor, ED has no factor-stability point concept --
+Unlike the ATA factor, the intensity has no factor-stability point concept --
 :math:`g_k` decays toward zero at long development, which makes CV / RSE
 structurally ill-behaved. ``Intensity`` therefore reports diagnostic
 quantities only; there is no stability detection.
@@ -20,10 +20,10 @@ import numpy as np
 import polars as pl
 
 from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
-from ._mack import _mack_sigma2
+from ._recursion import _wls_sigma2
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
-from ._mack import _build_value_matrices
+from ._recursion import _build_value_matrices
 
 if TYPE_CHECKING:
     from ._io import FrameLike
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class _IntensityResult:
-    """Single-group ED intensity diagnostic result."""
+    """Single-group intensity diagnostic result."""
 
     g_k: np.ndarray         # (n_links,)  WLS-estimated intensity
     g_se_k: np.ndarray      # (n_links,)  standard error of g_k
@@ -111,7 +111,7 @@ def _compute_intensity(
         g_k[k] = g
 
         if n_k >= 2:
-            sigma2 = _mack_sigma2(dl_eff, ck_eff, g, n_k)
+            sigma2 = _wls_sigma2(dl_eff, ck_eff, g, n_k)
             sigma2_k[k] = sigma2
             g_se_k[k] = float(np.sqrt(sigma2 / sum_premium)) if sigma2 > 0 else 0.0
         else:
@@ -121,7 +121,8 @@ def _compute_intensity(
     # Tail-sigma extrapolation. When the last link has a single
     # contributing cohort (n_k = 1), sigma2 is unestimable directly.
     # Delegate to the shared helper so the choice is consistent
-    # across cl / intensity / lr. A single-duration group has no links
+    # across the link-ratio / intensity / ratio paths. A single-duration
+    # group has no links
     # at all (n_links = 0) -- nothing to extrapolate.
     if n_links == 0:
         return _IntensityResult(
@@ -182,12 +183,12 @@ def _diagnostic_to_df(
 
 
 class Intensity:
-    """Result of ED intensity factor diagnostic.
+    """Result of the intensity factor diagnostic.
 
-    Per-development-link estimates of the exposure-driven intensity
+    Per-development-link estimates of the additive intensity
     ``g_k = E[ΔL / C^P]``, with standard errors and residual sigma.
     Parallel to :class:`ATA` for the multiplicative side, but *without*
-    a factor-stability point: in ED, ``g_k`` decays toward zero at long
+    a factor-stability point: ``g_k`` decays toward zero at long
     development, which makes CV / RSE diagnostics ill-behaved by
     construction (not by instability).
 
@@ -277,20 +278,20 @@ class Intensity:
 
     def summary(self) -> "FrameLike":
         """Alias for :attr:`df`. Provided for parity with
-        :meth:`ATA.summary`; ED reports diagnostics only, with no
-        factor-stability point."""
+        :meth:`ATA.summary`; the intensity diagnostic reports diagnostics
+        only, with no factor-stability point."""
         return mirror_output(self._df, self._output_type)
 
     def plot(self, **kwargs: Any) -> Any:
-        """ED intensity diagnostic plot (matplotlib).
+        """Intensity diagnostic plot (matplotlib).
 
-        Delegates to :meth:`Link.plot` with ``model='ed'`` on the
+        Delegates to :meth:`Link.plot` with ``model='intensity'`` on the
         underlying :class:`Link`. Accepts ``kind`` (``"summary"`` /
         ``"box"`` / ``"point"``), ``alpha``, ``nrow``, ``ncol``,
         ``figsize``.
         """
         from ._link_vis import plot_link
-        return plot_link(self._link, model="ed", **kwargs)
+        return plot_link(self._link, model="intensity", **kwargs)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

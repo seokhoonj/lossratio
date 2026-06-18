@@ -3,7 +3,7 @@
 1. ``window="auto"`` -- Kneedle elbow on change-count vs window curve.
 2. ``by=`` multi-group dispatch -- per-combo detection with the group
    column prepended to ``$changes`` / ``$labels``.
-3. ``loss_ata`` / ``premium_ata`` / ``loss_ed`` (+ ``premium_ed`` alias)
+3. ``loss_ata`` / ``premium_ata`` / ``loss_intensity`` (+ ``premium_intensity`` alias)
    derived trajectories.
 
 The tests exercise ``Regime._from_triangle`` directly because the
@@ -294,7 +294,7 @@ def test_resolve_by_helper():
 
 
 # ---------------------------------------------------------------------------
-# Derived targets: loss_ata / premium_ata / loss_ed (+ premium_ed alias)
+# Derived targets: loss_ata / premium_ata / loss_intensity (+ premium_intensity alias)
 # ---------------------------------------------------------------------------
 
 
@@ -330,8 +330,8 @@ def test_detect_regime_loss_ata_runs_end_to_end():
     assert reg._labels_df["regime_id"].is_not_null().all()
 
 
-def test_premium_ed_aliases_premium_ata():
-    """``premium_ed`` resolves to ``premium_ata`` -- detection identical."""
+def test_premium_intensity_aliases_premium_ata():
+    """``premium_intensity`` resolves to ``premium_ata`` -- detection identical."""
     tri = _sur_triangle()
     a = Regime._from_triangle(
         tri,
@@ -343,7 +343,7 @@ def test_premium_ed_aliases_premium_ata():
     )
     b = Regime._from_triangle(
         tri,
-        target="premium_ed",
+        target="premium_intensity",
         window=8,
         method="e_divisive",
         n_permutations=99,

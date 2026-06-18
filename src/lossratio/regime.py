@@ -45,7 +45,7 @@ _VALID_TREATMENTS = (
     "segment_bridged",
     "segment_bridged_borrowed",
 )
-_DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_ed")
+_DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_intensity")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
 # trajectory window.
@@ -80,9 +80,9 @@ def _derive_regime_target(
 
     - ``"loss_ata"``: ``loss[k] / loss[k-1]`` per (group, cohort).
     - ``"premium_ata"``: ``premium[k] / premium[k-1]`` per (group, cohort).
-    - ``"loss_ed"``: ``(loss[k] - loss[k-1]) / premium[k-1]``.
+    - ``"loss_intensity"``: ``(loss[k] - loss[k-1]) / premium[k-1]``.
 
-    ``"premium_ed"`` is an alias of ``"premium_ata"`` (constant offset of
+    ``"premium_intensity"`` is an alias of ``"premium_ata"`` (constant offset of
     1; PCA standardisation removes the shift, so detection results
     coincide). The caller resolves the alias before calling.
     """
@@ -98,7 +98,7 @@ def _derive_regime_target(
         derived = pl.col("loss") / pl.col("loss").shift(1).over(by_cols)
     elif target == "premium_ata":
         derived = pl.col("premium") / pl.col("premium").shift(1).over(by_cols)
-    else:  # loss_ed
+    else:  # loss_intensity
         derived = (
             (pl.col("loss") - pl.col("loss").shift(1).over(by_cols))
             / pl.col("premium").shift(1).over(by_cols)
@@ -1402,10 +1402,10 @@ class Regime:
                 f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
             )
 
-        # `premium_ed` is an alias of `premium_ata` (constant offset of 1
+        # `premium_intensity` is an alias of `premium_ata` (constant offset of 1
         # absorbed by PCA standardisation -- detection produces identical
         # changes). Resolve before validation.
-        if target == "premium_ed":
+        if target == "premium_intensity":
             target = "premium_ata"
 
         # Preserve the user-facing target name (before the derive step
@@ -1486,7 +1486,7 @@ class Regime:
         # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
             from .ata import _detect_stability_point
-            from ._mack import _build_value_matrix
+            from ._recursion import _build_value_matrix
 
             # Map the regime target -> a valid cumulative metric for the
             # ATA factor diagnostic (cumulative metrics only). Derived

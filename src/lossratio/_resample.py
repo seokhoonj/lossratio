@@ -1,7 +1,7 @@
 """Full-refit residual bootstrap for the intensity family (charter Sec.5.2).
 
-The engine-path uncertainty machine. Where the kept ``_mack`` analytical SE
-plugs in point estimates of ``sigma^2`` / ``Var(f)`` and propagates Mack's
+The engine-path uncertainty machine. Where the kept ``_recursion`` analytical SE
+plugs in point estimates of ``sigma^2`` / ``Var(f)`` and propagates the
 recursion, this module re-estimates the WHOLE pipeline on each pseudo-triangle
 -- ``g_k`` (and, for the credible rung, ``phi``, ``psi``, ``u_i``) is refit per
 replicate, so the between-cohort estimation error the analytical recursion
@@ -12,11 +12,11 @@ only" reintroduces the overconfidence; the selection stays inside the loop).
 Scope: the additive intensity mechanisms ``"pooled"``, ``"credible"``, and
 ``"smooth"``. ``CredibleLoss`` / ``SmoothLoss`` have no analytical SE at all
 (the credibility level -- and, for smooth, the shape selection -- estimation
-variance breaks the Mack recursion), so the bootstrap is their only interval;
+variance breaks the recursion), so the bootstrap is their only interval;
 for ``"smooth"`` each replicate re-runs the whole backfitting (shape + lambda),
-which is materially heavier. ``"link_ratio"`` uses a SEPARATE plug
-(:func:`bootstrap_segment_cl`, England-Verrall ODP residuals) since the chain
-ladder is own-loss-anchored, not premium-anchored.
+which is materially heavier. ``"multiplicative"`` uses a SEPARATE plug
+(:func:`bootstrap_segment_multiplicative`, England-Verrall ODP residuals) since the
+``ChainLadder`` benchmark is own-loss-anchored, not premium-anchored.
 
 Algorithm (per segment, England-Verrall residual bootstrap adapted to the
 premium-anchored intensity model):
@@ -50,7 +50,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import _engine
-from ._mack import _fit_mack
+from ._recursion import _fit_multiplicative
 from ._recent import recent_link_mask
 from .loss import (
     _credible_levels,
@@ -72,14 +72,14 @@ def _project_borrow_cum(
 
     For the bootstrap the donor (the segment's data-rich full-history link ratio)
     is held at its point estimate -- only the segment's OWN factors (``own`` =
-    ``g_k`` for ``body="ed"`` or ``f_k`` for ``body="cl"``) are re-estimated per
+    ``g_k`` for ``body="additive"`` or ``f_k`` for ``body="multiplicative"``) are re-estimated per
     replicate; the borrowed tail rides the fixed donor shape on the replicate's
     own boundary. Returns only the projection (the analytical SE arms of
     :func:`_project_borrow` are unused here -- the spread is the empirical
     bootstrap)."""
     z = np.zeros_like(own)
     nan = np.full_like(own, np.nan)
-    own_g, own_f = (own, nan) if body == "ed" else (nan, own)
+    own_g, own_f = (own, nan) if body == "additive" else (nan, own)
     dz = np.zeros_like(donor[0])
     return _project_borrow(
         loss_obs, premium_proj, body=body,
@@ -92,13 +92,13 @@ def _project_borrow_cum(
 def _perturb_donor(
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray]", rng: np.random.Generator
 ) -> "tuple[np.ndarray, np.ndarray, np.ndarray]":
-    """Parametric (Mack) per-replicate draw of the borrowed donor link ratios:
+    """Parametric per-replicate draw of the borrowed donor link ratios:
     ``f_b = f + N(0, sqrt(Var f))``.
 
     Holding the donor fixed leaves a WHOLLY-borrowed cohort (the thinnest
     post-regime cohort, whose entire tail is donor-driven) with a degenerate
     zero-width band -- the very cohort borrow targets. Drawing the donor from
-    its Mack parameter variance restores the donor's parameter uncertainty in
+    its parameter variance restores the donor's parameter uncertainty in
     the borrowed tail without a second residual-bootstrap stream on the donor's
     own data. ``donor = (f_k, sigma2_k, Var f_k)``; only ``Var f_k`` is used."""
     f, sig, var = donor
@@ -116,13 +116,13 @@ def _donor_process_draw(
     mean_inc: np.ndarray, sigma2_k: float, c_from: np.ndarray,
     active: np.ndarray, rng: np.random.Generator,
 ) -> np.ndarray:
-    """Process draw of a BORROWED-tail increment from the donor's Mack
+    """Process draw of a BORROWED-tail increment from the donor's
     dispersion: ``Var(C_{k+1} | C_k) = sigma2_donor_k * C_from`` (alpha=1).
 
     Beyond the own-data boundary the refit has no cells, so the own ODP
     dispersion is undefined (`phi` NaN) and the predictive increment would
     otherwise be deterministic -- the borrowed tail's process variance would
-    not grow with horizon. The donor IS a Mack chain ladder, so its per-link
+    not grow with horizon. The donor IS a link-ratio fit, so its per-link
     ``sigma2`` gives the right tail process scale on the predictive cumulative.
     """
     out = np.array(mean_inc, dtype=np.float64)
@@ -140,7 +140,7 @@ class ResidualBootstrap:
     ``loss_proc_se`` / ``loss_param_se`` / ``loss_total_se`` / ``loss_total_cv``
     columns and the ``loss_ci_lo`` / ``loss_ci_hi`` band (empirical quantiles)
     from the replicate spread. For ``CredibleLoss`` it is the only interval; for
-    ``PooledLoss`` it is the resampling alternative to the analytical Mack SE.
+    ``PooledLoss`` it is the resampling alternative to the analytical SE.
 
     Parameters
     ----------
@@ -307,7 +307,7 @@ def _calendar_drift_se(
     return sigma / np.sqrt(dd.size)              # sigma / sqrt(n - 1)
 
 
-def bootstrap_segment(
+def bootstrap_segment_additive(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     *,
@@ -338,9 +338,9 @@ def bootstrap_segment(
     premium_mask = recent_link_mask(premium_obs, recent)
 
     # premium projection is deterministic (premium is not bootstrapped in v1)
-    premium_proj = _fit_mack(
+    premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).loss_proj
+    ).value_proj
 
     # --- point quantities: fitted mean, dispersion, standardized residuals ---
     ii, kk, y, p = _valid_cells(loss_obs, premium_obs)
@@ -351,7 +351,7 @@ def bootstrap_segment(
     if donor is None:
         point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     else:
-        point_proj = _project_borrow_cum(loss_obs, premium_proj, "ed", g_k, donor)
+        point_proj = _project_borrow_cum(loss_obs, premium_proj, "additive", g_k, donor)
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
     dur1 = (kk + 1).tolist()                              # 1-based from-duration
 
@@ -458,7 +458,7 @@ def bootstrap_segment(
             param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
         else:
             param_cum = _project_borrow_cum(
-                loss_obs, premium_proj, "ed", g_b, _perturb_donor(donor, rng)
+                loss_obs, premium_proj, "additive", g_b, _perturb_donor(donor, rng)
             )
         param_draws[b] = param_cum
         # 6. predictive draw = param path + over-dispersed process noise on the
@@ -484,7 +484,7 @@ def bootstrap_segment(
                     and k < donor[1].size and np.isfinite(donor[1][k])
                     and donor[1][k] > 0.0):
                 # borrowed-tail link: own dispersion is undefined -> use the
-                # donor's Mack process variance so the tail band grows.
+                # donor's process variance so the tail band grows.
                 draw = _donor_process_draw(
                     mean_inc, donor[1][k], pred_cum[:, k], active, rng
                 )
@@ -503,22 +503,23 @@ def bootstrap_segment(
 
 
 # ---------------------------------------------------------------------------
-# Link-ratio (chain ladder) bootstrap -- England-Verrall ODP residuals
+# ChainLadder bootstrap -- England-Verrall ODP residuals
 # ---------------------------------------------------------------------------
 #
-# A SEPARATE plug from the intensity bootstrap above: the chain ladder is the
-# over-dispersed-Poisson cross-classified GLM (E[Y_ij] = alpha_i * beta_j, no
-# premium offset), so the Pearson residual is standardized against the
-# CL-fitted incremental m_ij (own-loss anchored), and the per-replicate refit
-# re-estimates the link ratio f_k -- not the premium-anchored intensity g_k.
-# The resample / projection / process / drift / re-centre scaffold is shared.
+# A SEPARATE plug from the intensity bootstrap above: the link-ratio benchmark
+# is the over-dispersed-Poisson cross-classified GLM (E[Y_ij] = alpha_i * beta_j,
+# no premium offset), so the Pearson residual is standardized against the
+# link-ratio-fitted incremental m_ij (own-loss anchored), and the per-replicate
+# refit re-estimates the link ratio f_k -- not the premium-anchored intensity
+# g_k. The resample / projection / process / drift / re-centre scaffold is
+# shared.
 
 
-def _cl_increments(loss_obs: np.ndarray):
+def _multiplicative_increments(loss_obs: np.ndarray):
     """Observed incremental cells of a cumulative-loss triangle.
 
     Returns parallel ``(ii, jj, y)``: cohort row, 0-based duration, and the
-    incremental loss ``Y_ij = C_ij - C_i,j-1`` (the dev-1 cell is the first
+    incremental loss ``Y_ij = C_ij - C_i,j-1`` (the duration-1 cell is the first
     cumulative). Assumes the per-cohort observed durations are contiguous (a
     standard triangle)."""
     n_cohorts, n_dur = loss_obs.shape
@@ -538,9 +539,9 @@ def _cl_increments(loss_obs: np.ndarray):
 
 
 def _ev_fitted_increments(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
-    """England-Verrall / ODP fitted incrementals ``m_ij`` (chain-ladder fitted).
+    """England-Verrall / ODP fitted incrementals ``m_ij`` (link-ratio fitted).
 
-    The chain-ladder fitted cumulative is the back-recursion from each cohort's
+    The link-ratio fitted cumulative is the back-recursion from each cohort's
     own latest observed cumulative (``hat_C_{i,j} = hat_C_{i,j+1} / f_j``); the
     fitted incremental is its first difference (``m_i0 = hat_C_i0``). Returns an
     ``(n_cohorts, n_durations)`` matrix, NaN off the observed support."""
@@ -563,8 +564,8 @@ def _ev_fitted_increments(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
     return m
 
 
-def _project_cl_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
-    """Multiplicative chain-ladder cumulative projection from each cohort's last
+def _project_multiplicative_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
+    """Multiplicative link-ratio cumulative projection from each cohort's last
     observed cell (``C_{k+1} = f_k C_k``); no variance recursion."""
     n_cohorts, n_dur = loss_obs.shape
     n_links = n_dur - 1
@@ -581,7 +582,7 @@ def _project_cl_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
     return proj
 
 
-def bootstrap_segment_cl(
+def bootstrap_segment_multiplicative(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     *,
@@ -592,9 +593,9 @@ def bootstrap_segment_cl(
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
-    """England-Verrall ODP residual bootstrap for the chain ladder (LinkRatio).
+    """England-Verrall ODP residual bootstrap for the ``ChainLadder`` benchmark.
 
-    Pearson residuals of the observed incrementals against the CL-fitted
+    Pearson residuals of the observed incrementals against the link-ratio-fitted
     incrementals are resampled (per development column) into a pseudo-triangle;
     each pseudo-triangle's link ratio ``f*_k`` projects the REAL observed latest
     diagonal forward (conditional prediction, charter Sec.5.2), with
@@ -604,17 +605,17 @@ def bootstrap_segment_cl(
     n_links = n_durations - 1
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
-    premium_proj = _fit_mack(
+    premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).loss_proj
+    ).value_proj
 
-    f_k = _fit_mack(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
+    f_k = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
     if donor is None:
-        point_proj = _project_cl_cum(loss_obs, f_k)
+        point_proj = _project_multiplicative_cum(loss_obs, f_k)
     else:
-        point_proj = _project_borrow_cum(loss_obs, premium_proj, "cl", f_k, donor)
+        point_proj = _project_borrow_cum(loss_obs, premium_proj, "multiplicative", f_k, donor)
     m_mat = _ev_fitted_increments(loss_obs, f_k)
-    ii, jj, y = _cl_increments(loss_obs)
+    ii, jj, y = _multiplicative_increments(loss_obs)
     m = m_mat[ii, jj]
     dur1 = (jj + 1).tolist()
 
@@ -634,7 +635,7 @@ def bootstrap_segment_cl(
         # which equals the source-link cal_idx of the link feeding the cell):
         # only recent-diagonal cells produce / receive residuals. Non-recent
         # cells keep their original increment, preserving the cumulative base
-        # for the (recent-link-masked) chain-ladder refit.
+        # for the (recent-link-masked) link-ratio refit.
         cal = ii + jj
         res_ok = res_ok & (cal > int(cal.max()) - recent)
     resid = np.full(m.shape, np.nan, dtype=np.float64)
@@ -694,12 +695,12 @@ def bootstrap_segment_cl(
             run[i] += ystar[t]
             cum[i, j] = run[i]
             seen[i] = True
-        f_b = _fit_mack(cum, sigma_method=sigma_method, link_mask=loss_mask).f_k
+        f_b = _fit_multiplicative(cum, sigma_method=sigma_method, link_mask=loss_mask).f_k
         if donor is None:
-            param_cum = _project_cl_cum(loss_obs, f_b)
+            param_cum = _project_multiplicative_cum(loss_obs, f_b)
         else:
             param_cum = _project_borrow_cum(
-                loss_obs, premium_proj, "cl", f_b, _perturb_donor(donor, rng)
+                loss_obs, premium_proj, "multiplicative", f_b, _perturb_donor(donor, rng)
             )
         param_draws[b] = param_cum
         if spec.process == "none":
@@ -718,7 +719,7 @@ def bootstrap_segment_cl(
                     and k < donor[1].size and np.isfinite(donor[1][k])
                     and donor[1][k] > 0.0):
                 # borrowed-tail link: no observed residual column -> use the
-                # donor's Mack process variance so the tail band grows.
+                # donor's process variance so the tail band grows.
                 draw = _donor_process_draw(
                     mean_inc, donor[1][k], pred_cum[:, k], active, rng
                 )

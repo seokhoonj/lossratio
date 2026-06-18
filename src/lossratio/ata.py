@@ -2,7 +2,7 @@
 
 Per-development-link diagnostic of the multiplicative age-to-age
 factor :math:`f_k = E[C^L_{k+1} / C^L_k]`. Parallel to :class:`Intensity`
-for the additive (exposure-driven) side; both are *factor-level*
+for the additive side; both are *factor-level*
 diagnostics that report per-link estimates with standard errors and
 spread, without performing projection.
 
@@ -22,7 +22,7 @@ import polars as pl
 from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
 from ._recent import recent_link_mask
 from ._recent import validate_recent as _validate_recent
-from ._mack import _build_value_matrix, _fit_mack
+from ._recursion import _build_value_matrix, _fit_multiplicative
 
 if TYPE_CHECKING:
     from ._io import FrameLike
@@ -108,12 +108,12 @@ def _detect_stability_point(
 
     Applies ``CV(f_k) < max_cv`` AND ``RSE(f_k) < max_rse`` to the
     per-link factor stats and returns the ``duration_to`` of the first
-    sustained stable run. The development region splits as
-    ED = ``duration < point`` and CL = ``duration >= point``. An internal
-    factor-stability diagnostic (no projection); used by the
+    sustained stable run. The returned ``point`` marks where the per-link
+    factors settle into a stable run. An internal factor-stability
+    diagnostic (no projection); used by the
     ``detect_regime(window="auto")`` trajectory-window resolver.
     """
-    mack = _fit_mack(loss_obs, link_mask=link_mask)
+    mack = _fit_multiplicative(loss_obs, link_mask=link_mask)
     cv_k, rse_k = _compute_cv_rse(
         loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
     )
@@ -135,7 +135,7 @@ def _detect_stability_point(
 class _ATAResult:
     """Single-group ATA factor diagnostic result."""
 
-    f_k: np.ndarray         # (n_links,)  Mack-pooled f_k
+    f_k: np.ndarray         # (n_links,)  volume-weighted f_k
     sigma2_k: np.ndarray    # (n_links,)  residual sigma^2 per link
     cv_k: np.ndarray        # (n_links,)  CV of individual link factors
     rse_k: np.ndarray       # (n_links,)  RSE of pooled f_k
@@ -180,7 +180,7 @@ def _compute_ata_factor(
     recent wedge. ``None`` (default) is the byte-identical no-filter
     path.
     """
-    mack = _fit_mack(loss_obs, sigma_method=sigma_method, link_mask=link_mask)
+    mack = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=link_mask)
     cv_k, rse_k = _compute_cv_rse(
         loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
     )
@@ -228,7 +228,8 @@ class ATA:
     factor ``f_k = E[C^L_{k+1} / C^L_k]``, with cross-cohort CV,
     relative standard error, residual sigma^2, and the per-link cohort
     count. Parallel to :class:`Intensity` for the additive side;
-    builds on the Mack pooled factor (:func:`cl._fit_mack`).
+    builds on the volume-weighted pooled factor
+    (:func:`lossratio._recursion._fit_multiplicative`).
 
     The CV / RSE columns are what the
     ``link.plot(model="ata", show_factor_stability=...)`` overlay shades

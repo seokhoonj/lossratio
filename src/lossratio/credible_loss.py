@@ -12,7 +12,7 @@ Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 ``u = 1``, i.e. ``CredibleLoss(psi=0)`` reproduces ``PooledLoss`` cell-for-cell
 -- the ladder's automatic collapse when credibility earns nothing.
 
-v1 is point-only: the credibility level's estimation variance makes the Mack
+v1 is point-only: the credibility level's estimation variance makes the
 analytical recursion invalid (charter Sec.5.1/5.2), so the SE / CI columns are
 null -- interval coverage rides the ResidualBootstrap, wired in a later step.
 ``recent`` (the calendar-diagonal fit window) is supported; ``borrow`` is not
@@ -24,14 +24,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .loss import LossFit, _EstimatorBase, _fit_loss
+from .loss import LossFit, _LossEstimatorBase, _fit_loss
 
 if TYPE_CHECKING:
     from .triangle import Triangle
 
 
 @dataclass(kw_only=True)
-class CredibleLoss(_EstimatorBase):
+class CredibleLoss(_LossEstimatorBase):
     """Partial-pooling credibility loss estimator.
 
     Parameters

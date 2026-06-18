@@ -1,25 +1,26 @@
-"""Canonical Mack (1993, alpha = 1) per-link primitives.
+"""Canonical alpha = 1 per-link primitives (volume-weighted / WLS variance math).
 
 Single source of truth for the volume-weighted, no-intercept WLS link
-estimate shared by the multiplicative chain ladder (``f_k = Sum loss_to /
-Sum loss_from``) and the additive exposure-driven intensity (``g_k =
+estimate shared by the multiplicative link-ratio benchmark (``f_k = Sum
+loss_to / Sum loss_from``) and the additive intensity (``g_k =
 Sum dLoss / Sum premium``), plus the per-link variance-recursion steps.
 
 The two models are the SAME estimator with different ``(num, denom)``
-columns and a different projection rule (multiplicative carry for CL,
-additive increment for ED); only the projection differs, so the
-dispersion and factor-variance formulas live here once:
+columns and a different projection rule (multiplicative carry for the
+link-ratio path, additive increment for the intensity path); only the
+projection differs, so the dispersion and factor-variance formulas live
+here once:
 
     factor     = Sum num / Sum denom                       (caller computes)
     sigma2     = Sum (num - factor * denom)^2 / denom / (n - 1)
     factor_var = sigma2 / Sum denom                         = Var(factor_hat)
 
-This module also hosts the matrix-form whole-triangle fits built on those
-primitives -- the multiplicative chain ladder (``_fit_mack``) and the
-additive exposure-driven (``_fit_ed``) recursions, plus the tail-factor
-helpers -- consumed by the loss-projection engine and the ATA / Intensity
+This module also hosts the matrix-form whole-triangle multiplicative fit built
+on those primitives -- ``_fit_multiplicative`` (the chain-ladder ``f_k``
+recursion), plus the tail-factor helpers -- consumed by the loss-projection
+engine and the ATA / Intensity
 diagnostics. Other callers (``intensity._compute_intensity``,
-``bootstrap._boot_anchor_cl``) keep their OWN cohort masking, edge-case
+``_resample.bootstrap_segment_multiplicative``) keep their OWN cohort masking, edge-case
 policy (``n < 2`` / ``Sum denom <= 0`` -> 0.0 vs NaN), and tail-sigma
 handling -- those diverge intentionally and are load-bearing. Only the
 core arithmetic is shared so the formula cannot drift between paths.
@@ -40,13 +41,13 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-def _mack_sigma2(
+def _wls_sigma2(
     num_eff: np.ndarray,
     denom_eff: np.ndarray,
     factor: float,
     n: int,
 ) -> float:
-    """Mack alpha = 1 per-link dispersion estimate.
+    """Volume-weighted (alpha = 1) per-link dispersion estimate.
 
     ``sigma2_k = Sum_i (num_i - factor * denom_i)^2 / denom_i / (n - 1)``,
     the unbiased weighted residual variance of the no-intercept WLS fit
@@ -55,26 +56,28 @@ def _mack_sigma2(
     the caller's mask); ``n = len(num_eff) >= 2`` (the caller guards the
     ``n < 2`` case, which has no degrees of freedom).
 
-    For CL ``num = loss_to``, ``denom = loss_from``, ``factor = f_k``; for
-    ED ``num = dLoss``, ``denom = premium_from``, ``factor = g_k``. The CL
-    diagnostic form ``denom * (num/denom - factor)^2`` is algebraically
-    identical to ``(num - factor * denom)^2 / denom`` used here.
+    For the link-ratio path ``num = loss_to``, ``denom = loss_from``,
+    ``factor = f_k``; for the intensity path ``num = dLoss``,
+    ``denom = premium_from``, ``factor = g_k``. The link-ratio diagnostic
+    form ``denom * (num/denom - factor)^2`` is algebraically identical to
+    ``(num - factor * denom)^2 / denom`` used here.
     """
     resid = num_eff - factor * denom_eff
     return float((resid ** 2 / denom_eff).sum() / (n - 1))
 
 
-def _mack_factor_var(
+def _wls_factor_var(
     sigma2: np.ndarray,
     sum_denom: np.ndarray,
 ) -> np.ndarray:
-    """Mack-style WLS variance of the link factor: ``sigma2 / Sum denom``.
+    """WLS variance of the link factor: ``sigma2 / Sum denom``.
 
-    Returns the per-link ``Var(factor_hat)`` array (Mack 1993, alpha = 1):
-    ``Var(f_hat_k) = sigma2_k / Sum_j loss_from_{j,k}`` for CL and the
-    additive analogue ``Var(g_hat_k) = sigma2_k / Sum_j premium_{j,k}``
-    for ED. ``NaN`` where the denominator is non-positive (unfittable
-    link) or ``sigma2`` is non-finite; the caller decides how to handle.
+    Returns the per-link ``Var(factor_hat)`` array (alpha = 1):
+    ``Var(f_hat_k) = sigma2_k / Sum_j loss_from_{j,k}`` for the link-ratio
+    factor and the additive analogue
+    ``Var(g_hat_k) = sigma2_k / Sum_j premium_{j,k}`` for the intensity.
+    ``NaN`` where the denominator is non-positive (unfittable link) or
+    ``sigma2`` is non-finite; the caller decides how to handle.
     """
     sigma2 = np.asarray(sigma2, dtype=np.float64)
     sum_denom = np.asarray(sum_denom, dtype=np.float64)
@@ -84,7 +87,7 @@ def _mack_factor_var(
     return out
 
 
-def _mack_step_cl(
+def _step_multiplicative(
     proc_acc: np.ndarray,
     param_acc: np.ndarray,
     pos: np.ndarray,
@@ -93,7 +96,7 @@ def _mack_step_cl(
     f_var: float,
     c: np.ndarray,
 ) -> None:
-    """Advance the Mack CL (multiplicative) variance recursion one link.
+    """Advance the multiplicative (link-ratio) variance recursion one link.
 
     Mutates the per-cohort process / parameter variance accumulators
     in place, on the cohort subset selected by the boolean mask ``pos``::
@@ -103,8 +106,8 @@ def _mack_step_cl(
 
     ``c`` is the full-length cumulative-loss-at-duration-k vector (only
     ``c[pos]`` is read). Each term is applied only when its scalar is
-    finite, matching the per-link guards in Mack (1993). This is the
-    1D-accumulator form of the matrix recursion in :func:`_fit_mack`; the
+    finite, matching the standard per-link guards. This is the
+    1D-accumulator form of the matrix recursion in :func:`_fit_multiplicative`; the
     loss / premium projection loops call it so they cannot drift from the
     canonical formula.
     """
@@ -118,7 +121,7 @@ def _mack_step_cl(
         param_acc[pos] = param_acc[pos] + (c[pos] ** 2) * f_var
 
 
-def _mack_step_ed(
+def _step_additive(
     proc_acc: np.ndarray,
     param_acc: np.ndarray,
     pos: np.ndarray,
@@ -126,9 +129,9 @@ def _mack_step_ed(
     g_var: float,
     p: np.ndarray,
 ) -> None:
-    """Advance the exposure-driven (additive) variance recursion one link.
+    """Advance the additive (intensity) variance recursion one link.
 
-    In-place counterpart to :func:`_mack_step_cl` for the ED link::
+    In-place counterpart to :func:`_step_multiplicative` for the intensity link::
 
         proc'  = proc  + sigma2_g * P
         param' = param + P^2 * Var(g_hat)
@@ -145,8 +148,8 @@ def _mack_step_ed(
 
 
 @dataclass
-class _MackResult:
-    """Result of Mack chain ladder fit on a single-group triangle.
+class _MultiplicativeResult:
+    """Result of the link-ratio fit on a single-group triangle.
 
     All arrays use the convention:
       * cohorts  -- index i, len n_cohorts
@@ -157,25 +160,25 @@ class _MackResult:
 
     cohorts: list
     n_durations: int
-    loss_obs: np.ndarray    # (n_cohorts, n_durations) -- observed (NaN where unobserved)
-    loss_proj: np.ndarray   # (n_cohorts, n_durations) -- projected (filled in unobserved)
-    proc_se: np.ndarray     # (n_cohorts, n_durations) -- Mack process SE on projected cells
-    param_se: np.ndarray    # (n_cohorts, n_durations) -- Mack parameter SE on projected cells
+    value_obs: np.ndarray    # (n_cohorts, n_durations) -- observed (NaN where unobserved)
+    value_proj: np.ndarray   # (n_cohorts, n_durations) -- projected (filled in unobserved)
+    proc_se: np.ndarray     # (n_cohorts, n_durations) -- process SE on projected cells
+    param_se: np.ndarray    # (n_cohorts, n_durations) -- parameter SE on projected cells
     total_se: np.ndarray    # (n_cohorts, n_durations) -- sqrt(proc^2 + param^2)
     f_k: np.ndarray         # (n_durations - 1,)
     sigma2_k: np.ndarray    # (n_durations - 1,)
-    sum_col_k: np.ndarray   # (n_durations - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
+    sum_value_k: np.ndarray   # (n_durations - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
 
 
-def _mack_f_var(result: _MackResult) -> np.ndarray:
-    """Mack-style WLS variance of the chain ladder factor f_k.
+def _multiplicative_var(result: _MultiplicativeResult) -> np.ndarray:
+    """WLS variance of the link-ratio factor f_k.
 
-    Thin wrapper over :func:`lossratio._mack._mack_factor_var`: returns the
-    per-link `sigma^2_k / sum_j C^L_{j,k}` estimator (Mack 1993, alpha = 1).
+    Thin wrapper over :func:`lossratio._recursion._wls_factor_var`: returns the
+    per-link `sigma^2_k / sum_j C^L_{j,k}` estimator (alpha = 1).
     NaN where the denom is zero (unfittable link); caller decides how to
     handle.
     """
-    return _mack_factor_var(result.sigma2_k, result.sum_col_k)
+    return _wls_factor_var(result.sigma2_k, result.sum_value_k)
 
 
 def _build_value_matrix(
@@ -249,32 +252,32 @@ def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     return _build_value_matrix(df, value_col="loss")
 
 
-def _fit_mack(
-    loss_obs: np.ndarray,
+def _fit_multiplicative(
+    value_obs: np.ndarray,
     sigma_method: str = "locf",
     link_mask: np.ndarray | None = None,
-) -> _MackResult:
-    """Fit Mack chain ladder (alpha = 1) on an observed loss matrix.
+) -> _MultiplicativeResult:
+    """Fit the link-ratio benchmark (alpha = 1) on an observed loss matrix.
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
     of shape ``(n_cohorts, n_durations - 1)`` (see :mod:`lossratio._recent`).
-    When supplied, ``f_k`` / ``sigma2_k`` / ``sum_col_k`` are estimated
+    When supplied, ``f_k`` / ``sigma2_k`` / ``sum_value_k`` are estimated
     only from links inside the recent wedge, while the point projection
-    and Mack SE recursion are seeded from the full, unmasked
-    ``loss_obs``. ``None`` (default) is the byte-identical no-filter
+    and analytical SE recursion are seeded from the full, unmasked
+    ``value_obs``. ``None`` (default) is the byte-identical no-filter
     path.
     """
-    n_cohorts, n_durations = loss_obs.shape
+    n_cohorts, n_durations = value_obs.shape
     n_links = n_durations - 1
 
     f_k = np.full(n_links, np.nan, dtype=np.float64)
     sigma2_k = np.full(n_links, np.nan, dtype=np.float64)
 
     # ATA factors (volume-weighted) + sigma^2_k
-    sum_col_k = np.zeros(n_links, dtype=np.float64)  # cached for parameter variance
+    sum_value_k = np.zeros(n_links, dtype=np.float64)  # cached for parameter variance
     for k in range(n_links):
-        ck = loss_obs[:, k]
-        ck1 = loss_obs[:, k + 1]
+        ck = value_obs[:, k]
+        ck1 = value_obs[:, k + 1]
         # Drop cohorts with ck <= 0 (otherwise the volume-weighted
         # accumulation includes 0/positive cohorts that bias f upward).
         mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
@@ -296,46 +299,46 @@ def _fit_mack(
         ck1_eff = ck1[mask]
         sum_k = ck_eff.sum()
         sum_k1 = ck1_eff.sum()
-        sum_col_k[k] = sum_k
+        sum_value_k[k] = sum_k
 
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else np.nan
 
         if n_k >= 2 and f_k[k] != 0:
-            sigma2_k[k] = _mack_sigma2(ck1_eff, ck_eff, f_k[k], n_k)
+            sigma2_k[k] = _wls_sigma2(ck1_eff, ck_eff, f_k[k], n_k)
         else:
             sigma2_k[k] = 0.0
 
     # Tail-sigma extrapolation. When the last link has a single
     # contributing cohort (n_k = 1), sigma2 is unestimable directly.
     # Delegate to the shared helper so the choice is consistent
-    # across cl / intensity / ratio.
+    # across the link-ratio / intensity / ratio paths.
     from ._sigma import extrapolate_tail_sigma2
     sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
 
     # Point projection: fill missing cells via f_k. The duration recursion is
     # sequential (each duration reads the prior, already-filled duration) but the
     # cohort axis is independent, so vectorise across cohorts per duration.
-    loss_proj = loss_obs.copy()
+    value_proj = value_obs.copy()
     for k in range(1, n_durations):
-        prev = loss_proj[:, k - 1]
-        fill = np.isnan(loss_proj[:, k]) & ~np.isnan(prev)
-        loss_proj[fill, k] = prev[fill] * f_k[k - 1]
+        prev = value_proj[:, k - 1]
+        fill = np.isnan(value_proj[:, k]) & ~np.isnan(prev)
+        value_proj[fill, k] = prev[fill] * f_k[k - 1]
 
-    # Mack SE on projected cells (per cohort, per duration), additive recursion
-    # form (Mack 1993). Decomposed into process and parameter variance:
+    # analytical SE on projected cells (per cohort, per duration), additive recursion
+    # form. Decomposed into process and parameter variance:
     #
     #   proc_{i, k+1}  = f_k^2 * proc_{i, k}  + sigma^2_k * C_{i,k}^alpha
     #   param_{i, k+1} = f_k^2 * param_{i, k} + C_{i,k}^2  * Var(f_k)
     #
-    # This is the whole-triangle matrix form; :func:`_mack_step_cl` is the
+    # This is the whole-triangle matrix form; :func:`_step_multiplicative` is the
     # per-link 1D form used by the loss / premium projection loops -- keep
     # the two in sync if the formula ever changes.
-    # with Var(f_k) = sigma^2_k / sum_col_k[k]. Observed cells report 0
+    # with Var(f_k) = sigma^2_k / sum_value_k[k]. Observed cells report 0
     # (recursion starts at the last observed duration), projected cells
     # accumulate.
     proc_var = np.zeros((n_cohorts, n_durations), dtype=np.float64)
     param_var = np.zeros((n_cohorts, n_durations), dtype=np.float64)
-    obs_mask = ~np.isnan(loss_obs)
+    obs_mask = ~np.isnan(value_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs,
@@ -343,8 +346,8 @@ def _fit_mack(
         -1,
     )
     alpha = 1.0  # only alpha = 1 is supported in this worker
-    # f_var_k = sigma^2_k / sum_col_k -- Mack's Var(f_hat_k).
-    f_var_k = _mack_factor_var(sigma2_k, sum_col_k)
+    # f_var_k = sigma^2_k / sum_value_k -- the link-ratio factor variance Var(f_hat_k).
+    f_var_k = _wls_factor_var(sigma2_k, sum_value_k)
 
     # Sequential along duration, vectorised across cohorts. Each cohort starts
     # accumulating at its first projected duration (last_obs + 1); cohorts not
@@ -355,7 +358,7 @@ def _fit_mack(
         f_prev = f_k[k - 1]
         if not np.isfinite(f_prev):
             continue
-        v_prev = loss_proj[:, k - 1]
+        v_prev = value_proj[:, k - 1]
         upd = eligible & (k > last_obs) & ~np.isnan(v_prev)
         if not upd.any():
             continue
@@ -377,155 +380,15 @@ def _fit_mack(
         param_se = np.sqrt(param_var)
         total_se = np.sqrt(proc_var + param_var)
 
-    return _MackResult(
+    return _MultiplicativeResult(
         cohorts=[],  # filled by caller (with cohort identifiers)
         n_durations=n_durations,
-        loss_obs=loss_obs,
-        loss_proj=loss_proj,
+        value_obs=value_obs,
+        value_proj=value_proj,
         proc_se=proc_se,
         param_se=param_se,
         total_se=total_se,
         f_k=f_k,
         sigma2_k=sigma2_k,
-        sum_col_k=sum_col_k,
-    )
-
-
-@dataclass
-class _EDResult:
-    """Result of ED fit on a single-group triangle."""
-
-    n_durations: int
-    loss_obs: np.ndarray
-    premium_obs: np.ndarray
-    loss_proj: np.ndarray
-    premium_proj: np.ndarray
-    g_k: np.ndarray              # (n_durations - 1,)
-    sigma2_g_k: np.ndarray       # (n_durations - 1,)
-    f_p_k: np.ndarray            # (n_durations - 1,) — premium chain ladder factors
-    sigma2_f_p_k: np.ndarray     # (n_durations - 1,) — premium chain ladder sigma^2
-    sum_premium_k: np.ndarray    # (n_durations - 1,) — per-link sum of premium_from over the ED fit subset (Var(g_k) denom)
-
-
-def _mack_g_var(result: _EDResult) -> np.ndarray:
-    """Mack-style WLS variance of the ED intensity g_k.
-
-    Returns a per-link array of `sigma^2_g_k / sum_j C^P_{j,k}`, the
-    Var(g_hat_k) estimator from Mack's (1999) alpha-family generalization
-    applied to the ED additive model with alpha = 1. Same WLS form as
-    `_mack_f_var` -- the "Mack" name reflects shared mathematical
-    machinery, not chain ladder specifically. Thin wrapper over
-    :func:`lossratio._mack._mack_factor_var`. NaN where the denom is zero
-    (unfittable link).
-    """
-    return _mack_factor_var(result.sigma2_g_k, result.sum_premium_k)
-
-
-def _build_premium_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
-    """Build the premium value matrix for a single-group Triangle subset.
-
-    Role-specific helper over :func:`_build_value_matrix`.
-    """
-    return _build_value_matrix(df, value_col="premium")
-
-
-def _fit_ed(
-    loss_obs: np.ndarray,
-    premium_obs: np.ndarray,
-    sigma_method: str = "locf",
-    loss_link_mask: np.ndarray | None = None,
-    premium_link_mask: np.ndarray | None = None,
-) -> _EDResult:
-    """Fit ED (alpha = 1) on observed loss and premium matrices.
-
-    ``loss_link_mask`` / ``premium_link_mask`` are the optional
-    recent-diagonal *link-level* fit masks (see
-    :mod:`lossratio._recent`). When supplied, the ED intensity ``g_k``
-    is estimated only from loss links inside the recent wedge and the
-    inner premium chain ladder factors only from premium links inside
-    the wedge; the point projection stays seeded from the full,
-    unmasked ``loss_obs`` / ``premium_obs``. ``None`` (default) is the
-    byte-identical no-filter path.
-    """
-    n_cohorts, n_durations = loss_obs.shape
-    n_links = n_durations - 1
-
-    # 1. Premium chain ladder for exposure projection (factors from the
-    #    recent wedge when masked, projection seed from the full matrix).
-    premium_mack = _fit_mack(
-        premium_obs, sigma_method=sigma_method, link_mask=premium_link_mask
-    )
-    f_p_k = premium_mack.f_k
-    sigma2_f_p_k = premium_mack.sigma2_k
-    premium_proj = premium_mack.loss_proj  # premium filled in via chain ladder
-
-    # 2. ED intensity g_k and sigma^2_g_k
-    g_k = np.full(n_links, np.nan, dtype=np.float64)
-    sigma2_g_k = np.full(n_links, np.nan, dtype=np.float64)
-    sum_premium_k = np.zeros(n_links, dtype=np.float64)
-
-    for k in range(n_links):
-        # Δloss[i, k+1] = loss[i, k+1] - loss[i, k] (incremental at duration k+2)
-        ck = premium_obs[:, k]
-        delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
-        # Drop cohorts with premium_from <= 0.
-        mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
-        # Recent-diagonal wedge: keep only loss links inside the wedge.
-        if loss_link_mask is not None:
-            mask = mask & loss_link_mask[:, k]
-        n_k = int(mask.sum())
-
-        if n_k == 0:
-            # Link never fitted by this (sub)triangle: leave g / sigma2
-            # unestimated (NaN, mirroring `_fit_mack`). NaN -- not 0.0 --
-            # is what the segment_bridged_borrowed donor detection keys
-            # off: a 0.0 here would be read as an owned (zero-increment)
-            # factor and never borrowed, flat-lining late-duration projection.
-            g_k[k] = np.nan
-            sigma2_g_k[k] = np.nan
-            continue
-
-        ck_eff = ck[mask]
-        dl_eff = delta_loss[mask]
-        sum_premium = ck_eff.sum()
-        sum_loss = dl_eff.sum()
-        sum_premium_k[k] = sum_premium
-        g_k[k] = sum_loss / sum_premium if sum_premium > 0 else 0.0
-
-        if n_k >= 2 and sum_premium > 0:
-            sigma2_g_k[k] = _mack_sigma2(dl_eff, ck_eff, g_k[k], n_k)
-        else:
-            sigma2_g_k[k] = 0.0
-
-    # Tail-sigma extrapolation when the last link has n_k = 1.
-    # Delegates to the shared helper so the choice is consistent across
-    # cl / intensity / ed / ratio.
-    from ._sigma import extrapolate_tail_sigma2
-    sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
-
-    # 3. Project loss forward using ED rule:
-    #    loss[i, k+1] = loss[i, k] + g_k * premium_proj[i, k]
-    # The duration recursion is sequential (each duration reads the prior, filled
-    # duration); the cohort axis is independent, so vectorise across cohorts.
-    loss_proj = loss_obs.copy()
-    for k in range(1, n_durations):
-        prev = loss_proj[:, k - 1]
-        pe = premium_proj[:, k - 1]
-        fill = np.isnan(loss_proj[:, k]) & ~np.isnan(prev) & ~np.isnan(pe)
-        loss_proj[fill, k] = prev[fill] + g_k[k - 1] * pe[fill]
-
-    # SE on projected loss is computed (decomposed into process /
-    # parameter) downstream in `_result_to_long_df`, which is the single
-    # source of the EDFit SE columns. No SE is accumulated here.
-    return _EDResult(
-        n_durations=n_durations,
-        loss_obs=loss_obs,
-        premium_obs=premium_obs,
-        loss_proj=loss_proj,
-        premium_proj=premium_proj,
-        g_k=g_k,
-        sigma2_g_k=sigma2_g_k,
-        f_p_k=f_p_k,
-        sigma2_f_p_k=sigma2_f_p_k,
-        sum_premium_k=sum_premium_k,
+        sum_value_k=sum_value_k,
     )

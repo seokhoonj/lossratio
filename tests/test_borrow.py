@@ -3,7 +3,7 @@ full development horizon by borrowing the level-invariant link ratio of its OWN
 full-cohort history (same-segment donor, never cross-segment).
 
 Pins: borrow extends the horizon; the borrowed tail is driven by the segment's
-own chain ladder f_k (shape, not the donor cohorts' loss-ratio level); the
+own link-ratio f_k (shape, not the donor cohorts' loss-ratio level); the
 borrowed region is loss-only (premium not borrowed); provenance is flagged;
 borrow=False is the honest no-borrow default.
 """
@@ -17,8 +17,8 @@ import pytest
 
 import lossratio as lr
 from lossratio.pooled_loss import PooledLoss
-from lossratio.link_ratio import LinkRatio
-from lossratio._mack import _fit_mack, _build_value_matrices
+from lossratio.chain_ladder import ChainLadder
+from lossratio._recursion import _fit_multiplicative, _build_value_matrices
 
 
 def _pl(obj) -> pl.DataFrame:
@@ -34,7 +34,7 @@ def tri() -> lr.Triangle:
 CUT = date(2024, 7, 1)
 
 
-@pytest.mark.parametrize("estimator", [PooledLoss, LinkRatio])
+@pytest.mark.parametrize("estimator", [PooledLoss, ChainLadder])
 def test_borrow_extends_horizon(tri, estimator):
     """Regime cut leaves thin post-change cohorts; borrow projects them to the
     full horizon, off leaves the short one."""
@@ -62,7 +62,7 @@ def test_borrow_is_loss_only(tri):
 
 
 def test_borrowed_tail_uses_own_segment_f_k(tri):
-    """The donor is the segment's OWN full-cohort chain ladder f_k (same book),
+    """The donor is the segment's OWN full-cohort link-ratio f_k (same book),
     so the borrowed step ratio loss_proj[d]/loss_proj[d-1] == own f_k."""
     cov = "CANCER"
     src = lr.load_experience()
@@ -72,7 +72,7 @@ def test_borrowed_tail_uses_own_segment_f_k(tri):
         lr.Triangle(sub, groups="coverage").to_polars().sort(["cohort", "duration"]),
         value_cols=("loss",),
     )
-    own_f = _fit_mack(loss).f_k                       # CANCER's own full f_k
+    own_f = _fit_multiplicative(loss).f_k                       # CANCER's own full f_k
 
     full = _pl(PooledLoss(regime=CUT, borrow="pooled").fit(tri)).filter(
         pl.col("coverage") == cov
@@ -98,7 +98,7 @@ def test_borrow_validation(tri):
     with pytest.raises(ValueError):
         PooledLoss(borrow="donor")
     with pytest.raises(ValueError):
-        LinkRatio(borrow=True)  # only False | "pooled"
+        ChainLadder(borrow=True)  # only False | "pooled"
 
 
 def test_borrow_false_is_default(tri):
@@ -115,7 +115,7 @@ def test_project_borrow_interior_nan_donor_does_not_truncate():
 
     # one cohort observed at durations 1, 2 only (boundary link 0), 5 durations.
     loss_obs = np.array([[100.0, 200.0, np.nan, np.nan, np.nan]])
-    prem = np.full((1, 5), np.nan)                    # unused for CL body
+    prem = np.full((1, 5), np.nan)                    # unused for link body
     nan4 = np.full(4, np.nan)
     own_f = np.array([2.0, np.nan, np.nan, np.nan])   # own covers link 0 only
     donor_f = np.array([1.5, 1.4, np.nan, 1.2])       # interior NaN at link 2
@@ -123,7 +123,7 @@ def test_project_borrow_interior_nan_donor_does_not_truncate():
     donor_var = np.zeros(4)
 
     loss_proj, _, _, _, borrowed = _project_borrow(
-        loss_obs, prem, body="cl",
+        loss_obs, prem, body="link",
         own_g=nan4, own_sig_g=nan4, own_var_g=nan4,
         own_f=own_f, own_sig_f=np.zeros(4), own_var_f=np.zeros(4),
         donor_f=donor_f, donor_sig_f=donor_sig, donor_var_f=donor_var,

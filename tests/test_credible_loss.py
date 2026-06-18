@@ -51,9 +51,9 @@ def test_credibility_psi_zero_is_pooled_collapse(tri):
 
 
 def test_pooled_and_link_have_no_credibility(tri):
-    from lossratio.link_ratio import LinkRatio
+    from lossratio.chain_ladder import ChainLadder
     assert PooledLoss().fit(tri).credibility is None
-    assert LinkRatio().fit(tri).credibility is None
+    assert ChainLadder().fit(tri).credibility is None
 
 
 def test_psi_zero_collapses_to_pooled(tri):
@@ -101,7 +101,7 @@ def test_credible_scales_pooled_increment_by_cohort_level(tri):
 
 
 def test_point_only_se_is_null(tri):
-    # The credibility level's estimation variance breaks the Mack analytical
+    # The credibility level's estimation variance breaks the analytical
     # recursion, so v1 leaves SE / CI null (bootstrap comes later).
     cred = _pl(CredibleLoss().fit(tri).df)
     for c in ("loss_proc_se", "loss_param_se", "loss_total_se",

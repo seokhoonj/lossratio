@@ -49,9 +49,9 @@ def fitted_mean(*, g, exposure, duration) -> list:
 
 
 def link_ratios(*, response, cohort, duration, include=None) -> dict:
-    """Mack link ratio ``f_k = sum C_{i,k+1} / sum C_{i,k}`` over cohorts seen
-    at both ``k`` and ``k+1``, on cumulative loss ``C``. Keyed by the lower
-    duration ``k`` (the link ``k -> k+1``).
+    """Volume-weighted link ratio ``f_k = sum C_{i,k+1} / sum C_{i,k}`` over
+    cohorts seen at both ``k`` and ``k+1``, on cumulative loss ``C``. Keyed by
+    the lower duration ``k`` (the link ``k -> k+1``).
 
     ``include`` is an optional parallel boolean sequence (one flag per input
     cell): the cell ``(i, k)`` contributes to ``f_k`` (as the link's SOURCE)
@@ -64,8 +64,8 @@ def link_ratios(*, response, cohort, duration, include=None) -> dict:
 
     A cohort enters ``f_k`` only when its SOURCE cumulative ``C_{i,k} > 0`` --
     a zero / negative base carries no defined development ratio, so (as in the
-    standard Mack estimate) it is dropped from both sums rather than silently
-    inflating the numerator."""
+    standard volume-weighted estimate) it is dropped from both sums rather than
+    silently inflating the numerator."""
     cell = {(i, k): y for y, i, k in zip(response, cohort, duration)}
     keep = (None if include is None
             else {(i, k) for inc, i, k in zip(include, cohort, duration) if inc})
@@ -127,7 +127,7 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
 
     Uses the PSI-MOMENT exposure ``m_i = (sum m0)^2 / sum(phi_k m0)`` and the
     raw per-cohort A/E ``r_i = sum y / sum m0``; floored at 0 (charter Sec.4.4
-    degeneracy = exact ED)."""
+    degeneracy = exact complete-pooling intensity, ``PooledLoss``)."""
     sm = _sum_by(fitted, cohort)
     sy = _sum_by(response, cohort)
     sphim: dict = {}
@@ -157,7 +157,7 @@ def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> LevelRe
 
     ``A_i = sum(m0/phi)`` (SHRINKAGE exposure), ``u_i = (1/psi + sum y/phi) /
     (1/psi + A_i)``, ``Z_i = A_i / (A_i + 1/psi)``. ``psi <= 0`` degenerates to
-    ED (``u = 1``, ``Z = 0``)."""
+    the complete-pooling intensity ``PooledLoss`` (``u = 1``, ``Z = 0``)."""
     A: dict = {}
     sy: dict = {}
     for y, m0, i, k in zip(response, fitted, cohort, duration):

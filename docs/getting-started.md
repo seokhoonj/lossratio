@@ -65,15 +65,15 @@ tri = lr.Triangle(df_sur, groups="coverage")
 
 - `PooledLoss` — 완전 풀링(complete pooling): 모든 코호트가 하나의 공통
   경과별 발전 형상을 공유한다고 보고, 위험보험료를 기준으로 한
-  가법 예측(노출 기반, exposure-driven)입니다. 갓 인수되어 관측이 얇은
+  가법 예측입니다. 갓 인수되어 관측이 얇은
   코호트에서도 별도의 사전 판단 없이 안전하게 작동하는 기본 기준선이라
   기본으로 채택했습니다.
 - `CredibleLoss` — `PooledLoss`의 풀링 형상은 그대로 두고, 각 코호트의
   수준만 신뢰도(credibility) 가중으로 보정합니다(부분 풀링).
 - `SmoothLoss` — `CredibleLoss`의 형상을 매끄러운(penalized P-spline)
   곡선으로 적합합니다.
-- `LinkRatio` — 손해 자체의 곱셈 link ratio를 쓰는 chain ladder
-  기준 비교군입니다.
+- `ChainLadder` — 손해 자체의 곱셈 link ratio(자기손해 링크비)를 쓰는
+  고전적 참조 비교군입니다.
 
 `se_method="fixed"`(기본)는 분모를 알려진 값으로 보고 손해쪽 밴드만
 전달하고, `se_method="delta"`는 분모의 분산과 손해-보험료 상관 `rho`까지

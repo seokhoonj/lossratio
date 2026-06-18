@@ -459,7 +459,7 @@ class Triangle:
 
         Returns a :class:`Link` data class — one row per (cohort,
         adjacent duration pair) — that exposes the per-cell ATA factor
-        and (when ``exposure`` is supplied) the per-cell ED intensity.
+        and (when ``exposure`` is supplied) the per-cell additive intensity.
         Diagnostic methods :meth:`Link.ata` and :meth:`Link.intensity`
         aggregate across cohorts to per-link summaries.
 
@@ -475,7 +475,7 @@ class Triangle:
             Cumulative metric used as the link numerator. One of
             ``"loss"``, ``"premium"``, ``"ratio"``. Default ``"loss"``.
         exposure
-            Optional cumulative metric for the ED exposure anchor.
+            Optional cumulative metric for the additive exposure anchor.
             Default ``"premium"``. Pass ``None`` for ATA-only mode.
         weight
             Optional WLS weight column (cannot combine with exposure).
@@ -536,8 +536,8 @@ class Triangle:
         target
             Metric to drive change-point detection. Native cumulative
             (``"loss"``, ``"premium"``, ``"ratio"``) or derived
-            (``"loss_ata"``, ``"premium_ata"``, ``"loss_ed"``,
-            ``"premium_ed"``). Default ``"ratio"``.
+            (``"loss_ata"``, ``"premium_ata"``, ``"loss_intensity"``,
+            ``"premium_intensity"``). Default ``"ratio"``.
         window
             Trajectory window. Integer (e.g. ``12``) for a fixed
             window, or ``"auto"`` (default) for the factor-stability-first
@@ -811,8 +811,8 @@ class Triangle:
             (usage view) ``None``, an integer switch duration, or a
             :class:`SwitchPoint`. When supplied alongside ``regime``,
             switches to hybrid filtering -- cohort cut on
-            ``duration < switch`` (ED region), calendar cut on
-            ``duration >= switch`` (CL region). Also draws a dashed vertical
+            ``duration < switch`` (intensity region), calendar cut on
+            ``duration >= switch`` (link-ratio region). Also draws a dashed vertical
             line at ``duration = switch``.
         nrow, ncol
             Facet wrap layout when ``groups`` is set. Defaults to a

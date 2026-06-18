@@ -17,7 +17,7 @@ import lossratio as lr
 def cmp_multi():
     tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
     return lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(tri)
 
@@ -27,7 +27,7 @@ def cmp_single():
     df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     tri = lr.Triangle(df)
     return lr.EstimatorComparison(
-        {"cl": lr.LinkRatio(), "ed": lr.PooledLoss()},
+        {"link_ratio": lr.ChainLadder(), "pooled": lr.PooledLoss()},
         holdouts=(4, 8), target="loss",
     ).fit(tri)
 
@@ -72,7 +72,7 @@ def test_plot_one_line_per_estimator(cmp_single):
         ax = fig.axes[0]
         assert len(ax.get_lines()) == 2
         legend = ax.get_legend()
-        assert [t.get_text() for t in legend.get_texts()] == ["cl", "ed"]
+        assert [t.get_text() for t in legend.get_texts()] == ["link_ratio", "pooled"]
     finally:
         _close(fig)
 
@@ -127,7 +127,7 @@ def test_plot_empty_fit_does_not_raise():
         lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     )
     fit = lr.EstimatorComparison(
-        {"a": lr.LinkRatio(), "b": lr.PooledLoss()},
+        {"a": lr.ChainLadder(), "b": lr.PooledLoss()},
         holdouts=(9999,), target="loss",
     ).fit(tri)
     assert fit.cells.height == 0

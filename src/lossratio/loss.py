@@ -2,17 +2,18 @@
 
 ``LossFit`` is the engine-backed result of the saturated-mode intensity fit
 (``PooledLoss``). It is the clean successor to the ``loss.py`` dispatcher's
-result object: no method-dispatch, no stage-adaptive / cohort-scaled / tail /
-bootstrap machinery -- one estimator (complete-pooling ED) wired straight
-through ``ModelFrame`` -> ``_engine`` -> projection.
+result object: no method-dispatch, no tail / bootstrap machinery -- one
+estimator (complete-pooling intensity) wired straight through ``ModelFrame``
+-> ``_engine`` -> projection.
 
 The intensity point estimate ``g_k`` comes from
 :func:`lossratio._engine.saturated_intensity` (the closed-form saturated
 mode, frozen bit-for-bit by ``tests/test_oracle.py``); the projection seed,
-the premium chain ladder, and the Mack variance recursion reuse the kept
-``_mack`` kernel (charter Sec.3.5: ``_mack.py`` stays). The whole path
-reproduces the current ``ExposureDriven`` fit on the shared loss columns to
-floating-point tolerance -- the golden self-anchor of charter Sec.7-3.
+the premium link-ratio projection, and the analytical variance recursion
+reuse the kept ``_recursion`` kernel (charter Sec.3.5: ``_recursion.py`` stays). The
+whole path reproduces the complete-pooling baseline (``PooledLoss``) fit on
+the shared loss columns to floating-point tolerance -- the golden self-anchor
+of charter Sec.7-3.
 
 Status (charter Sec.3.2): every fit carries a machine-readable
 ``status`` / ``status_reasons`` / ``converged`` plus a cell-classification
@@ -38,14 +39,14 @@ from ._io import (
     mirror_output,
     normalize_groups,
 )
-from ._mack import (
+from ._recursion import (
     _build_value_matrices,
-    _mack_f_var,
-    _mack_factor_var,
-    _mack_sigma2,
-    _mack_step_cl,
-    _mack_step_ed,
-    _fit_mack,
+    _multiplicative_var,
+    _wls_factor_var,
+    _wls_sigma2,
+    _step_multiplicative,
+    _step_additive,
+    _fit_multiplicative,
 )
 from ._recent import recent_link_mask, validate_recent
 from ._sigma import extrapolate_tail_sigma2
@@ -59,7 +60,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(kw_only=True)
-class _EstimatorBase:
+class _LossEstimatorBase:
     """Fields shared by every loss-side estimator (charter Sec.3.1).
 
     ``recent`` (calendar-diagonal window) is the data-intact fit mask: only the
@@ -142,8 +143,8 @@ def _segment_factor_links(
     contributes ``response = dLoss`` (the increment arriving at ``k+1``) and
     ``exposure = premium_{k}`` (the predetermined from-cell cumulative
     premium) when both cells are observed and the from-premium is positive --
-    exactly the cohort subset the ``_mack`` ED fit keys off. The engine sums
-    these per ``duration`` key (the from-duration ``k``), so the returned
+    exactly the cohort subset the ``_recursion`` intensity fit keys off. The engine
+    sums these per ``duration`` key (the from-duration ``k``), so the returned
     intensity dict is keyed by from-duration.
 
     ``link_mask`` (the recent-diagonal fit mask, shape
@@ -168,7 +169,7 @@ def _segment_factor_links(
     return resp, expo, dur
 
 
-def _fit_segment_ed(
+def _fit_segment_additive(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -176,18 +177,19 @@ def _fit_segment_ed(
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
-    """Saturated-mode ED fit for one segment's loss / premium matrices.
+    """Saturated-mode complete-pooling intensity fit for one segment's loss /
+    premium matrices.
 
     Returns the projection matrices and per-link parameter arrays. ``g_k``
     is the engine's closed-form intensity; ``sigma2_g_k`` / ``var_g_k`` reuse
-    the shared Mack dispersion kernel (``sigma2 = sum(dL - g P)^2 / P /
+    the WLS dispersion kernel (``sigma2 = sum(dL - g P)^2 / P /
     (n-1)``, tail-extrapolated, ``Var(g) = sigma2 / sum P``); the premium
-    projection is the kept chain ladder on cumulative premium.
+    projection is the kept link-ratio projection on cumulative premium.
 
     ``recent`` (calendar-diagonal window) restricts factor estimation to the
     most-recent ``N`` diagonals: the loss links feeding ``g_k`` / its
-    dispersion and the premium links feeding the inner chain ladder are both
-    masked, while the projection stays seeded from the full matrices.
+    dispersion and the premium links feeding the inner link-ratio projection
+    are both masked, while the projection stays seeded from the full matrices.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -215,29 +217,29 @@ def _fit_segment_ed(
         ck_eff = ck[mask]
         sum_premium_k[k] = ck_eff.sum()
         if n_k >= 2 and np.isfinite(g_k[k]):
-            sigma2_g_k[k] = _mack_sigma2(dl[mask], ck_eff, g_k[k], n_k)
+            sigma2_g_k[k] = _wls_sigma2(dl[mask], ck_eff, g_k[k], n_k)
         else:
             sigma2_g_k[k] = 0.0
     sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
-    var_g_k = _mack_factor_var(sigma2_g_k, sum_premium_k)
+    var_g_k = _wls_factor_var(sigma2_g_k, sum_premium_k)
 
-    # 3. premium chain ladder (kept Mack kernel) for the exposure projection
-    premium_proj = _fit_mack(
+    # 3. premium link-ratio projection (kept recursion kernel) for the exposure
+    premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).loss_proj
+    ).value_proj
 
-    # 4. loss projection + Mack variance recursion (ED additive). With a
+    # 4. loss projection + analytical variance recursion (intensity additive). With a
     # borrow donor, the tail beyond the segment's own g_k switches to the
     # level-invariant donor link ratio.
     if donor is None:
-        loss_proj, proc_se, param_se, total_se = _project_ed(
+        loss_proj, proc_se, param_se, total_se = _project_additive(
             loss_obs, premium_proj, g_k, sigma2_g_k, var_g_k
         )
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
         loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
-            loss_obs, premium_proj, body="ed",
+            loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=sigma2_g_k, own_var_g=var_g_k,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
             donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
@@ -256,22 +258,21 @@ def _fit_segment_ed(
     }
 
 
-def _project_ed(
+def _project_additive(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     g_k: np.ndarray,
     sigma2_g_k: np.ndarray,
     var_g_k: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Pure-ED cumulative-loss projection + Mack variance recursion.
+    """Additive intensity cumulative-loss projection + analytical variance recursion.
 
     The additive recursion ``loss_{k+1} = loss_k + g_k * P_k`` seeded from
     each cohort's last observed cell, with the process / parameter variance
-    accumulated by :func:`lossratio._mack._mack_step_ed`. SE is reported on
+    accumulated by :func:`lossratio._recursion._step_additive`. SE is reported on
     projected cells only (observed cells carry no projection uncertainty --
-    left null). This is the ``switch_threshold = inf`` (pure ED) case of the
-    dispatcher's ``_project_loss``; isolated here so the redesigned path has
-    no SA / CL branch to carry.
+    left null). The complete-pooling intensity projection path, with no
+    link-ratio branch to carry.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -301,7 +302,7 @@ def _project_ed(
         if pos.any():
             if np.isfinite(g_k[k]):
                 loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
-            _mack_step_ed(proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], pk)
+            _step_additive(proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], pk)
         ck1 = loss_proj[:, k + 1]
         sp = active & ~np.isnan(ck1)
         proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
@@ -314,7 +315,7 @@ def _project_ed(
     return loss_proj, proc_se, param_se, total_se
 
 
-def _fit_segment_cl(
+def _fit_segment_multiplicative(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -322,20 +323,20 @@ def _fit_segment_cl(
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
-    """Link-ratio (Mack chain ladder) fit for one segment.
+    """Link-ratio (``ChainLadder``) fit for one segment.
 
     ``f_k`` is the engine's link ratio (``_engine.link_ratios``, fed the
     incremental loss it cumulates internally); the dispersion / parameter
-    variance reuse the shared Mack kernel and the projection is the
-    multiplicative recursion. Premium is projected by the same chain ladder
-    so ``ratio_proj`` and the premium columns stay populated, matching the
-    PooledLoss schema. CL is own-loss-anchored -- it does not read premium for
-    the loss projection.
+    variance reuse the shared kernel and the projection is the
+    multiplicative recursion. Premium is projected by the same link-ratio
+    projection so ``ratio_proj`` and the premium columns stay populated,
+    matching the ``PooledLoss`` schema. ``ChainLadder`` is own-loss-anchored --
+    it does not read premium for the loss projection.
 
     ``recent`` (calendar-diagonal window) restricts factor estimation to the
     most-recent ``N`` diagonals: the loss-link wedge gates ``f_k`` (via the
     engine ``include`` flag, since the link ratio cumulates internally) and its
-    dispersion, and the premium chain ladder masks its own links; the
+    dispersion, and the premium link-ratio projection masks its own links; the
     projection stays seeded from the full matrices.
     """
     n_cohorts, n_durations = loss_obs.shape
@@ -373,7 +374,7 @@ def _fit_segment_cl(
 
     # 2. dispersion sigma2_f_k + parameter-variance denominator (shared kernel)
     sigma2_f_k = np.full(n_links, np.nan, dtype=np.float64)
-    sum_col_k = np.zeros(n_links, dtype=np.float64)
+    sum_loss_k = np.zeros(n_links, dtype=np.float64)
     for k in range(n_links):
         ck = loss_obs[:, k]
         ck1 = loss_obs[:, k + 1]
@@ -384,31 +385,31 @@ def _fit_segment_cl(
         if n_k == 0:
             continue                                  # f_k already NaN here
         ck_eff = ck[mask]
-        sum_col_k[k] = ck_eff.sum()
+        sum_loss_k[k] = ck_eff.sum()
         if n_k >= 2 and np.isfinite(f_k[k]) and f_k[k] != 0:
-            sigma2_f_k[k] = _mack_sigma2(ck1[mask], ck_eff, f_k[k], n_k)
+            sigma2_f_k[k] = _wls_sigma2(ck1[mask], ck_eff, f_k[k], n_k)
         else:
             sigma2_f_k[k] = 0.0
     sigma2_f_k = extrapolate_tail_sigma2(sigma2_f_k, sigma_method)
-    var_f_k = _mack_factor_var(sigma2_f_k, sum_col_k)
+    var_f_k = _wls_factor_var(sigma2_f_k, sum_loss_k)
 
-    # 3. premium chain ladder (kept Mack kernel) for the exposure projection
-    premium_proj = _fit_mack(
+    # 3. premium link-ratio projection (kept recursion kernel) for the exposure
+    premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).loss_proj
+    ).value_proj
 
-    # 4. loss projection + Mack variance recursion (CL multiplicative). With a
-    # borrow donor, the tail beyond the segment's own f_k switches to the
+    # 4. loss projection + analytical variance recursion (link-ratio multiplicative).
+    # With a borrow donor, the tail beyond the segment's own f_k switches to the
     # donor link ratio.
     if donor is None:
-        loss_proj, proc_se, param_se, total_se = _project_cl(
+        loss_proj, proc_se, param_se, total_se = _project_multiplicative(
             loss_obs, f_k, sigma2_f_k, var_f_k
         )
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(f_k.shape, np.nan)
         loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
-            loss_obs, premium_proj, body="cl",
+            loss_obs, premium_proj, body="multiplicative",
             own_g=nan, own_sig_g=nan, own_var_g=nan,
             own_f=f_k, own_sig_f=sigma2_f_k, own_var_f=var_f_k,
             donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
@@ -427,18 +428,18 @@ def _fit_segment_cl(
     }
 
 
-def _project_cl(
+def _project_multiplicative(
     loss_obs: np.ndarray,
     f_k: np.ndarray,
     sigma2_f_k: np.ndarray,
     var_f_k: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Multiplicative chain-ladder projection + Mack variance recursion.
+    """Multiplicative link-ratio projection + analytical variance recursion.
 
     ``loss_{k+1} = f_k * loss_k`` seeded from each cohort's last observed
     cell, with process / parameter variance via
-    :func:`lossratio._mack._mack_step_cl`. The ``switch_threshold = 0`` (pure
-    CL) case of the dispatcher's ``_project_loss``, isolated here.
+    :func:`lossratio._recursion._step_multiplicative`. The ``ChainLadder`` projection path,
+    isolated here.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -467,7 +468,7 @@ def _project_cl(
         if pos.any():
             if np.isfinite(f_k[k]):
                 loss_proj[pos, k + 1] = f_k[k] * ck[pos]
-            _mack_step_cl(proc_acc, param_acc, pos, f_k[k],
+            _step_multiplicative(proc_acc, param_acc, pos, f_k[k],
                           sigma2_f_k[k], var_f_k[k], ck)
         ck1 = loss_proj[:, k + 1]
         sp = active & ~np.isnan(ck1)
@@ -586,7 +587,7 @@ def _fit_segment_credible(
     non-negative float.
 
     SE is left null in v1: the credibility level's estimation variance makes
-    the Mack analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
+    the analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
     rides the ResidualBootstrap, wired in a later step). ``recent``
     (calendar-diagonal window) masks the links feeding both the pooled ``g_k``
     and the per-cohort credibility estimation, while the projection stays seeded
@@ -612,10 +613,10 @@ def _fit_segment_credible(
         loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=loss_mask
     )
 
-    # 3. premium chain ladder (kept Mack kernel) for the exposure projection
-    premium_proj = _fit_mack(
+    # 3. premium link-ratio projection (kept recursion kernel) for the exposure
+    premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).loss_proj
+    ).value_proj
 
     # 4. credibility-scaled additive projection (SE null in v1)
     loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
@@ -646,9 +647,9 @@ def _project_credible(
     """Credibility-scaled additive cumulative-loss projection.
 
     ``loss_{k+1}[i] = loss_k[i] + u_i * g_k * P_k[i]`` seeded from each cohort's
-    last observed cell -- the pure-ED recursion (``_project_ed``) with the
-    cohort's credibility level scaling its intensity. No variance recursion
-    (SE deferred to the bootstrap)."""
+    last observed cell -- the additive intensity recursion (``_project_additive``)
+    with the cohort's credibility level scaling its intensity. No variance
+    recursion (SE deferred to the bootstrap)."""
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
@@ -698,7 +699,8 @@ def _smooth_backfit(
     is the dispersion-scaled conjugate; the two alternate (damped) to
     convergence in ``max |du|``. ``psi = 0`` keeps ``u = 1`` (a single smooth
     pass). Non-representable (Sec.4.2): a segment whose pooled total is ``<= 0``
-    falls back to the saturated ``g_k`` (ED) and is flagged.
+    falls back to the saturated ``g_k`` (complete-pooling intensity) and is
+    flagged.
 
     Returns ``g_k`` / ``u`` / ``Z`` / ``psi`` / ``lam`` / ``edf`` /
     ``representable`` / ``converged``.
@@ -757,7 +759,7 @@ def _smooth_backfit(
             # s-step: smooth shape on the u-adjusted exposure
             sm, g_k = _smooth_g(u_vec, cur_lam)
             if not sm.representable:
-                # Sec.4.2 boundary -> ED fallback (saturated g_k on raw exposure)
+                # Sec.4.2 boundary -> fallback (saturated g_k on raw exposure)
                 representable = False
                 g_map = _engine.saturated_intensity(
                     response=resp_a.tolist(), exposure=expo_a.tolist(),
@@ -837,7 +839,7 @@ def _fit_segment_smooth(
     :func:`_smooth_backfit` (the shared source of truth with the bootstrap).
     The projection is the credibility-scaled additive recursion. SE / CI are
     null unless a ResidualBootstrap is attached (the smooth shape + credibility
-    estimation variance breaks the Mack analytical recursion). ``recent``
+    estimation variance breaks the analytical recursion). ``recent``
     (calendar-diagonal window) masks the links feeding the smooth shape + the
     credibility level, while the projection stays seeded from the full matrices.
     ``donor`` (borrow) is not supported (subsumed by the credibility level).
@@ -853,9 +855,9 @@ def _fit_segment_smooth(
         link_mask=loss_mask,
     )
     g_k, u_vec = bf["g_k"], bf["u"]
-    premium_proj = _fit_mack(
+    premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).loss_proj
+    ).value_proj
     loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
 
@@ -892,7 +894,7 @@ def _project_borrow(
 
     The own-data boundary is the LAST link the segment can fit on its own data
     (last finite own factor). Links at or below it use the segment's OWN factor
-    (``body="ed"`` -> intensity ``g_k`` additive; ``body="cl"`` -> link ratio
+    (``body="additive"`` -> intensity ``g_k`` additive; ``body="multiplicative"`` -> link ratio
     ``f_k`` multiplicative); links beyond it switch to the BORROWED donor link
     ratio ``donor_f`` (always multiplicative -- level-invariant, so it lends
     development SHAPE on the segment's own last cumulative loss, never the
@@ -920,7 +922,7 @@ def _project_borrow(
     eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
 
     # own-data boundary = last link the segment can fit on its own (-1 if none)
-    own = own_g if body == "ed" else own_f
+    own = own_g if body == "additive" else own_f
     own_links = np.flatnonzero(np.isfinite(own))
     own_boundary = int(own_links.max()) if own_links.size else -1
     # LOCF the donor link ratio / variance so a sparse interior donor link does
@@ -939,13 +941,13 @@ def _project_borrow(
         ck = loss_proj[:, k]
         pk = premium_proj[:, k]
         if k <= own_boundary:                             # own body
-            if body == "ed":
+            if body == "additive":
                 if not np.isfinite(own_g[k]):
                     continue                              # interior own gap
                 pos = active & ~np.isnan(pk) & (pk > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = ck[pos] + own_g[k] * pk[pos]
-                    _mack_step_ed(proc_acc, param_acc, pos,
+                    _step_additive(proc_acc, param_acc, pos,
                                   own_sig_g[k], own_var_g[k], pk)
             else:
                 if not np.isfinite(own_f[k]):
@@ -953,13 +955,13 @@ def _project_borrow(
                 pos = active & ~np.isnan(ck) & (ck > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = own_f[k] * ck[pos]
-                    _mack_step_cl(proc_acc, param_acc, pos, own_f[k],
+                    _step_multiplicative(proc_acc, param_acc, pos, own_f[k],
                                   own_sig_f[k], own_var_f[k], ck)
-        elif np.isfinite(donor_f[k]):                     # borrowed CL tail
+        elif np.isfinite(donor_f[k]):                     # borrowed link-ratio tail
             pos = active & ~np.isnan(ck) & (ck > 0)
             if pos.any():
                 loss_proj[pos, k + 1] = donor_f[k] * ck[pos]
-                _mack_step_cl(proc_acc, param_acc, pos, donor_f[k],
+                _step_multiplicative(proc_acc, param_acc, pos, donor_f[k],
                               donor_sig_f[k], donor_var_f[k], ck)
                 borrowed[pos, k + 1] = True
         else:
@@ -1095,8 +1097,8 @@ def _segment_credibility_df(
 
 # mechanism -> (per-segment fitter, method label, public model name)
 _MECHANISMS = {
-    "pooled": (_fit_segment_ed, "pooled", "pooled_loss"),
-    "link_ratio": (_fit_segment_cl, "link_ratio", "link_ratio"),
+    "pooled": (_fit_segment_additive, "pooled", "pooled_loss"),
+    "chain_ladder": (_fit_segment_multiplicative, "chain_ladder", "chain_ladder"),
     "credible": (_fit_segment_credible, "credible", "credible_loss"),
     "smooth": (_fit_segment_smooth, "smooth", "smooth_loss"),
 }
@@ -1116,7 +1118,7 @@ def _segment_donors(
 ) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]]:
     """Per-segment level-invariant borrow donors (charter borrow design).
 
-    For each segment, the donor is the Mack chain ladder link ratio of THAT
+    For each segment, the donor is the link ratio (``ChainLadder``) of THAT
     segment's own FULL (regime-unfiltered) cohorts -- the data-rich older
     cohorts a thin (e.g. post-regime) sub-set cannot see. The donor is
     same-segment by design: development SHAPE is a property of the book
@@ -1136,8 +1138,8 @@ def _segment_donors(
             ["cohort", "duration"]
         ).with_columns(pl.col("incr_loss").cum_sum().over("cohort").alias("loss"))
         (loss,), _, nd = _build_value_matrices(sub, value_cols=("loss",))
-        mk = _fit_mack(loss, sigma_method=sigma_method)
-        donors[sid] = (mk.f_k, mk.sigma2_k, _mack_f_var(mk), nd)
+        mk = _fit_multiplicative(loss, sigma_method=sigma_method)
+        donors[sid] = (mk.f_k, mk.sigma2_k, _multiplicative_var(mk), nd)
     return donors
 
 
@@ -1158,8 +1160,8 @@ def _fit_loss(
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
     ``mechanism`` selects the per-segment engine fit: ``"pooled"`` (saturated
-    complete-pooling ED, intensity ``g_k``) or ``"link_ratio"`` (Mack chain
-    ladder, link ratio ``f_k``). Both share this driver, the long-frame
+    complete-pooling baseline, intensity ``g_k``) or ``"chain_ladder"``
+    (``ChainLadder``, link ratio ``f_k``). Both share this driver, the long-frame
     assembly, and the :class:`LossFit` schema. ``regime`` is a RESOLVED cohort
     cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
     :class:`ModelFrame`. ``recent`` (calendar-diagonal window) is the data-intact
@@ -1181,7 +1183,7 @@ def _fit_loss(
     boot_spec = None
     seg_seeds: dict[Any, np.random.SeedSequence] = {}
     if uncertainty is not None:
-        if mechanism not in ("pooled", "credible", "smooth", "link_ratio"):
+        if mechanism not in ("pooled", "credible", "smooth", "chain_ladder"):
             raise NotImplementedError(
                 f"ResidualBootstrap is not wired for {model!r}."
             )
@@ -1260,16 +1262,16 @@ def _fit_loss(
         ci = None
         if boot_spec is not None:
             rng = np.random.default_rng(seg_seeds[sid])
-            if mechanism == "link_ratio":
-                from ._resample import bootstrap_segment_cl
-                boot = bootstrap_segment_cl(
+            if mechanism == "chain_ladder":
+                from ._resample import bootstrap_segment_multiplicative
+                boot = bootstrap_segment_multiplicative(
                     fit["loss_obs"], fit["premium_obs"],
                     sigma_method=sigma_method, spec=boot_spec,
                     conf_level=conf_level, rng=rng, recent=recent, donor=donor,
                 )
             else:
-                from ._resample import bootstrap_segment
-                boot = bootstrap_segment(
+                from ._resample import bootstrap_segment_additive
+                boot = bootstrap_segment_additive(
                     fit["loss_obs"], fit["premium_obs"],
                     mechanism=mechanism, sigma_method=sigma_method, psi=psi,
                     spec=boot_spec, conf_level=conf_level, rng=rng,
@@ -1316,7 +1318,7 @@ def _fit_loss(
     if n_unfittable:
         reasons.append("projection_gap")
     if n_smooth_fallback:
-        reasons.append("smooth_fallback_ed")          # boundary -> ED (Sec.4.2)
+        reasons.append("smooth_fallback_pooled")    # boundary -> pooled baseline (Sec.4.2)
     if n_smooth_nonconv:
         reasons.append("smooth_not_converged")
     status = "degraded" if reasons else "valid"

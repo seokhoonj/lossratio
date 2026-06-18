@@ -1,8 +1,8 @@
-"""PooledLoss self-anchor — the redesigned engine-backed ED fit must reproduce
-the current ``ExposureDriven`` projection bit-for-bit (charter Sec.7-3).
+"""PooledLoss self-anchor — the redesigned engine-backed pooled-intensity fit
+must reproduce the golden projection bit-for-bit (charter Sec.7-3).
 
 The intensity ``g_k`` is driven by ``_engine.saturated_intensity`` and the
-variance / premium machinery reuses the kept ``_mack`` kernel; this pins that
+variance / premium machinery reuses the kept ``_recursion`` kernel; this pins that
 the new public surface (PooledLoss -> LossFit) is numerically identical to the
 old path on every shared loss column, for single- and multi-column groups.
 """
@@ -87,7 +87,7 @@ def test_recent_self_consistent(exp, groups, recent):
     # recent is the data-intact diagonal fit-mask: factors from the recent-N
     # wedge, projection seed from the full triangle. Self-consistency: the same
     # fit twice is byte-identical (the byte-for-byte parity to the old
-    # ExposureDriven was the build-time anchor, now retired with the old surface;
+    # pooled-intensity fit was the build-time anchor, now retired with the old surface;
     # the golden master pins the absolute numbers).
     tri = lr.Triangle(exp, groups=groups)
     a = _pl(PooledLoss(recent=recent).fit(tri))

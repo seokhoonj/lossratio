@@ -63,8 +63,8 @@ class EstimatorComparison:
     Parameters
     ----------
     estimators
-        A ``Mapping`` of label -> estimator, e.g. ``{"ed":
-        lr.Ratio(method="ed"), "cs": lr.Ratio(method="cs")}``. Labels are
+        A ``Mapping`` of label -> estimator, e.g. ``{"pooled":
+        lr.PooledLoss(), "credible": lr.CredibleLoss()}``. Labels are
         required (two estimator instances can differ only by configuration,
         so no name can be derived automatically); insertion order is
         canonical -- it fixes the estimator order in every output frame and
@@ -92,7 +92,7 @@ class EstimatorComparison:
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> cmp = lr.EstimatorComparison(
-    ...     {"ed": lr.Ratio(method="ed"), "cs": lr.Ratio(method="cs")},
+    ...     {"pooled": lr.Ratio(loss=lr.PooledLoss()), "credible": lr.Ratio(loss=lr.CredibleLoss())},
     ...     holdouts=(6, 12, 18, 24),
     ... ).fit(tri)
     >>> cmp.horizon_comparison   # challenger vs baseline, by horizon
@@ -110,11 +110,12 @@ class EstimatorComparison:
         if not isinstance(estimators, Mapping):
             raise TypeError(
                 "estimators must be a Mapping of label -> estimator, e.g. "
-                '{"ed": lr.Ratio(method="ed"), "cs": lr.Ratio(method="cs")}'
+                '{"pooled": lr.Ratio(loss=lr.PooledLoss()), "credible": lr.Ratio(loss=lr.CredibleLoss())}'
                 f"; got {type(estimators).__name__}. Labels are required "
                 "because two estimator instances can differ only by "
                 "configuration (two lr.Ratio instances with different "
-                "methods), so no name can be derived automatically."
+                "loss/premium estimators), so no name can be derived "
+                "automatically."
             )
         if len(estimators) == 0:
             raise ValueError(

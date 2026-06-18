@@ -201,7 +201,7 @@ class _FoldBacktest:
     ----------
     estimator
         A ``lr.PooledLoss`` / ``lr.CredibleLoss`` / ``lr.SmoothLoss`` /
-        ``lr.LinkRatio`` instance (or any estimator whose ``fit(triangle)``
+        ``lr.ChainLadder`` instance (or any estimator whose ``fit(triangle)``
         returns a ``LossFit`` carrying ``loss_proj`` / ``premium_proj`` /
         ``ratio_proj``).
 
@@ -673,7 +673,7 @@ class Backtest:
     Parameters
     ----------
     estimator
-        A fit estimator (e.g. ``lr.LinkRatio()``, ``lr.PooledLoss()``,
+        A fit estimator (e.g. ``lr.ChainLadder()``, ``lr.PooledLoss()``,
         ``lr.CredibleLoss()``, ``lr.SmoothLoss()``). Must implement
         ``.fit(triangle)``.
     holdouts
@@ -693,7 +693,7 @@ class Backtest:
     >>> bt.col_summary      # single-origin convenience property
     >>> bt.plot()           # A/E heatmap
     >>> # Multi-origin (rolling):
-    >>> bt = lr.Backtest(lr.LinkRatio(), holdouts=(6, 12, 18, 24)).fit(tri)
+    >>> bt = lr.Backtest(lr.ChainLadder(), holdouts=(6, 12, 18, 24)).fit(tri)
     >>> bt.horizon_summary  # reliability curve
     >>> bt.fits[6].col_summary
     """
