@@ -23,6 +23,13 @@ flowchart LR
   C --> D["예측<br/>완전 풀링 / 부분 풀링<br/>(4장)"]
   D --> E["불확실성<br/>표준오차 · 신뢰구간<br/>(5장)"]
   E --> F["regime 탐지 · 백테스트<br/>구조 변화 · 검증<br/>(6-7장)"]
+  classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
+  classDef estimate fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
+  classDef validate fill:#e3f0e9,stroke:#5a9b86,color:#1c3a2e
+  classDef current fill:#ffe3a0,stroke:#cf9b00,color:#4a3800,stroke-width:2.5px
+  class A data
+  class B,C,D estimate
+  class E,F validate
 ```
 
 왼쪽 세 단계(삼각형 -> 진단 -> 예측)가 손해율 수준을 *읽어 내는* 본

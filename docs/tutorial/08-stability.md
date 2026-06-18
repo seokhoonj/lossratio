@@ -21,7 +21,14 @@ flowchart LR
   D --> E["불확실성 (5장)"]
   E --> F["regime · 백테스트 (6·7장)"]
   F --> G["안정성<br/>(이 장)"]
-  style G fill:#ffe08a,stroke:#d39e00,stroke-width:2px
+  classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
+  classDef estimate fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
+  classDef validate fill:#e3f0e9,stroke:#5a9b86,color:#1c3a2e
+  classDef current fill:#ffe3a0,stroke:#cf9b00,color:#4a3800,stroke-width:2.5px
+  class A data
+  class B,C,D estimate
+  class E,F validate
+  class G current
 ```
 
 4장은 빈 칸을 채워 예측 손해율을 냈고, 5장은 그 불확실성을, 7장은 검증을
