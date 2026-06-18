@@ -610,12 +610,16 @@ def _apply_factor_stability_overlay(
         return
     duration_from = int(sub["duration_from"][0])
     ax.axvline(duration_from, color="grey", linestyle=(0, (5, 4)), linewidth=0.8)
-    # shaded band from factor_stability onwards
-    xlim = ax.get_xlim()
-    ax.axvspan(
-        duration_from, xlim[1],
-        facecolor="#AED6F1", alpha=0.25, zorder=0,
-    )
+    # Shaded band from the stability point onwards. On the cv / rse axes
+    # (``y_max`` is the threshold line) shade only the sub-threshold region
+    # [0, y_max]; the factor-value axes (summary / box / point) pass
+    # ``y_max=None`` and keep the vline + annotation only -- no full-height flood.
+    if y_max is not None:
+        xlim = ax.get_xlim()
+        ax.fill_between(
+            [duration_from, xlim[1]], 0.0, y_max,
+            facecolor="#AED6F1", alpha=0.25, zorder=0,
+        )
     # annotation
     cv = sub["cv"][0] if "cv" in sub.columns else None
     rse = sub["rse"][0] if "rse" in sub.columns else None
