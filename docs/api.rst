@@ -29,7 +29,7 @@ API 레퍼런스
 .. autoclass:: lossratio.Total
    :members:
 
-발전 양상 진단
+진전 양상 진단
 --------------
 
 .. autoclass:: lossratio.Link
@@ -105,7 +105,7 @@ link ratio ``f_k``, 자기손해로 self-develop) -- 벤치마크 ``ChainLadder`
 Go-forward 안정성
 -----------------
 
-관측 경과 너머의 손해율은, 발전이 정착한 경우에만 마지막 값을 평탄 연장하는
+관측 경과 너머의 손해율은, 진전이 정착한 경우에만 마지막 값을 평탄 연장하는
 것이 정직합니다. :class:`~lossratio.Stability` 게이트가 그 판정을 합니다.
 
 .. autoclass:: lossratio.Stability
