@@ -62,15 +62,20 @@ def _link():
 # ---------------------------------------------------------------------------
 
 
+def _is_shade(art):
+    """True if the artist is painted in the stability-band colour (#AED6F1)."""
+    fc = np.atleast_2d(art.get_facecolor())
+    return bool(fc.size) and np.allclose(fc[0][:3], _SHADE_RGB, atol=0.02)
+
+
 def _blue_shapes(fig):
     """Every #AED6F1 patch / collection across the figure's axes."""
-    out = []
-    for ax in fig.axes:
-        for art in list(ax.patches) + list(ax.collections):
-            fc = np.atleast_2d(art.get_facecolor())
-            if fc.size and np.allclose(fc[0][:3], _SHADE_RGB, atol=0.02):
-                out.append(art)
-    return out
+    return [
+        art
+        for ax in fig.axes
+        for art in list(ax.patches) + list(ax.collections)
+        if _is_shade(art)
+    ]
 
 
 def _stability_vlines(fig):
@@ -151,3 +156,43 @@ def test_show_factor_stability_false_draws_nothing():
     )
     assert _blue_shapes(fig) == []
     assert _stability_vlines(fig) == []
+
+
+def test_cv_overlay_spans_to_last_duration():
+    # The shaded band must extend across the stable region to the last
+    # duration -- not stop short at the last non-null link. (Setting xticks
+    # before the overlay is what makes xlim already reach the last duration;
+    # only the empty autoscale margin beyond it is left unshaded.)
+    fig = _link().plot(model="ata", kind="cv", max_cv=5.0, max_rse=5.0)
+    checked = 0
+    for ax in fig.axes:
+        shapes = [a for a in list(ax.patches) + list(ax.collections) if _is_shade(a)]
+        if not shapes:
+            continue
+        right = max(
+            float(p.vertices[:, 0].max()) for s in shapes for p in s.get_paths()
+        )
+        lo, hi = ax.get_xlim()
+        # reaches within one autoscale margin of the right edge
+        assert right >= hi - 0.06 * (hi - lo)
+        checked += 1
+    assert checked, "no shaded band found to check"
+
+
+def test_overlay_guards_nonpositive_y_max():
+    # Unit check: with a detected stability row but a non-positive threshold,
+    # the overlay must not paint a degenerate (below-axis) band -- only the
+    # marker line + annotation.
+    import matplotlib.pyplot as plt
+
+    from lossratio._link_vis import _apply_factor_stability_overlay
+
+    fs = pl.DataFrame(
+        {"duration_from": [1], "duration_to": [2], "cv": [0.01], "rse": [0.01]}
+    )
+    fig, ax = plt.subplots()
+    ax.plot([1, 2, 3], [0.1, 0.1, 0.1])
+    _apply_factor_stability_overlay(ax, fs, None, None, y_max=-1.0)
+    assert _blue_shapes(fig) == []          # no degenerate fill
+    assert _stability_vlines(fig)           # marker line still drawn
+    plt.close(fig)

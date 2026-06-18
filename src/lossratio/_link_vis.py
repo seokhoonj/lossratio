@@ -386,8 +386,10 @@ def _plot_per_link_scalar(
             )
         if hline is not None:
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
-        _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=hline)
+        # Set xticks (which finalises xlim) BEFORE the overlay so its shaded
+        # band tracks the panel's true right edge, not a pre-xtick xlim.
         _set_link_xticks(ax, x, link_labels)
+        _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=hline)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
         _style_ggplot(ax)
@@ -614,7 +616,9 @@ def _apply_factor_stability_overlay(
     # (``y_max`` is the threshold line) shade only the sub-threshold region
     # [0, y_max]; the factor-value axes (summary / box / point) pass
     # ``y_max=None`` and keep the vline + annotation only -- no full-height flood.
-    if y_max is not None:
+    if y_max is not None and y_max > 0:
+        # Span to the current right edge. Callers set the xticks first, so xlim
+        # already reaches the last duration (not just the last non-null link).
         xlim = ax.get_xlim()
         ax.fill_between(
             [duration_from, xlim[1]], 0.0, y_max,
