@@ -928,20 +928,8 @@ class TriangleValidation:
     grain
         Grain for cohort/calendar binning. Default ``"auto"``.
 
-    Attributes
-    ----------
-    gaps : DataFrame
-        One row per ``(groups?, cohort)`` with a non-consecutive duration
-        sequence. Columns: ``[groups?, cohort, duration_min, duration_max,
-        n_duration, n_expected, missing]``. Empty when no gaps were found.
-    invalid_rows : DataFrame
-        One row per input row that fails ``calendar >= cohort``.
-        Columns: original ``(groups?, cohort, calendar, duration?)`` plus
-        ``reason``. Empty when no row-level violations were found
-        (or when no ``calendar`` was supplied).
-    summary : DataFrame
-        Two-row count summary: how many rows / cohorts failed each
-        check.
+    The findings are surfaced by the ``gaps`` / ``invalid_rows`` properties
+    and the ``summary()`` method (documented individually below).
     """
 
     def __init__(
