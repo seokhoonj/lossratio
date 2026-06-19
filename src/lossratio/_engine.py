@@ -95,7 +95,8 @@ def link_ratios(*, response, cohort, duration, include=None) -> dict:
 def pearson_dispersion(*, response, fitted, duration, sigma_method="locf") -> dict:
     """Per-duration Pearson dispersion ``phi_k = sum (y - m0)^2 / m0 / (n_k -
     1)``. Durations with ``edf`` deficit (``n_k <= 1``) are extrapolated by
-    ``sigma_method`` (``"locf"`` = carry the last valid forward)."""
+    ``sigma_method`` (``"locf"`` = carry the nearest prior valid forward; a
+    leading gap with no prior valid backfills the first valid)."""
     if sigma_method != "locf":
         raise NotImplementedError(
             f"sigma_method={sigma_method!r} not in the saturated engine yet "
@@ -116,9 +117,14 @@ def pearson_dispersion(*, response, fitted, duration, sigma_method="locf") -> di
         phi[k] = sum((y - m0) ** 2 / m0 for y, m0 in cells) / df
         valid.append(k)
     if valid:
-        for k in durs:                       # locf: carry last valid forward
-            if phi[k] is None:
-                phi[k] = phi[valid[-1]]
+        last = None
+        for k in durs:                       # locf: carry nearest prior valid forward
+            if phi[k] is not None:
+                last = phi[k]
+            elif last is not None:           # interior/tail gap -> nearest prior valid
+                phi[k] = last
+            else:                            # leading gap (no prior) -> first valid
+                phi[k] = phi[valid[0]]
     return phi
 
 
