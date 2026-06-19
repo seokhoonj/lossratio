@@ -170,7 +170,7 @@ tri.link(target="loss").ata().df.select(["duration", "f", "n_cohorts"])
    :context: close-figs
    :caption: 수술담보의 경과별 ATA 인자(월 단위). 초기에는 누적 손해가 한 기간에 빠르게 늘어 인자가 크고, 경과가 길어질수록 1에 가까워진다.
 
-   link.plot(model="ata", kind="summary")
+   link.plot(model="ata", kind="summary", show_factor_stability=False)
 ```
 
 초기 경과의 인자는 6.0으로 매우 큽니다. 갓 인수된 계약은 누적 손해가 작은
