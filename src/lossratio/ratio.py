@@ -17,11 +17,11 @@ Two ``se_method`` settings control how premium uncertainty enters:
 
       ratio_se = (1 / |P|) * sqrt(seL^2 + R^2 seP^2 - 2 R rho seL seP)
 
-  ``rho = 0`` (default) treats the loss and premium projections as
-  independent; a positive ``rho`` (claims and premium moving together within a
-  cohort) narrows the band. ``rho = "auto"`` estimates the coupling per group
-  from the data (the correlation of the loss and premium relative residuals)
-  instead of assuming a value.
+  ``rho = "auto"`` (default) estimates the coupling per group from the data
+  (the correlation of the loss and premium relative residuals) instead of
+  assuming a value. A fixed ``rho = 0`` treats the loss and premium projections
+  as independent; a positive ``rho`` (claims and premium moving together within
+  a cohort) narrows the band.
 
 The result is a :class:`RatioFit` -- a long-format frame with ``ratio_proj`` +
 the ratio band, carrying the contributing ``loss_proj`` / ``premium_proj`` and
@@ -31,7 +31,7 @@ their SEs for transparency.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import polars as pl
@@ -71,10 +71,10 @@ class Ratio:
         ``"fixed"`` (premium deterministic; default) or ``"delta"`` (full
         delta method with premium variance + ``rho``).
     rho
-        Loss-premium correlation used by ``se_method="delta"``. A float in
-        ``[-1, 1]`` (default ``0.0``, independent), or ``"auto"`` to estimate it
-        per group from the data (the correlation of the loss and premium
-        relative residuals). Ignored when ``se_method="fixed"``.
+        Loss-premium correlation used by ``se_method="delta"``. ``"auto"``
+        (default) estimates it per group from the data (the correlation of the
+        loss and premium relative residuals); or a float in ``[-1, 1]``
+        (``0.0`` = independent). Ignored when ``se_method="fixed"``.
     conf_level
         Two-sided confidence level for the ratio CI columns.
     """
@@ -82,7 +82,7 @@ class Ratio:
     loss: "_LossEstimatorBase"
     premium: "_PremiumEstimatorBase" = field(default_factory=lambda: _default_premium())
     se_method: str = "fixed"
-    rho: "float | str" = 0.0
+    rho: "float | Literal['auto']" = "auto"
     conf_level: float = 0.95
 
     def __post_init__(self) -> None:

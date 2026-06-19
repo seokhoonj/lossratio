@@ -59,11 +59,12 @@ def test_fixed_reproduces_lossfit_internal_ratio(tri):
 
 
 def test_delta_band_at_least_fixed(tri):
-    # premium variance (rho=0) only widens the band
+    # premium variance with explicit rho=0 only widens the band (the default
+    # rho="auto" can instead narrow it -- see test_rho_auto_narrows_vs_independent)
     fixed = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed").fit(tri).to_polars().select(
         ["coverage", "cohort", "duration", "ratio_se"]
     ).rename({"ratio_se": "se_fixed"})
-    delta = lr.Ratio(loss=lr.PooledLoss(), se_method="delta").fit(tri).to_polars().select(
+    delta = lr.Ratio(loss=lr.PooledLoss(), se_method="delta", rho=0.0).fit(tri).to_polars().select(
         ["coverage", "cohort", "duration", "ratio_se"]
     ).rename({"ratio_se": "se_delta"})
     j = fixed.join(delta, on=["coverage", "cohort", "duration"]).drop_nulls()
@@ -240,4 +241,14 @@ def test_rho_auto_ignored_by_fixed():
     tri = _exp_tri()
     a = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed", rho=0.0).fit(tri).to_polars()
     b = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed", rho="auto").fit(tri).to_polars()
+    assert a["ratio_se"].fill_null(-1.0).to_list() == b["ratio_se"].fill_null(-1.0).to_list()
+
+
+def test_delta_default_rho_is_auto():
+    # rho="auto" is now the delta default; an unspecified rho must match it.
+    import lossratio as lr
+    assert lr.Ratio(loss=lr.PooledLoss()).rho == "auto"
+    tri = _exp_tri()
+    a = lr.Ratio(loss=lr.PooledLoss(), se_method="delta").fit(tri).to_polars()
+    b = lr.Ratio(loss=lr.PooledLoss(), se_method="delta", rho="auto").fit(tri).to_polars()
     assert a["ratio_se"].fill_null(-1.0).to_list() == b["ratio_se"].fill_null(-1.0).to_list()
