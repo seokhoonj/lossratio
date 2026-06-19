@@ -165,7 +165,9 @@ tri.link(target="loss").ata().df.select(["duration", "f", "n_cohorts"])
    df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="M")
    link = tri.link(target="loss", exposure="premium")
+```
 
+```{eval-rst}
 .. plot::
    :context: close-figs
    :caption: 수술담보의 경과별 ATA 인자(월 단위). 초기에는 누적 손해가 한 기간에 빠르게 늘어 인자가 크고, 경과가 길어질수록 1에 가까워진다.
@@ -245,6 +247,13 @@ tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohort
 경과 구간을 음영으로 표시해 줍니다.
 
 ```{eval-rst}
+.. plot::
+   :context:
+   :nofigs:
+   :include-source: false
+
+   pass
+
 .. plot::
    :context: close-figs
    :caption: 수술담보의 경과별 ATA 인자 CV(월 단위). 음영은 인자가 코호트 간에 안정되는(CV·RSE 문턱 아래로 내려간) 구간이다.
