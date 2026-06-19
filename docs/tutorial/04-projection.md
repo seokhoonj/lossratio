@@ -40,9 +40,11 @@ flowchart TD
   pooled -->|"+ 코호트 수준 보정"| credible["CredibleLoss (부분 풀링)<br/>코호트 스케일 x 강도 x 보험료"]
   pooled -->|"+ 형상 평활"| smooth["SmoothLoss (형상 평활)<br/>평활 강도 x 보험료"]
   Q -->|"고전적 참조점 · 곱셈"| linkratio["ChainLadder (자기손해 링크비)<br/>누적 손해 x ATA 인자"]
-  style pooled fill:#cfe8ff,stroke:#1f6fb2,stroke-width:2px
-  style credible fill:#ffe08a,stroke:#d39e00,stroke-width:2px
-  style smooth fill:#d5f0d5,stroke:#3a9b5c,stroke-width:2px
+  style Q fill:#f3f4f6,stroke:#9aa0a6,stroke-width:2px,color:#1f2937
+  style pooled fill:#cfe8ff,stroke:#1f6fb2,stroke-width:2px,color:#0d3b66
+  style credible fill:#ffe08a,stroke:#d39e00,stroke-width:2px,color:#5a4500
+  style smooth fill:#d5f0d5,stroke:#3a9b5c,stroke-width:2px,color:#1c3a2e
+  style linkratio fill:#ececec,stroke:#777777,stroke-width:2px,color:#2a2a2a
 ```
 
 ```{list-table}
