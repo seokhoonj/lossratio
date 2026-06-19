@@ -15,7 +15,7 @@
 
 ```{mermaid}
 flowchart LR
-  A["경험 데이터"] --> B["Triangle<br/>삼각형 (이 장)"]
+  A["경험 데이터"] --> B["Triangle<br/>삼각형 (이번 장)"]
   B --> C["link 진단"]
   C --> D["예측"]
   D --> E["불확실성"]

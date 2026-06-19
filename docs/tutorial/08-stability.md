@@ -20,7 +20,7 @@ flowchart LR
   C --> D["예측 (4장)"]
   D --> E["불확실성 (5장)"]
   E --> F["regime · 백테스트 (6·7장)"]
-  F --> G["안정성<br/>(이 장)"]
+  F --> G["안정성<br/>(이번 장)"]
   classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
   classDef estimate fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
   classDef validate fill:#e3f0e9,stroke:#5a9b86,color:#1c3a2e
