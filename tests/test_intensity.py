@@ -199,3 +199,42 @@ def test_intensity_single_duration_group_alongside_normal():
     df = tri.link().intensity().df
     assert df.filter(pl.col("coverage") == "A").height > 0
     assert df.filter(pl.col("coverage") == "B").height == 0
+
+
+def test_recomputes_se_for_interior_filled_link():
+    # A recent-diagonal wedge can leave an INTERIOR link with a single
+    # contributing cohort (sigma2 unestimable -> 0). Tail extrapolation fills
+    # it, and g_se must be recomputed from the fill -- not only for the last
+    # link. Here link 1 is single-cohort while links 0 and 2 are valid.
+    import numpy as np
+
+    from lossratio.intensity import _compute_intensity
+
+    loss_obs = np.array(
+        [
+            [10.0, 20.0, 35.0, 55.0],
+            [10.0, 22.0, 36.0, 54.0],
+            [10.0, 18.0, 34.0, 56.0],
+            [10.0, 21.0, 33.0, 50.0],
+        ]
+    )
+    premium_obs = np.array(
+        [
+            [100.0, 200.0, 300.0, 400.0],
+            [100.0, 200.0, 300.0, 400.0],
+            [100.0, 200.0, 300.0, 400.0],
+            [100.0, 200.0, 300.0, 400.0],
+        ]
+    )
+    link_mask = np.array(
+        [
+            [True, True, True],
+            [True, False, True],
+            [True, False, True],
+            [True, False, True],
+        ]
+    )
+    res = _compute_intensity(loss_obs, premium_obs, link_mask=link_mask)
+    # interior link 1 was filled by extrapolation -> finite, recomputed SE.
+    assert res.sigma2_k[1] > 0
+    assert res.g_se_k[1] > 0

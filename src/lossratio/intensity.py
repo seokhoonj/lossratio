@@ -82,6 +82,7 @@ def _compute_intensity(
     g_se_k = np.full(n_links, np.nan, dtype=np.float64)
     sigma2_k = np.full(n_links, np.nan, dtype=np.float64)
     n_obs_k = np.zeros(n_links, dtype=np.int64)
+    sum_premium_k = np.zeros(n_links, dtype=np.float64)
 
     for k in range(n_links):
         ck = premium_obs[:, k]
@@ -99,6 +100,7 @@ def _compute_intensity(
         ck_eff = ck[mask]
         dl_eff = delta_loss[mask]
         sum_premium = float(ck_eff.sum())
+        sum_premium_k[k] = sum_premium
         sum_loss = float(dl_eff.sum())
 
         if sum_premium <= 0:
@@ -133,20 +135,19 @@ def _compute_intensity(
             n_durations=n_durations,
         )
     from ._sigma import extrapolate_tail_sigma2
-    sigma2_k_new = extrapolate_tail_sigma2(sigma2_k, sigma_method)
-    if sigma2_k_new[-1] != sigma2_k[-1]:
-        sigma2_k = sigma2_k_new
-        # Recompute g_se on the filled tail using sum_premium from the same link.
-        k_last = n_links - 1
-        ck_last = premium_obs[:, k_last]
-        dl_last = loss_obs[:, k_last + 1] - loss_obs[:, k_last]
-        mask_last = ~np.isnan(ck_last) & ~np.isnan(dl_last) & (ck_last > 0)
-        if link_mask is not None:
-            mask_last = mask_last & link_mask[:, k_last]
-        if mask_last.any():
-            sum_premium_last = float(ck_last[mask_last].sum())
-            if sum_premium_last > 0 and sigma2_k[-1] > 0:
-                g_se_k[-1] = float(np.sqrt(sigma2_k[-1] / sum_premium_last))
+    old_sigma2 = sigma2_k.copy()
+    sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
+    # Recompute g_se for EVERY link whose sigma2 was just filled (was
+    # unestimable, now positive) -- not only the tail. A recent-diagonal wedge
+    # can leave an INTERIOR link with a single contributing cohort, so the
+    # filled link need not be the last one; each uses its own contributing-
+    # premium volume. On a monotonic (unfiltered) triangle only the tail is
+    # filled, so this is byte-identical there.
+    filled = (sigma2_k > 0) & ~(old_sigma2 > 0)
+    for k in np.flatnonzero(filled):
+        sp = sum_premium_k[k]
+        if sp > 0:
+            g_se_k[k] = float(np.sqrt(sigma2_k[k] / sp))
 
     return _IntensityResult(
         g_k=g_k,
