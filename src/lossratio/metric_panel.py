@@ -141,7 +141,13 @@ def _attach_coverage(
     aggs = _coverage_aggs(cov_cols, cov_zs)
     cov = cf.group_by(gk).agg(aggs) if gk else cf.select(aggs)
     if gk:
-        return g.join(cov, on=gk, how="left")
+        # full join, not left: a group whose held cells are all expected==0
+        # (no defined ae_err -> dropped from the scored `g`) still carries
+        # usable-SE coverage, and the docstring intent is that it counts. A
+        # left join would silently drop such a coverage-only group. On normal
+        # data every coverage group is also a scored group, so this is
+        # byte-identical there.
+        return g.join(cov, on=gk, how="full", coalesce=True)
     return pl.concat([g, cov], how="horizontal")
 
 

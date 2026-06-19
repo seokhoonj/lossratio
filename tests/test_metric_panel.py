@@ -281,3 +281,23 @@ def test_point_only_fit_emits_no_coverage_columns(exp):
     ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)
     panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
     assert not [c for c in panel.columns if c.startswith("coverage_")]
+
+
+def test_coverage_only_group_is_retained(single_ae):
+    # finding #11: a group whose held cells are all expected==0 (so ae_err is
+    # null and the group drops out of the scored frame) still carries usable-SE
+    # coverage. A left join would silently drop it; it must be retained.
+    donor = single_ae.head(4).with_columns(
+        pl.lit("ZZZ").alias("coverage"),
+        pl.lit(0.0).alias("expected"),
+        pl.lit(None, dtype=pl.Float64).alias("ae_err"),
+        pl.lit(1.0).alias("expected_se"),
+        pl.lit(10.0).alias("actual"),
+    )
+    inj = pl.concat([single_ae, donor], how="vertical_relaxed")
+    panel = _pl(metric_panel(inj, groups="coverage"))
+    cum_zzz = panel.filter(
+        (pl.col("coverage") == "ZZZ") & (pl.col("lane") == "cum")
+    )
+    assert cum_zzz.height == 1                       # group retained, not dropped
+    assert cum_zzz["coverage_95"][0] is not None     # coverage attached
