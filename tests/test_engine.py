@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lossratio._engine import pearson_dispersion
+from lossratio._engine import buhlmann_straub_psi, pearson_dispersion
 
 
 # A cell contributes ``(y - m0)^2 / m0`` to its duration's dispersion, divided by
@@ -54,3 +54,16 @@ def test_locf_monotonic_tail_unchanged():
     phi = pearson_dispersion(response=response, fitted=fitted, duration=duration)
 
     assert phi[3] == pytest.approx(phi[2])   # tail gap carries duration 2 forward
+
+
+def test_buhlmann_straub_psi_single_cohort_degenerates_to_zero():
+    # one cohort -> no between-cohort variance to estimate -> complete pooling
+    # (psi = 0), NOT a 0/0 ZeroDivisionError.
+    psi = buhlmann_straub_psi(
+        response=[10.0, 12.0],
+        fitted=[10.0, 10.0],
+        phi={1: 0.5, 2: 0.5},
+        cohort=["A", "A"],
+        duration=[1, 2],
+    )
+    assert psi == 0.0

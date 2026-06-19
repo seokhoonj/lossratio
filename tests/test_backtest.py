@@ -281,3 +281,21 @@ def test_backtest_refit_is_loss_fit():
     assert isinstance(bt.fit, lr.LossFit)
 
 
+
+
+def test_weighted_ae_err_guards_zero_total_expected():
+    # a reachable group whose total expected is 0 must yield a null weighted
+    # A/E error, not a silent inf/NaN from dividing by zero.
+    from lossratio.backtest import _FoldFit
+
+    ae = pl.DataFrame(
+        {
+            "g": ["z", "z"],
+            "aeg": [0.0, 0.0],
+            "ae_err": [0.0, 0.0],
+            "actual": [0.0, 0.0],
+            "expected": [0.0, 0.0],   # sum == 0 -> guarded
+        }
+    )
+    out = _FoldFit._aggregate_ae_err(ae, ["g"], has_incr=False)
+    assert out["ae_err_wt"][0] is None

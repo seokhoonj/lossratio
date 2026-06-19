@@ -140,6 +140,8 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
     for m0, i, k in zip(fitted, cohort, duration):
         sphim[i] = sphim.get(i, 0.0) + phi[k] * m0
     cohorts = sorted(sm)
+    if len(cohorts) < 2:        # no between-cohort variance to estimate -> complete pooling
+        return 0.0
     r = {i: sy[i] / sm[i] for i in cohorts}
     m = {i: sm[i] ** 2 / sphim[i] for i in cohorts}     # psi-moment exposure
     mplus = sum(m.values())

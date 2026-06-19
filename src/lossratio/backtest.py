@@ -452,8 +452,12 @@ class _FoldFit:
             pl.col("ae_err").mean().alias("ae_err_mean"),
             pl.col("ae_err").median().alias("ae_err_med"),
             (
-                (pl.col("actual") - pl.col("expected")).sum()
-                / pl.col("expected").sum()
+                pl.when(pl.col("expected").sum() != 0)
+                .then(
+                    (pl.col("actual") - pl.col("expected")).sum()
+                    / pl.col("expected").sum()
+                )
+                .otherwise(None)
             ).alias("ae_err_wt"),
         ]
         if has_incr:
@@ -463,8 +467,12 @@ class _FoldFit:
                 pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
                 pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
                 (
-                    (pl.col("incr_actual") - pl.col("incr_expected")).sum()
-                    / pl.col("incr_expected").sum()
+                    pl.when(pl.col("incr_expected").sum() != 0)
+                    .then(
+                        (pl.col("incr_actual") - pl.col("incr_expected")).sum()
+                        / pl.col("incr_expected").sum()
+                    )
+                    .otherwise(None)
                 ).alias("incr_ae_err_wt"),
             ]
         return ae_err.group_by(by_cols).agg(aggs)
@@ -1134,8 +1142,12 @@ class BacktestFit:
             pl.col("ae_err").mean().alias("ae_err_mean"),
             pl.col("ae_err").median().alias("ae_err_med"),
             (
-                (pl.col("actual") - pl.col("expected")).sum()
-                / pl.col("expected").sum()
+                pl.when(pl.col("expected").sum() != 0)
+                .then(
+                    (pl.col("actual") - pl.col("expected")).sum()
+                    / pl.col("expected").sum()
+                )
+                .otherwise(None)
             ).alias("ae_err_wt"),
         ]
         if has_incr:
@@ -1147,8 +1159,12 @@ class BacktestFit:
                 pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
                 pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
                 (
-                    (pl.col("incr_actual") - pl.col("incr_expected")).sum()
-                    / pl.col("incr_expected").sum()
+                    pl.when(pl.col("incr_expected").sum() != 0)
+                    .then(
+                        (pl.col("incr_actual") - pl.col("incr_expected")).sum()
+                        / pl.col("incr_expected").sum()
+                    )
+                    .otherwise(None)
                 ).alias("incr_ae_err_wt"),
             ]
         return exprs
