@@ -159,7 +159,7 @@ def test_axis_labels_use_pretty_form(tri_with_groups):
     try:
         xlab = fig._supxlabel.get_text()
         ylab = fig._supylabel.get_text()
-        assert "development" in xlab
+        assert "duration" in xlab
         assert "cohort" in ylab
     finally:
         _close(fig)
@@ -172,7 +172,7 @@ def test_x_axis_calendar_value(tri_single):
     fig_duration = tri_single.plot_triangle(x_axis="duration")
     fig_cal = tri_single.plot_triangle(x_axis="calendar")
     try:
-        assert "development" in fig_duration._supxlabel.get_text()
+        assert "duration" in fig_duration._supxlabel.get_text()
         assert "calendar" in fig_cal._supxlabel.get_text()
         ax_duration = [a for a in fig_duration.get_axes() if a.get_visible()][0]
         ax_cal = [a for a in fig_cal.get_axes() if a.get_visible()][0]
@@ -298,6 +298,15 @@ def test_get_period_type_from_var():
 def test_get_period_type_grain_fallback():
     assert _get_period_type("custom_cohort", grain="Q") == "quarter"
     assert _get_period_type("custom_cohort", grain=None) is None
+
+
+def test_get_period_type_grain_overrides_var():
+    # A monthly source column (uy_m) viewed at a coarser grain is at the VIEW
+    # grain: the binned cohort axis is quarterly, not monthly.
+    assert _get_period_type("uy_m", grain="Q") == "quarter"
+    assert _get_period_type("cy_m", grain="H") == "half"
+    # with no grain the column-name convention still applies
+    assert _get_period_type("uy_m") == "month"
 
 
 def test_format_period_series_month():

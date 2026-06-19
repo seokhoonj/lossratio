@@ -111,7 +111,7 @@ def test_backtest_plot_triangle_duration_axis_default(bt_single):
     # default x="duration" keeps the duration-period axis label.
     fig = bt_single.plot_triangle()
     try:
-        assert "development" in fig._supxlabel.get_text()
+        assert "duration" in fig._supxlabel.get_text()
     finally:
         _close(fig)
 

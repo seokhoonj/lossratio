@@ -63,7 +63,7 @@ def test_incr_ratio_title(tri_with_groups):
 def test_axis_labels(tri_with_groups):
     fig = tri_with_groups.plot()
     try:
-        assert "development" in fig._supxlabel.get_text()
+        assert "duration" in fig._supxlabel.get_text()
         assert fig._supylabel.get_text() == "ratio"
     finally:
         plt.close(fig)

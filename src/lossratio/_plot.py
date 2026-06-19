@@ -90,10 +90,10 @@ _TITLES: dict[str, str] = {
 }
 
 _PRETTY_VAR_LABEL: dict[str, str] = {
-    "duration_m": "development months",
-    "duration_q": "development quarters",
-    "duration_h": "development halves",
-    "duration_y": "development years",
+    "duration_m": "duration (months)",
+    "duration_q": "duration (quarters)",
+    "duration_h": "duration (halves)",
+    "duration_y": "duration (years)",
     "uy_m":  "underwriting months",
     "uy_q":  "underwriting quarters",
     "uy_h":  "underwriting halves",
@@ -117,17 +117,20 @@ _VAR_TO_TYPE: dict[str, str] = {
 
 
 def _get_period_type(var: str | None, grain: str | None = None) -> str | None:
-    """Resolve the period type of a column from its variable name
-    (`uy_m`, `cy_h`, ...), falling back to grain.
+    """Resolve the period type of an axis.
+
+    The view ``grain`` is authoritative when given: the axis values have been
+    binned to it, so a monthly source column (``uy_m``) viewed at ``grain="Q"``
+    is quarterly. Fall back to the column-name convention (``uy_m`` / ``cy_h``
+    / ...) only when no grain is available.
     """
+    if grain is not None:
+        t = _GRAIN_TO_TYPE.get(grain)
+        if t is not None:
+            return t
     if var is None:
         return None
-    t = _VAR_TO_TYPE.get(var)
-    if t is not None:
-        return t
-    if grain is None:
-        return None
-    return _GRAIN_TO_TYPE.get(grain)
+    return _VAR_TO_TYPE.get(var)
 
 
 def _pretty_var_label(var: str | None) -> str:
