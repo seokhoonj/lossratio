@@ -235,7 +235,7 @@ recent_cv("delta", rho=0.9)
 가정하지 않고, 데이터가 보여 준 잔차를 그대로 써서 가상 삼각형을
 재구성하고, 전체 파이프라인을 매 복제마다 다시 적합한다.
 
-골격은 네 단계다(England-Verrall ODP 잔차 부트스트랩, charter Sec.5.2).
+골격은 네 단계다(England-Verrall **과대산포 포아송**(over-dispersed Poisson, ODP) 잔차 부트스트랩, England & Verrall 2002).
 
 **1) 잔차를 뽑는다.** 적합된 평균 $\hat\mu_{ik} = \hat g_k\,P_{i,k-1}$(강도 x 직전
 누적 보험료; `CredibleLoss`는 코호트 스케일을 곱해 $\hat u_i\,\hat g_k\,P_{i,k-1}$)
