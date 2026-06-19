@@ -97,3 +97,11 @@ def test_bad_thresholds_raise():
     with pytest.raises(ValueError, match="thin"):
         inception_stability(COUNTS, RATES, on="seg", by="coh",
                             usable=0.2, thin=0.5)
+
+
+def test_duplicate_rate_keys_rejected():
+    # a rate table with duplicate join keys would fan out counts in the left
+    # join and inflate lam/Z/cv; reject it up front.
+    dup_rates = pl.DataFrame({"seg": ["a", "a", "b"], "rate": [0.05, 0.06, 0.02]})
+    with pytest.raises(ValueError, match="duplicate"):
+        inception_stability(COUNTS, dup_rates, on="seg", by="coh")

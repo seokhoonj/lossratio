@@ -164,3 +164,25 @@ def test_ata_per_group_independent():
     a_f = df.filter(pl.col("coverage") == "A").sort("duration")["f"].to_list()
     b_f = df.filter(pl.col("coverage") == "B").sort("duration")["f"].to_list()
     assert a_f == b_f
+
+
+def test_rse_requires_two_positive_denominators():
+    # n_k >= 2 cohorts reach the link, but only ONE has a positive cumulative
+    # loss (a positive denominator). RSE must stay NaN (insufficient sample),
+    # not a misleading 0 -- matching the CV guard right above it.
+    import numpy as np
+
+    from lossratio.ata import _compute_cv_rse
+
+    loss_obs = np.array(
+        [
+            [0.0, 5.0],     # denom 0 -> excluded from the fit
+            [0.0, 6.0],     # denom 0 -> excluded
+            [10.0, 15.0],   # the only positive denominator
+        ]
+    )
+    f_k = np.array([26.0 / 10.0])     # pooled sum(to)/sum(from)
+    sigma2_k = np.array([0.0])        # the branch that used to yield rse = 0.0
+    cv, rse = _compute_cv_rse(loss_obs, f_k, sigma2_k)
+    assert np.isnan(rse[0])
+    assert np.isnan(cv[0])

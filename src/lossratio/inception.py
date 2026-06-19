@@ -115,7 +115,13 @@ def inception_stability(
         if missing:
             raise ValueError(f"{nm} is missing column(s): {missing}")
 
-    joined = cdf.join(rdf.select([*on_cols, rate]), on=on_cols, how="left")
+    rsel = rdf.select([*on_cols, rate])
+    if rsel.select(on_cols).is_duplicated().any():
+        raise ValueError(
+            f"rates has duplicate keys over {on_cols}; each key must be unique "
+            f"(a left join on duplicates would fan out counts and inflate lam/Z/cv)"
+        )
+    joined = cdf.join(rsel, on=on_cols, how="left")
     joined = joined.with_columns(
         _exp=pl.col(count) * pl.col(rate) * horizon
     )

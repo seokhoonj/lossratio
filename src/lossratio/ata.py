@@ -85,8 +85,11 @@ def _compute_cv_rse(
         # factor fit uses the same subset). Summing all finite c_k would
         # understate SE and bias rse downward.
         fit_mask = mask & (col_k > 0)
+        n_pos = int(fit_mask.sum())
         sum_col = float(col_k[fit_mask].sum())
-        if n_k >= 2 and sum_col > 0 and f_k[k] > 0:
+        # require >= 2 positive-denominator cohorts, matching the CV guard above;
+        # a single contributing cohort is insufficient -> rse stays NaN, not 0.
+        if n_pos >= 2 and sum_col > 0 and f_k[k] > 0:
             if sigma2_k[k] > 0:
                 f_se = np.sqrt(sigma2_k[k] / sum_col)
                 rse_k[k] = float(f_se / f_k[k])
