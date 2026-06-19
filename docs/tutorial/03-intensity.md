@@ -281,5 +281,5 @@ $$
   그리고 ATA 인자가 코호트 간에 안정되는 구간(CV·RSE 음영).
 - {doc}`4장 — 손해율 예측 <04-projection>`: 이 장의 강도로 빈 칸을 채우는
   완전 풀링(`PooledLoss`), 코호트 수준을 신뢰도 가중으로 보정하는 `CredibleLoss`,
-  그리고 곱셈식의 링크비(`ChainLadder`).
+  형상을 매끄럽게 다듬는 `SmoothLoss`, 그리고 곱셈식의 링크비(`ChainLadder`).
 - {doc}`API 레퍼런스 <../api>`의 `Link.intensity`, `Intensity`

@@ -395,4 +395,4 @@ hold-out에서 두 방법의 held-out 셀을 매칭 비교하는 `lr.EstimatorCo
   신뢰구간을 입혀 "얼마나 믿을 수 있나"를 정량화한다.
 - {doc}`7장 — 예측 검증 <07-backtest>`: 방법 선택을 데이터로 가리는
   백테스트, rolling-origin 신뢰도 곡선, 방법 간 매칭 비교.
-- {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `CredibleLoss`, `ChainLadder`, `Ratio`
+- {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `CredibleLoss`, `SmoothLoss`, `ChainLadder`, `Ratio`
