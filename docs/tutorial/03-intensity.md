@@ -280,6 +280,6 @@ $$
 - {doc}`2장 — 손해 진전 속도 <02-ata>`: 강도와 짝을 이루는 ATA 인자,
   그리고 ATA 인자가 코호트 간에 안정되는 구간(CV·RSE 음영).
 - {doc}`4장 — 손해율 예측 <04-projection>`: 이 장의 강도로 빈 칸을 채우는
-  완전 풀링(`PooledLoss`), 코호트 수준 보정(`CredibleLoss`), 형상 평활
-  (`SmoothLoss`), 그리고 곱셈식 링크비(`ChainLadder`).
+  완전 풀링(`PooledLoss`), 부분 풀링(`CredibleLoss`), 형상 평활(`SmoothLoss`),
+  그리고 곱셈식 링크비(`ChainLadder`).
 - {doc}`API 레퍼런스 <../api>`의 `Link.intensity`, `Intensity`
