@@ -19,7 +19,9 @@ Two ``se_method`` settings control how premium uncertainty enters:
 
   ``rho = 0`` (default) treats the loss and premium projections as
   independent; a positive ``rho`` (claims and premium moving together within a
-  cohort) narrows the band.
+  cohort) narrows the band. ``rho = "auto"`` estimates the coupling per group
+  from the data (the correlation of the loss and premium relative residuals)
+  instead of assuming a value.
 
 The result is a :class:`RatioFit` -- a long-format frame with ``ratio_proj`` +
 the ratio band, carrying the contributing ``loss_proj`` / ``premium_proj`` and
@@ -69,8 +71,10 @@ class Ratio:
         ``"fixed"`` (premium deterministic; default) or ``"delta"`` (full
         delta method with premium variance + ``rho``).
     rho
-        Loss-premium correlation used by ``se_method="delta"`` (default 0.0,
-        independent). Ignored when ``se_method="fixed"``.
+        Loss-premium correlation used by ``se_method="delta"``. A float in
+        ``[-1, 1]`` (default ``0.0``, independent), or ``"auto"`` to estimate it
+        per group from the data (the correlation of the loss and premium
+        relative residuals). Ignored when ``se_method="fixed"``.
     conf_level
         Two-sided confidence level for the ratio CI columns.
     """
@@ -78,7 +82,7 @@ class Ratio:
     loss: "_LossEstimatorBase"
     premium: "_PremiumEstimatorBase" = field(default_factory=lambda: _default_premium())
     se_method: str = "fixed"
-    rho: float = 0.0
+    rho: "float | str" = 0.0
     conf_level: float = 0.95
 
     def __post_init__(self) -> None:
@@ -96,8 +100,15 @@ class Ratio:
             raise ValueError(
                 f"se_method must be 'fixed' or 'delta', got {self.se_method!r}"
             )
-        if not (-1.0 <= self.rho <= 1.0):
-            raise ValueError(f"rho must be in [-1, 1], got {self.rho!r}")
+        if isinstance(self.rho, str):
+            if self.rho != "auto":
+                raise ValueError(
+                    f"rho must be a float in [-1, 1] or 'auto', got {self.rho!r}"
+                )
+        elif not (-1.0 <= self.rho <= 1.0):
+            raise ValueError(
+                f"rho must be a float in [-1, 1] or 'auto', got {self.rho!r}"
+            )
         if not (0.0 < self.conf_level < 1.0):
             raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
 
@@ -128,10 +139,19 @@ class Ratio:
         else:
             seL = pl.col("loss_total_se")
             seP = pl.col("premium_total_se")
+            if self.rho == "auto":
+                rho_frame = _estimate_rho(triangle, groups)
+                if groups:
+                    joined = joined.join(rho_frame, on=groups, how="left")
+                    rho_expr = pl.col("_rho_auto").fill_null(0.0)
+                else:
+                    rho_expr = pl.lit(float(rho_frame["_rho_auto"][0]))
+            else:
+                rho_expr = pl.lit(float(self.rho))
             radicand = (
                 seL**2
                 + ratio_proj**2 * seP**2
-                - 2.0 * self.rho * ratio_proj * seL * seP
+                - 2.0 * rho_expr * ratio_proj * seL * seP
             )
             # clamp a negative radicand to 0 while PRESERVING null: a missing
             # loss/premium SE (e.g. on an observed cell) must yield a null
@@ -184,6 +204,51 @@ def _default_premium() -> "_PremiumEstimatorBase":
     from .pooled_premium import PooledPremium
 
     return PooledPremium()
+
+
+def _estimate_rho(triangle: "Triangle", groups: "list[str] | None") -> pl.DataFrame:
+    """Per-group empirical loss-premium correlation for ``rho="auto"``.
+
+    Returns a frame ``[*groups, _rho_auto]``. ``_rho_auto`` is the correlation,
+    within each group, of the RELATIVE residuals of the incremental loss and
+    incremental premium after removing the group's pooled per-duration intensity
+    ``g_k = sum(loss_delta) / sum(premium_from)`` and premium link ratio
+    ``f^P_k = sum(premium_to) / sum(premium_from)``. It captures how the loss and
+    premium NOISE co-move -- the coupling the delta method takes as ``rho``.
+    Model-agnostic (built from the triangle's own pooled factors, not the chosen
+    estimator). Groups with < 10 usable links fall back to 0.
+    """
+    gcols = groups or []
+    link = triangle.link().to_polars()
+    fac = link.group_by([*gcols, "duration_from"]).agg(
+        _g=pl.col("loss_delta").sum() / pl.col("premium_from").sum(),
+        _fp=pl.col("premium_to").sum() / pl.col("premium_from").sum(),
+    )
+    work = (
+        link.join(fac, on=[*gcols, "duration_from"], how="left")
+        .with_columns(
+            _lhat=pl.col("_g") * pl.col("premium_from"),
+            _phat=(pl.col("_fp") - 1.0) * pl.col("premium_from"),
+        )
+        .filter((pl.col("_lhat").abs() > 1.0) & (pl.col("_phat").abs() > 1.0))
+        .with_columns(
+            _rl=(pl.col("loss_delta") - pl.col("_lhat")) / pl.col("_lhat"),
+            _rp=(pl.col("premium_delta") - pl.col("_phat")) / pl.col("_phat"),
+        )
+        .filter(pl.col("_rl").is_finite() & pl.col("_rp").is_finite())
+    )
+    if gcols:
+        rho = work.group_by(gcols).agg(
+            _rho_auto=pl.corr("_rl", "_rp"), _n=pl.len()
+        )
+    else:
+        rho = work.select(_rho_auto=pl.corr("_rl", "_rp"), _n=pl.len())
+    rho = rho.with_columns(
+        _rho_auto=pl.when(pl.col("_n") >= 10)
+        .then(pl.col("_rho_auto").clip(-1.0, 1.0).fill_null(0.0))
+        .otherwise(0.0)
+    )
+    return rho.select([*gcols, "_rho_auto"])
 
 
 def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:

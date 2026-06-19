@@ -190,3 +190,54 @@ def test_extend_amounts_off_has_no_amount_columns():
     ext = fit.extend(horizon=20)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     assert "loss" not in ext.columns and "premium" not in ext.columns
+
+
+# ---------------------------------------------------------------------------
+# rho="auto" -- estimate the loss-premium coupling from the data
+# ---------------------------------------------------------------------------
+
+
+def _exp_tri():
+    import lossratio as lr
+    return lr.Triangle(lr.load_experience(), groups="coverage")
+
+
+def test_rho_auto_rejects_bad_string():
+    import lossratio as lr
+    with pytest.raises(ValueError, match="auto"):
+        lr.Ratio(loss=lr.PooledLoss(), rho="nope")
+
+
+def test_rho_auto_estimates_per_group():
+    import lossratio as lr
+    from lossratio.ratio import _estimate_rho
+    tri = _exp_tri()
+    rho = _estimate_rho(tri, ["coverage"]).to_dicts()
+    assert {r["coverage"] for r in rho} == set(tri.to_polars()["coverage"].unique())
+    # synthetic premium co-moves weakly-positively with loss; finite, in range
+    for r in rho:
+        assert -1.0 <= r["_rho_auto"] <= 1.0
+
+
+def test_rho_auto_narrows_vs_independent():
+    # a positive coupling (loss built from premium) must give a band no wider
+    # than the rho=0 (independent) delta -- the coupling cancels variance.
+    import lossratio as lr
+    tri = _exp_tri()
+    base = dict(loss=lr.PooledLoss(), premium=lr.PooledPremium(), se_method="delta")
+    d0 = lr.Ratio(**base, rho=0.0).fit(tri).to_polars()
+    da = lr.Ratio(**base, rho="auto").fit(tri).to_polars()
+    key = ["coverage", "cohort", "duration"]
+    j = d0.select([*key, "ratio_se"]).rename({"ratio_se": "se0"}).join(
+        da.select([*key, "ratio_se"]).rename({"ratio_se": "sea"}), on=key
+    ).drop_nulls()
+    assert (j["sea"] <= j["se0"] + 1e-12).all()
+
+
+def test_rho_auto_ignored_by_fixed():
+    # se_method="fixed" never reads rho; "auto" must not change the fixed band.
+    import lossratio as lr
+    tri = _exp_tri()
+    a = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed", rho=0.0).fit(tri).to_polars()
+    b = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed", rho="auto").fit(tri).to_polars()
+    assert a["ratio_se"].fill_null(-1.0).to_list() == b["ratio_se"].fill_null(-1.0).to_list()
