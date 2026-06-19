@@ -195,7 +195,7 @@ regime은 *코호트*를 기준으로 변화 이전을 잘라 내는 필터다. 
 from datetime import date
 
 lr.Ratio(
-    loss=lr.PooledLoss(regime=date(2024, 7, 1)),     # 손해 쪽 변화
+    loss=lr.PooledLoss(regime=date(2024, 7, 1)),        # 손해 쪽 변화
     premium=lr.PooledPremium(regime=date(2024, 1, 1)),  # 보험료 쪽 변화
 ).fit(tri)
 ```
