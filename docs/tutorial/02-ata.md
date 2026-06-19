@@ -241,7 +241,7 @@ tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohort
 ```
 
 `link.plot(model="ata", kind="cv")`에 `show_factor_stability=True`를 주면,
-인자의 CV·RSE가 문턱(`max_cv=0.15`, `max_rse=0.05`) 아래로 내려가 안정되는
+인자의 CV·RSE가 문턱(`max_cv=0.05`, `max_rse=0.05`) 아래로 내려가 안정되는
 경과 구간을 음영으로 표시해 줍니다.
 
 ```{eval-rst}
@@ -278,7 +278,7 @@ tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohort
 ```
 
 월 단위로 보면 한 링크에 코호트가 30개 넘게 모여 인자가 정밀하게
-추정되므로, 첫 링크부터 CV가 문턱(`max_cv=0.15`) 아래로 들어와 이르게
+추정되므로, CV가 이른 경과에 문턱(`max_cv=0.05`) 아래로 들어와
 안정됩니다. 더 거칠게(분기·반기로) 묶으면 링크당 코호트 수가 줄어 초기
 CV가 튀어, 안정 구간이 그만큼 뒤로 밀립니다.
 

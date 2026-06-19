@@ -90,7 +90,7 @@ def _plot_link_ata(
     kind: str = "cv",
     alpha: float = 1.0,
     show_factor_stability: bool = True,
-    max_cv: float = 0.15,
+    max_cv: float = 0.05,
     max_rse: float = 0.05,
     min_run: int = 1,
     nrow: int | None = None,
