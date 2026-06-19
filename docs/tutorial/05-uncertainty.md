@@ -235,6 +235,38 @@ recent_cv("delta", rho=0.9)
 가정하지 않고, 데이터가 보여 준 잔차를 그대로 써서 가상 삼각형을
 재구성하고, 전체 파이프라인을 매 복제마다 다시 적합한다.
 
+골격은 네 단계다(England-Verrall ODP 잔차 부트스트랩, charter Sec.5.2).
+
+**1) 잔차를 뽑는다.** 적합된 평균 $\hat\mu_{ik} = \hat g_k\,P_{i,k-1}$(강도 x 직전
+누적 보험료; `CredibleLoss`는 코호트 스케일을 곱해 $\hat u_i\,\hat g_k\,P_{i,k-1}$)
+에서 경과별 Pearson 분산 $\hat\phi_k$를 구해, 각 셀의 **Pearson 잔차**를 만든다:
+
+$$r_{ik} = \frac{y_{ik} - \hat\mu_{ik}}{\sqrt{\hat\phi_k\,\hat\mu_{ik}}}\,(1-h_{ii})^{-1/2}$$
+
+마지막 항은 레버리지 $h_{ii}$ 보정 — 적합이 자기 점에 끌려가 잔차가 작아지는
+편향을 되돌린다.
+
+**2) 가상 삼각형을 짓는다.** 잔차 풀에서 다시 뽑은 $r^*_{ik}$로 증분을
+재구성한다:
+
+$$y^*_{ik} = \hat\mu_{ik} + r^*_{ik}\sqrt{\hat\phi_k\,\hat\mu_{ik}}$$
+
+(얇은 경과는 그 경과 군집 안에서, 부족하면 전역 풀에서 재표집한다.)
+
+**3) 통째로 다시 적합한다.** $y^*$ 삼각형에 **전체 파이프라인**($\hat g_k$, 그리고
+`CredibleLoss`면 $\psi\,$,$\,\hat u_i$까지)을 처음부터 재추정해 예측 $\hat R^{(b)}$를
+낸다 — 이게 *모수 불확실성*(추정 자체의 흔들림)을 푼다. 미래 셀엔 과대산포
+**과정 잡음**을 더한다: $\operatorname{Var}(\Delta C_k \mid C_{k-1}) = \hat\sigma^2_k\,C_{k-1}$.
+
+**4) 분포를 읽는다.** $B$개 복제 $\{\hat R^{(b)}\}$에서 두 분산을 합치고(law of
+total variance) 신뢰구간은 경험 분위수로 잡는다:
+
+$$\text{SE}_{\text{total}} = \sqrt{\underbrace{\operatorname{Var}_b\!\big(\hat\mu^{(b)}\big)}_{\text{모수(param)}} + \underbrace{\overline{\hat\sigma^2_k\,C}}_{\text{과정(proc)}}},\qquad \big[\,q_{2.5\%},\ q_{97.5\%}\,\big]$$
+
+곧 `loss_param_se`, `loss_proc_se`, `loss_total_se` 컬럼이 이 분해다. (곱셈식
+`ChainLadder`도 같은 골격에 England-Verrall ODP 잔차를 쓰되 평균이
+$\hat\mu_{ik}=(\hat f_k-1)\,C_{i,k-1}$로 바뀐다.)
+
 ```{list-table}
 :header-rows: 1
 :widths: 30 70
