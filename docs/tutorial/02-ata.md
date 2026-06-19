@@ -246,18 +246,6 @@ tri.link(target="loss").ata().df.select(["duration", "f", "cv", "rse", "n_cohort
 
 ```{eval-rst}
 .. plot::
-   :context:
-   :nofigs:
-   :include-source: false
-
-   import polars as pl
-   import lossratio as lr
-
-   df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
-   tri = lr.Triangle(df, groups="coverage", grain="M")
-   link = tri.link(target="loss", exposure="premium")
-
-.. plot::
    :context: close-figs
    :caption: 수술담보의 경과별 ATA 인자 CV(월 단위). 음영은 인자가 코호트 간에 안정되는(CV·RSE 문턱 아래로 내려간) 구간이다.
 
