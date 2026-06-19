@@ -295,7 +295,7 @@ base = lr.PooledLoss().fit(tri)
 
 # 대안: 잔차 부트스트랩 (같은 컬럼을 재표집으로 채운다)
 boot = lr.PooledLoss(
-    uncertainty=lr.ResidualBootstrap(n_replicates=499, seed=42)
+    uncertainty=lr.ResidualBootstrap(n_replicates=999, seed=42)
 ).fit(tri)
 
 boot.to_polars().filter(pl.col("source") == "own").select(
@@ -326,7 +326,7 @@ lr.CredibleLoss().fit(tri).to_polars()["loss_total_se"].max()
 
 # 부트스트랩을 켜야 구간이 채워진다
 lr.CredibleLoss(
-    uncertainty=lr.ResidualBootstrap(n_replicates=499, seed=42)
+    uncertainty=lr.ResidualBootstrap(n_replicates=999, seed=42)
 ).fit(tri).to_polars()["loss_total_se"].max()
 #> 1.72e8  (재표집으로 채워진 총 표준오차)
 ```
