@@ -319,8 +319,8 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]
 
 ## 1.7 함께 보기
 
-- {doc}`2장 — 손해 진전 속도 <02-ata>`: 이웃한 경과를 이어
-  손해 진전 속도(ATA 인자)를 손으로 구하고, 경과별로 읽으며, ATA 인자가
+- {doc}`2장 — 손해의 진전 <02-ata>`: 이웃한 경과를 이어
+  손해의 진전(ATA 인자)를 손으로 구하고, 경과별로 읽으며, ATA 인자가
   코호트 간에 안정되는 구간을 진단합니다.
 - {doc}`API 레퍼런스 <../api>`의 `Triangle`, `load_experience`,
   `derive_grain_columns`
