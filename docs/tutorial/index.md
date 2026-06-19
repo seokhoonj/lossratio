@@ -62,7 +62,7 @@ flowchart LR
   - 과정오차와 모수오차, 표준오차·변동계수·신뢰구간, 부트스트랩
 * - 6
   - 구조 변화 탐지
-  - 인수 코호트의 regime 변화란, E-Divisive 탐지, 예측에 반영하기
+  - 인수 코호트의 regime 변화란, E-Divisive 탐지, step/drift 게이트, 예측에 반영하기
 * - 7
   - 예측 검증
   - 달력 대각선 hold-out 백테스트, A/E Error로 읽는 예측 정확도, rolling-origin 신뢰도 곡선과 방법 간 비교
