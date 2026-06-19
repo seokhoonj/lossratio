@@ -36,12 +36,14 @@
 ```{mermaid}
 flowchart TD
   Q{"어느 방법으로<br/>빈 칸을 채울까"}
-  Q -->|"기본값 · 무조건 안전"| pooled["PooledLoss (완전 풀링)<br/>강도 x 보험료"]
-  Q -->|"코호트 수준 보정"| credible["CredibleLoss (부분 풀링)<br/>코호트 스케일 x 강도 x 보험료"]
-  Q -->|"형상 평활"| smooth["SmoothLoss (형상 평활)<br/>평활 강도 x 보험료"]
-  Q -->|"고전적 참조점"| linkratio["ChainLadder (자기손해 링크비)<br/>누적 손해 x ATA 인자"]
-  credible -.->|"형상은 PooledLoss 그대로<br/>수준만 보정"| pooled
-  smooth -.->|"수준은 PooledLoss 그대로<br/>형상만 평활"| pooled
+  subgraph ladder["강도 사다리 — 덧셈 · 보험료 앵커"]
+    direction LR
+    pooled["PooledLoss (완전 풀링)<br/>강도 x 보험료"]
+    credible["CredibleLoss<br/>+ 코호트 수준 보정"]
+    smooth["SmoothLoss<br/>+ 형상 평활"]
+  end
+  Q --> ladder
+  Q -->|"고전적 참조점 · 곱셈"| linkratio["ChainLadder (자기손해 링크비)<br/>누적 손해 x ATA 인자"]
   style pooled fill:#cfe8ff,stroke:#1f6fb2,stroke-width:2px
   style credible fill:#ffe08a,stroke:#d39e00,stroke-width:2px
   style smooth fill:#d5f0d5,stroke:#3a9b5c,stroke-width:2px
