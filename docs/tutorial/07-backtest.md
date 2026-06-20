@@ -152,7 +152,7 @@ for name, loss in losses.items():
 ```
 
 같은 방식으로 regime 반영 여부(6장)도 백테스트로 비교할 수 있다 —
-`lr.Backtest(estimator=lr.Ratio(loss=lr.PooledLoss(regime=reg),
+`lr.Backtest(estimator=lr.Ratio(loss=lr.PooledLoss(regime=date(2024, 7, 1)),
 premium=lr.PooledPremium()), ...)`처럼 추정기에 선택지를 담아 비교하면 된다.
 
 ## 7.6 여러 시점에서 검증하기 — rolling-origin
@@ -168,7 +168,7 @@ premium=lr.PooledPremium()), ...)`처럼 추정기에 선택지를 담아 비교
   있었나 (예측이 딛고 선 이력의 길이)
 
 horizon별로 모은 `horizon_summary`가 이 패키지의 **신뢰도 곡선**이다 —
-멀리 내다볼수록 오차가 어떻게 자라는지를 보여 준다.
+멀리 내다볼수록 오차가 어떻게 커지는지를 보여 준다.
 
 ```python
 est = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium())
