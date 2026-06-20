@@ -118,7 +118,7 @@ def plot_triangle(
     if label_size is None:
         label_size = 7.0 if label_style == "detail" else 8.0
 
-    df = triangle.df  # polars
+    df = triangle.to_polars()  # always polars (triangle.df mirrors the input type)
     grp = triangle.groups
     coh = triangle.cohort
     duration = triangle.duration
