@@ -44,3 +44,17 @@ def test_regime_detect_spec_flows_into_a_fit():
         lr.PooledLoss(regime=lambda t: 42).fit(tri)
     with pytest.raises(TypeError, match="regime must be"):
         lr.PooledLoss(regime=5)
+
+
+def test_regime_string_sentinel_must_be_auto():
+    # The only accepted regime string is 'auto'; anything else is a clear error
+    # both at the resolver and at estimator construction.
+    import lossratio as lr
+    import pytest
+    from lossratio.regime import _resolve_regime
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    with pytest.raises(ValueError, match="must be 'auto'"):
+        _resolve_regime("foo", tri)
+    with pytest.raises(ValueError, match="must be 'auto'"):
+        lr.PooledLoss(regime="foo")

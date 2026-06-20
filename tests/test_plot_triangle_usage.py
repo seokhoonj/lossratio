@@ -241,6 +241,32 @@ def test_regime_cut_scalar_date(tri_single):
     assert "unused" in set(usage["status"].unique().to_list())
 
 
+def test_regime_cut_multi_column_groups_tuple_key():
+    """A per-segment cut on a MULTI-column-groups triangle keys on the tuple of
+    group values (exercises the `_regime_cut_frames` tuple branch): only the
+    targeted (coverage, block) segment drops cohorts; the others stay used."""
+    df = lr.make_experience(seed=1).with_columns(
+        pl.when(pl.col("uy_m").dt.year() % 2 == 0)
+        .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
+    )
+    tri = lr.Triangle(df, groups=["coverage", "block"])
+    reg = lr.Regime.at(
+        change=["2024-07-01"],
+        groups={"coverage": ["SURGERY"], "block": ["E"]},
+    )
+    cut = _resolve_regime(reg, tri)
+    assert isinstance(cut, dict) and ("SURGERY", "E") in cut   # tuple-keyed
+    usage = _compute_triangle_usage(tri, regime_cut=cut)
+    tgt = usage.filter(
+        (pl.col("coverage") == "SURGERY") & (pl.col("block") == "E")
+    )
+    other = usage.filter(
+        ~((pl.col("coverage") == "SURGERY") & (pl.col("block") == "E"))
+    )
+    assert "unused" in set(tgt["status"].to_list())
+    assert "unused" not in set(other["status"].to_list())
+
+
 # --- Public usage() data accessor -----------------------------------
 
 
