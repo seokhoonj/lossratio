@@ -121,6 +121,8 @@ class ModelFrame:
             )
         )
 
+        from .regime import _resolve_regime
+        regime = _resolve_regime(regime, triangle)
         df = cls._apply_regime(df, regime, segments)
         df = df.select("_segment_id", *segments, *_FRAME_ORDER).sort(
             ["_segment_id", "cohort", "duration"]

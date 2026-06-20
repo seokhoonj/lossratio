@@ -2343,6 +2343,35 @@ def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
     )
 
 
+def _resolve_regime(regime, triangle):
+    """Resolve a regime argument to a fit-ready cut.
+
+    Returns ``None`` / a ``date`` / a ``dict[segment -> date]`` -- the only
+    forms the engine consumes. Accepts those forms unchanged, a :class:`Regime`
+    object (the latest change per segment, mirroring the usage heatmap), or the
+    string ``"auto"`` (detect on ``triangle`` first). Centralised here so every
+    fit path (loss / premium / ratio / backtest) accepts the same inputs.
+    """
+    from datetime import date as _date
+    if regime is None or isinstance(regime, (_date, dict)):
+        return regime
+    if isinstance(regime, str):
+        if regime != "auto":
+            raise ValueError(f"regime string must be 'auto', got {regime!r}")
+        regime = triangle.detect_regime(target="ratio")
+    cutoff = _regime_cutoff_map(regime)        # DataFrame [gcols?, _cutoff] | None
+    if cutoff is None:
+        return None
+    if cutoff.columns == ["_cutoff"]:          # ungrouped -> a single date
+        return cutoff["_cutoff"][0]
+    gcols = [c for c in cutoff.columns if c != "_cutoff"]
+    out = {}
+    for row in cutoff.iter_rows(named=True):
+        key = row[gcols[0]] if len(gcols) == 1 else tuple(row[g] for g in gcols)
+        out[key] = row["_cutoff"]
+    return out
+
+
 def _segment_id_expr(
     regime: "Regime",
     cohort_col: str = "cohort",

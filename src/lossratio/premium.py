@@ -82,12 +82,15 @@ class _PremiumEstimatorBase:
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
-        if self.regime is not None and not isinstance(self.regime, (date, dict)):
-            raise NotImplementedError(
-                "regime currently accepts a resolved cut only (None, a date, "
-                "or a dict[segment -> date]); Regime-object / 'auto' "
-                "resolution is not yet wired."
-            )
+        if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
+            from .regime import Regime
+            if not isinstance(self.regime, Regime):
+                raise TypeError(
+                    "regime must be None, a date, a dict[segment -> date], a "
+                    f"Regime object, or 'auto'; got {type(self.regime).__name__}"
+                )
+        if isinstance(self.regime, str) and self.regime != "auto":
+            raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
         if not (0.0 < self.conf_level < 1.0):
             raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
 
