@@ -688,7 +688,6 @@ class Triangle:
         recent: int | None = None,
         regime: "RegimeArg" = None,
         holdout: int | None = None,
-        switch: Any = None,
     ) -> "FrameLike":
         """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
 
@@ -707,18 +706,12 @@ class Triangle:
             recent calendar-diagonal window); cells outside drop to
             ``"unused"``. ``None`` applies no recent filter.
         regime
-            ``None``, a :class:`Regime`, or a callable
-            ``triangle -> Regime``. A segment treatment carves the bridged
-            development band per affected group; cells outside it show as
-            ``"unused"``.
+            ``None``, a :class:`Regime`, ``"auto"``, or a callable
+            ``triangle -> Regime`` -- resolved to the same cohort cut the fit
+            uses: cohorts before the change drop to ``"unused"``.
         holdout
             Number of trailing calendar diagonals flagged ``"holdout"`` (the
             :class:`Backtest` hold-out pattern).
-        switch
-            ``None``, an integer switch duration, or a :class:`SwitchPoint`.
-            With ``regime`` this enables hybrid filtering (cohort cut for
-            ``duration < switch``, calendar cut for ``duration >= switch``); standalone
-            it does not shrink the grid (a reference boundary only).
 
         Returns
         -------
@@ -727,17 +720,12 @@ class Triangle:
             ``status``. Input mirroring is preserved (pandas in -> pandas
             out).
         """
-        from ._triangle_vis import (
-            _compute_triangle_usage,
-            _resolve_switch_k,
-            _resolve_regime_for_usage,
-        )
+        from ._triangle_vis import _compute_triangle_usage
+        from .regime import _resolve_regime
 
-        regime_obj = _resolve_regime_for_usage(self, regime)
-        switch_k = _resolve_switch_k(switch, triangle=self)
+        regime_cut = _resolve_regime(regime, self)
         usage_df = _compute_triangle_usage(
-            self, recent=recent, regime=regime_obj, holdout=holdout,
-            switch_k=switch_k,
+            self, recent=recent, regime_cut=regime_cut, holdout=holdout,
         )
         return mirror_output(usage_df, self._output_type)
 
@@ -756,7 +744,6 @@ class Triangle:
         recent: int | None = None,
         regime: "RegimeArg" = None,
         holdout: int | None = None,
-        switch: Any = None,
     ) -> Any:
         """Triangle heatmap (cell-value or status), backed by matplotlib.
 
@@ -766,7 +753,7 @@ class Triangle:
             ``"value"`` (default; cell-value heatmap of one metric) or
             ``"usage"`` (status heatmap showing which cells the fit
             would use vs. drop under the given ``recent`` / ``regime`` /
-            ``holdout`` / ``switch`` masks).
+            ``holdout`` masks).
         x_axis
             ``"duration"`` (default; columns are the development index, the
             aligned right-triangle layout) or ``"calendar"`` (columns
@@ -775,8 +762,7 @@ class Triangle:
             in before alignment). Each cell's calendar period is
             ``cohort + (duration - 1)`` at the triangle grain. Applies to
             both views; in the usage view the ``recent`` / ``holdout``
-            calendar-diagonal masks become clean vertical bands, and the
-            ``switch`` boundary becomes a stepped diagonal.
+            calendar-diagonal masks become clean vertical bands.
         metric
             (value view) One of: ``"ratio"``, ``"incr_ratio"``,
             ``"loss"``, ``"incr_loss"``, ``"premium"``,
@@ -799,21 +785,14 @@ class Triangle:
             (usage view) Number of trailing calendar diagonals to keep
             as "used".
         regime
-            (usage view) ``None``, a :class:`Regime` instance, or a
-            callable ``triangle -> Regime``. A segment treatment masks
-            the triangle to the bridged development band; cells outside
-            the band show as "unused".
+            (usage view) ``None``, a :class:`Regime` instance, ``"auto"``,
+            or a callable ``triangle -> Regime`` -- resolved to the same
+            cohort cut the fit uses; cohorts before the change show as
+            "unused", with a dashed hline at the cut.
         holdout
             (usage view) Number of trailing calendar diagonals to flag
             as "holdout" (the hold-out pattern used by
             :class:`Backtest`).
-        switch
-            (usage view) ``None``, an integer switch duration, or a
-            :class:`SwitchPoint`. When supplied alongside ``regime``,
-            switches to hybrid filtering -- cohort cut on
-            ``duration < switch`` (intensity region), calendar cut on
-            ``duration >= switch`` (link-ratio region). Also draws a dashed vertical
-            line at ``duration = switch``.
         nrow, ncol
             Facet wrap layout when ``groups`` is set. Defaults to a
             near-square grid.
@@ -840,7 +819,6 @@ class Triangle:
             recent=recent,
             regime=regime,
             holdout=holdout,
-            switch=switch,
         )
 
     def plot(

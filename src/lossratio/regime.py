@@ -2347,18 +2347,33 @@ def _resolve_regime(regime, triangle):
     """Resolve a regime argument to a fit-ready cut.
 
     Returns ``None`` / a ``date`` / a ``dict[segment -> date]`` -- the only
-    forms the engine consumes. Accepts those forms unchanged, a :class:`Regime`
-    object (the latest change per segment, mirroring the usage heatmap), or the
-    string ``"auto"`` (detect on ``triangle`` first). Centralised here so every
-    fit path (loss / premium / ratio / backtest) accepts the same inputs.
+    forms the engine (and the usage view) consume. Accepts those forms
+    unchanged, a :class:`Regime` object (the latest change per segment), the
+    string ``"auto"`` (detect on ``triangle`` first), or a callable
+    ``triangle -> Regime``. Centralised here so every fit path (loss / premium
+    / ratio / backtest) and the usage heatmap accept the same inputs.
     """
     from datetime import date as _date
     if regime is None or isinstance(regime, (_date, dict)):
         return regime
-    if isinstance(regime, str):
+    if isinstance(regime, Regime):
+        pass
+    elif isinstance(regime, str):
         if regime != "auto":
             raise ValueError(f"regime string must be 'auto', got {regime!r}")
         regime = triangle.detect_regime(target="ratio")
+    elif callable(regime):
+        regime = regime(triangle)
+        if not isinstance(regime, Regime):
+            raise TypeError(
+                f"regime callable must return Regime, got "
+                f"{type(regime).__name__}"
+            )
+    else:
+        raise TypeError(
+            f"regime must be None / date / dict / 'auto' / Regime / Callable, "
+            f"got {type(regime).__name__}"
+        )
     cutoff = _regime_cutoff_map(regime)        # DataFrame [gcols?, _cutoff] | None
     if cutoff is None:
         return None

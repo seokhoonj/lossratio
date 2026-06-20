@@ -5,7 +5,7 @@ Implements ``Triangle.plot_triangle(kind="value" | "usage")``.
 
 from __future__ import annotations
 
-import bisect
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -14,7 +14,6 @@ import polars as pl
 from ._io import (
     _iter_group_frames,
     format_group_value,
-    group_eq,
     normalize_groups,
 )
 from ._plot import (
@@ -79,7 +78,6 @@ def plot_triangle(
     recent: int | None = None,
     regime: Any = None,
     holdout: int | None = None,
-    switch: Any = None,
 ) -> Any:
     """Triangle heatmap dispatcher. See
     :meth:`lossratio.Triangle.plot_triangle` for the public docs.
@@ -99,7 +97,6 @@ def plot_triangle(
             recent=recent,
             regime=regime,
             holdout=holdout,
-            switch=switch,
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
@@ -393,135 +390,44 @@ def _threshold_color(v: float, threshold: float, when: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_switch_k(
-    switch: Any,
-    triangle: Triangle | None = None,
-) -> "int | dict | None":
-    """Resolve the ``switch`` overlay arg to a per-group switch map.
+def _regime_cut_frames(
+    regime_cut: "date | dict | None", grp_cols: list[str],
+) -> "tuple[Any, pl.DataFrame | None]":
+    """Split a RESOLVED regime cut into ``(scalar_date, per_group_df)``.
 
-    ``None``: no switch, no overlay, no hybrid threshold.
-    ``int``: a scalar switch duration applied to every group.
-    A :class:`SwitchPoint`: read its ``point`` -- a scalar (applied to all
-    groups) or a ``{group: switch}`` dict, kept PER GROUP (not collapsed) so
-    each facet draws and filters on its own switch.
-    Callable: invoked with ``triangle`` (when supplied) and re-resolved.
+    ``regime_cut`` is what :func:`lossratio.regime._resolve_regime` returns --
+    ``None`` (no cut), a ``date`` (one change for every segment), or a
+    ``dict[segment -> date]`` (a change per segment). The per-group frame has
+    columns ``[*grp_cols, "_cd_join"]`` for a left-join onto the cell grid;
+    the scalar form needs no join. Mirrors ``ModelFrame._apply_regime`` so the
+    usage view cuts exactly where the fit does.
     """
-    if switch is None:
-        return None
-    if isinstance(switch, dict):
-        # An already-resolved per-group switch map (e.g. from a fit's
-        # `switch_point`); drop groups with no switch (None).
-        return {k: int(v) for k, v in switch.items() if v is not None}
-    if isinstance(switch, (int, np.integer)) and not isinstance(switch, bool):
-        if int(switch) < 1:
+    if regime_cut is None:
+        return None, None
+    if isinstance(regime_cut, date):
+        return regime_cut, None
+    if isinstance(regime_cut, dict):
+        if not grp_cols:
             raise ValueError(
-                f"`switch` must be a positive integer; got {switch}."
+                "per-segment regime needs a grouped triangle; "
+                "pass a single date for an ungrouped one"
             )
-        return int(switch)
-    point = getattr(switch, "point", None)
-    if point is not None:
-        if isinstance(point, dict):
-            # Keep the per-group map; drop groups with no switch (None).
-            return {k: int(v) for k, v in point.items() if v is not None}
-        return int(point)
-    if callable(switch):
-        if triangle is None:
-            return None
-        return _resolve_switch_k(switch(triangle), triangle=triangle)
+        rows = []
+        for seg_val, change in regime_cut.items():
+            keys = (seg_val,) if len(grp_cols) == 1 else tuple(seg_val)
+            rows.append({**dict(zip(grp_cols, keys)), "_cd_join": change})
+        return None, pl.DataFrame(rows)
     raise ValueError(
-        f"`switch` must be None, an int, a SwitchPoint, or a callable; "
-        f"got {switch!r}."
+        f"regime_cut must be None, a date, or a dict; got "
+        f"{type(regime_cut).__name__}"
     )
-
-
-def _resolve_regime_for_usage(triangle: Triangle, regime: Any) -> Any:
-    """Resolve a regime input to a Regime instance, or None.
-
-    ``None``: no regime overlay.
-    :class:`Regime` instance: used directly.
-    ``"auto"``: runs :meth:`Triangle.detect_regime` (default
-    ``window="auto"``, ``method="e_divisive"``); returns ``None`` if
-    detection raises (e.g. degenerate triangle), so the usage view
-    still renders without a regime overlay.
-    Callable: invoked with ``triangle``.
-    """
-    from .regime import Regime
-
-    if regime is None:
-        return None
-    if isinstance(regime, Regime):
-        return regime
-    if isinstance(regime, str):
-        if regime == "auto":
-            try:
-                return triangle.detect_regime()
-            except (ValueError, KeyError, RuntimeError):
-                # Failed auto-detect -> render without the regime overlay.
-                return None
-        raise ValueError(
-            f"`regime` must be None, a Regime instance, 'auto', or a "
-            f"callable; got {regime!r}."
-        )
-    if callable(regime):
-        return regime(triangle)
-    raise ValueError(
-        f"`regime` must be None, a Regime instance, 'auto', or a callable; "
-        f"got {regime!r}."
-    )
-
-
-def _seg_duration_min(
-    grp_rows: pl.DataFrame,
-    cd_vec: list,
-    group_cols: list[str],
-    bridge: bool = False,
-    seam_overlap: bool = False,
-) -> pl.DataFrame:
-    """Compute per-cell ``duration_min`` for the segment_wise mini-triangle.
-
-    For each cell in ``grp_rows``, classify its cohort into a segment
-    via ``np.searchsorted(cd_vec, cohort, side='right') + 1`` (mapping
-    each cohort to a 1-indexed segment) and delegate the bounds math to
-    :func:`lossratio.regime._compute_segment_mini_tri_bounds`. When
-    ``bridge`` is ``True`` the older segments' walls are widened by
-    the calendar-diagonal bridge (segment_wise_bridged treatment);
-    when ``False`` only the natural wall applies.
-
-    The returned frame has columns ``[*group_cols, cohort, duration,
-    _seg_duration_min]`` that the caller joins back onto the expanded grid
-    to override ``is_fit_data``.
-    """
-    from .regime import _compute_segment_mini_tri_bounds
-
-    cohorts = grp_rows["cohort"].to_numpy()
-    cd_arr = np.array(cd_vec, dtype="datetime64[D]")
-    coh_arr = np.array(cohorts, dtype="datetime64[D]")
-    # np.searchsorted(cd, coh, side='right') + 1 maps each cohort to a
-    # 1-indexed segment.
-    seg_id = np.searchsorted(cd_arr, coh_arr, side="right") + 1
-
-    coh_ranks = grp_rows["_coh_rank"].to_numpy()
-    max_cal = int(grp_rows["_max_cal"][0])
-
-    duration_min_arr = _compute_segment_mini_tri_bounds(
-        coh_ranks=coh_ranks,
-        seg_ids=seg_id,
-        max_cal=max_cal,
-        bridge=bridge,
-        seam_overlap=seam_overlap,
-    )
-
-    work = grp_rows.with_columns(pl.Series("_seg_duration_min", duration_min_arr))
-    keep_cols = list(group_cols) + ["cohort", "duration", "_seg_duration_min"]
-    return work.select(keep_cols)
 
 
 def _compute_triangle_usage(
     triangle: Triangle,
     recent: int | None = None,
-    regime: Any = None,
+    regime_cut: "date | dict | None" = None,
     holdout: int | None = None,
-    switch_k: int | None = None,
 ) -> pl.DataFrame:
     """Build the per-cell status grid driving the usage heatmap.
 
@@ -529,11 +435,11 @@ def _compute_triangle_usage(
     ``cohort``, ``duration``, ``status`` (one of ``"unused" | "used" |
     "holdout" | "future"``).
 
-    ``segment_wise`` regimes carve out a mini-triangle per segment
-    anchored on the latest calendar diagonal -- cells in an affected
-    group but outside their segment's mini-triangle drop from
-    ``used`` to ``unused``. The switch (``switch_k``) does not shrink the
-    mini-triangle (it's a separate dashed-vline reference only).
+    ``regime_cut`` is the RESOLVED cohort cut -- ``None`` / a ``date`` / a
+    ``dict[segment -> date]``, the form
+    :func:`lossratio.regime._resolve_regime` hands the fit. Cohorts before the
+    change drop from ``used`` to ``unused``, so the usage view mirrors the live
+    fit exactly: a plain per-segment cohort cut, no mini-triangle wall.
     """
     if recent is not None and (
         isinstance(recent, bool)
@@ -631,49 +537,14 @@ def _compute_triangle_usage(
             pl.col("_max_cal").alias("_max_cal_fit"),
         )
 
-    # 6. Resolve regime change date(s) under latest_only.
-    cd_scalar: Any = None
-    cd_df: pl.DataFrame | None = None
-    is_segment_wise = False
-    is_bridged = False
-
-    if regime is not None:
-        treatment = getattr(regime, "treatment", None)
-        is_segment_wise = treatment in (
-            "segment_borrowed", "segment_bridged", "segment_bridged_borrowed"
-        )
-        # Only the *_bridged* treatments widen the wall with the
-        # calendar-diagonal bridge; segment_borrowed masks the RAW
-        # per-segment wall (no bridge).
-        is_bridged = treatment in (
-            "segment_bridged", "segment_bridged_borrowed"
-        )
-        # segment_borrowed masks each donor segment's wall with a one-duration
-        # seam overlap, exactly as the real filter (regime.py); mirror it or the
-        # usage view marks fit-used seam cells as unused.
-        is_seam_overlap = treatment == "segment_borrowed"
-        if not is_segment_wise:
-            from .regime import _regime_cutoff_map
-            cutoff_map = _regime_cutoff_map(regime)
-            if cutoff_map is not None:
-                reg_grp_cols = normalize_groups(regime.groups)
-                if "_cutoff" in cutoff_map.columns and cutoff_map.height == 1 and (
-                    not reg_grp_cols
-                    or not all(g in cutoff_map.columns for g in reg_grp_cols)
-                ):
-                    cd_scalar = cutoff_map["_cutoff"][0]
-                else:
-                    cd_df = cutoff_map.rename({"_cutoff": "_cd_join"})
-
-    # 7. Build the pass_filter boolean.
+    # 6. Resolve the regime cohort cut into a per-row change-pass expression.
+    cd_scalar, cd_df = _regime_cut_frames(regime_cut, grp_cols)
     has_recent = recent is not None
     has_change = cd_scalar is not None or cd_df is not None
 
     if cd_df is not None:
-        # broadcast per-group change date onto expanded rows
-        expanded = expanded.join(
-            cd_df, on=normalize_groups(regime.groups), how="left"
-        )
+        # broadcast per-segment change date onto expanded rows
+        expanded = expanded.join(cd_df, on=grp_cols, how="left")
         change_pass_expr = pl.col("_cd_join").is_null() | (
             pl.col("cohort") >= pl.col("_cd_join")
         )
@@ -682,56 +553,15 @@ def _compute_triangle_usage(
     else:
         change_pass_expr = pl.lit(True)
 
-    # Build a per-row `_switch_k` so a grouped switch filters each group on
-    # its OWN boundary (a scalar applies to every group); a group with no
-    # switch (null) behaves as the intensity region throughout (geq=False, lt=True).
-    has_switch_k = switch_k is not None
-    if isinstance(switch_k, dict):
-        keys = list(switch_k.keys())
-        vals = list(switch_k.values())
-        if len(grp_cols) == 1 and keys:
-            sw_df = pl.DataFrame({grp_cols[0]: keys, "_switch_k": vals})
-        elif len(grp_cols) > 1 and keys:
-            data = {
-                col: [k[i] for k in keys] for i, col in enumerate(grp_cols)
-            }
-            data["_switch_k"] = vals
-            sw_df = pl.DataFrame(data)
-        else:
-            sw_df = None  # ungrouped cannot carry a per-group dict
-        if sw_df is not None:
-            expanded = expanded.join(sw_df, on=grp_cols, how="left")
-        else:
-            has_switch_k = False
-    elif switch_k is not None:
-        expanded = expanded.with_columns(
-            pl.lit(int(switch_k)).alias("_switch_k")
-        )
-
-    if has_switch_k:
-        sw_col = pl.col("_switch_k")
-        switch_k_geq = sw_col.is_not_null() & (pl.col("duration") >= sw_col)
-        switch_k_lt = sw_col.is_null() | (pl.col("duration") < sw_col)
-    else:
-        switch_k_geq = pl.lit(False)
-        switch_k_lt = pl.lit(True)
-
+    # 7. pass_filter = recent calendar-diagonal window AND regime cohort cut.
     if has_recent and has_change:
-        if has_switch_k:
-            pass_filter = (switch_k_lt & change_pass_expr) | (
-                switch_k_geq & (pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent))
-            )
-        else:
-            pass_filter = change_pass_expr & (
-                pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent)
-            )
+        pass_filter = change_pass_expr & (
+            pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent)
+        )
     elif has_recent:
         pass_filter = pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent)
     elif has_change:
-        if has_switch_k:
-            pass_filter = switch_k_geq | change_pass_expr
-        else:
-            pass_filter = change_pass_expr
+        pass_filter = change_pass_expr
     else:
         pass_filter = pl.lit(True)
 
@@ -739,8 +569,6 @@ def _compute_triangle_usage(
 
     if cd_df is not None:
         expanded = expanded.drop("_cd_join")
-    if "_switch_k" in expanded.columns:
-        expanded = expanded.drop("_switch_k")
 
     # 8. is_fit_data, is_excluded, status.
     expanded = expanded.with_columns(
@@ -750,70 +578,6 @@ def _compute_triangle_usage(
             & pl.col("_pass_filter")
         ).alias("is_fit_data")
     )
-
-    # 8b. segment_wise mini-triangle override. Each regime segment carves
-    # out its own mini-triangle anchored on the latest cal diagonal:
-    #
-    #   duration_min(segment) = max_cal - seg_last_cohort_rank + 1
-    #
-    # Cells in an affected group but outside their segment's
-    # mini-triangle drop from `used` to `unused`. The switch (`switch_k`) does
-    # not shrink the mini-triangle here (it's a separate vline only).
-    if is_segment_wise and regime is not None:
-        bp = (
-            regime._changes_df
-            if hasattr(regime, "_changes_df")
-            else regime.changes
-        )
-        if bp is not None and bp.height > 0 and "change" in bp.columns:
-            reg_groups = getattr(regime, "groups", None)
-            reg_grp_cols = normalize_groups(reg_groups)
-            if reg_grp_cols and all(
-                g in expanded.columns for g in reg_grp_cols
-            ):
-                # per-group segments
-                duration_min_parts: list[pl.DataFrame] = []
-                for g_val, grp_changes in _iter_group_frames(
-                    bp.sort([*reg_grp_cols, "change"]), reg_groups
-                ):
-                    cd_vec = grp_changes.sort("change")["change"].to_list()
-                    grp_rows = expanded.filter(group_eq(reg_groups, g_val))
-                    if grp_rows.height == 0 or not cd_vec:
-                        continue
-                    duration_min_parts.append(
-                        _seg_duration_min(
-                            grp_rows, cd_vec, reg_grp_cols,
-                            bridge=is_bridged, seam_overlap=is_seam_overlap,
-                        )
-                    )
-                if duration_min_parts:
-                    duration_min_df = pl.concat(duration_min_parts)
-                    expanded = expanded.join(
-                        duration_min_df,
-                        on=[*reg_grp_cols, "cohort", "duration"],
-                        how="left",
-                    ).with_columns(
-                        pl.when(pl.col("_seg_duration_min").is_not_null())
-                        .then(pl.col("is_fit_data") & (pl.col("duration") >= pl.col("_seg_duration_min")))
-                        .otherwise(pl.col("is_fit_data"))
-                        .alias("is_fit_data")
-                    ).drop("_seg_duration_min")
-            else:
-                # pooled segments
-                cd_vec = bp.sort("change")["change"].to_list()
-                if cd_vec:
-                    duration_min_df = _seg_duration_min(
-                        expanded, cd_vec, [], bridge=is_bridged,
-                        seam_overlap=is_seam_overlap,
-                    )
-                    expanded = expanded.join(
-                        duration_min_df, on=["cohort", "duration"], how="left",
-                    ).with_columns(
-                        pl.when(pl.col("_seg_duration_min").is_not_null())
-                        .then(pl.col("is_fit_data") & (pl.col("duration") >= pl.col("_seg_duration_min")))
-                        .otherwise(pl.col("is_fit_data"))
-                        .alias("is_fit_data")
-                    ).drop("_seg_duration_min")
 
     expanded = expanded.with_columns(
         (
@@ -864,7 +628,6 @@ def _plot_triangle_usage(
     recent: int | None,
     regime: Any,
     holdout: int | None,
-    switch: Any,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
@@ -874,15 +637,15 @@ def _plot_triangle_usage(
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
-    regime_obj = _resolve_regime_for_usage(triangle, regime)
-    switch_k = _resolve_switch_k(switch, triangle=triangle)
+    from .regime import _resolve_regime
+
+    regime_cut = _resolve_regime(regime, triangle)
 
     usage_df = _compute_triangle_usage(
         triangle,
         recent=recent,
-        regime=regime_obj,
+        regime_cut=regime_cut,
         holdout=holdout,
-        switch_k=switch_k,
     )
 
     grp = triangle.groups
@@ -946,39 +709,10 @@ def _plot_triangle_usage(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 
-    # Per-group regime change dates for hline routing (latest_only,
-    # per-group case). Scalar case uses cd_scalar.
-    per_group_cd: dict | None = None
-    cd_scalar: Any = None
-    is_segment_wise = (
-        regime_obj is not None
-        and getattr(regime_obj, "treatment", None)
-        in ("segment_borrowed", "segment_bridged", "segment_bridged_borrowed")
-    )
-    if regime_obj is not None and not is_segment_wise:
-        from .regime import _regime_cutoff_map
-        cm = _regime_cutoff_map(regime_obj)
-        if cm is not None:
-            gcols = normalize_groups(regime_obj.groups)
-            if gcols and all(g in cm.columns for g in gcols):
-                is_single = isinstance(regime_obj.groups, str)
-                per_group_cd = {
-                    (
-                        row[gcols[0]]
-                        if is_single
-                        else tuple(row[c] for c in gcols)
-                    ): row["_cutoff"]
-                    for row in cm.iter_rows(named=True)
-                }
-            else:
-                cd_scalar = cm["_cutoff"][0]
-
-    # Segment_wise hlines come from raw changes (one per change point).
-    seg_changes: list = []
-    if is_segment_wise:
-        ch = regime_obj.changes
-        if ch is not None and getattr(ch, "height", 0) > 0:
-            seg_changes = sorted(set(ch["change"].to_list()))
+    # Regime hline routing: a scalar cut draws one hline on every facet; a
+    # per-segment dict (keyed by group value) draws each facet on its own cut.
+    per_group_cd: dict | None = regime_cut if isinstance(regime_cut, dict) else None
+    cd_scalar: Any = regime_cut if isinstance(regime_cut, date) else None
 
     x_idx = {d: i for i, d in enumerate(x_levels)}
     y_idx = {lbl: i for i, lbl in enumerate(y_levels)}
@@ -1009,28 +743,7 @@ def _plot_triangle_usage(
         ax.set_yticks(range(ny))
         ax.set_yticklabels(y_levels, fontsize=8)
 
-        # Switch boundary at duration = switch. On the duration axis this is a
-        # single vertical line; on the calendar axis it is a stepped diagonal,
-        # since each cohort reaches the switch at its own calendar period. A
-        # grouped switch draws each facet on its OWN group switch.
-        facet_switch = (
-            switch_k.get(group_value) if isinstance(switch_k, dict)
-            else switch_k
-        )
-        if facet_switch is not None:
-            if x_axis == "calendar":
-                _draw_switch_staircase(
-                    ax, facet_switch, step, cohort_values_desc, x_levels
-                )
-            else:
-                ax.axvline(
-                    x_idx_get(x_idx, facet_switch) - 0.5
-                    if facet_switch in x_idx
-                    else facet_switch - 1.5,
-                    linestyle="--", color="black", linewidth=0.6,
-                )
-
-        # Regime hline.
+        # Regime hline: the cohort cut between dropped (older) and kept cohorts.
         if per_group_cd is not None and group_value is not None:
             cd_g = per_group_cd.get(group_value)
             if cd_g is not None:
@@ -1047,14 +760,6 @@ def _plot_triangle_usage(
                     hidx + 0.5,
                     linestyle="--", color="black", linewidth=0.6,
                 )
-        elif is_segment_wise:
-            for ch_val in seg_changes:
-                hidx = _first_post_change_idx(cohort_values_desc, ch_val)
-                if hidx is not None:
-                    ax.axhline(
-                        hidx + 0.5,
-                        linestyle="--", color="black", linewidth=0.6,
-                    )
 
         ax.set_xlabel("")
         ax.set_ylabel("")
@@ -1070,11 +775,7 @@ def _plot_triangle_usage(
     parts: list[str] = []
     if recent is not None:
         parts.append(f"recent={int(recent)}")
-    if is_segment_wise and seg_changes:
-        parts.append(
-            "regime=" + ",".join(str(c) for c in seg_changes)
-        )
-    elif cd_scalar is not None:
+    if cd_scalar is not None:
         parts.append(f"regime={cd_scalar}")
     elif per_group_cd is not None:
         unique_cd = sorted({str(v) for v in per_group_cd.values() if v is not None})
@@ -1086,19 +787,6 @@ def _plot_triangle_usage(
         f"Data usage ({', '.join(parts)})" if parts else "Data usage (full)"
     )
     fig.suptitle(title_txt, fontsize=12, fontweight="bold")
-
-    if switch_k:
-        if isinstance(switch_k, dict):
-            sw_txt = "switch per group: " + ", ".join(
-                f"{k}={v}" for k, v in switch_k.items()
-            )
-        else:
-            sw_txt = f"switch = {switch_k}"
-        fig.text(
-            0.5, 0.925,
-            f"hybrid mode ({sw_txt})",
-            ha="center", va="top", fontsize=9, style="italic",
-        )
 
     fig.supxlabel(x_axis_label, fontsize=10)
     fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
@@ -1118,58 +806,6 @@ def _plot_triangle_usage(
     )
 
     return fig
-
-
-def _draw_switch_staircase(
-    ax: Any,
-    switch_k: int,
-    step: int,
-    cohort_values_desc: list,
-    x_levels: list,
-) -> None:
-    """Draw the duration = ``switch_k`` boundary on a calendar x-axis.
-
-    On the calendar axis each cohort reaches ``duration = switch_k`` at its own
-    calendar period (``cohort + (switch_k - 1)`` at the grain), so the
-    boundary is a stepped diagonal rather than a single vertical line.
-    Rows run newest-cohort-first (``yi = 0`` at the top), so the step
-    descends to the left as cohorts get older.
-    """
-    months = (switch_k - 1) * step
-    boundaries = (
-        pl.DataFrame({"c": cohort_values_desc})
-        .with_columns(pl.col("c").dt.offset_by(f"{months}mo").alias("b"))["b"]
-        .to_list()
-    )
-    prev_bx: float | None = None
-    for yi, b in enumerate(boundaries):
-        bx = bisect.bisect_left(x_levels, b) - 0.5
-        ax.plot(
-            [bx, bx], [yi - 0.5, yi + 0.5],
-            linestyle="--", color="black", linewidth=0.6,
-        )
-        if prev_bx is not None:
-            ax.plot(
-                [prev_bx, bx], [yi - 0.5, yi - 0.5],
-                linestyle="--", color="black", linewidth=0.6,
-            )
-        prev_bx = bx
-
-
-def x_idx_get(x_idx: dict, key: int) -> int:
-    """Lookup with fall-back for off-grid switch values (past max duration or
-    before min duration). The fallback positions the vline just past the
-    boundary so it still reads as an overlay."""
-    if key in x_idx:
-        return x_idx[key]
-    idxs = list(x_idx.values())
-    if not idxs:
-        return key
-    if key > max(x_idx.keys()):
-        return max(idxs) + 1
-    if key < min(x_idx.keys()):
-        return min(idxs) - 1
-    return key
 
 
 def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,

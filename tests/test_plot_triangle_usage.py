@@ -2,9 +2,10 @@
 
 ggplot <-> matplotlib bit-parity is intentionally out of scope. These
 tests assert that the categorical-status figure renders for the
-documented filter combinations (recent / regime / holdout / switch),
-the legend carries all four states, and the cell classifier produces
-the expected counts for a controlled input.
+documented filter combinations (recent / regime / holdout), the legend
+carries all four states, and the cell classifier produces the expected
+counts for a controlled input. The usage view mirrors the live fit: a
+regime is a plain per-segment cohort cut (no mini-triangle wall).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import pytest
 
 import lossratio as lr
 from lossratio._triangle_vis import _compute_triangle_usage
+from lossratio.regime import _resolve_regime
 
 
 @pytest.fixture
@@ -75,21 +77,10 @@ def test_renders_regime_only(tri_with_groups):
         _close(fig)
 
 
-def test_renders_switch_scalar(tri_with_groups):
-    r = tri_with_groups.detect_regime()
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, switch=6)
-    try:
-        # subtitle text added as fig.text(...) -- search all texts
-        texts = [t.get_text() for t in fig.texts]
-        assert any("switch = 6" in s for s in texts)
-    finally:
-        _close(fig)
-
-
-def test_renders_full_hybrid(tri_with_groups):
+def test_renders_full_filters(tri_with_groups):
     r = tri_with_groups.detect_regime()
     fig = tri_with_groups.plot_triangle(
-        kind="usage", recent=18, regime=r, holdout=6, switch=6
+        kind="usage", recent=18, regime=r, holdout=6
     )
     try:
         title = fig._suptitle.get_text()
@@ -124,20 +115,8 @@ def test_legend_present_with_four_states(tri_with_groups):
 
 
 def test_regime_auto_renders(tri_with_groups):
-    # `regime='auto'` runs detect_regime inline. If detection raises
-    # internally (degenerate triangle), the resolver returns None and the
-    # view still renders without a regime overlay.
+    # `regime='auto'` runs detect_regime inline and resolves to the cohort cut.
     fig = tri_with_groups.plot_triangle(kind="usage", regime="auto")
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
-
-
-def test_switch_callable_renders(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(
-        kind="usage", switch=lambda t: 6
-    )
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -163,11 +142,6 @@ def test_negative_recent_rejected(tri_with_groups):
 def test_negative_holdout_rejected(tri_with_groups):
     with pytest.raises(ValueError, match="holdout"):
         tri_with_groups.plot_triangle(kind="usage", holdout=0)
-
-
-def test_invalid_switch_rejected(tri_with_groups):
-    with pytest.raises(ValueError, match="switch"):
-        tri_with_groups.plot_triangle(kind="usage", switch=-1)
 
 
 # --- Classifier unit tests ------------------------------------------
@@ -208,32 +182,34 @@ def test_classifier_status_levels_complete(tri_with_groups):
     assert seen.issubset({"unused", "used", "holdout", "future"})
 
 
-# --- segment bridged-band mini-triangle filter -------------------------
+# --- Regime cohort cut (live model) ----------------------------------
 
 
-def test_segment_bridged_filter_affects_only_changed_groups(tri_with_groups):
-    """Mini-triangle only carves out cells in groups listed in `regime.changes`.
-    Other groups stay fully "used"."""
-    reg = tri_with_groups.detect_regime(window=12, treatment="segment_bridged")
+def test_regime_cut_affects_only_changed_groups(tri_with_groups):
+    """A regime is a per-segment cohort cut: groups with a detected change
+    drop their pre-change cohorts to "unused"; groups with no change stay
+    fully "used"."""
+    reg = tri_with_groups.detect_regime(window=12)
     changed_groups = set(reg.changes["coverage"].unique().to_list())
-    usage = _compute_triangle_usage(tri_with_groups, regime=reg)
+    if not changed_groups:
+        pytest.skip("no change points detected for this fixture")
+    cut = _resolve_regime(reg, tri_with_groups)
+    usage = _compute_triangle_usage(tri_with_groups, regime_cut=cut)
     for g, sub in usage.group_by("coverage"):
         gv = g[0]
         statuses = set(sub["status"].unique().to_list())
         if gv in changed_groups:
-            # affected group: some cells should be `unused`
             assert "unused" in statuses, (
-                f"expected `unused` cells in group {gv} under segment_bridged"
+                f"expected `unused` (dropped) cells in changed group {gv}"
             )
         else:
-            # untouched group: no `unused` (all observed cells are `used`)
             assert "unused" not in statuses, (
                 f"unexpected `unused` cells in untouched group {gv}"
             )
 
 
-def test_segment_bridged_render_with_changes(tri_with_groups):
-    reg = tri_with_groups.detect_regime(window=12, treatment="segment_bridged")
+def test_regime_cut_renders(tri_with_groups):
+    reg = tri_with_groups.detect_regime(window=12)
     fig = tri_with_groups.plot_triangle(kind="usage", regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
@@ -241,34 +217,28 @@ def test_segment_bridged_render_with_changes(tri_with_groups):
         _close(fig)
 
 
-def test_segment_bridged_borrowed_render_with_changes(tri_with_groups):
-    """Per-segment treatment (keeps segment_id) renders the same usage view."""
-    reg = tri_with_groups.detect_regime(
-        window=12, treatment="segment_bridged_borrowed"
-    )
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=reg)
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
-
-
-def test_segment_bridged_pooled_render(tri_single):
-    """Pooled (single-group) Triangle + segment_bridged regime."""
-    reg = tri_single.detect_regime(window=12, treatment="segment_bridged")
-    # Skip if no changes detected -- depends on the synthetic data.
+def test_regime_cut_pooled_render(tri_single):
+    """Pooled (single-group) Triangle + regime cohort cut."""
+    reg = tri_single.detect_regime(window=12)
     if reg.changes.height == 0:
         pytest.skip("no change points detected for this fixture")
     fig = tri_single.plot_triangle(kind="usage", regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
-        usage = _compute_triangle_usage(tri_single, regime=reg)
+        cut = _resolve_regime(reg, tri_single)
+        usage = _compute_triangle_usage(tri_single, regime_cut=cut)
         seen = set(usage["status"].unique().to_list())
-        # mini-triangle should mark some cells unused
         assert "unused" in seen
     finally:
         _close(fig)
 
+
+def test_regime_cut_scalar_date(tri_single):
+    """A bare date cut (no Regime object) is accepted and drops older cohorts."""
+    from datetime import date
+
+    usage = _compute_triangle_usage(tri_single, regime_cut=date(2024, 7, 1))
+    assert "unused" in set(usage["status"].unique().to_list())
 
 
 # --- Public usage() data accessor -----------------------------------
@@ -276,20 +246,14 @@ def test_segment_bridged_pooled_render(tri_single):
 
 def test_usage_data_matches_plot_compute(tri_with_groups):
     """``usage()`` returns the same grid the plot renders (one source)."""
-    from lossratio._triangle_vis import (
-        _resolve_switch_k,
-        _resolve_regime_for_usage,
-    )
-
     out = tri_with_groups.usage(holdout=6)
     assert out.columns == ["coverage", "cohort", "duration", "status"]
     assert set(out["status"].unique().to_list()) <= {
         "used", "unused", "holdout", "future",
     }
-    ro = _resolve_regime_for_usage(tri_with_groups, None)
-    mk = _resolve_switch_k(None, triangle=tri_with_groups)
+    cut = _resolve_regime(None, tri_with_groups)
     direct = _compute_triangle_usage(
-        tri_with_groups, recent=None, regime=ro, holdout=6, switch_k=mk
+        tri_with_groups, recent=None, regime_cut=cut, holdout=6
     )
     from polars.testing import assert_frame_equal
 
@@ -304,7 +268,7 @@ def test_usage_holdout_marks_holdout_cells(tri_with_groups):
 
 
 def test_usage_regime_marks_unused(tri_with_groups):
-    reg = tri_with_groups.detect_regime(window=12, treatment="segment_bridged")
+    reg = tri_with_groups.detect_regime(window=12)
     if reg.changes.height == 0:
         pytest.skip("no change points detected for this fixture")
     out = tri_with_groups.usage(regime=reg)
@@ -365,28 +329,3 @@ def test_usage_deterministic_order_multi_column_groups():
 def test_usage_rejects_bad_recent(tri_with_groups, bad):
     with pytest.raises(ValueError, match="recent"):
         tri_with_groups.usage(recent=bad)
-
-
-def test_seg_duration_min_seam_overlap_recovers_donor_seam():
-    # finding: the usage view must pass seam_overlap=True for segment_borrowed
-    # (mirroring regime.py), dropping each donor segment's wall by ONE duration
-    # so the seam cells count as fit-used instead of unused.
-    import polars as pl
-    from datetime import date
-
-    from lossratio._triangle_vis import _seg_duration_min
-
-    rows = pl.DataFrame({
-        "cohort": [date(2024, m, 1) for m in range(1, 9)],
-        "duration": [1] * 8,
-        "_coh_rank": list(range(1, 9)),
-        "_max_cal": [8] * 8,
-    })
-    cd_vec = [date(2024, 4, 1)]   # one change -> donor (older) + newest segment
-    no = _seg_duration_min(rows, cd_vec, [], bridge=False, seam_overlap=False)
-    yes = _seg_duration_min(rows, cd_vec, [], bridge=False, seam_overlap=True)
-    diff = (no.sort("cohort")["_seg_duration_min"]
-            - yes.sort("cohort")["_seg_duration_min"])
-    assert diff.max() == 1            # donor wall drops by exactly one
-    assert diff.min() == 0            # newest segment unchanged
-    assert (diff == 1).sum() >= 1     # at least one seam cell recovered

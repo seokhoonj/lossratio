@@ -538,7 +538,6 @@ class _FoldFit:
         *,
         recent: int | None = None,
         regime: "RegimeArg" = None,
-        switch: Any = None,
         x: str = "duration",
     ) -> Any:
         """A/E error heatmap (``kind='value'``) or cell-status
@@ -562,12 +561,11 @@ class _FoldFit:
             Facet layout.
         figsize
             Passed to ``plt.subplots``.
-        recent, regime, switch
+        recent, regime
             (``kind='usage'`` only) override values for the filter
             overlays. By default the usage view reads ``recent`` and
             ``regime`` from the estimator that drove the backtest; pass an
-            explicit value to override. (``switch`` is unused by the current
-            estimators and kept only for the overlay signature.)
+            explicit value to override.
         x
             (``kind='value'`` only) horizontal axis: ``"duration"`` (default;
             cohort x development period) or ``"calendar"`` (cohort x calendar
@@ -599,13 +597,11 @@ class _FoldFit:
         from ._triangle_vis import _plot_triangle_usage
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
-        eff_switch = switch if switch is not None else self._infer_switch()
         return _plot_triangle_usage(
             self._triangle,
             recent=eff_recent,
             regime=eff_regime,
             holdout=self.holdout,
-            switch=eff_switch,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
@@ -626,21 +622,6 @@ class _FoldFit:
         if hasattr(est, "loss_regime"):
             return getattr(est, "loss_regime")
         return getattr(est, "regime", None)
-
-    def _infer_switch(self) -> Any:
-        """Switch boundary for the usage overlay.
-
-        Reads the refit fold's ``switch_point`` if present, else the
-        estimator's configured ``switch``. The current estimators carry no
-        switch, so this yields ``None`` -- the slot is kept for the overlay
-        signature.
-        """
-        refit = getattr(self, "_refit", None)
-        if refit is not None:
-            sp = getattr(refit, "switch_point", None)
-            if sp is not None:
-                return sp
-        return getattr(self.estimator, "switch", None)
 
     def __repr__(self) -> str:
         n_cells = self._ae_err.height
@@ -1504,18 +1485,6 @@ class BacktestFit:
         if hasattr(est, "loss_regime"):
             return getattr(est, "loss_regime")
         return getattr(est, "regime", None)
-
-    def _infer_switch(self):
-        """Switch boundary for the usage overlay."""
-        if self.is_single_origin:
-            fold = self._fits.get(self.holdouts[0])
-            if fold is not None:
-                refit = getattr(fold, "_refit", None)
-                if refit is not None:
-                    sp = getattr(refit, "switch_point", None)
-                    if sp is not None:
-                        return sp
-        return getattr(self.estimator, "switch", None)
 
     def __repr__(self) -> str:
         est_name = type(self.estimator).__name__
