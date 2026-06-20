@@ -33,5 +33,3 @@ and resolve any diffs.
 - `backtest_ratio_{ed,sa}_ae_err.csv` — `backtest(target = "ratio", loss_method = ...)$ae_err`, one set per loss method.
 - `backtest_ratio_{ed,sa}_col_summary.csv` / `*_diag_summary.csv`.
 - `sigma_extrapolation.csv` — `.extrapolate_sigma_ata` outputs (8 input cases x 5 sigma methods).
-- `segment_wise_*.csv` — `dev/parity_segment_wise.R` outputs (canonical
-  SUR-only fixture, segment_wise regime treatment).

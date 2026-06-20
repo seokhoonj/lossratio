@@ -40,11 +40,6 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
-_VALID_TREATMENTS = (
-    "segment_borrowed",
-    "segment_bridged",
-    "segment_bridged_borrowed",
-)
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_intensity")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -472,7 +467,6 @@ def _grain_sweep_candidates(
     n_permutations: int,
     min_size: int,
     seed: int | None,
-    treatment: str,
     window: Any,
     window_floor: int | None,
     fdr: bool,
@@ -510,7 +504,6 @@ def _grain_sweep_candidates(
                 n_permutations=n_permutations,
                 min_size=min_size,
                 seed=seed,
-                treatment=treatment,
                 window_floor=window_floor,
                 fdr=fdr,
                 edge_scan=edge_scan,
@@ -1385,7 +1378,6 @@ class Regime:
         n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "segment_borrowed",
         window_floor: int | None = None,
         fdr: bool = False,
         edge_scan: bool = False,
@@ -1396,10 +1388,6 @@ class Regime:
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
-            )
-        if treatment not in _VALID_TREATMENTS:
-            raise ValueError(
-                f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
             )
 
         # `premium_intensity` is an alias of `premium_ata` (constant offset of 1
@@ -1622,7 +1610,6 @@ class Regime:
                 n_permutations=n_permutations,
                 min_size=min_size,
                 seed=seed,
-                treatment=treatment,
                 window=window,
                 window_floor=window_floor,
                 fdr=fdr,
@@ -1702,7 +1689,6 @@ class Regime:
         self.change_points = change_points
         self.n_regimes = n_regimes_total
         self.dropped = dropped
-        self.treatment = treatment
         return self
 
     @classmethod
@@ -1710,7 +1696,6 @@ class Regime:
         cls,
         *,
         changes_df: pl.DataFrame,
-        treatment: str,
         groups: str | list[str] | None,
     ) -> "Regime":
         """Construct a Regime by hand (no auto-detection).
@@ -1737,7 +1722,6 @@ class Regime:
         self.change_points = changes_df["change"].to_list()
         self.n_regimes = 0
         self.dropped = []
-        self.treatment = treatment
         return self
 
     @classmethod
@@ -1746,7 +1730,6 @@ class Regime:
         change: Any,
         *,
         groups: Mapping[str, Sequence[Any]] | None = None,
-        treatment: str = "segment_borrowed",
     ) -> "Regime":
         """Build a :class:`Regime` from explicit, user-supplied change points.
 
@@ -1766,21 +1749,6 @@ class Regime:
             Optional mapping ``{column_name: [values]}`` of group columns
             aligned 1:1 with ``change``. Required when the Triangle is
             grouped and different groups carry different change points.
-        treatment
-            Regime application mode.
-            ``"segment_borrowed"`` (default) masks each segment's raw
-            mini-triangle wall plus a ONE-DEV seam overlap (the donor's wall
-            drops one duration to cover the boundary link the newer segment
-            borrows -- closing the one-duration gap that would otherwise truncate
-            the newer segment), estimates factors per segment, and borrows
-            the late-duration factors a young segment cannot reach from an older
-            donor -- so the seam carries no implicitly-pooled pre-change
-            cells. The two ``*_bridged*`` modes instead widen each wall with
-            a calendar-diagonal bridge to the next segment's first-cohort
-            midpoint duration: ``"segment_bridged"`` pools the whole bridged band
-            into a single factor set (development pattern shared across
-            regimes); ``"segment_bridged_borrowed"`` estimates per segment
-            and borrows over the bridged band.
 
         Returns
         -------
@@ -1796,11 +1764,6 @@ class Regime:
         ...     groups={"coverage": ["SURGERY", "CI"]},
         ... )
         """
-        if treatment not in _VALID_TREATMENTS:
-            raise ValueError(
-                f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
-            )
-
         if isinstance(change, (str, date, datetime)) or not isinstance(
             change, Sequence
         ):
@@ -1837,7 +1800,6 @@ class Regime:
         group_spec = collapse_groups(list(groups.keys())) if groups else None
         return cls._manual(
             changes_df=changes_df,
-            treatment=treatment,
             groups=group_spec,
         )
 
@@ -1853,7 +1815,6 @@ class Regime:
         n_permutations: int = 999,
         min_size: int = 3,
         seed: int | None = None,
-        treatment: str = "segment_borrowed",
         window_floor: int | None = None,
         fdr: bool = False,
         edge_scan: bool = False,
@@ -1885,7 +1846,6 @@ class Regime:
                 edge_scan=edge_scan,
                 edge_threshold=edge_threshold,
             )
-            regime.treatment = treatment
             return regime
 
         return _spec
@@ -2115,7 +2075,6 @@ class Regime:
             )
         return Regime._manual(
             changes_df=acc,
-            treatment=getattr(self, "treatment", "segment_borrowed"),
             groups=self.groups,
         )
 
@@ -2136,7 +2095,7 @@ class Regime:
           discrepancy) and ``calendar_score`` (Axis 2, the t-statistic of the
           duration-detrended calendar-diagonal residual slope).
 
-        A transparent guard for the borrow treatments: borrow where the
+        A transparent guard for the borrow path: borrow where the
         verdict is ``"level"``; treat ``"shape"`` / ``"calendar"`` with
         caution.
         """
@@ -2269,54 +2228,7 @@ def _coerce_to_date(value: Any) -> date:
 
 
 # ---------------------------------------------------------------------------
-# 4-type dispatch resolver (used by fit / backtest)
-# ---------------------------------------------------------------------------
-
-
-def _resolve_regime(
-    regime_input: Any,
-    triangle: "Triangle",
-) -> "Regime | None":
-    """Normalise a regime argument to ``Regime | None``.
-
-    Accepts the four shapes the public API offers:
-
-    - ``None``: no regime filter (returned as-is).
-    - ``"auto"``: run :meth:`Triangle.detect_regime` on ``triangle``.
-    - :class:`Regime`: returned as-is (already eagerly built).
-    - callable ``f(triangle) -> Regime``: invoked on ``triangle``.
-
-    Used by ``Ratio`` / ``Loss`` / ``Premium`` / ``Backtest`` to flatten
-    user-supplied regime args before the cohort filter runs. When the
-    triangle is a masked backtest fold, the callable / "auto" paths
-    re-detect on the masked data -- the leakage-safe contract.
-    """
-    if regime_input is None:
-        return None
-    if isinstance(regime_input, Regime):
-        return regime_input
-    if isinstance(regime_input, str):
-        if regime_input == "auto":
-            return triangle.detect_regime()
-        raise ValueError(
-            f"regime string sentinel must be 'auto'; got {regime_input!r}"
-        )
-    if callable(regime_input):
-        result = regime_input(triangle)
-        if not isinstance(result, Regime):
-            raise TypeError(
-                f"regime spec callable must return Regime, got "
-                f"{type(result).__name__}"
-            )
-        return result
-    raise TypeError(
-        f"regime must be None / 'auto' / Regime / Callable, got "
-        f"{type(regime_input).__name__}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Cohort filter + segment annotation
+# Cohort filter + regime resolver (used by fit / backtest / usage)
 # ---------------------------------------------------------------------------
 
 
@@ -2385,308 +2297,3 @@ def _resolve_regime(regime, triangle):
         key = row[gcols[0]] if len(gcols) == 1 else tuple(row[g] for g in gcols)
         out[key] = row["_cutoff"]
     return out
-
-
-def _segment_id_expr(
-    regime: "Regime",
-    cohort_col: str = "cohort",
-) -> pl.Expr | None:
-    """Build a polars expression that assigns 1-based segment ids to
-    rows based on ``cohort`` and ``regime._changes_df``.
-
-    Buckets each cohort into the interval defined by the sorted change
-    points: a row earlier than the first change is segment 1, between the
-    k-th and (k+1)-th change is segment k+1, on or after the K-th change
-    is segment K+1.
-
-    For multi-group regimes the expression is built per-group via
-    nested ``when`` chains. Returns ``None`` when the regime has no
-    changes (caller should default everything to segment 1).
-    """
-    if not regime.change_points:
-        return None
-
-    changes = regime._changes_df
-    gcols = normalize_groups(regime.groups)
-    is_multi = bool(gcols) and all(g in changes.columns for g in gcols)
-
-    def _single_group_expr(sorted_changes: list[Any]) -> pl.Expr:
-        # cohort >= ch_K  -> K+1
-        # ch_{k-1} <= cohort < ch_k -> k
-        # cohort < ch_1 -> 1
-        expr = pl.lit(1, dtype=pl.Int64)
-        for i, ch in enumerate(sorted_changes, start=2):
-            expr = (
-                pl.when(pl.col(cohort_col) >= ch).then(i).otherwise(expr)
-            )
-        return expr
-
-    if not is_multi:
-        sorted_changes = sorted(regime.change_points)
-        return _single_group_expr(sorted_changes)
-
-    # Per-group: build nested when-chain keyed by group value (scalar for
-    # a str group, tuple for a multi-column group).
-    grp = regime.groups
-    expr = pl.lit(1, dtype=pl.Int64)  # default: groups not in regime → seg 1
-    for grp_val, sub in _iter_group_frames(changes, grp):
-        sub = sub.sort("change")
-        sorted_changes = sub["change"].to_list()
-        grp_expr = _single_group_expr(sorted_changes)
-        expr = pl.when(group_eq(grp, grp_val)).then(grp_expr).otherwise(expr)
-    return expr
-
-
-def _compute_segment_mini_tri_bounds(
-    coh_ranks: np.ndarray,
-    seg_ids: np.ndarray,
-    max_cal: int,
-    bridge: bool = False,
-    seam_overlap: bool = False,
-) -> np.ndarray:
-    """Per-cell effective ``duration_min`` for the segment mini-triangle band.
-
-    For each cell, returns the minimum duration that keeps it inside its
-    segment's fit mask. The mask is the union of two regions:
-
-    1. The segment's natural mini-triangle:
-       ``duration >= max_cal - seg_last + 1``.
-    2. A *bridge* extension along the calendar diagonal anchored at the
-       *next* (newer) segment's first-cohort midpoint duration. The bridge
-       lets each older segment connect to its successor, filling the
-       late-duration cells of its early cohorts that would otherwise be cut
-       by the natural mini-triangle wall.
-
-    Bridge construction (segments ordered by ``seg_id``, lower id =
-    older cohorts). For each segment ``s`` except the newest (no
-    successor), find segment ``s+1``'s
-
-    * ``first_rank`` -- cohort rank of ``s+1``'s first cohort,
-    * ``seg_duration_min`` -- ``max_cal - last_rank(s+1) + 1``,
-    * ``first_cohort_duration_max`` -- ``max_cal - first_rank(s+1) + 1``,
-    * ``mid_duration`` -- ``(seg_duration_min + first_cohort_duration_max) // 2``.
-
-    The bridge diagonal for segment ``s`` is at
-    ``ext_cal_idx(s) = first_rank(s+1) + mid_duration(s+1) - 2`` (the cell
-    one cohort earlier than ``s+1``'s first cohort, at the same duration as
-    that first cohort's mini-triangle midpoint). Each cell in segment
-    ``s`` then takes
-    ``effective_duration_min =
-        min(seg_duration_min(s), ext_cal_idx(s) - coh_rank + 1)``.
-    For the newest segment ``ext_cal_idx`` is undefined and only the
-    natural wall applies.
-
-    Bridges do not cascade: segment ``s`` is bridged only from segment
-    ``s+1``, not from ``s+2``. The bridge only ever *widens* a
-    segment's mini-triangle.
-
-    Parameters
-    ----------
-    coh_ranks
-        Per-cell cohort rank within the group (1-based, dense).
-    seg_ids
-        Per-cell segment id (1 = oldest).
-    max_cal
-        Maximum calendar index in the group.
-    bridge
-        When ``True``, widen each older segment's mini-triangle with
-        the calendar-diagonal bridge anchored at the next segment's
-        first-cohort midpoint duration. When ``False`` (default), return
-        the natural mini-triangle wall only -- the pure
-        natural mini-triangle wall (no boundary-gap closure); retained
-        for diagnostics and the helper unit tests. Both segment
-        treatments pass ``True``.
-
-    Returns
-    -------
-    np.ndarray
-        Integer per-cell effective ``duration_min`` for the mini-triangle
-        filter (bridged or pure). Same length as ``coh_ranks``.
-    """
-    coh_ranks = np.asarray(coh_ranks, dtype=np.int64)
-    seg_ids = np.asarray(seg_ids, dtype=np.int64)
-    if coh_ranks.size == 0:
-        return np.empty(0, dtype=np.int64)
-
-    max_cal = int(max_cal)
-    unique_segs = np.unique(seg_ids)
-    seg_first: dict[int, int] = {}
-    seg_last: dict[int, int] = {}
-    for s in unique_segs:
-        mask = seg_ids == s
-        seg_first[int(s)] = int(coh_ranks[mask].min())
-        seg_last[int(s)] = int(coh_ranks[mask].max())
-
-    seg_duration_min = {s: max_cal - seg_last[s] + 1 for s in seg_first}
-    natural = np.fromiter(
-        (seg_duration_min[int(s)] for s in seg_ids),
-        dtype=np.int64,
-        count=seg_ids.size,
-    )
-
-    if not bridge:
-        if seam_overlap:
-            # One-duration seam overlap (segment_borrowed): each non-newest
-            # (donor) segment's wall drops by exactly one duration so it covers
-            # the boundary link shared with the next (newer) segment --
-            # closing the "one-duration gap" that otherwise leaves the seam link
-            # (duration M -> M+1) with no donor, which truncates the newer
-            # segment's projection there. The seam is always a single link,
-            # so one duration suffices; far cheaper than the full midpoint bridge.
-            # The newest segment keeps its natural wall.
-            newest = int(unique_segs.max())
-            out = natural.copy()
-            for i in range(seg_ids.size):
-                if int(seg_ids[i]) != newest:
-                    out[i] = max(1, int(natural[i]) - 1)
-            return out
-        return natural
-
-    first_cohort_duration_max = {s: max_cal - seg_first[s] + 1 for s in seg_first}
-    mid_duration = {
-        s: (seg_duration_min[s] + first_cohort_duration_max[s]) // 2
-        for s in seg_first
-    }
-
-    seg_sorted = sorted(seg_first)
-    ext_cal_idx: dict[int, int | None] = {s: None for s in seg_sorted}
-    for i in range(len(seg_sorted) - 1):
-        s_curr = seg_sorted[i]
-        s_next = seg_sorted[i + 1]
-        ext_cal_idx[s_curr] = seg_first[s_next] + mid_duration[s_next] - 2
-
-    out = np.empty_like(natural)
-    for i in range(seg_ids.size):
-        s = int(seg_ids[i])
-        ext = ext_cal_idx[s]
-        if ext is None:
-            out[i] = natural[i]
-        else:
-            out[i] = min(int(natural[i]), int(ext) - int(coh_ranks[i]) + 1)
-    return out
-
-
-def _apply_mini_triangle_filter(
-    df: pl.DataFrame,
-    regime: "Regime",
-) -> pl.DataFrame:
-    """Mask the triangle to the bridged development band.
-
-    For each (group, segment) cell, keeps rows where
-    ``duration >= effective_duration_min``, where the bound is the per-segment
-    mini-triangle wall (``max_cal - seg_last + 1``) widened by the
-    calendar-diagonal bridge to the next segment's first-cohort midpoint
-    duration (see :func:`_compute_segment_mini_tri_bounds`). Both segment
-    treatments use the bridged band.
-
-    Under ``treatment="segment_bridged"`` the ``segment_id`` tag is
-    dropped after masking so downstream estimation pools the whole band
-    into one factor set. Under ``treatment="segment_bridged_borrowed"``
-    the tag is kept for per-segment estimation.
-    """
-    if df.height == 0:
-        return df
-    # `segment_borrowed` uses each segment's raw wall plus a ONE-DEV seam
-    # overlap (the donor's wall drops one duration so it covers the boundary link
-    # the newer segment borrows) -- not the full midpoint bridge the two
-    # `*_bridged*` treatments use.
-    bridge = regime.treatment != "segment_borrowed"
-    seam_overlap = regime.treatment == "segment_borrowed"
-    gcols = normalize_groups(regime.groups)
-    grouped = bool(gcols) and all(g in df.columns for g in gcols)
-    rank_keys = gcols if grouped else []
-
-    df = df.with_columns(
-        pl.col("cohort")
-        .rank(method="dense")
-        .over(rank_keys or pl.lit(1))
-        .cast(pl.Int64)
-        .alias("_coh_rank"),
-    )
-    df = df.with_columns(
-        (pl.col("_coh_rank") + pl.col("duration") - 1).alias("_cal_idx"),
-    )
-    df = df.with_columns(
-        pl.col("_cal_idx").max().over(rank_keys or pl.lit(1)).alias("_max_cal"),
-    )
-
-    # Bridge requires cross-segment access (next-segment anchor) that
-    # is awkward in pure polars `over`; compute per-group via numpy. The
-    # natural wall flows through the same helper.
-    if grouped:
-        parts: list[pl.DataFrame] = []
-        for _, sub in df.group_by(gcols, maintain_order=True):
-            bounds = _compute_segment_mini_tri_bounds(
-                coh_ranks=sub["_coh_rank"].to_numpy(),
-                seg_ids=sub["segment_id"].to_numpy(),
-                max_cal=int(sub["_max_cal"][0]),
-                bridge=bridge,
-                seam_overlap=seam_overlap,
-            )
-            parts.append(sub.with_columns(pl.Series("_duration_min", bounds)))
-        df = pl.concat(parts, how="vertical_relaxed")
-    else:
-        bounds = _compute_segment_mini_tri_bounds(
-            coh_ranks=df["_coh_rank"].to_numpy(),
-            seg_ids=df["segment_id"].to_numpy(),
-            max_cal=int(df["_max_cal"][0]),
-            bridge=bridge,
-            seam_overlap=seam_overlap,
-        )
-        df = df.with_columns(pl.Series("_duration_min", bounds))
-
-    df = df.filter(pl.col("duration") >= pl.col("_duration_min")).drop(
-        "_coh_rank", "_cal_idx", "_max_cal", "_duration_min"
-    )
-    # segment_bridged pools the masked band -- drop the per-segment tag
-    # so downstream estimation does not group by segment_id.
-    if regime.treatment == "segment_bridged" and "segment_id" in df.columns:
-        df = df.drop("segment_id")
-    return df
-
-
-def _apply_regime_filter(
-    triangle: "Triangle",
-    regime: "Regime | None",
-) -> "Triangle":
-    """Mask ``triangle`` to the bridged development band for a regime.
-
-    Both treatments mask the triangle to the bridged band -- each
-    segment's mini-triangle wall (``duration >= max_cal - seg_last + 1``)
-    widened by a calendar-diagonal bridge to the next segment's
-    first-cohort midpoint duration. The bridge closes the factor gaps at the
-    segment boundaries so a continuous factor run covers every duration and
-    every cohort projects to full development.
-
-    - ``"segment_borrowed"`` (default): masks each segment's raw wall plus a
-      one-duration seam overlap (no full bridge) and keeps ``segment_id``, so the
-      fit dispatcher routes to per-segment estimation + donor borrow over the
-      band.
-
-    - ``"segment_bridged"``: the bridged masked band drops its
-      ``segment_id`` tag so downstream estimation pools the band into a
-      single factor set. This function returns the pooled masked
-      triangle directly.
-
-    - ``"segment_bridged_borrowed"``: keeps ``segment_id`` so the fit
-      dispatcher routes to per-segment estimation with a late-duration borrow,
-      operating on this full-range masked triangle (it does not split
-      into per-segment mini-triangles). Premium-side fits without a
-      borrow path likewise receive the masked triangle carrying
-      ``segment_id``.
-
-    When ``regime`` is ``None`` or has no change points, the input
-    triangle is returned unchanged.
-    """
-    if regime is None or not regime.change_points:
-        return triangle
-
-    from .triangle import Triangle
-
-    df = triangle.to_polars()
-    seg_expr = _segment_id_expr(regime)
-    if seg_expr is None:
-        return triangle
-    df = df.with_columns(seg_expr.alias("segment_id"))
-    df = _apply_mini_triangle_filter(df, regime)
-    return Triangle._from_masked(triangle, df)

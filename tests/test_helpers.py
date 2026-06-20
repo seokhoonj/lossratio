@@ -26,7 +26,6 @@ def test_regime_at_single_string_change():
     assert isinstance(r, lr.Regime)
     assert r.method == "manual"
     assert r.change_points == [date(2024, 7, 1)]
-    assert r.treatment == "segment_borrowed"  # default treatment
 
 
 def test_regime_at_accepts_date_and_datetime():
@@ -71,14 +70,7 @@ def test_regime_at_with_multi_column_groups():
     assert changes.select(["coverage", "block"]).unique().height == 2
 
 
-def test_regime_at_segment_bridged_borrowed_treatment():
-    r = lr.Regime.at(change="2024-07-01", treatment="segment_bridged_borrowed")
-    assert r.treatment == "segment_bridged_borrowed"
-
-
 def test_regime_at_validation_errors():
-    with pytest.raises(ValueError, match="treatment must be one of"):
-        lr.Regime.at(change="2024-07-01", treatment="bogus")
     with pytest.raises(ValueError, match="length"):
         lr.Regime.at(change=[])
     with pytest.raises(ValueError, match="equal length"):
@@ -107,13 +99,6 @@ def test_regime_spec_invocation_yields_regime():
     assert isinstance(r, lr.Regime)
     assert r.method == "e_divisive"
     assert r.window == 12
-
-
-def test_regime_spec_propagates_treatment():
-    tri = _sur_triangle()
-    spec = lr.Regime.detect(window=12, treatment="segment_bridged_borrowed")
-    r = spec(tri)
-    assert r.treatment == "segment_bridged_borrowed"
 
 
 def test_regime_spec_forwards_method():
