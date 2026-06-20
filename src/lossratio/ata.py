@@ -267,6 +267,7 @@ class ATA:
         _validate_recent(recent)
         self = cls.__new__(cls)
         self._link = link
+        self._recent = recent
         self._output_type = link._output_type
         self._groups = link._groups
         self._cohort = link._cohort
@@ -323,6 +324,7 @@ class ATA:
         ``nrow``, ``ncol``, ``figsize``.
         """
         from ._link_vis import plot_link
+        kwargs.setdefault("recent", self._recent)
         return plot_link(self._link, model="ata", **kwargs)
 
     def to_polars(self) -> pl.DataFrame:

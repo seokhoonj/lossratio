@@ -61,6 +61,7 @@ def _style_ggplot(ax: Any) -> None:
 def plot_link(
     link: Link,
     model: str | None = None,
+    recent: int | None = None,
     **kwargs: Any,
 ) -> Any:
     """``Link.plot(model=...)`` dispatcher.
@@ -81,8 +82,30 @@ def plot_link(
             "`model='intensity'` requires a Link built with `exposure`."
         )
     if model == "ata":
-        return _plot_link_ata(link, **kwargs)
-    return _plot_link_intensity(link, **kwargs)
+        return _plot_link_ata(link, recent=recent, **kwargs)
+    return _plot_link_intensity(link, recent=recent, **kwargs)
+
+
+def _filter_cells_recent(
+    cells: pl.DataFrame, groups: "str | list[str] | None", recent: int | None
+) -> pl.DataFrame:
+    """Restrict link cells to the recent calendar-diagonal wedge, per group.
+
+    Mirrors :func:`lossratio._recent.recent_link_mask` at the cell level so a
+    diagnostic built with ``recent=N`` plots the same recent window it
+    summarised: ``cal_idx = (0-based per-group cohort rank) + duration_from``,
+    keep ``cal_idx > max(cal_idx) - recent`` within each group.
+    """
+    if recent is None:
+        return cells
+    gcols = normalize_groups(groups)
+    rank = pl.col("cohort").rank("dense")
+    rank = rank.over(gcols) if gcols else rank
+    cal = rank.cast(pl.Int64) - 1 + pl.col("duration_from")
+    c = cells.with_columns(cal.alias("_cal"))
+    mx = pl.col("_cal").max()
+    mx = mx.over(gcols) if gcols else mx
+    return c.filter(pl.col("_cal") > mx - recent).drop("_cal")
 
 
 def _plot_link_ata(
@@ -96,6 +119,7 @@ def _plot_link_ata(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
+    recent: int | None = None,
 ) -> Any:
     """ATA-mode link diagnostic plot -- 5 kind variants."""
     if kind not in _VALID_ATA_TYPES:
@@ -104,7 +128,7 @@ def _plot_link_ata(
         )
 
     groups = link._groups
-    cells = link._df
+    cells = _filter_cells_recent(link._df, groups, recent)
     summary = _ata_summary(cells, groups)
 
     # Factor-stability overlay (per-group duration_from where CV / RSE drop
@@ -179,6 +203,7 @@ def _plot_link_intensity(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
+    recent: int | None = None,
 ) -> Any:
     """Intensity-mode link diagnostic plot -- 3 kind variants."""
     if kind not in _VALID_ED_TYPES:
@@ -191,7 +216,7 @@ def _plot_link_intensity(
         )
 
     groups = link._groups
-    cells = link._df
+    cells = _filter_cells_recent(link._df, groups, recent)
     summary = _intensity_summary(cells, groups)
 
     if kind == "summary":

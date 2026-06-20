@@ -196,3 +196,37 @@ def test_overlay_guards_nonpositive_y_max():
     assert _blue_shapes(fig) == []          # no degenerate fill
     assert _stability_vlines(fig)           # marker line still drawn
     plt.close(fig)
+
+
+def test_ata_intensity_plot_honor_recent():
+    # finding: ATA/Intensity .plot delegated to the raw Link and ignored the
+    # diagnostic's `recent`. The plot now filters cells to the same recent wedge,
+    # so the summarised cv matches the matrix-based ATA(recent=N) diagnostic
+    # exactly, and differs from the unfiltered plot.
+    import polars as pl
+
+    import lossratio as lr
+    from lossratio._link_vis import _ata_summary, _filter_cells_recent
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    link = tri.link(target="loss", exposure="premium")
+
+    dfa = link.ata(recent=12).to_polars().select(["coverage", "duration", "cv"])
+    plot_r = (_ata_summary(_filter_cells_recent(link._df, "coverage", 12), "coverage")
+              .rename({"duration_from": "duration", "cv": "cvp"})
+              .select(["coverage", "duration", "cvp"]))
+    j = dfa.join(plot_r, on=["coverage", "duration"], how="inner").drop_nulls()
+    assert j.height > 0
+    assert (j["cv"] - j["cvp"]).abs().max() < 1e-12          # exact: recent honored
+
+    plot_all = (_ata_summary(link._df, "coverage")
+                .rename({"duration_from": "duration", "cv": "cva"})
+                .select(["coverage", "duration", "cva"]))
+    m = plot_r.join(plot_all, on=["coverage", "duration"], how="inner").drop_nulls()
+    assert (m["cvp"] - m["cva"]).abs().max() > 0             # differs from unfiltered
+
+    # both estimators still build a figure with recent set
+    import matplotlib.pyplot as plt
+    link.ata(recent=12).plot(kind="cv")
+    link.intensity(recent=12).plot(kind="summary")
+    plt.close("all")
