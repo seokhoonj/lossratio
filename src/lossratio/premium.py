@@ -84,10 +84,11 @@ class _PremiumEstimatorBase:
         validate_recent(self.recent)
         if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
             from .regime import Regime
-            if not isinstance(self.regime, Regime):
+            if not isinstance(self.regime, Regime) and not callable(self.regime):
                 raise TypeError(
                     "regime must be None, a date, a dict[segment -> date], a "
-                    f"Regime object, or 'auto'; got {type(self.regime).__name__}"
+                    "Regime object, a callable (triangle -> Regime), or 'auto'; "
+                    f"got {type(self.regime).__name__}"
                 )
         if isinstance(self.regime, str) and self.regime != "auto":
             raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
