@@ -356,6 +356,10 @@ def bootstrap_segment_additive(
     dur1 = (kk + 1).tolist()                              # 1-based from-duration
 
     usable = np.isfinite(mu) & (mu > 0.0)
+    if loss_mask is not None:
+        # recent window: phi and residuals key off the recent-diagonal cells
+        # only -- estimate dispersion BEFORE the mask would leak non-recent cells.
+        usable = usable & loss_mask[ii, kk]
     phi_map = _engine.pearson_dispersion(
         response=y[usable].tolist(),
         fitted=mu[usable].tolist(),
@@ -368,13 +372,10 @@ def bootstrap_segment_additive(
     )
 
     scale = np.sqrt(phi_cell * mu)                        # Pearson denominator
+    # loss_mask already folded into `usable` above, so res_ok inherits the
+    # recent restriction; non-recent cells keep their original increment in the
+    # pseudo triangle (resid stays NaN there).
     res_ok = usable & np.isfinite(scale) & (scale > 0.0)
-    if loss_mask is not None:
-        # recent window: only the recent-diagonal cells produce / receive
-        # residuals; non-recent cells keep their original increment in the
-        # pseudo triangle (their value still carries the cumulative base, but
-        # the refit g_k / phi key off the recent links only).
-        res_ok = res_ok & loss_mask[ii, kk]
     resid = np.full(mu.shape, np.nan, dtype=np.float64)
     resid[res_ok] = (y[res_ok] - mu[res_ok]) / scale[res_ok]
 
@@ -620,6 +621,12 @@ def bootstrap_segment_multiplicative(
     dur1 = (jj + 1).tolist()
 
     usable = np.isfinite(m) & (m > 0.0)
+    if recent is not None and ii.size:
+        # recent calendar wedge (diagonal a = i + j): phi and residuals key off
+        # the recent-diagonal cells only -- estimate dispersion BEFORE the mask
+        # would leak non-recent cells.
+        cal = ii + jj
+        usable = usable & (cal > int(cal.max()) - recent)
     phi_map = _engine.pearson_dispersion(
         response=y[usable].tolist(), fitted=m[usable].tolist(),
         duration=[dur1[t] for t in np.flatnonzero(usable)], sigma_method=sigma_method,
@@ -629,15 +636,10 @@ def bootstrap_segment_multiplicative(
         dtype=np.float64,
     )
     scale = np.sqrt(phi_cell * m)
+    # recent wedge already folded into `usable` above; non-recent cells keep
+    # their original increment (resid stays NaN there), preserving the
+    # cumulative base for the recent-link-masked link-ratio refit.
     res_ok = usable & np.isfinite(scale) & (scale > 0.0)
-    if recent is not None and ii.size:
-        # recent calendar wedge on the increment cells (diagonal a = i + j,
-        # which equals the source-link cal_idx of the link feeding the cell):
-        # only recent-diagonal cells produce / receive residuals. Non-recent
-        # cells keep their original increment, preserving the cumulative base
-        # for the (recent-link-masked) link-ratio refit.
-        cal = ii + jj
-        res_ok = res_ok & (cal > int(cal.max()) - recent)
     resid = np.full(m.shape, np.nan, dtype=np.float64)
     resid[res_ok] = (y[res_ok] - m[res_ok]) / scale[res_ok]
 

@@ -177,3 +177,25 @@ def test_gate_clears_naive_floor(tri):
     g = gate(cmp, challenger="credible", primary="abs_err")
     assert g.verdict == "PASS"
     assert g.improvement > 0.0
+
+
+def test_zero_increment_duration_does_not_nan_the_level():
+    # finding: a zero-increment duration makes m0 = g_k * P = 0, which is finite
+    # but cannot carry a Pearson residual (0/0). With an explicit psi > 0 the
+    # conjugate level used to come back NaN; the m0 > 0 filter must drop those
+    # cells so the level (and loss_proj) stay finite.
+    import polars as pl
+    from datetime import date
+
+    rows = []
+    for i in range(8):
+        for d in range(1, 9 - i):
+            loss = 0.0 if d == 1 else 5.0   # duration 1 has zero incremental loss
+            rows.append({
+                "uy_m": date(2020 + i // 12, 1 + i % 12, 1),
+                "cy_m": date(2020 + (i + d - 1) // 12, 1 + (i + d - 1) % 12, 1),
+                "incr_loss": loss, "incr_premium": 100.0,
+            })
+    fit = lr.CredibleLoss(psi=0.5).fit(lr.Triangle(pl.DataFrame(rows)))
+    proj = fit.to_polars()["loss_proj"]
+    assert proj.is_nan().sum() == 0

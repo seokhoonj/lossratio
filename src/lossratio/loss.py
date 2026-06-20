@@ -524,7 +524,7 @@ def _credible_levels(
     u_vec = np.ones(n_cohorts, dtype=np.float64)
     z_vec = np.zeros(n_cohorts, dtype=np.float64)
     psi_hat = 0.0
-    finite = [j for j, v in enumerate(m0) if np.isfinite(v)]
+    finite = [j for j, v in enumerate(m0) if np.isfinite(v) and v > 0]
     if finite:
         resp_f = [resp[j] for j in finite]
         m0_f = [m0[j] for j in finite]
