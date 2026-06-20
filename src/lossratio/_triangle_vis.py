@@ -336,8 +336,8 @@ def _draw_cell_grid(
     ax.set_xlim(-0.5, nx - 0.5)
     # Cohort axis: oldest at top. `y_levels` runs oldest -> newest
     # (index 0 = oldest), so invert the y-limits to place index 0 at
-    # the top -- the run-off triangle's fully-developed (oldest) row
-    # sits on top (reversed y-axis).
+    # the top -- the oldest cohort (observed to the highest duration) sits
+    # on top (reversed y-axis).
     ax.set_ylim(ny - 0.5, -0.5)
 
     ax.set_xticks(range(nx))
@@ -517,9 +517,16 @@ def _compute_triangle_usage(
             pl.lit(max_cal_val).alias("_max_cal")
         )
 
-    # 4. is_observed -- cell would be in the triangle (.cal_idx <= max_cal).
+    # 4. is_observed -- a REAL (data-present) cell within the envelope. Gating on
+    # `_data_present` (not just `_cal_idx <= _max_cal`) matters for gappy cohorts:
+    # in a multi-group split where a segment's cohorts skip periods, the dense
+    # per-group cohort rank compresses the calendar, so a genuinely future cell
+    # can fall inside the rank envelope. A no-data cell is never "used" -- it is
+    # "future". For a complete triangle every in-envelope cell is present, so
+    # this is a no-op there (and makes the usage<->fit cut parity exact).
     expanded = expanded.with_columns(
-        (pl.col("_cal_idx") <= pl.col("_max_cal")).alias("is_observed")
+        (pl.col("_data_present") & (pl.col("_cal_idx") <= pl.col("_max_cal")))
+        .alias("is_observed")
     )
 
     # 5. Holdout flag + adjusted max_cal_fit.
@@ -606,11 +613,12 @@ def _first_post_change_idx(
     cohort_values_desc: list[Any],
     change_value: Any,
 ) -> int | None:
-    """Position (0-based) on the descending y-axis where the *first*
-    cohort >= ``change_value`` sits. ``cohort_values_desc`` is the
-    underlying cohort dates / ints in the same order as the y-tick
-    labels (newest at top). Returns ``None`` if no cohort is at or after
-    the change.
+    """Position (0-based) in ``cohort_values_desc`` where the *first*
+    cohort >= ``change_value`` sits. ``cohort_values_desc`` holds the
+    underlying cohort dates / ints newest-first, matching the y-tick label
+    order. The usage axis is NOT inverted, so index 0 (newest) renders at the
+    bottom and the oldest cohorts sit on top (as in the value heatmap).
+    Returns ``None`` if no cohort is at or after the change.
 
     The hline is drawn at ``returned_idx + 0.5`` (just above the row
     toward older cohorts).
@@ -659,7 +667,9 @@ def _plot_triangle_usage(
         pl.Series(name="_y_lbl", values=cohort_labels)
     )
 
-    # Ordered cohort levels: newest at top (descending).
+    # Cohort levels newest-first; the axis is not inverted, so index 0 (newest)
+    # renders at the bottom and the oldest cohorts sit on top -- matching the
+    # value heatmap's orientation.
     coh_pairs = sorted(
         set(zip(usage_df["cohort"].to_list(), cohort_labels)),
         key=lambda p: p[0],

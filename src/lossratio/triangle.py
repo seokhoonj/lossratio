@@ -839,8 +839,8 @@ class Triangle:
         ``summary_min_n`` cohorts contribute (a dotted vline marks the
         first such period).
 
-        For the cell-value heatmap (the aligned run-off triangle), use
-        :meth:`plot_triangle` instead.
+        For the cell-value heatmap (the aligned cohort x duration triangle),
+        use :meth:`plot_triangle` instead.
 
         Returns
         -------

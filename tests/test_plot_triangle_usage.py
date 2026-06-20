@@ -267,6 +267,29 @@ def test_regime_cut_multi_column_groups_tuple_key():
     assert "unused" not in set(other["status"].to_list())
 
 
+def test_usage_never_marks_absent_cells_used_in_gappy_groups():
+    """Gappy per-group cohorts (a multi-group split skipping periods) compress
+    the dense per-group cohort rank, so a genuinely-future cell could fall inside
+    the rank envelope. Every 'used'/'holdout' cell must be DATA-PRESENT, and the
+    'used'/'holdout' set must equal the fit's ModelFrame cells exactly."""
+    from lossratio.model_frame import ModelFrame
+
+    df = lr.make_experience(seed=1).with_columns(
+        pl.when(pl.col("uy_m").dt.year() % 2 == 0)
+        .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
+    )
+    tri = lr.Triangle(df, groups=["coverage", "block"])
+    usage = _compute_triangle_usage(tri)
+    keys = ["coverage", "block", "cohort", "duration"]
+    present = tri._df.select(keys)
+    used = usage.filter(pl.col("status").is_in(["used", "holdout"])).select(keys)
+
+    assert used.join(present, on=keys, how="anti").height == 0  # no absent cell used
+    mf = ModelFrame.from_triangle(tri).df.select(keys)
+    assert used.join(mf, on=keys, how="anti").height == 0       # used subset of fit
+    assert mf.join(used, on=keys, how="anti").height == 0       # fit subset of used
+
+
 # --- Public usage() data accessor -----------------------------------
 
 
