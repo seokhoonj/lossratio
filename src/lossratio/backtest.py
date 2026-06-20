@@ -595,8 +595,15 @@ class _FoldFit:
         # The Triangle renderer resolves `"auto"` for regime via an
         # inline `detect_regime` call.
         from ._triangle_vis import _plot_triangle_usage
+        from .regime import _resolve_regime
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
+        # Resolve a callable / "auto" regime spec on the MASKED fold triangle --
+        # the same data the fold fit on -- so the overlay shows the cut the fold
+        # actually used, never one a full-data detect could derive from held-out
+        # cells. An already-eager Regime / date / dict resolves the same either
+        # way (its cut is intrinsic, not re-detected).
+        eff_regime = _resolve_regime(eff_regime, self._triangle.mask(self.holdout))
         return _plot_triangle_usage(
             self._triangle,
             recent=eff_recent,
