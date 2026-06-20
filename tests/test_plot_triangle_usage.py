@@ -365,3 +365,28 @@ def test_usage_deterministic_order_multi_column_groups():
 def test_usage_rejects_bad_recent(tri_with_groups, bad):
     with pytest.raises(ValueError, match="recent"):
         tri_with_groups.usage(recent=bad)
+
+
+def test_seg_duration_min_seam_overlap_recovers_donor_seam():
+    # finding: the usage view must pass seam_overlap=True for segment_borrowed
+    # (mirroring regime.py), dropping each donor segment's wall by ONE duration
+    # so the seam cells count as fit-used instead of unused.
+    import polars as pl
+    from datetime import date
+
+    from lossratio._triangle_vis import _seg_duration_min
+
+    rows = pl.DataFrame({
+        "cohort": [date(2024, m, 1) for m in range(1, 9)],
+        "duration": [1] * 8,
+        "_coh_rank": list(range(1, 9)),
+        "_max_cal": [8] * 8,
+    })
+    cd_vec = [date(2024, 4, 1)]   # one change -> donor (older) + newest segment
+    no = _seg_duration_min(rows, cd_vec, [], bridge=False, seam_overlap=False)
+    yes = _seg_duration_min(rows, cd_vec, [], bridge=False, seam_overlap=True)
+    diff = (no.sort("cohort")["_seg_duration_min"]
+            - yes.sort("cohort")["_seg_duration_min"])
+    assert diff.max() == 1            # donor wall drops by exactly one
+    assert diff.min() == 0            # newest segment unchanged
+    assert (diff == 1).sum() >= 1     # at least one seam cell recovered

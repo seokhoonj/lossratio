@@ -475,6 +475,7 @@ def _seg_duration_min(
     cd_vec: list,
     group_cols: list[str],
     bridge: bool = False,
+    seam_overlap: bool = False,
 ) -> pl.DataFrame:
     """Compute per-cell ``duration_min`` for the segment_wise mini-triangle.
 
@@ -507,6 +508,7 @@ def _seg_duration_min(
         seg_ids=seg_id,
         max_cal=max_cal,
         bridge=bridge,
+        seam_overlap=seam_overlap,
     )
 
     work = grp_rows.with_columns(pl.Series("_seg_duration_min", duration_min_arr))
@@ -646,6 +648,10 @@ def _compute_triangle_usage(
         is_bridged = treatment in (
             "segment_bridged", "segment_bridged_borrowed"
         )
+        # segment_borrowed masks each donor segment's wall with a one-duration
+        # seam overlap, exactly as the real filter (regime.py); mirror it or the
+        # usage view marks fit-used seam cells as unused.
+        is_seam_overlap = treatment == "segment_borrowed"
         if not is_segment_wise:
             from .regime import _regime_cutoff_map
             cutoff_map = _regime_cutoff_map(regime)
@@ -777,7 +783,7 @@ def _compute_triangle_usage(
                     duration_min_parts.append(
                         _seg_duration_min(
                             grp_rows, cd_vec, reg_grp_cols,
-                            bridge=is_bridged,
+                            bridge=is_bridged, seam_overlap=is_seam_overlap,
                         )
                     )
                 if duration_min_parts:
@@ -798,6 +804,7 @@ def _compute_triangle_usage(
                 if cd_vec:
                     duration_min_df = _seg_duration_min(
                         expanded, cd_vec, [], bridge=is_bridged,
+                        seam_overlap=is_seam_overlap,
                     )
                     expanded = expanded.join(
                         duration_min_df, on=["cohort", "duration"], how="left",
