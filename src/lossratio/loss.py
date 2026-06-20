@@ -1430,6 +1430,36 @@ class LossFit:
         )
         return mirror_output(agg, self._output_type)
 
+    def predict(self) -> "FrameLike":
+        """Per-cell projection surface: cumulative + incremental projected
+        loss, the projected loss ratio, and each cell's ``source`` (observed /
+        own / borrowed). A focused view of :attr:`df` without the SE / CI
+        columns."""
+        keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
+        cols = keys + ["loss_proj", "incr_loss_proj", "ratio_proj", "source"]
+        return mirror_output(self._df.select(cols), self._output_type)
+
+    def plot(
+        self,
+        metric: str = "loss",
+        *,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: "tuple[float, float] | None" = None,
+    ) -> Any:
+        """Per-cohort cumulative-projection trajectories, faceted by group --
+        the observed portion solid, the projected tail dashed. ``metric`` is
+        ``"loss"`` (default; cumulative projected loss) or ``"ratio"`` (the
+        projected loss ratio)."""
+        from ._fit_vis import plot_fit, resolve_fit_metric
+
+        value_col, ylabel, hline = resolve_fit_metric(metric, ("loss", "ratio"))
+        return plot_fit(
+            self._df, value_col=value_col, ylabel=ylabel,
+            title=f"{self.model} projection", groups=self.groups, hline=hline,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         return (
             f"LossFit(model={self.model!r}, status={self.status!r}, "

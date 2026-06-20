@@ -335,6 +335,37 @@ class RatioFit:
         )
         return mirror_output(agg, self._output_type)
 
+    def predict(self) -> "FrameLike":
+        """Per-cell projection surface: projected loss, projected premium, the
+        projected loss ratio, and each cell's ``source``. A focused view of
+        :attr:`df` without the SE / CI columns."""
+        keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
+        cols = keys + ["loss_proj", "premium_proj", "ratio_proj", "source"]
+        return mirror_output(self._df.select(cols), self._output_type)
+
+    def plot(
+        self,
+        metric: str = "ratio",
+        *,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: "tuple[float, float] | None" = None,
+    ) -> Any:
+        """Per-cohort cumulative-projection trajectories, faceted by group --
+        the observed portion solid, the projected tail dashed. ``metric`` is
+        ``"ratio"`` (default; the projected loss ratio), ``"loss"``, or
+        ``"premium"``."""
+        from ._fit_vis import plot_fit, resolve_fit_metric
+
+        value_col, ylabel, hline = resolve_fit_metric(
+            metric, ("ratio", "loss", "premium")
+        )
+        return plot_fit(
+            self._df, value_col=value_col, ylabel=ylabel,
+            title="loss ratio projection", groups=self.groups, hline=hline,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
     def extend(
         self, *, horizon: int, window: int = 6, tol: float = 0.01,
         amounts: bool = False,

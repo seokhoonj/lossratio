@@ -488,6 +488,34 @@ class PremiumFit:
         )
         return mirror_output(agg, self._output_type)
 
+    def predict(self) -> "FrameLike":
+        """Per-cell projection surface: cumulative + incremental projected
+        premium and each cell's ``source`` (observed / own). A focused view of
+        :attr:`df` without the SE / CI columns."""
+        keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
+        cols = keys + ["premium_proj", "incr_premium_proj", "source"]
+        return mirror_output(self._df.select(cols), self._output_type)
+
+    def plot(
+        self,
+        metric: str = "premium",
+        *,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: "tuple[float, float] | None" = None,
+    ) -> Any:
+        """Per-cohort cumulative-projection trajectories, faceted by group --
+        the observed portion solid, the projected tail dashed. ``metric`` is
+        ``"premium"`` (the projected cumulative premium)."""
+        from ._fit_vis import plot_fit, resolve_fit_metric
+
+        value_col, ylabel, hline = resolve_fit_metric(metric, ("premium",))
+        return plot_fit(
+            self._df, value_col=value_col, ylabel=ylabel,
+            title=f"{self.model} projection", groups=self.groups, hline=hline,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
     def __repr__(self) -> str:
         return (
             f"PremiumFit(model={self.model!r}, status={self.status!r}, "
