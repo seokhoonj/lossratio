@@ -201,40 +201,34 @@ def test_intensity_single_duration_group_alongside_normal():
     assert df.filter(pl.col("coverage") == "B").height == 0
 
 
-def test_recomputes_se_for_interior_filled_link():
-    # A recent-diagonal wedge can leave an INTERIOR link with a single
-    # contributing cohort (sigma2 unestimable -> 0). Tail extrapolation fills
-    # it, and g_se must be recomputed from the fill -- not only for the last
-    # link. Here link 1 is single-cohort while links 0 and 2 are valid.
+def test_recomputes_se_for_all_filled_tail_links():
+    # The last TWO links are single-cohort (sigma2 unestimable); tail
+    # extrapolation fills BOTH, and g_se must be recomputed for each -- the old
+    # code only fixed the very last link. (An interior gap bracketed by valid
+    # links is a genuine zero and is left untouched by the tail-only sigma
+    # extrapolator -- see test_engine.test_extrapolate_tail_preserves_interior_zero.)
     import numpy as np
 
     from lossratio.intensity import _compute_intensity
 
     loss_obs = np.array(
         [
-            [10.0, 20.0, 35.0, 55.0],
-            [10.0, 22.0, 36.0, 54.0],
-            [10.0, 18.0, 34.0, 56.0],
-            [10.0, 21.0, 33.0, 50.0],
+            [10.0, 20.0, 30.0, 40.0, 50.0],
+            [10.0, 22.0, 35.0, 45.0, 55.0],
+            [10.0, 18.0, 26.0, 36.0, 46.0],
+            [10.0, 21.0, 33.0, 43.0, 53.0],
         ]
     )
-    premium_obs = np.array(
-        [
-            [100.0, 200.0, 300.0, 400.0],
-            [100.0, 200.0, 300.0, 400.0],
-            [100.0, 200.0, 300.0, 400.0],
-            [100.0, 200.0, 300.0, 400.0],
-        ]
-    )
+    premium_obs = np.array([[100.0, 200.0, 300.0, 400.0, 500.0]] * 4)
     link_mask = np.array(
         [
-            [True, True, True],
-            [True, False, True],
-            [True, False, True],
-            [True, False, True],
+            [True, True, True, True],
+            [True, True, False, False],
+            [True, True, False, False],
+            [True, True, False, False],
         ]
     )
     res = _compute_intensity(loss_obs, premium_obs, link_mask=link_mask)
-    # interior link 1 was filled by extrapolation -> finite, recomputed SE.
-    assert res.sigma2_k[1] > 0
-    assert res.g_se_k[1] > 0
+    # both filled tail links get a recomputed positive SE, not only the last.
+    assert res.sigma2_k[2] > 0 and res.sigma2_k[3] > 0
+    assert res.g_se_k[2] > 0 and res.g_se_k[3] > 0

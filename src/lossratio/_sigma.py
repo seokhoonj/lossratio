@@ -75,10 +75,9 @@ def extrapolate_tail_sigma2(
 
     # An entry needs filling iff it is non-finite or non-positive.
     needs_fill = ~np.isfinite(s) | (s <= 0.0)
-    idx_pred  = np.flatnonzero(needs_fill)
     idx_valid = np.flatnonzero(~needs_fill)
 
-    if idx_pred.size == 0:
+    if not needs_fill.any():
         return s
 
     # The <2-valid guard runs before the method switch, so even `none`
@@ -88,6 +87,16 @@ def extrapolate_tail_sigma2(
             "Fewer than two valid `sigma` values; extrapolation skipped.",
             stacklevel=2,
         )
+        return s
+
+    # TAIL-ONLY: extrapolate the trailing block of unestimable links (after the
+    # last valid one). Interior gaps are LEFT untouched -- a genuine zero-variance
+    # link (>= 2 perfectly-agreeing cohorts, reachable via zero-filled flat cells)
+    # must keep its 0, and overwriting it with a later link's sigma2 would inflate
+    # the SE. This is a tail extrapolator, not an interior gap-filler. On a
+    # monotonic array the gaps ARE the trailing block, so this is byte-identical.
+    idx_pred = np.flatnonzero(needs_fill & (np.arange(s.size) > idx_valid[-1]))
+    if idx_pred.size == 0:
         return s
 
     if sigma_method == "none":
