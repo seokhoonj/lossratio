@@ -43,7 +43,10 @@ from ._recursion import _build_value_matrices, _fit_multiplicative
 from ._recent import recent_link_mask, validate_recent
 from .loss import (
     _credible_levels,
+    _locf_forward,
+    _pad_cols,
     _segment_credibility_df,
+    _segment_donors,
     _smooth_backfit,
 )
 from .model_frame import ModelFrame
@@ -70,18 +73,26 @@ class _PremiumEstimatorBase:
     """Fields shared by every premium-side estimator.
 
     ``recent`` (calendar-diagonal window) and ``regime`` (cohort-axis cut)
-    mirror the loss-side estimator contract; the premium side carries no
-    ``borrow`` / ``uncertainty`` in v1 (its single pooled mechanism is the
-    self-anchored link ratio).
+    mirror the loss-side estimator contract. ``borrow`` (``False`` / ``"pooled"``)
+    is the denominator analogue of the loss borrow: a regime-thinned segment's
+    premium tail is filled with the level-invariant full-history premium link
+    ratio ``f^P_k``, so the denominator reaches the same horizon as a borrowed
+    loss tail and the composed loss ratio stays defined. No ``uncertainty`` in
+    v1 (premium is deterministic in the loss-ratio band).
     """
 
     recent: int | None = None
     regime: "RegimeArg" = None
+    borrow: "bool | str" = False
     sigma_method: str = "locf"
     conf_level: float = 0.95
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
+        if self.borrow not in (False, "pooled"):
+            raise ValueError(
+                f"borrow must be False or 'pooled', got {self.borrow!r}"
+            )
         if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
             from .regime import Regime
             if not isinstance(self.regime, Regime) and not callable(self.regime):
@@ -106,6 +117,7 @@ def _segment_premium_df(
     groups: "str | list[str] | None",
     group_value: Any | None,
     conf_level: float,
+    borrowed: np.ndarray | None = None,
 ) -> pl.DataFrame:
     """Assemble one segment's premium matrices into the long premium frame."""
     z = float(norm.ppf((1 + conf_level) / 2))
@@ -121,10 +133,16 @@ def _segment_premium_df(
     ci_hi = np.where(both, mk_proj + z * total_se, np.nan)
 
     obs = ~np.isnan(premium_obs)
-    proj = ~np.isnan(mk_proj) & ~obs
+    borrowed_mask = (
+        np.zeros((n_cohorts, n_durations), dtype=bool)
+        if borrowed is None
+        else borrowed
+    )
+    proj = ~np.isnan(mk_proj) & ~obs & ~borrowed_mask
     source = np.full((n_cohorts, n_durations), None, dtype=object)
     source[obs] = "observed"
     source[proj] = "own"
+    source[borrowed_mask] = "borrowed"
 
     total = n_cohorts * n_durations
     data: dict[str, Any] = {}
@@ -185,9 +203,57 @@ def _project_self_exposure(
     return proj
 
 
+def _project_self_exposure_borrow(
+    premium_obs: np.ndarray,
+    h_k: np.ndarray,
+    u_vec: np.ndarray,
+    donor_f: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Self-exposure premium projection with a level-invariant borrowed tail.
+
+    Own body (links at or below the segment's own-data boundary): the
+    self-exposure recursion ``P_{k+1} = P_k * (1 + u_i * h_k)`` (the pooled
+    link ratio at ``u = 1`` / ``h_k = f^P_k - 1``, the credible / smooth growth
+    rate otherwise). Tail (beyond the boundary): the full-history donor link
+    ratio ``P_{k+1} = donor_f_k * P_k`` -- level-invariant, so only premium
+    development SHAPE is lent, not the donor cohorts' premium level. The donor
+    is LOCF-filled so a sparse interior donor link cannot break the tail chain.
+    Returns ``(proj, borrowed)`` where ``borrowed`` flags the donor cells.
+    """
+    n_cohorts, n_durations = premium_obs.shape
+    n_links = n_durations - 1
+    proj = premium_obs.copy()
+    borrowed = np.zeros(premium_obs.shape, dtype=bool)
+    obs_mask = ~np.isnan(premium_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
+    own_links = np.flatnonzero(np.isfinite(h_k))
+    own_boundary = int(own_links.max()) if own_links.size else -1
+    donor_f = _locf_forward(donor_f)
+    for k in range(n_links):
+        active = eligible & (last_obs <= k)
+        if not active.any():
+            continue
+        pk = proj[:, k]
+        pos = active & ~np.isnan(pk) & (pk > 0)
+        if not pos.any():
+            continue
+        if k <= own_boundary:
+            if np.isfinite(h_k[k]):
+                proj[pos, k + 1] = pk[pos] * (1.0 + u_vec[pos] * h_k[k])
+        elif np.isfinite(donor_f[k]):
+            proj[pos, k + 1] = donor_f[k] * pk[pos]
+            borrowed[pos, k + 1] = True
+    return proj, borrowed
+
+
 def _fit_segment_credible_premium(
     premium_obs: np.ndarray, sigma_method: str, *, psi: "float | str" = "auto",
     recent: int | None = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) premium fit for one segment.
 
@@ -209,10 +275,16 @@ def _fit_segment_credible_premium(
         premium_obs, premium_obs, h_k, sigma_method, psi, link_mask=premium_mask
     )
 
-    if psi_hat <= 0.0:
+    if premium_donor is not None:
+        premium_proj, borrowed = _project_self_exposure_borrow(
+            premium_obs, h_k, u_vec, premium_donor[0]
+        )
+    elif psi_hat <= 0.0:
         premium_proj = mk.value_proj            # exact PooledPremium
+        borrowed = np.zeros(premium_obs.shape, dtype=bool)
     else:
         premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
+        borrowed = np.zeros(premium_obs.shape, dtype=bool)
 
     nan_se = np.full(premium_obs.shape, np.nan, dtype=np.float64)
     return {
@@ -221,6 +293,7 @@ def _fit_segment_credible_premium(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
+        "borrowed": borrowed,
         "u": u_vec,
         "Z": z_vec,
         "psi": psi_hat,
@@ -235,6 +308,7 @@ def _fit_segment_smooth_premium(
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
     recent: int | None = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Smooth premium fit for one segment -- the top denominator rung.
 
@@ -250,7 +324,13 @@ def _fit_segment_smooth_premium(
         link_mask=recent_link_mask(premium_obs, recent),
     )
     h_k, u_vec = bf["g_k"], bf["u"]
-    premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
+    if premium_donor is not None:
+        premium_proj, borrowed = _project_self_exposure_borrow(
+            premium_obs, h_k, u_vec, premium_donor[0]
+        )
+    else:
+        premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
+        borrowed = np.zeros(premium_obs.shape, dtype=bool)
 
     nan_se = np.full(premium_obs.shape, np.nan, dtype=np.float64)
     return {
@@ -259,6 +339,7 @@ def _fit_segment_smooth_premium(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
+        "borrowed": borrowed,
         "u": u_vec,
         "Z": bf["Z"],
         "psi": bf["psi"],
@@ -282,6 +363,7 @@ def _fit_premium(
     regime: "Any" = None,
     recent: int | None = None,
     conf_level: float = 0.95,
+    borrow: "bool | str" = False,
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
@@ -304,6 +386,13 @@ def _fit_premium(
             "(pooled / credible / smooth)."
         )
     groups = triangle.groups
+
+    donors = None
+    if borrow:
+        if borrow != "pooled":
+            raise ValueError(f"borrow must be False or 'pooled', got {borrow!r}")
+        donors = _segment_donors(triangle, sigma_method, value="premium")
+
     mf = ModelFrame.from_triangle(triangle, regime=regime)
     frame = mf.df
     if frame.is_empty():
@@ -315,7 +404,7 @@ def _fit_premium(
 
     long_parts: list[pl.DataFrame] = []
     cred_parts: list[pl.DataFrame] = []
-    n_observed = n_projected = n_unfittable = 0
+    n_observed = n_projected = n_unfittable = n_borrowed = 0
     converged = True
 
     for sid in frame.get_column("_segment_id").unique().sort().to_list():
@@ -331,16 +420,36 @@ def _fit_premium(
             sub, value_cols=("premium",)
         )
 
+        premium_donor = None
+        if donors is not None:
+            pd_f, pd_sig, pd_var, full_n_dur = donors[sid]
+            # widen to the segment's own full horizon so the borrowed tail can
+            # fill the cells beyond this (regime-thinned) sub-set's observation.
+            premium_obs = _pad_cols(premium_obs, full_n_dur)
+            premium_donor = (pd_f, pd_sig, pd_var)
+
+        borrowed = np.zeros(premium_obs.shape, dtype=bool)
         if mechanism == "pooled":
             mask = recent_link_mask(premium_obs, recent)
             mk = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
-            mk_proj = mk.value_proj
             proc_se, param_se, total_se = mk.proc_se, mk.param_se, mk.total_se
+            if premium_donor is None:
+                mk_proj = mk.value_proj
+            else:
+                # pooled body is the self-exposure recursion at u = 1,
+                # h_k = f^P_k - 1; the tail borrows the donor link ratio.
+                mk_proj, borrowed = _project_self_exposure_borrow(
+                    premium_obs, mk.f_k - 1.0,
+                    np.ones(premium_obs.shape[0], dtype=np.float64),
+                    premium_donor[0],
+                )
         elif mechanism == "credible":
             res = _fit_segment_credible_premium(
-                premium_obs, sigma_method, psi=psi, recent=recent
+                premium_obs, sigma_method, psi=psi, recent=recent,
+                premium_donor=premium_donor,
             )
             mk_proj = res["premium_proj"]
+            borrowed = res["borrowed"]
             proc_se, param_se, total_se = (
                 res["proc_se"], res["param_se"], res["total_se"]
             )
@@ -350,9 +459,10 @@ def _fit_premium(
         else:  # smooth
             res = _fit_segment_smooth_premium(
                 premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
-                recent=recent,
+                recent=recent, premium_donor=premium_donor,
             )
             mk_proj = res["premium_proj"]
+            borrowed = res["borrowed"]
             proc_se, param_se, total_se = (
                 res["proc_se"], res["param_se"], res["total_se"]
             )
@@ -362,9 +472,11 @@ def _fit_premium(
             converged = converged and bool(res["smooth_converged"])
 
         obs_mask = ~np.isnan(premium_obs)
-        proj_mask = ~np.isnan(mk_proj) & ~obs_mask
+        # observed / own / borrowed partition the projected cells.
+        proj_mask = ~np.isnan(mk_proj) & ~obs_mask & ~borrowed
         n_observed += int(obs_mask.sum())
         n_projected += int(proj_mask.sum())
+        n_borrowed += int(borrowed.sum())
 
         n_dur = mk_proj.shape[1]
         has_obs = obs_mask.any(axis=1)
@@ -378,7 +490,7 @@ def _fit_premium(
         long_parts.append(
             _segment_premium_df(
                 premium_obs, mk_proj, proc_se, param_se, total_se,
-                cohorts, groups, group_value, conf_level,
+                cohorts, groups, group_value, conf_level, borrowed,
             )
         )
 
@@ -403,6 +515,7 @@ def _fit_premium(
         cell_counts={
             "observed": n_observed,
             "projected": n_projected,
+            "borrowed": n_borrowed,
             "unfittable": n_unfittable,
         },
         credibility=credibility,

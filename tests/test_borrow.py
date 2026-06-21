@@ -20,6 +20,10 @@ from lossratio.pooled_loss import PooledLoss
 from lossratio.chain_ladder import ChainLadder
 from lossratio.credible_loss import CredibleLoss
 from lossratio.smooth_loss import SmoothLoss
+from lossratio.pooled_premium import PooledPremium
+from lossratio.credible_premium import CrediblePremium
+from lossratio.smooth_premium import SmoothPremium
+from lossratio.ratio import Ratio
 from lossratio._resample import ResidualBootstrap
 from lossratio._recursion import _fit_multiplicative, _build_value_matrices
 
@@ -55,15 +59,16 @@ def test_borrow_extends_horizon(tri, estimator):
     assert fit.cell_counts["borrowed"] > 0
 
 
-def test_borrow_is_loss_only(tri):
-    """The borrowed tail develops loss (donor f_k), not premium -> premium and
-    ratio are null on borrowed cells."""
+def test_borrow_fills_loss_premium_and_ratio(tri):
+    """The borrowed tail develops BOTH loss (donor f_k) and premium (donor
+    f^P_k), so the denominator reaches the same horizon as the borrowed loss
+    and the loss ratio is defined across the borrowed tail."""
     full = _pl(PooledLoss(regime=CUT, borrow="pooled").fit(tri))
     b = full.filter(pl.col("source") == "borrowed")
     assert b.height > 0
     assert b["loss_proj"].is_not_null().all()
-    assert b["premium_proj"].null_count() == b.height
-    assert b["ratio_proj"].null_count() == b.height
+    assert b["premium_proj"].is_not_null().all()
+    assert b["ratio_proj"].is_not_null().all()
 
 
 def test_borrowed_tail_uses_own_segment_f_k(tri):
@@ -187,6 +192,87 @@ def test_credible_borrow_bootstrap_covers_the_borrowed_tail(tri):
     # a genuine band (some positive width), not a degenerate zero-width interval
     width = (b["loss_ci_hi"] - b["loss_ci_lo"]).to_numpy()
     assert np.nanmax(width) > 0.0
+
+
+# --------------------------------------------------------------------------
+# Premium-side borrow (the denominator donor) + the composed loss ratio
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "estimator", [PooledPremium, CrediblePremium, SmoothPremium]
+)
+def test_premium_borrow_extends_horizon(tri, estimator):
+    """A regime cut thins the premium too; borrow fills the denominator tail
+    with the segment's own full-history premium link ratio f^P_k, to the same
+    full horizon, and flags the borrowed cells."""
+    short = _pl(estimator(regime=CUT).fit(tri))
+    full = _pl(estimator(regime=CUT, borrow="pooled").fit(tri))
+    assert full["duration"].max() > short["duration"].max()
+    assert full["duration"].max() == _pl(estimator().fit(tri))["duration"].max()
+    assert (full["source"] == "borrowed").sum() > 0
+    b = full.filter(pl.col("source") == "borrowed")
+    assert b["premium_proj"].is_not_null().all()
+
+
+def test_premium_borrowed_tail_uses_own_segment_premium_f_k(tri):
+    """The premium donor is the segment's OWN full-cohort premium link ratio
+    f^P_k, so the borrowed premium step loss-free ratio equals own f^P_k
+    (level-invariant -- only premium shape is lent)."""
+    cov = "CANCER"
+    src = lr.load_experience()
+    sub = pl.from_pandas(src.to_pandas()) if not isinstance(src, pl.DataFrame) else src
+    sub = sub.filter(pl.col("coverage") == cov)
+    (prem,), _, _ = _build_value_matrices(
+        lr.Triangle(sub, groups="coverage").to_polars().sort(["cohort", "duration"]),
+        value_cols=("premium",),
+    )
+    own_fp = _fit_multiplicative(prem).f_k                  # CANCER's own full f^P_k
+
+    full = _pl(PooledPremium(regime=CUT, borrow="pooled").fit(tri)).filter(
+        pl.col("coverage") == cov
+    ).sort(["cohort", "duration"])
+    checked = 0
+    for _coh, g in full.group_by("cohort", maintain_order=True):
+        g = g.sort("duration")
+        pp = g["premium_proj"].to_numpy().astype(float)
+        srcs = g["source"].to_list()
+        durs = g["duration"].to_list()
+        for i in range(1, len(pp)):
+            if srcs[i] == "borrowed" and pp[i - 1] and np.isfinite(pp[i - 1]):
+                k = durs[i] - 2
+                assert np.isclose(pp[i] / pp[i - 1], own_fp[k], rtol=1e-9)
+                checked += 1
+    assert checked > 0
+
+
+@pytest.mark.parametrize("loss_est", [PooledLoss, CredibleLoss, SmoothLoss])
+def test_ratio_borrow_both_sides_defines_ratio_on_the_tail(tri, loss_est):
+    """Composing a borrowed loss with a borrowed premium gives a loss ratio that
+    is defined across the whole borrowed tail (the denominator no longer runs
+    out before the numerator)."""
+    rat = Ratio(
+        loss=loss_est(regime=CUT, borrow="pooled"),
+        premium=PooledPremium(regime=CUT, borrow="pooled"),
+    ).fit(tri)
+    d = _pl(rat)
+    b = d.filter(pl.col("source") == "borrowed")
+    assert b.height > 0
+    assert b["loss_proj"].is_not_null().all()
+    assert b["premium_proj"].is_not_null().all()
+    assert b["ratio_proj"].is_not_null().all()
+    # the borrowed tail reaches the full own horizon
+    assert d.filter(pl.col("ratio_proj").is_not_null())["duration"].max() == (
+        _pl(loss_est().fit(tri))["duration"].max()
+    )
+
+
+def test_premium_borrow_validation_and_default(tri):
+    with pytest.raises(ValueError):
+        PooledPremium(borrow="donor")
+    assert PooledPremium().borrow is False
+    # no borrowed cells on the plain fit
+    assert (_pl(PooledPremium().fit(tri))["source"] == "borrowed").sum() == 0
 
 
 def test_project_borrow_interior_nan_donor_does_not_truncate():

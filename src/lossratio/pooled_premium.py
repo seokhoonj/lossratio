@@ -52,4 +52,5 @@ class PooledPremium(_PremiumEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             conf_level=self.conf_level,
+            borrow=self.borrow,
         )

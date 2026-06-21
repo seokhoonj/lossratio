@@ -173,6 +173,41 @@ def _segment_factor_links(
     return resp, expo, dur
 
 
+def _segment_premium_proj(
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    premium_mask: np.ndarray | None = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+) -> np.ndarray:
+    """Premium projection for a loss segment's denominator.
+
+    Without a donor: the kept multiplicative kernel (the self-anchored pooled
+    premium link ratio ``f^P_k``). With a ``premium_donor`` (a regime-thinned
+    segment, borrow on): own ``f^P_k`` up to the segment's own-data boundary,
+    then the level-invariant full-history donor ``f^P_k`` for the tail -- so the
+    denominator reaches the same horizon as the borrowed loss and the loss ratio
+    stays defined across the borrowed tail. Premium is always link-ratio (its
+    own volume base), so the donor is the same kind of object as the loss donor;
+    the loss body only consumes premium within the own boundary, so extending
+    the premium tail never changes the loss projection.
+    """
+    mk = _fit_multiplicative(
+        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
+    )
+    if premium_donor is None:
+        return mk.value_proj
+    n_links = premium_obs.shape[1] - 1
+    nan = np.full(n_links, np.nan)
+    zero = np.zeros(n_links, dtype=np.float64)
+    proj = _project_borrow(
+        premium_obs, np.full_like(premium_obs, np.nan), body="multiplicative",
+        own_g=nan, own_sig_g=nan, own_var_g=nan,
+        own_f=mk.f_k, own_sig_f=zero, own_var_f=zero,
+        donor_f=premium_donor[0], donor_sig_f=zero, donor_var_f=zero,
+    )[0]
+    return proj
+
+
 def _fit_segment_additive(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -180,6 +215,7 @@ def _fit_segment_additive(
     *,
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Saturated-mode complete-pooling intensity fit for one segment's loss /
     premium matrices.
@@ -228,9 +264,9 @@ def _fit_segment_additive(
     var_g_k = _wls_factor_var(sigma2_g_k, sum_premium_k)
 
     # 3. premium link-ratio projection (kept recursion kernel) for the exposure
-    premium_proj = _fit_multiplicative(
-        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).value_proj
+    premium_proj = _segment_premium_proj(
+        premium_obs, sigma_method, premium_mask, premium_donor
+    )
 
     # 4. loss projection + analytical variance recursion (intensity additive). With a
     # borrow donor, the tail beyond the segment's own g_k switches to the
@@ -326,6 +362,7 @@ def _fit_segment_multiplicative(
     *,
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
 ) -> dict[str, np.ndarray]:
     """Link-ratio (``ChainLadder``) fit for one segment.
 
@@ -398,9 +435,9 @@ def _fit_segment_multiplicative(
     var_f_k = _wls_factor_var(sigma2_f_k, sum_loss_k)
 
     # 3. premium link-ratio projection (kept recursion kernel) for the exposure
-    premium_proj = _fit_multiplicative(
-        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).value_proj
+    premium_proj = _segment_premium_proj(
+        premium_obs, sigma_method, premium_mask, premium_donor
+    )
 
     # 4. loss projection + analytical variance recursion (link-ratio multiplicative).
     # With a borrow donor, the tail beyond the segment's own f_k switches to the
@@ -574,6 +611,7 @@ def _fit_segment_credible(
     *,
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
     psi: "float | str" = "auto",
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) fit for one segment.
@@ -619,9 +657,9 @@ def _fit_segment_credible(
     )
 
     # 3. premium link-ratio projection (kept recursion kernel) for the exposure
-    premium_proj = _fit_multiplicative(
-        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).value_proj
+    premium_proj = _segment_premium_proj(
+        premium_obs, sigma_method, premium_mask, premium_donor
+    )
 
     # 4. credibility-scaled additive projection (SE null in v1). A borrow donor
     # keeps the credibility level on the own body and lends the level-invariant
@@ -848,6 +886,7 @@ def _fit_segment_smooth(
     *,
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
@@ -874,9 +913,9 @@ def _fit_segment_smooth(
         link_mask=loss_mask,
     )
     g_k, u_vec = bf["g_k"], bf["u"]
-    premium_proj = _fit_multiplicative(
-        premium_obs, sigma_method=sigma_method, link_mask=premium_mask
-    ).value_proj
+    premium_proj = _segment_premium_proj(
+        premium_obs, sigma_method, premium_mask, premium_donor
+    )
     if donor is None:
         loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
@@ -1155,7 +1194,7 @@ def _pad_cols(mat: np.ndarray, n_cols: int) -> np.ndarray:
 
 
 def _segment_donors(
-    triangle: "Triangle", sigma_method: str
+    triangle: "Triangle", sigma_method: str, value: str = "loss"
 ) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]]:
     """Per-segment level-invariant borrow donors (charter borrow design).
 
@@ -1165,8 +1204,14 @@ def _segment_donors(
     same-segment by design: development SHAPE is a property of the book
     (coverage), so a coverage borrows from its own history, never across
     coverages (that is precisely why coverages are separate ``groups``). ``f_k``
-    cancels the loss-ratio level, so only shape is lent, not the donor cohorts'
-    loss-ratio level.
+    cancels the level, so only shape is lent, not the donor cohorts' level.
+
+    ``value`` selects the donor quantity: ``"loss"`` (cumulated from
+    ``incr_loss``) for the loss tail, or ``"premium"`` (already cumulative in
+    the frame) for the denominator tail -- the premium donor is the same
+    construction, the self-anchored full-history premium link ratio ``f^P_k``,
+    so a thinned segment's premium can be projected to the same horizon as its
+    borrowed loss (and the loss ratio stays defined across the borrowed tail).
 
     Returns ``{segment_id: (f_k, sigma2_f_k, var_f_k, n_durations)}`` where
     ``n_durations`` is that segment's own full development horizon -- the depth
@@ -1175,11 +1220,13 @@ def _segment_donors(
     frame = ModelFrame.from_triangle(triangle).df
     donors: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]] = {}
     for sid in frame.get_column("_segment_id").unique().sort().to_list():
-        sub = frame.filter(pl.col("_segment_id") == sid).sort(
-            ["cohort", "duration"]
-        ).with_columns(pl.col("incr_loss").cum_sum().over("cohort").alias("loss"))
-        (loss,), _, nd = _build_value_matrices(sub, value_cols=("loss",))
-        mk = _fit_multiplicative(loss, sigma_method=sigma_method)
+        sub = frame.filter(pl.col("_segment_id") == sid).sort(["cohort", "duration"])
+        if value == "loss":
+            sub = sub.with_columns(
+                pl.col("incr_loss").cum_sum().over("cohort").alias("loss")
+            )
+        (mat,), _, nd = _build_value_matrices(sub, value_cols=(value,))
+        mk = _fit_multiplicative(mat, sigma_method=sigma_method)
         donors[sid] = (mk.f_k, mk.sigma2_k, _multiplicative_var(mk), nd)
     return donors
 
@@ -1317,10 +1364,14 @@ def _fit_loss(
         boot_spec = uncertainty
 
     donors = None
+    premium_donors = None
     if borrow:
         if borrow != "pooled":
             raise ValueError(f"borrow must be False or 'pooled', got {borrow!r}")
         donors = _segment_donors(triangle, sigma_method)
+        # the denominator borrows the same way (full-history premium f^P_k), so
+        # the loss ratio stays defined across the borrowed loss tail.
+        premium_donors = _segment_donors(triangle, sigma_method, value="premium")
 
     mf = ModelFrame.from_triangle(triangle, regime=regime)
     frame = mf.df
@@ -1366,6 +1417,7 @@ def _fit_loss(
             sub, value_cols=("loss", "premium")
         )
         donor = None
+        premium_donor = None
         if donors is not None:
             d_f, d_sig, d_var, full_n_dur = donors[sid]
             # widen to the segment's own full horizon so the borrowed tail can
@@ -1373,6 +1425,8 @@ def _fit_loss(
             loss_obs = _pad_cols(loss_obs, full_n_dur)
             premium_obs = _pad_cols(premium_obs, full_n_dur)
             donor = (d_f, d_sig, d_var)
+            pd_f, pd_sig, pd_var, _ = premium_donors[sid]
+            premium_donor = (pd_f, pd_sig, pd_var)
 
         if mechanism == "credible":
             extra = {"psi": psi}
@@ -1381,7 +1435,8 @@ def _fit_loss(
         else:
             extra = {}
         fit = fit_segment(
-            loss_obs, premium_obs, sigma_method, recent=recent, donor=donor, **extra
+            loss_obs, premium_obs, sigma_method, recent=recent, donor=donor,
+            premium_donor=premium_donor, **extra
         )
         if mechanism == "smooth":
             n_smooth_fallback += int(not fit["representable"])
