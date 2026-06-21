@@ -1147,6 +1147,91 @@ def _segment_donors(
     return donors
 
 
+def _apply_balance(
+    fit: dict[str, np.ndarray],
+    recent: int | None,
+    ci: "tuple[np.ndarray, np.ndarray] | None",
+) -> "tuple[dict[str, np.ndarray], tuple[np.ndarray, np.ndarray] | None, float]":
+    """Balance-property calibration (Ohlsson 2008): scale the projection so the
+    in-sample fitted-increment total matches the observed-increment total -- one
+    ``alpha`` per segment, over the same links the factors were fit on.
+
+    ``alpha = sum(actual_dLoss) / sum(u_i * g_k * P_obs)``. ``PooledLoss``
+    (saturated ``g_k``) already balances per duration, so ``alpha == 1`` (a
+    structural no-op, returned byte-identical via the tolerance guard); the
+    credibility / smooth re-weighting is what breaks the aggregate balance.
+
+    ``alpha`` is treated as a KNOWN multiplicative calibration: only each
+    cohort's projected portion is rescaled around its last observed anchor
+    (observed cells stay actual), so the point, the SE block, and the CI band
+    all scale by ``alpha`` while the relative CV is preserved. Returns the
+    updated ``fit``, the (optionally) rescaled ``ci`` pair, and ``alpha``.
+    """
+    loss_obs = fit["loss_obs"]
+    premium_obs = fit["premium_obs"]
+    g_k = fit["g_k"]
+    n_cohorts, n_durations = loss_obs.shape
+    u = fit.get("u")
+    if u is None:
+        u = np.ones(n_cohorts, dtype=np.float64)
+
+    mask = recent_link_mask(loss_obs, recent)   # None == no window (all links)
+    s_fit = 0.0
+    s_act = 0.0
+    for k in range(g_k.shape[0]):
+        if not np.isfinite(g_k[k]):
+            continue
+        pk = premium_obs[:, k]
+        dl = loss_obs[:, k + 1] - loss_obs[:, k]
+        mk = mask[:, k] if mask is not None else np.ones(n_cohorts, dtype=bool)
+        ok = mk & np.isfinite(pk) & (pk > 0) & np.isfinite(dl)
+        if ok.any():
+            s_fit += float(np.sum(u[ok] * g_k[k] * pk[ok]))
+            s_act += float(np.sum(dl[ok]))
+    alpha = s_act / s_fit if s_fit > 0 else 1.0
+    # No-op unless alpha is a well-defined positive rescale: a non-positive
+    # alpha (a segment whose net observed increment is <= 0, e.g. claim
+    # reversals/recoveries outweighing development) would flip the projection
+    # sign, write negative SEs, and invert the CI -- balance is undefined there,
+    # so leave the fit untouched (alpha reported as 1.0).
+    if not np.isfinite(alpha) or alpha <= 0.0 or abs(alpha - 1.0) < 1e-9:
+        return fit, ci, 1.0
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), 0
+    )
+    anchor = np.where(
+        has_obs, loss_obs[np.arange(n_cohorts), last_obs], np.nan
+    )[:, None]
+    future = ~np.isnan(fit["loss_proj"]) & ~obs_mask
+
+    def _rescale_level(arr: np.ndarray) -> np.ndarray:
+        return np.where(future, anchor + alpha * (arr - anchor), arr)
+
+    fit["loss_proj"] = _rescale_level(fit["loss_proj"])
+    for key in ("proc_se", "param_se", "total_se"):
+        se = fit[key]
+        fit[key] = np.where(future & np.isfinite(se), alpha * se, se)
+    if ci is not None:
+        ci = (_rescale_level(ci[0]), _rescale_level(ci[1]))
+    return fit, ci, alpha
+
+
+def _segment_balance_df(
+    alpha: float,
+    groups: "str | list[str] | None",
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """One-row per-segment balance factor (``[groups?, alpha]``)."""
+    data: dict[str, Any] = {}
+    if groups is not None:
+        fill_group_columns(data, groups, group_value, 1)
+    data["alpha"] = [float(alpha)]
+    return pl.DataFrame(data)
+
+
 def _fit_loss(
     triangle: "Triangle",
     *,
@@ -1159,6 +1244,7 @@ def _fit_loss(
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
+    balance: bool = False,
     uncertainty: "Any" = None,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
@@ -1210,6 +1296,7 @@ def _fit_loss(
 
     long_parts: list[pl.DataFrame] = []
     cred_parts: list[pl.DataFrame] = []
+    balance_parts: list[pl.DataFrame] = []
     reasons: list[str] = []
     n_observed = n_projected = n_unfittable = n_borrowed = 0
     n_smooth_fallback = n_smooth_nonconv = 0
@@ -1288,6 +1375,16 @@ def _fit_loss(
             fit["total_se"] = boot["total_se"]
             ci = (boot["ci_lo"], boot["ci_hi"])
 
+        # balance property: rescale the projection (point + SE + CI) so the
+        # in-sample fitted-increment total matches observed (additive ladder
+        # only; Pooled is a no-op). Applied LAST so it scales whatever SE/CI
+        # the analytical or bootstrap path produced.
+        if balance and mechanism in ("pooled", "credible", "smooth"):
+            fit, ci, _balance_alpha = _apply_balance(fit, recent, ci)
+            balance_parts.append(
+                _segment_balance_df(_balance_alpha, groups, group_value)
+            )
+
         obs_mask = ~np.isnan(fit["loss_obs"])
         # projected = own projections only; borrowed is a disjoint category so
         # observed / projected / borrowed / unfittable partition the cells.
@@ -1319,6 +1416,7 @@ def _fit_loss(
 
     long_df = pl.concat(long_parts)
     credibility = pl.concat(cred_parts) if cred_parts else None
+    balance_factor = pl.concat(balance_parts) if balance_parts else None
     if n_unfittable:
         reasons.append("projection_gap")
     if n_smooth_fallback:
@@ -1337,6 +1435,7 @@ def _fit_loss(
         conf_level=conf_level,
         uncertainty=boot_spec,
         credibility=credibility,
+        balance=balance_factor,
         output_type=triangle._output_type,
         status=status,
         status_reasons=reasons,
@@ -1380,9 +1479,11 @@ class LossFit:
         cell_counts: dict[str, int],
         uncertainty: Any = None,
         credibility: "pl.DataFrame | None" = None,
+        balance: "pl.DataFrame | None" = None,
     ) -> None:
         self._df = df
         self._credibility = credibility
+        self._balance = balance
         self._output_type = output_type
         self.groups = groups
         self.method = method
@@ -1408,6 +1509,16 @@ class LossFit:
         if self._credibility is None:
             return None
         return mirror_output(self._credibility, self._output_type)
+
+    @property
+    def balance_factor(self) -> "FrameLike | None":
+        """Per-segment balance-property factor (``[groups?, alpha]``) when the
+        fit was run with ``balance=True``, else ``None``. ``alpha`` is the
+        multiplicative calibration applied so the in-sample fitted-increment
+        total matches observed (``1.0`` = already balanced, e.g. ``PooledLoss``)."""
+        if self._balance is None:
+            return None
+        return mirror_output(self._balance, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

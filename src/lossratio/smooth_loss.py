@@ -69,6 +69,7 @@ class SmoothLoss(_LossEstimatorBase):
     psi: "float | str" = "auto"
     lam: "float | str" = "auto"
     n_basis: "int | None" = None
+    balance: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -106,5 +107,6 @@ class SmoothLoss(_LossEstimatorBase):
             psi=self.psi,
             n_basis=self.n_basis,
             lam=self.lam,
+            balance=self.balance,
             uncertainty=self.uncertainty,
         )

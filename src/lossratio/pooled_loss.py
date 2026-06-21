@@ -45,6 +45,8 @@ class PooledLoss(_LossEstimatorBase):
         Two-sided confidence level for the analytical CI columns.
     """
 
+    balance: bool = False
+
     def fit(self, triangle: "Triangle") -> LossFit:
         """Fit the saturated-mode loss projection on a :class:`Triangle`."""
         return _fit_loss(
@@ -55,5 +57,6 @@ class PooledLoss(_LossEstimatorBase):
             recent=self.recent,
             conf_level=self.conf_level,
             borrow=self.borrow,
+            balance=self.balance,
             uncertainty=self.uncertainty,
         )

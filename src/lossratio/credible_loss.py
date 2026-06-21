@@ -49,6 +49,7 @@ class CredibleLoss(_LossEstimatorBase):
     """
 
     psi: "float | str" = "auto"
+    balance: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -77,5 +78,6 @@ class CredibleLoss(_LossEstimatorBase):
             conf_level=self.conf_level,
             borrow=False,
             psi=self.psi,
+            balance=self.balance,
             uncertainty=self.uncertainty,
         )
