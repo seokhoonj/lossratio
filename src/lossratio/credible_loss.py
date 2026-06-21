@@ -15,8 +15,10 @@ Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 v1 is point-only: the credibility level's estimation variance makes the
 analytical recursion invalid (charter Sec.5.1/5.2), so the SE / CI columns are
 null -- interval coverage rides the ResidualBootstrap, wired in a later step.
-``recent`` (the calendar-diagonal fit window) is supported; ``borrow`` is not
-(subsumed by the credibility level for level-shift regimes).
+``recent`` (the calendar-diagonal fit window) and ``borrow`` (the
+level-invariant donor tail for a data-thin segment's horizon) are both
+supported -- the credibility level corrects a level-shift regime, the borrow
+extends the tail.
 """
 
 from __future__ import annotations
@@ -62,10 +64,6 @@ class CredibleLoss(_LossEstimatorBase):
                 raise ValueError(
                     f'psi must be "auto" or a non-negative float, got {self.psi!r}'
                 )
-        if self.borrow is not False:
-            raise NotImplementedError(
-                "CredibleLoss does not support borrow yet"
-            )
 
     def fit(self, triangle: "Triangle") -> LossFit:
         """Fit the credibility loss projection on a :class:`Triangle`."""
@@ -76,7 +74,7 @@ class CredibleLoss(_LossEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             conf_level=self.conf_level,
-            borrow=False,
+            borrow=self.borrow,
             psi=self.psi,
             balance=self.balance,
             uncertainty=self.uncertainty,

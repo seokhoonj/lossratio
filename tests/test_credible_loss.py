@@ -116,10 +116,12 @@ def test_model_label(tri):
 
 
 def test_rejects_unsupported_and_bad_psi():
-    # recent is supported (calendar-diagonal fit window); borrow is not.
+    # recent (calendar-diagonal fit window) and borrow (donor tail) are both
+    # supported; only an unknown borrow value / a bad psi is rejected.
     assert CredibleLoss(recent=6).recent == 6
-    with pytest.raises(NotImplementedError):
-        CredibleLoss(borrow="pooled")
+    assert CredibleLoss(borrow="pooled").borrow == "pooled"
+    with pytest.raises(ValueError):
+        CredibleLoss(borrow="donor")
     for bad in (-1.0, "nope"):
         with pytest.raises(ValueError):
             CredibleLoss(psi=bad)

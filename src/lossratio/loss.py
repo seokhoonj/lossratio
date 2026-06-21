@@ -595,12 +595,13 @@ def _fit_segment_credible(
     rides the ResidualBootstrap, wired in a later step). ``recent``
     (calendar-diagonal window) masks the links feeding both the pooled ``g_k``
     and the per-cohort credibility estimation, while the projection stays seeded
-    from the full matrices. ``donor`` (borrow) is not supported (subsumed by the
-    credibility level for level-shift regimes; useless for shape change).
+    from the full matrices. A ``donor`` (borrow) fills each cohort's tail beyond
+    its own-data boundary with the level-invariant donor link ratio: the own
+    body keeps the credibility level (``u_i * g_k`` additive), the borrowed tail
+    lends only development shape (charter borrow design). The credibility level
+    handles a level-shift regime, the borrow extends the data-thin tail horizon
+    -- complementary.
     """
-    if donor is not None:
-        raise NotImplementedError("CredibleLoss does not support borrow yet")
-
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
@@ -622,8 +623,23 @@ def _fit_segment_credible(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
-    # 4. credibility-scaled additive projection (SE null in v1)
-    loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+    # 4. credibility-scaled additive projection (SE null in v1). A borrow donor
+    # keeps the credibility level on the own body and lends the level-invariant
+    # shape beyond the boundary; the analytical SE arms stay null (coverage
+    # rides the ResidualBootstrap).
+    if donor is None:
+        loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+    else:
+        nan = np.full(g_k.shape, np.nan)
+        zero = np.zeros(g_k.shape, dtype=np.float64)
+        loss_proj, _proc, _param, _total, borrowed = _project_borrow(
+            loss_obs, premium_proj, body="additive",
+            own_g=g_k, own_sig_g=zero, own_var_g=zero,
+            own_f=nan, own_sig_f=nan, own_var_f=nan,
+            donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
+            own_u=u_vec,
+        )
     nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
 
     return {
@@ -634,7 +650,7 @@ def _fit_segment_credible(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": np.zeros(loss_obs.shape, dtype=bool),
+        "borrowed": borrowed,
         "g_k": g_k,
         "u": u_vec,
         "Z": z_vec,
@@ -846,11 +862,10 @@ def _fit_segment_smooth(
     estimation variance breaks the analytical recursion). ``recent``
     (calendar-diagonal window) masks the links feeding the smooth shape + the
     credibility level, while the projection stays seeded from the full matrices.
-    ``donor`` (borrow) is not supported (subsumed by the credibility level).
+    A ``donor`` (borrow) keeps the smooth credibility body (``u_i * g_k``
+    additive) on the own data and lends the level-invariant donor shape beyond
+    the boundary, extending a data-thin segment's tail horizon.
     """
-    if donor is not None:
-        raise NotImplementedError("SmoothLoss does not support borrow yet")
-
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
 
@@ -862,7 +877,19 @@ def _fit_segment_smooth(
     premium_proj = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
-    loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+    if donor is None:
+        loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+    else:
+        nan = np.full(g_k.shape, np.nan)
+        zero = np.zeros(g_k.shape, dtype=np.float64)
+        loss_proj, _proc, _param, _total, borrowed = _project_borrow(
+            loss_obs, premium_proj, body="additive",
+            own_g=g_k, own_sig_g=zero, own_var_g=zero,
+            own_f=nan, own_sig_f=nan, own_var_f=nan,
+            donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
+            own_u=u_vec,
+        )
     nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
 
     return {
@@ -873,7 +900,7 @@ def _fit_segment_smooth(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": np.zeros(loss_obs.shape, dtype=bool),
+        "borrowed": borrowed,
         "g_k": g_k,
         "u": u_vec,
         "Z": bf["Z"],
@@ -893,6 +920,7 @@ def _project_borrow(
     own_g: np.ndarray, own_sig_g: np.ndarray, own_var_g: np.ndarray,
     own_f: np.ndarray, own_sig_f: np.ndarray, own_var_f: np.ndarray,
     donor_f: np.ndarray, donor_sig_f: np.ndarray, donor_var_f: np.ndarray,
+    own_u: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Projection with a level-invariant borrowed tail.
 
@@ -908,6 +936,13 @@ def _project_borrow(
     process / parameter variance accumulators carry across the boundary (donor
     links use the donor's sigma2 / Var). Returns ``(loss_proj, proc_se,
     param_se, total_se, borrowed)`` where ``borrowed`` flags the donor cells.
+
+    ``own_u`` is the per-cohort credibility level for the additive body: the
+    ``CredibleLoss`` / ``SmoothLoss`` projected increment is ``u_i * g_k * P_k``,
+    so the body must carry each cohort's ``u_i`` (the donor tail stays
+    level-invariant -- ``f_k`` cancels the loss-ratio level, so ``u`` is
+    irrelevant there). ``None`` (the default) keeps ``u = 1`` -- the
+    complete-pooling / link-ratio body is byte-identical.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -935,6 +970,8 @@ def _project_borrow(
     donor_sig_f = _locf_forward(donor_sig_f)
     donor_var_f = _locf_forward(donor_var_f)
 
+    u_body = np.ones(n_cohorts, dtype=np.float64) if own_u is None else own_u
+
     proc_acc = np.zeros(n_cohorts, dtype=np.float64)
     param_acc = np.zeros(n_cohorts, dtype=np.float64)
 
@@ -950,7 +987,7 @@ def _project_borrow(
                     continue                              # interior own gap
                 pos = active & ~np.isnan(pk) & (pk > 0)
                 if pos.any():
-                    loss_proj[pos, k + 1] = ck[pos] + own_g[k] * pk[pos]
+                    loss_proj[pos, k + 1] = ck[pos] + u_body[pos] * own_g[k] * pk[pos]
                     _step_additive(proc_acc, param_acc, pos,
                                   own_sig_g[k], own_var_g[k], pk)
             else:

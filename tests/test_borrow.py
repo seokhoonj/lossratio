@@ -18,6 +18,9 @@ import pytest
 import lossratio as lr
 from lossratio.pooled_loss import PooledLoss
 from lossratio.chain_ladder import ChainLadder
+from lossratio.credible_loss import CredibleLoss
+from lossratio.smooth_loss import SmoothLoss
+from lossratio._resample import ResidualBootstrap
 from lossratio._recursion import _fit_multiplicative, _build_value_matrices
 
 
@@ -34,7 +37,9 @@ def tri() -> lr.Triangle:
 CUT = date(2024, 7, 1)
 
 
-@pytest.mark.parametrize("estimator", [PooledLoss, ChainLadder])
+@pytest.mark.parametrize(
+    "estimator", [PooledLoss, ChainLadder, CredibleLoss, SmoothLoss]
+)
 def test_borrow_extends_horizon(tri, estimator):
     """Regime cut leaves thin post-change cohorts; borrow projects them to the
     full horizon, off leaves the short one."""
@@ -106,6 +111,82 @@ def test_borrow_false_is_default(tri):
     # no borrowed cells / no source=="borrowed" on the plain fit
     full = _pl(PooledLoss().fit(tri))
     assert (full["source"] == "borrowed").sum() == 0
+
+
+def test_credible_borrow_collapses_to_pooled_at_psi_zero(tri):
+    """The ladder-collapse invariant survives borrow: CredibleLoss(psi=0) has
+    u = 1, so its borrow fit is the PooledLoss borrow fit cell-for-cell (own
+    body AND borrowed tail)."""
+    pool = _pl(PooledLoss(regime=CUT, borrow="pooled").fit(tri)).sort(
+        ["coverage", "cohort", "duration"]
+    )
+    cred0 = _pl(
+        CredibleLoss(regime=CUT, borrow="pooled", psi=0).fit(tri)
+    ).sort(["coverage", "cohort", "duration"])
+    a = pool["loss_proj"].to_numpy()
+    b = cred0["loss_proj"].to_numpy()
+    m = np.isfinite(a) & np.isfinite(b)
+    assert m.any()
+    assert np.allclose(a[m], b[m], rtol=0, atol=0)         # exact collapse
+    assert pool["source"].to_list() == cred0["source"].to_list()
+
+
+@pytest.mark.parametrize("estimator", [CredibleLoss, SmoothLoss])
+def test_credible_smooth_body_keeps_level_tail_stays_invariant(tri, estimator):
+    """The own body carries the per-cohort credibility level (so a psi=auto
+    borrow fit differs from the pooled borrow body), while the borrowed tail
+    stays level-invariant -- its step ratio is the segment's own full f_k,
+    independent of the credibility level."""
+    cov = "CANCER"
+    src = lr.load_experience()
+    sub = pl.from_pandas(src.to_pandas()) if not isinstance(src, pl.DataFrame) else src
+    sub = sub.filter(pl.col("coverage") == cov)
+    (loss,), _, _ = _build_value_matrices(
+        lr.Triangle(sub, groups="coverage").to_polars().sort(["cohort", "duration"]),
+        value_cols=("loss",),
+    )
+    own_f = _fit_multiplicative(loss).f_k
+
+    pool = _pl(PooledLoss(regime=CUT, borrow="pooled").fit(tri))
+    cred = _pl(estimator(regime=CUT, borrow="pooled", psi="auto").fit(tri))
+    # the credibility level moves the body away from the pooled body
+    a = pool["loss_proj"].to_numpy(); b = cred["loss_proj"].to_numpy()
+    m = np.isfinite(a) & np.isfinite(b)
+    assert np.nanmax(np.abs(a[m] - b[m])) > 0.0
+
+    # ... but the borrowed tail develops on the segment's own f_k (shape only)
+    full = cred.filter(pl.col("coverage") == cov).sort(["cohort", "duration"])
+    checked = 0
+    for _coh, g in full.group_by("cohort", maintain_order=True):
+        g = g.sort("duration")
+        lp = g["loss_proj"].to_numpy().astype(float)
+        srcs = g["source"].to_list()
+        durs = g["duration"].to_list()
+        for i in range(1, len(lp)):
+            if srcs[i] == "borrowed" and lp[i - 1] and np.isfinite(lp[i - 1]):
+                k = durs[i] - 2
+                assert np.isclose(lp[i] / lp[i - 1], own_f[k], rtol=1e-9)
+                checked += 1
+    assert checked > 0
+
+
+def test_credible_borrow_bootstrap_covers_the_borrowed_tail(tri):
+    """A ResidualBootstrap on a credible borrow fit fills the SE / CI on the
+    borrowed-tail cells too (the donor process + parameter draws), so the
+    data-thinnest cohort the borrow targets gets a non-degenerate band."""
+    fit = CredibleLoss(
+        regime=CUT, borrow="pooled",
+        uncertainty=ResidualBootstrap(n_replicates=40, seed=3),
+    ).fit(tri)
+    assert fit.status == "valid"
+    d = _pl(fit)
+    b = d.filter(pl.col("source") == "borrowed")
+    assert b.height > 0
+    assert b["loss_ci_hi"].is_not_null().all()
+    assert b["loss_total_se"].is_not_null().all()
+    # a genuine band (some positive width), not a degenerate zero-width interval
+    width = (b["loss_ci_hi"] - b["loss_ci_lo"]).to_numpy()
+    assert np.nanmax(width) > 0.0
 
 
 def test_project_borrow_interior_nan_donor_does_not_truncate():

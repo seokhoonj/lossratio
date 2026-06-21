@@ -20,7 +20,8 @@ recursion, so SE / CI are null UNLESS a :class:`~lossratio._resample.ResidualBoo
 is attached -- the bootstrap re-runs the whole smooth pipeline (shape +
 ``lambda`` selection + level) per replicate, so the interval and the coverage
 lane are available for ``SmoothLoss`` like the credible rung. ``recent`` (the
-calendar-diagonal fit window) is supported; ``borrow`` is not.
+calendar-diagonal fit window) and ``borrow`` (the level-invariant donor tail
+for a data-thin segment's horizon) are both supported.
 """
 
 from __future__ import annotations
@@ -91,8 +92,6 @@ class SmoothLoss(_LossEstimatorBase):
             raise ValueError(
                 f"n_basis must be None or an int >= 4, got {self.n_basis!r}"
             )
-        if self.borrow is not False:
-            raise NotImplementedError("SmoothLoss does not support borrow yet")
 
     def fit(self, triangle: "Triangle") -> LossFit:
         """Fit the smooth (GLMM) loss projection on a :class:`Triangle`."""
@@ -103,7 +102,7 @@ class SmoothLoss(_LossEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             conf_level=self.conf_level,
-            borrow=False,
+            borrow=self.borrow,
             psi=self.psi,
             n_basis=self.n_basis,
             lam=self.lam,

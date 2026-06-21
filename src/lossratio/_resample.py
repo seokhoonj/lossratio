@@ -67,6 +67,7 @@ def _project_borrow_cum(
     body: str,
     own: np.ndarray,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray]",
+    own_u: np.ndarray | None = None,
 ) -> np.ndarray:
     """Cumulative-loss path with the segment's own body + the FIXED donor tail.
 
@@ -74,9 +75,11 @@ def _project_borrow_cum(
     is held at its point estimate -- only the segment's OWN factors (``own`` =
     ``g_k`` for ``body="additive"`` or ``f_k`` for ``body="multiplicative"``) are re-estimated per
     replicate; the borrowed tail rides the fixed donor shape on the replicate's
-    own boundary. Returns only the projection (the analytical SE arms of
-    :func:`_project_borrow` are unused here -- the spread is the empirical
-    bootstrap)."""
+    own boundary. ``own_u`` carries the replicate's per-cohort credibility level
+    on the additive body (``CredibleLoss`` / ``SmoothLoss``), matching the point
+    fit; ``None`` keeps ``u = 1`` (pooled / link-ratio body). Returns only the
+    projection (the analytical SE arms of :func:`_project_borrow` are unused here
+    -- the spread is the empirical bootstrap)."""
     z = np.zeros_like(own)
     nan = np.full_like(own, np.nan)
     own_g, own_f = (own, nan) if body == "additive" else (nan, own)
@@ -86,6 +89,7 @@ def _project_borrow_cum(
         own_g=own_g, own_sig_g=z, own_var_g=z,
         own_f=own_f, own_sig_f=z, own_var_f=z,
         donor_f=donor[0], donor_sig_f=dz, donor_var_f=dz,
+        own_u=own_u,
     )[0]
 
 
@@ -351,7 +355,9 @@ def bootstrap_segment_additive(
     if donor is None:
         point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
     else:
-        point_proj = _project_borrow_cum(loss_obs, premium_proj, "additive", g_k, donor)
+        point_proj = _project_borrow_cum(
+            loss_obs, premium_proj, "additive", g_k, donor, own_u=u_vec
+        )
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
     dur1 = (kk + 1).tolist()                              # 1-based from-duration
 
@@ -459,7 +465,8 @@ def bootstrap_segment_additive(
             param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
         else:
             param_cum = _project_borrow_cum(
-                loss_obs, premium_proj, "additive", g_b, _perturb_donor(donor, rng)
+                loss_obs, premium_proj, "additive", g_b,
+                _perturb_donor(donor, rng), own_u=u_b,
             )
         param_draws[b] = param_cum
         # 6. predictive draw = param path + over-dispersed process noise on the
