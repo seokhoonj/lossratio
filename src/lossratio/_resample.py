@@ -522,8 +522,10 @@ def bootstrap_segment_covariate(
     spec: ResidualBootstrap,
     conf_level: float,
     rng: np.random.Generator,
+    n_basis: "int | None" = None,
+    lam_smooth: "float | str" = "auto",
 ) -> dict[str, np.ndarray]:
-    """Residual-bootstrap SE / CI for a CredibleLoss covariate fit.
+    """Residual-bootstrap SE / CI for a Pooled / Credible / Smooth covariate fit.
 
     The resampling is at the SUB-CELL link grain (the kernel's estimation
     cells): each replicate resamples standardized Pearson residuals about the
@@ -537,16 +539,34 @@ def bootstrap_segment_covariate(
     matching :func:`bootstrap_segment_additive`. Premium projection is
     deterministic (v1). ``data`` is the segment's :class:`SegmentCovData`.
     """
+    from dataclasses import replace
+
     from ._covariate import _build_g_eff, fit_covariate_intensity
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
     premium_proj = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
 
-    # --- point fit: kernel -> g_eff, conjugate -> u, projection ---
-    covfit = fit_covariate_intensity(data.resp, data.expo, data.dur, data.codes, lam=lam)
-    g_eff = _build_g_eff(covfit, data)
-    u_vec, _z, _p = _credible_levels(loss_obs, premium_obs, g_eff, sigma_method, psi)
+    def _cov_estimate(resp_arr: np.ndarray, loss_mat: np.ndarray):
+        """Re-fit the covariate pipeline (-> g_eff, u, covfit) on a response
+        vector + loss matrix. Smooth re-runs the backfit; pooled / credible fit
+        the saturated kernel once + the conjugate (psi=0 pins u=1 for pooled)."""
+        if n_basis is None:
+            cf = fit_covariate_intensity(
+                resp_arr, data.expo, data.dur, data.codes, lam=lam
+            )
+            g = _build_g_eff(cf, data)
+            u, _z, _p = _credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
+            return g, u, cf
+        from .loss import _smooth_backfit_covariate
+        bf = _smooth_backfit_covariate(
+            loss_mat, premium_obs, replace(data, resp=resp_arr), covariates,
+            sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam,
+        )
+        return bf["g_eff"], bf["u"], bf["covfit"]
+
+    # --- point fit: g_eff, u, projection ---
+    g_eff, u_vec, covfit = _cov_estimate(data.resp, loss_obs)
     point_proj = _project_credible(loss_obs, premium_proj, g_eff, u_vec)
 
     # --- sub-cell fitted mean, dispersion, standardized residuals ---
@@ -618,9 +638,6 @@ def bootstrap_segment_covariate(
             sel = dur == d
             rstar[sel] = rng.choice(dur_pools[int(d)], size=int(sel.sum()), replace=True)
         ystar = np.where(res_ok, mu + rstar * scale, y)   # pseudo sub-cell dLoss
-        # refit the kernel on the pseudo sub-cell links -> g_eff_b
-        covfit_b = fit_covariate_intensity(ystar, data.expo, dur, data.codes, lam=lam)
-        g_eff_b = _build_g_eff(covfit_b, data)
         # aggregate the pseudo increments to a cohort x duration pseudo cumulative
         dY = np.zeros(n_cohorts * n_links, dtype=np.float64)
         contributed = np.zeros(n_cohorts * n_links, dtype=bool)
@@ -634,7 +651,9 @@ def bootstrap_segment_covariate(
             nxt = ~np.isnan(loss_obs[:, k + 1]) & ~np.isnan(loss_obs[:, k])
             inc = np.where(contributed[:, k], dY[:, k], orig_agg_incr[:, k])
             cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
-        u_b, _zb, _pb = _credible_levels(cum, premium_obs, g_eff_b, sigma_method, psi)
+        # re-fit the whole covariate pipeline on the pseudo data (g on the
+        # sub-cell links, u on the aggregate pseudo cumulative)
+        g_eff_b, u_b, _cf = _cov_estimate(ystar, cum)
         param_cum = _project_credible(loss_obs, premium_proj, g_eff_b, u_b)
         param_draws[b] = param_cum
 

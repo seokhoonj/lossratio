@@ -42,7 +42,7 @@ from ._period import (
     infer_grain,
     resolve_grain,
 )
-from ._smooth import penalized_irls
+from ._smooth import bspline_design, penalized_irls
 
 
 @dataclass
@@ -77,6 +77,27 @@ class CovariateFit:
         return float(np.exp(eta))
 
 
+def _covariate_dummies(
+    covariates: "dict[str, np.ndarray]",
+) -> "tuple[list[np.ndarray], dict[str, list], list[tuple[str, object]]]":
+    """Treatment-coded covariate dummy columns (reference level dropped).
+
+    Returns ``(blocks, levels, beta_cols)``: one ``(n, 1)`` indicator block per
+    non-reference level, ``levels`` the per-covariate sorted level list
+    (reference = first), ``beta_cols`` the ``(covariate, level)`` labels in
+    column order."""
+    blocks: "list[np.ndarray]" = []
+    levels: "dict[str, list]" = {}
+    beta_cols: "list[tuple[str, object]]" = []
+    for name, codes in covariates.items():
+        uniq = sorted(np.unique(codes).tolist(), key=lambda v: str(v))
+        levels[name] = uniq
+        for lv in uniq[1:]:                       # drop the first level (reference)
+            blocks.append((codes == lv).astype(np.float64)[:, None])
+            beta_cols.append((name, lv))
+    return blocks, levels, beta_cols
+
+
 def _covariate_design(
     duration: np.ndarray,
     covariates: "dict[str, np.ndarray]",
@@ -96,17 +117,8 @@ def _covariate_design(
     Xd = np.zeros((n, len(durations)), dtype=np.float64)
     Xd[np.arange(n), [dcol[int(d)] for d in duration]] = 1.0
 
-    blocks = [Xd]
-    levels: "dict[str, list]" = {}
-    beta_cols: "list[tuple[str, object]]" = []
-    for name, codes in covariates.items():
-        uniq = sorted(np.unique(codes).tolist(), key=lambda v: str(v))
-        levels[name] = uniq
-        for lv in uniq[1:]:                       # drop the first level (reference)
-            blocks.append((codes == lv).astype(np.float64)[:, None])
-            beta_cols.append((name, lv))
-
-    B = np.hstack(blocks)
+    blocks, levels, beta_cols = _covariate_dummies(covariates)
+    B = np.hstack([Xd, *blocks]) if blocks else Xd
     penalty_diag = np.concatenate([
         np.zeros(len(durations)),                 # saturated duration block: unpenalized
         np.ones(len(beta_cols)),                  # covariate block: ridge-shrunk
@@ -121,6 +133,9 @@ def fit_covariate_intensity(
     covariates: "dict[str, np.ndarray]",
     *,
     lam: float = 1.0,
+    n_basis: "int | None" = None,
+    lam_smooth: "float | str" = "auto",
+    degree: int = 3,
 ) -> CovariateFit:
     """Penalized quasi-Poisson log-link GLM of the covariate-adjusted intensity.
 
@@ -128,8 +143,15 @@ def fit_covariate_intensity(
     cumulative premium (> 0), ``duration`` = per-cell from-duration,
     ``covariates`` = ``{name: per-cell level codes}`` (empty dict = pooled
     intensity, exact nesting). ``lam`` is the ridge strength on the covariate
-    coefficients (the duration shape is never penalized). Cells with
-    non-positive exposure are dropped.
+    coefficients. Cells with non-positive exposure are dropped.
+
+    With ``n_basis=None`` (default) the duration shape is the saturated one-hot
+    (unpenalized) -- the credible / pooled covariate path. With ``n_basis`` set
+    the duration block is a clamped B-spline of the given ``degree`` with a
+    2nd-difference (P-spline) penalty whose strength ``lam_smooth`` is either a
+    fixed float or GCV-selected (``"auto"``) -- the smooth covariate path. Either
+    way the covariate block stays treatment-coded + ridge-shrunk, so the fitted
+    ``s_d`` (smooth or saturated) plus ``X'beta`` give ``g_d(x)`` identically.
     """
     response = np.asarray(response, dtype=np.float64)
     exposure = np.asarray(exposure, dtype=np.float64)
@@ -140,17 +162,60 @@ def fit_covariate_intensity(
         covariates = {k: np.asarray(v)[keep] for k, v in covariates.items()}
     else:
         covariates = {k: np.asarray(v) for k, v in covariates.items()}
+    offset = np.log(exposure)
 
-    B, penalty_diag, durations, levels, beta_cols = _covariate_design(
-        duration, covariates
-    )
-    penalty = np.diag(penalty_diag)
-    fit = penalized_irls(
-        response, np.log(exposure), B, penalty, float(lam),
-    )
-    n_dur = len(durations)
-    s = fit.beta[:n_dur]
-    beta = {col: float(fit.beta[n_dur + j]) for j, col in enumerate(beta_cols)}
+    if n_basis is None:
+        B, penalty_diag, durations, levels, beta_cols = _covariate_design(
+            duration, covariates
+        )
+        fit = penalized_irls(response, offset, B, np.diag(penalty_diag), float(lam))
+        n_dur = len(durations)
+        s = fit.beta[:n_dur]
+        beta = {col: float(fit.beta[n_dur + j]) for j, col in enumerate(beta_cols)}
+        return CovariateFit(
+            durations=durations, s=s, levels=levels, beta=beta,
+            converged=bool(fit.converged),
+        )
+
+    # smooth duration basis: B = [B-spline | covariate dummies], penalty =
+    # blockdiag(lam_smooth * P2, lam * I); pass lam = 1 so the assembled penalty
+    # applies as-is (the cov block stays ridged even at lam_smooth = 0).
+    durations = sorted(int(d) for d in np.unique(duration))
+    nb = max(degree + 1, min(int(n_basis), len(durations)))
+    Bdur, P2 = bspline_design(duration, nb, degree)
+    nb = Bdur.shape[1]                            # bspline collapses to 1 col for a single duration
+    blocks, levels, beta_cols = _covariate_dummies(covariates)
+    ncov = len(beta_cols)
+    B = np.hstack([Bdur, *blocks]) if blocks else Bdur
+
+    def _pen(ls: float) -> np.ndarray:
+        pen = np.zeros((nb + ncov, nb + ncov), dtype=np.float64)
+        pen[:nb, :nb] = ls * P2
+        if ncov:
+            pen[nb:, nb:] = float(lam) * np.eye(ncov)
+        return pen
+
+    if lam_smooth != "auto":
+        fit = penalized_irls(response, offset, B, _pen(float(lam_smooth)), 1.0)
+    else:
+        f0 = penalized_irls(response, offset, B, _pen(0.0), 1.0)
+        BtWB = (Bdur.T * f0.mu) @ Bdur
+        tr_p = float(np.trace(P2))
+        scale = (float(np.trace(BtWB)) / tr_p) if tr_p > 0 else 1.0
+        n = response.size
+        best_gcv = np.inf
+        fit = f0
+        for lg in scale * np.geomspace(1e-4, 1e4, 13):
+            f = penalized_irls(response, offset, B, _pen(float(lg)), 1.0)
+            denom = n - f.edf
+            gcv = np.inf if denom <= 0 else n * f.pearson / denom ** 2
+            if gcv < best_gcv:
+                best_gcv, fit = gcv, f
+
+    spline_coef = fit.beta[:nb]
+    Bk, _ = bspline_design(np.array(durations, dtype=np.float64), nb, degree)
+    s = Bk @ spline_coef
+    beta = {col: float(fit.beta[nb + j]) for j, col in enumerate(beta_cols)}
     return CovariateFit(
         durations=durations, s=s, levels=levels, beta=beta,
         converged=bool(fit.converged),

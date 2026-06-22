@@ -936,6 +936,76 @@ def _smooth_backfit(
     }
 
 
+def _smooth_backfit_covariate(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    cov_data: "Any",
+    covariates: "list[str]",
+    sigma_method: str,
+    *,
+    psi: "float | str" = "auto",
+    n_basis: "int | None" = None,
+    lam: "float | str" = "auto",
+    lam_cov: float = 1.0,
+    max_outer: int = 100,
+    tol: float = 1e-4,
+    link_mask: np.ndarray | None = None,
+) -> dict:
+    """Covariate variant of :func:`_smooth_backfit` (SmoothLoss covariates=).
+
+    The s-step fits the SMOOTH covariate kernel (P-spline duration shape + ridge
+    covariate level) on the ``u``-adjusted sub-cell exposure ``u_i * P`` and
+    collapses ``g_d(x)`` to the 2-D effective intensity ``g_eff``; the u-step is
+    the dispersion-scaled conjugate on ``g_eff``. The two alternate (damped) to
+    convergence, mirroring the pooled smooth backfit. Returns ``g_eff`` / ``u`` /
+    ``Z`` / ``psi`` / ``covfit`` / ``representable`` / ``converged``.
+    """
+    from ._covariate import _build_g_eff, fit_covariate_intensity
+
+    n_cohorts = loss_obs.shape[0]
+    u_vec = np.ones(n_cohorts, dtype=np.float64)
+    z_vec = np.zeros(n_cohorts, dtype=np.float64)
+    psi_hat = 0.0
+
+    def _step(u: np.ndarray):
+        adj = u[cov_data.coh_idx] * cov_data.expo      # divide u out -> shape on u*P
+        cf = fit_covariate_intensity(
+            cov_data.resp, adj, cov_data.dur, cov_data.codes,
+            lam=lam_cov, n_basis=n_basis, lam_smooth=lam,
+        )
+        return cf, _build_g_eff(cf, cov_data)
+
+    if cov_data.resp.size == 0:
+        nan = np.full(loss_obs.shape[1] - 1, np.nan, dtype=np.float64)
+        return {"g_eff": np.full((n_cohorts, loss_obs.shape[1] - 1), np.nan),
+                "u": u_vec, "Z": z_vec, "psi": 0.0, "covfit": None,
+                "representable": False, "converged": True}
+
+    covfit, g_eff = _step(u_vec)
+    inner_converged = covfit.converged
+    backfit_converged = False
+    for _ in range(max_outer):
+        covfit, g_eff = _step(u_vec)
+        inner_converged = covfit.converged
+        u_conj, z_vec, psi_hat = _credible_levels(
+            loss_obs, premium_obs, g_eff, sigma_method, psi, link_mask=link_mask
+        )
+        resid = float(np.max(np.abs(u_conj - u_vec)))
+        u_vec = u_vec + _BACKFIT_RELAX * (u_conj - u_vec)
+        if resid < tol:
+            backfit_converged = True
+            break
+    else:
+        covfit, g_eff = _step(u_vec)            # final consistency refit at u
+        _, z_vec, psi_hat = _credible_levels(
+            loss_obs, premium_obs, g_eff, sigma_method, psi, link_mask=link_mask
+        )
+    return {
+        "g_eff": g_eff, "u": u_vec, "Z": z_vec, "psi": psi_hat, "covfit": covfit,
+        "representable": True, "converged": inner_converged and backfit_converged,
+    }
+
+
 def _fit_segment_smooth(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
@@ -947,6 +1017,9 @@ def _fit_segment_smooth(
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
+    cov_data: "Any" = None,
+    covariates: "list[str] | None" = None,
+    lam_cov: float = 1.0,
 ) -> dict[str, np.ndarray]:
     """Smooth (GLMM) fit for one segment -- the top ladder rung.
 
@@ -965,11 +1038,22 @@ def _fit_segment_smooth(
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
 
-    bf = _smooth_backfit(
-        loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
-        link_mask=loss_mask,
-    )
-    g_k, u_vec = bf["g_k"], bf["u"]
+    covfit = None
+    if cov_data is not None:
+        bf = _smooth_backfit_covariate(
+            loss_obs, premium_obs, cov_data, list(covariates), sigma_method,
+            psi=psi, n_basis=n_basis, lam=lam, lam_cov=lam_cov, link_mask=loss_mask,
+        )
+        g_k = bf["g_eff"]
+        bf = {**bf, "lam": float("nan"), "edf": float("nan")}
+        covfit = bf["covfit"]
+    else:
+        bf = _smooth_backfit(
+            loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
+            link_mask=loss_mask,
+        )
+        g_k = bf["g_k"]
+    u_vec = bf["u"]
     premium_proj = _segment_premium_proj(
         premium_obs, sigma_method, premium_mask, premium_donor
     )
@@ -1005,6 +1089,7 @@ def _fit_segment_smooth(
         "edf": bf["edf"],
         "representable": bf["representable"],
         "smooth_converged": bf["converged"],
+        "covfit": covfit,
     }
 
 
@@ -1565,7 +1650,7 @@ def _fit_loss(
         # architecture B: read the raw disaggregated source at fit time and
         # re-aggregate to (groups, cohort, duration, *covariates) sub-cells that
         # match the Triangle's own binning (charter Sec.4.3 covariate design).
-        if mechanism not in ("pooled", "credible"):
+        if mechanism not in ("pooled", "credible", "smooth"):
             raise NotImplementedError(
                 f"covariates= is not wired for {model!r}."
             )
@@ -1697,14 +1782,20 @@ def _fit_loss(
             cov_data = _covariate_segment_data(
                 seg_cov, list(covariates), cohorts, loss_obs.shape[1] - 1,
             )
-            covfit = fit_covariate_intensity(
-                cov_data.resp, cov_data.expo, cov_data.dur, cov_data.codes,
-                lam=lam_cov,
-            )
-            extra["g_override"] = _build_g_eff(covfit, cov_data)
-            coef_parts.append(
-                _segment_coefficients_df(covfit, groups, group_value)
-            )
+            if mechanism == "smooth":
+                # the smooth shape co-evolves with u in a backfit -> the fitter
+                # runs the covariate-smooth backfit and returns its covfit.
+                extra["cov_data"] = cov_data
+                extra["covariates"] = list(covariates)
+                extra["lam_cov"] = lam_cov
+            else:
+                # pooled / credible: the saturated covariate intensity is
+                # u-independent, so g_eff is precomputed here as g_override.
+                covfit = fit_covariate_intensity(
+                    cov_data.resp, cov_data.expo, cov_data.dur, cov_data.codes,
+                    lam=lam_cov,
+                )
+                extra["g_override"] = _build_g_eff(covfit, cov_data)
         fit = fit_segment(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor,
             premium_donor=premium_donor, **extra
@@ -1714,14 +1805,21 @@ def _fit_loss(
             n_smooth_nonconv += int(not fit["smooth_converged"])
 
         if cov_data is not None:
-            # pooled covariate has no credibility level (u = 1)
-            u_surface = fit.get("u", np.ones(len(cohorts), dtype=np.float64))
-            surface_parts.append(
-                _segment_covariate_surface(
-                    seg_cov, list(covariates), covfit,
-                    fit["premium_proj"], u_surface, cohorts, groups, group_value,
+            # smooth's covfit comes out of the backfit; pooled / credible
+            # precomputed it above. pooled keeps u = 1 (no credibility level).
+            if covfit is None:
+                covfit = fit.get("covfit")
+            if covfit is not None:
+                coef_parts.append(
+                    _segment_coefficients_df(covfit, groups, group_value)
                 )
-            )
+                u_surface = fit.get("u", np.ones(len(cohorts), dtype=np.float64))
+                surface_parts.append(
+                    _segment_covariate_surface(
+                        seg_cov, list(covariates), covfit,
+                        fit["premium_proj"], u_surface, cohorts, groups, group_value,
+                    )
+                )
 
         ci = None
         if boot_spec is not None:
@@ -1741,6 +1839,8 @@ def _fit_loss(
                     fit["loss_obs"], fit["premium_obs"], cov_data,
                     list(covariates), sigma_method=sigma_method, psi=boot_psi,
                     lam=lam_cov, spec=boot_spec, conf_level=conf_level, rng=rng,
+                    n_basis=(n_basis if mechanism == "smooth" else None),
+                    lam_smooth=(lam if mechanism == "smooth" else "auto"),
                 )
             else:
                 from ._resample import bootstrap_segment_additive

@@ -464,6 +464,69 @@ def test_pooled_covariate_bootstrap_and_validation():
         lr.PooledLoss(covariates=["sex"]).fit(tri)
 
 
+def test_kernel_smooth_mode_recovers_relativity():
+    """The smooth duration-basis kernel still recovers the covariate
+    relativity (P-spline shape + ridge covariate level)."""
+    g_true = {1: 0.05, 2: 0.04, 3: 0.03, 4: 0.025, 5: 0.02, 6: 0.018}
+    cov = {"levels": ["M", "F"], "factor": {"M": 1.0, "F": 1.3}}
+
+    def synth():
+        rng = np.random.default_rng(3)
+        resp, expo, dur, codes = [], [], [], []
+        for _ in range(14):
+            for k in range(1, 7):
+                p = float(rng.uniform(500.0, 1500.0))
+                for lvl in ("M", "F"):
+                    resp.append(p * g_true[k] * cov["factor"][lvl])
+                    expo.append(p)
+                    dur.append(k)
+                    codes.append(lvl)
+        return (np.array(resp), np.array(expo), np.array(dur),
+                np.array(codes, dtype=object))
+
+    resp, expo, dur, codes = synth()
+    fit = fit_covariate_intensity(
+        resp, expo, dur, {"sex": codes}, lam=1e-3, n_basis=6, lam_smooth="auto"
+    )
+    assert np.isclose(fit.beta[("sex", "M")], -np.log(1.3), atol=0.1)
+    # smooth s(d) tracks the declining true intensity
+    assert fit.intensity(1, {"sex": "F"}) > fit.intensity(6, {"sex": "F"})
+
+
+def test_smooth_covariate_fit_and_surface():
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    fit = lr.SmoothLoss(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    assert fit.coefficients is not None
+    rec = fit.coefficients.sort("level").to_dict(as_series=False)
+    assert rec["level"] == ["F", "M"]
+    assert rec["exp_beta"][1] < 1.0                       # M below F reference
+    # disaggregated surface marginalizes to the headline projection
+    head = fit.predict().sort(["cohort", "duration"])
+    rolled = (
+        fit.predict(by="sex").group_by(["cohort", "duration"])
+        .agg(pl.col("loss_proj").sum()).sort(["cohort", "duration"])
+    )
+    j = head.join(rolled, on=["cohort", "duration"], suffix="_s")
+    m = ~np.isnan(j["loss_proj"].to_numpy()) & ~np.isnan(j["loss_proj_s"].to_numpy())
+    assert m.any()
+    assert np.allclose(j["loss_proj"].to_numpy()[m], j["loss_proj_s"].to_numpy()[m],
+                       rtol=1e-9)
+
+
+def test_smooth_covariate_bootstrap():
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    fit = lr.SmoothLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3,
+        uncertainty=lr.ResidualBootstrap(n_replicates=20, seed=0),
+    ).fit(tri)
+    proj = fit.to_polars().filter(pl.col("source") == "own")
+    assert np.isfinite(proj["loss_total_se"].to_numpy()).any()
+
+
 def test_predict_by_requires_covariate_fit():
     df = _experience_source({"M": 1.0})
     tri = _triangle(df)

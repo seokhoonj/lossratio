@@ -27,7 +27,7 @@ for a data-thin segment's horizon) are both supported.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .loss import LossFit, _LossEstimatorBase, _fit_loss
 
@@ -71,6 +71,9 @@ class SmoothLoss(_LossEstimatorBase):
     lam: "float | str" = "auto"
     n_basis: "int | None" = None
     balance: bool = False
+    covariates: "list[str] | None" = None
+    source: "Any" = None
+    lam_cov: float = 1.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -92,9 +95,29 @@ class SmoothLoss(_LossEstimatorBase):
             raise ValueError(
                 f"n_basis must be None or an int >= 4, got {self.n_basis!r}"
             )
+        if self.covariates is not None:
+            if isinstance(self.covariates, str):
+                self.covariates = [self.covariates]
+            if not all(isinstance(c, str) for c in self.covariates):
+                raise ValueError("covariates must be a string or list of strings.")
+            if self.borrow:
+                raise ValueError(
+                    "borrow= and covariates= are mutually exclusive: borrow lends "
+                    "a single level-invariant donor shape, covariates require "
+                    "per-cell intensities."
+                )
+        if isinstance(self.lam_cov, bool) or not isinstance(self.lam_cov, (int, float)) \
+                or self.lam_cov < 0:
+            raise ValueError(f"lam_cov must be a non-negative float, got {self.lam_cov!r}")
 
     def fit(self, triangle: "Triangle") -> LossFit:
-        """Fit the smooth (GLMM) loss projection on a :class:`Triangle`."""
+        """Fit the smooth (GLMM) loss projection on a :class:`Triangle`.
+
+        With ``covariates`` the smooth duration shape and the covariate
+        log-relativities are fit jointly (a P-spline duration block + ridge
+        covariate block inside the backfit); ``.coefficients`` reports the
+        relativities and ``predict(by=...)`` the disaggregated surface.
+        """
         return _fit_loss(
             triangle,
             mechanism="smooth",
@@ -108,4 +131,7 @@ class SmoothLoss(_LossEstimatorBase):
             lam=self.lam,
             balance=self.balance,
             uncertainty=self.uncertainty,
+            covariates=self.covariates,
+            source=self.source,
+            lam_cov=self.lam_cov,
         )
