@@ -72,6 +72,14 @@ def _validate_lam_cov(lam_cov: "float | str | dict") -> None:
                 'lam_cov must be "auto", a non-negative float, or a dict of '
                 f"those, got {v!r}"
             )
+    if isinstance(lam_cov, dict):
+        vals = list(lam_cov.values())
+        if any(v == "auto" for v in vals) and not all(v == "auto" for v in vals):
+            raise ValueError(
+                "lam_cov dict cannot mix 'auto' with fixed values: if any "
+                "covariate is 'auto' the random-effect variances are estimated "
+                "jointly for the whole covariate block. Use all-'auto' or all-float."
+            )
 
 
 @dataclass(kw_only=True)

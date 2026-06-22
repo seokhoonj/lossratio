@@ -44,6 +44,12 @@ from ._period import (
 )
 from ._smooth import bspline_design, penalized_irls
 
+# weak-prior cap on the EB covariate-effect variance (dimensionless, on the
+# log-relativity scale): bounds a level's typical |log-relativity| to ~sqrt(cap)
+# (~e^5 ~ 150x) so a near-separated level stays finite, without over-shrinking a
+# real data-rich signal (whose sigma^2 is far smaller). Book-invariant.
+_SIGMA2_MAX = 25.0
+
 
 @dataclass
 class CovariateFit:
@@ -201,6 +207,12 @@ def _eb_ridge_diag(
     shrinkage); a noisy / sparse high-cardinality covariate gets a small
     ``sigma_c^2`` (strong shrinkage toward the reference) -- automatic, not a
     hand-set ``lam``. Returns the per-column ridge diagonal (length ``ncov``).
+
+    NOTE (smooth path): the EB fit here uses the UNPENALIZED shape block, so when
+    paired with ``SmoothLoss`` the ridge is estimated against the saturated shape
+    and then deployed under the P-spline-penalized shape -- a second-order
+    mismatch (the ridge is already an approximation). The credible / pooled paths
+    have no such mismatch.
     """
     ncov = len(beta_cols)
     names = [nm for nm, _lv in beta_cols]
@@ -237,8 +249,12 @@ def _eb_ridge_diag(
             denom = max(len(cc) - tr, 1e-3)
             s2 = max(float(b @ b) / denom, 1e-12)
             # cap sigma^2 (floor the ridge) so a near-separated level cannot run
-            # to no-shrinkage / +-inf -- the EB analogue of a weak prior.
-            s2 = min(s2, 1e6 / scale)
+            # to no-shrinkage / +-inf -- the EB analogue of a weak prior. The cap
+            # is on the DIMENSIONLESS log-relativity variance (sigma^2 of beta),
+            # so it is book-invariant: ``_SIGMA2_MAX`` bounds a level's typical
+            # |log-relativity| to ~sqrt(cap) and never over-shrinks a real,
+            # data-rich signal on a large-premium book.
+            s2 = min(s2, _SIGMA2_MAX)
             new[cc] = phi / s2
         if np.allclose(new, ridge, rtol=tol):
             ridge = new
