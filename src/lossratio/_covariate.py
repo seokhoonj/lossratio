@@ -241,6 +241,52 @@ def reaggregate_source(
     return agg
 
 
+def reconcile_coverage(
+    cov_cells: pl.DataFrame,
+    triangle_frame: pl.DataFrame,
+    *,
+    groups: "str | list[str] | None",
+    rtol: float = 1e-6,
+) -> None:
+    """Fail fast if the covariate sub-cells do not roll up to the Triangle.
+
+    Summing ``cov_cells`` over the covariates must reproduce the Triangle's own
+    ``(groups, cohort, duration)`` increments -- otherwise the covariate mix and
+    the marginalized prior mean ``m0_adj`` would be built on cells that disagree
+    with the headline fit, and an uncovered cohort would silently project to
+    ``nan``. Raises with the first offending key. ``triangle_frame`` is
+    ``triangle.to_polars()`` (carries ``incr_loss`` / ``incr_premium``).
+    """
+    group_cols = normalize_groups(groups)
+    keys = [*group_cols, "cohort", "duration"]
+    rolled = cov_cells.group_by(keys).agg(
+        pl.col("incr_loss").sum().alias("_cl"),
+        pl.col("incr_premium").sum().alias("_cp"),
+    )
+    tri = triangle_frame.select([*keys, "incr_loss", "incr_premium"])
+    joined = tri.join(rolled, on=keys, how="left")
+
+    missing = joined.filter(pl.col("_cp").is_null())
+    if missing.height:
+        raise ValueError(
+            f"source does not cover {missing.height} Triangle cell(s) "
+            f"(the covariate frame is missing them); first uncovered key "
+            f"{dict(zip(keys, missing.select(keys).row(0)))}."
+        )
+    bad = joined.filter(
+        ((pl.col("incr_premium") - pl.col("_cp")).abs()
+         > rtol * pl.col("incr_premium").abs() + 1e-6)
+        | ((pl.col("incr_loss") - pl.col("_cl")).abs()
+           > rtol * pl.col("incr_loss").abs() + 1e-6)
+    )
+    if bad.height:
+        raise ValueError(
+            f"source does not sum to the Triangle in {bad.height} cell(s) "
+            f"(covariate cells must aggregate to the same loss / premium); "
+            f"first mismatch key {dict(zip(keys, bad.select(keys).row(0)))}."
+        )
+
+
 def segment_effective_intensity(
     sub_cells: pl.DataFrame,
     covariates: "list[str]",

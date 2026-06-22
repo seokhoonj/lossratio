@@ -1440,19 +1440,26 @@ def _fit_loss(
             raise NotImplementedError(
                 "balance= is not yet wired for the covariate path."
             )
+        if recent is not None:
+            # recent masks the conjugate level + premium projection but NOT the
+            # covariate intensity fit -- the two windows would silently diverge.
+            raise NotImplementedError(
+                "recent= is not yet wired for the covariate path."
+            )
         overlap = set(covariates) & set(normalize_groups(groups))
         if overlap:
             raise ValueError(
                 f"covariate column(s) {sorted(overlap)} also appear in groups=; "
                 "partition by a column (groups) XOR regress on it (covariate)."
             )
-        from ._covariate import reaggregate_source
+        from ._covariate import reaggregate_source, reconcile_coverage
         cov_cells = reaggregate_source(
             source, groups=groups, cohort=triangle.cohort,
             calendar=triangle.calendar, duration=triangle.duration,
             loss=triangle.loss, premium=triangle.premium, grain=triangle.grain,
             covariates=list(covariates),
         )
+        reconcile_coverage(cov_cells, triangle.to_polars(), groups=groups)
 
     boot_spec = None
     seg_seeds: dict[Any, np.random.SeedSequence] = {}

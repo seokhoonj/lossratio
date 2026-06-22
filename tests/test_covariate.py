@@ -313,8 +313,36 @@ def test_covariate_validation():
     with pytest.raises(ValueError, match="mutually exclusive"):
         lr.CredibleLoss(covariates=["sex"], source=df, borrow="pooled")
     # covariate column overlapping groups
-    grouped = _triangle(df.with_columns(pl.col("sex").alias("seg")))
+    seg_df = df.with_columns(pl.col("sex").alias("seg"))
     with pytest.raises(ValueError):
-        lr.CredibleLoss(covariates=["seg"], source=df.with_columns(
-            pl.col("sex").alias("seg")
-        )).fit(lr.Triangle(df.with_columns(pl.col("sex").alias("seg")), groups="seg"))
+        lr.CredibleLoss(covariates=["seg"], source=seg_df).fit(
+            lr.Triangle(seg_df, groups="seg")
+        )
+    # recent + covariates not wired
+    with pytest.raises(NotImplementedError, match="recent"):
+        lr.CredibleLoss(covariates=["sex"], source=df, recent=3).fit(tri)
+    # balance + covariates not wired
+    with pytest.raises(NotImplementedError, match="balance"):
+        lr.CredibleLoss(covariates=["sex"], source=df, balance=True).fit(tri)
+    # bootstrap + covariates not wired
+    with pytest.raises(NotImplementedError, match="Bootstrap"):
+        lr.CredibleLoss(
+            covariates=["sex"], source=df,
+            uncertainty=lr.ResidualBootstrap(n_replicates=5, seed=0),
+        ).fit(tri)
+
+
+def test_covariate_reconciliation_fail_fast():
+    """The source must roll up to the Triangle: an uncovered cohort or a
+    loss/premium mismatch fails fast instead of silently projecting nan."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.2, "M": 1.0})
+    tri = _triangle(df)
+    # a cohort present in the Triangle but absent from the source
+    src_missing = df.filter(pl.col("uy_m") != date(2024, 1, 1))
+    with pytest.raises(ValueError, match="does not cover"):
+        lr.CredibleLoss(covariates=["sex"], source=src_missing).fit(tri)
+    # source totals that disagree with the Triangle
+    src_bad = df.with_columns((pl.col("incr_premium") * 2).alias("incr_premium"))
+    with pytest.raises(ValueError, match="does not sum"):
+        lr.CredibleLoss(covariates=["sex"], source=src_bad).fit(tri)
