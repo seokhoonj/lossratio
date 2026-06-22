@@ -560,7 +560,13 @@ def _credible_levels(
         if link_mask is not None:
             mask = mask & link_mask[:, k]
         coh.extend(int(i) for i in np.flatnonzero(mask))
-    m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
+    if g_k.ndim == 1:
+        m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
+    else:
+        # covariate path: g is the per-cohort effective intensity g_eff[i, k-1],
+        # so m0 = g_eff[cohort, from-duration] * P -- the premium-marginalized
+        # covariate-adjusted prior mean (coh aligns cell-for-cell with expo/dur).
+        m0 = [g_k[ci, k - 1] * p for ci, p, k in zip(coh, expo, dur)]
 
     u_vec = np.ones(n_cohorts, dtype=np.float64)
     z_vec = np.zeros(n_cohorts, dtype=np.float64)
@@ -613,6 +619,7 @@ def _fit_segment_credible(
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
     premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
     psi: "float | str" = "auto",
+    g_override: "np.ndarray | None" = None,
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) fit for one segment.
 
@@ -646,10 +653,17 @@ def _fit_segment_credible(
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
 
-    # 1. pooled intensity g_k (keyed by from-duration 1..n_links)
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
-    g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
-    g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
+    # 1. intensity g_k (keyed by from-duration 1..n_links). The covariate path
+    # supplies the per-cohort effective intensity g_eff (2-D, premium-marginalized
+    # over the covariate cells); otherwise the pooled saturated mode.
+    if g_override is not None:
+        g_k = g_override
+    else:
+        resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
+        g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+        g_k = np.array(
+            [g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64
+        )
 
     # 2. credibility level u_i / weight Z_i / between-cohort variance psi_hat
     u_vec, z_vec, psi_hat = _credible_levels(
@@ -707,7 +721,12 @@ def _project_credible(
     ``loss_{k+1}[i] = loss_k[i] + u_i * g_k * P_k[i]`` seeded from each cohort's
     last observed cell -- the additive intensity recursion (``_project_additive``)
     with the cohort's credibility level scaling its intensity. No variance
-    recursion (SE deferred to the bootstrap)."""
+    recursion (SE deferred to the bootstrap).
+
+    ``g_k`` is either the pooled per-duration intensity (1-D, shape
+    ``(n_links,)``) or, on the covariate path, the per-cohort effective
+    intensity ``g_eff`` (2-D, shape ``(n_cohorts, n_links)``); the 1-D path is
+    byte-identical to the original recursion."""
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
@@ -726,8 +745,16 @@ def _project_credible(
         ck = loss_proj[:, k]
         pk = premium_proj[:, k]
         pos = active & ~np.isnan(pk) & (pk > 0)
-        if pos.any() and np.isfinite(g_k[k]):
-            loss_proj[pos, k + 1] = ck[pos] + u_vec[pos] * g_k[k] * pk[pos]
+        if g_k.ndim == 1:
+            if not np.isfinite(g_k[k]):
+                continue
+            if pos.any():
+                loss_proj[pos, k + 1] = ck[pos] + u_vec[pos] * g_k[k] * pk[pos]
+        else:
+            gk = g_k[:, k]
+            pos = pos & np.isfinite(gk)
+            if pos.any():
+                loss_proj[pos, k + 1] = ck[pos] + u_vec[pos] * gk[pos] * pk[pos]
     return loss_proj
 
 
@@ -1170,6 +1197,41 @@ def _segment_credibility_df(
     return df.select(order)
 
 
+def _segment_coefficients_df(
+    covfit: "Any",
+    groups: "str | list[str] | None",
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """One segment's covariate log-relativities (CredibleLoss covariates= only).
+
+    Columns ``[groups?, covariate, level, beta, exp_beta]``: one row per
+    covariate level including the reference (``beta = 0``, ``exp_beta = 1``).
+    ``beta`` is the treatment-coded log-relativity against the reference level,
+    ``exp_beta`` its multiplicative loss-ratio effect.
+    """
+    cov_col: list[str] = []
+    level_col: list[Any] = []
+    beta_col: list[float] = []
+    for name, levels in covfit.levels.items():
+        for lv in levels:
+            cov_col.append(name)
+            level_col.append(lv)
+            beta_col.append(covfit.beta.get((name, lv), 0.0))   # reference -> 0
+    n = len(cov_col)
+    data: dict[str, Any] = {}
+    if groups is not None:
+        fill_group_columns(data, groups, group_value, n)
+    data["covariate"] = cov_col
+    data["level"] = level_col
+    data["beta"] = beta_col
+    data["exp_beta"] = [float(np.exp(b)) for b in beta_col]
+    df = pl.DataFrame(data)
+    order = ["covariate", "level", "beta", "exp_beta"]
+    if groups is not None:
+        order = [*normalize_groups(groups), *order]
+    return df.select(order)
+
+
 # ---------------------------------------------------------------------------
 # Fit entry point
 # ---------------------------------------------------------------------------
@@ -1330,6 +1392,9 @@ def _fit_loss(
     lam: "float | str" = "auto",
     balance: bool = False,
     uncertainty: "Any" = None,
+    covariates: "list[str] | None" = None,
+    source: "Any" = None,
+    lam_cov: float = 1.0,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
@@ -1353,6 +1418,41 @@ def _fit_loss(
     """
     fit_segment, method, model = _MECHANISMS[mechanism]
     groups = triangle.groups
+
+    cov_cells = None
+    if covariates:
+        # architecture B: read the raw disaggregated source at fit time and
+        # re-aggregate to (groups, cohort, duration, *covariates) sub-cells that
+        # match the Triangle's own binning (charter Sec.4.3 covariate design).
+        if mechanism != "credible":
+            raise NotImplementedError(
+                f"covariates= is only wired for CredibleLoss, not {model!r}."
+            )
+        if source is None:
+            raise ValueError("covariates= requires source= (the raw frame).")
+        if borrow:
+            raise ValueError("borrow= and covariates= are mutually exclusive.")
+        if uncertainty is not None:
+            raise NotImplementedError(
+                "ResidualBootstrap is not yet wired for the covariate path."
+            )
+        if balance:
+            raise NotImplementedError(
+                "balance= is not yet wired for the covariate path."
+            )
+        overlap = set(covariates) & set(normalize_groups(groups))
+        if overlap:
+            raise ValueError(
+                f"covariate column(s) {sorted(overlap)} also appear in groups=; "
+                "partition by a column (groups) XOR regress on it (covariate)."
+            )
+        from ._covariate import reaggregate_source
+        cov_cells = reaggregate_source(
+            source, groups=groups, cohort=triangle.cohort,
+            calendar=triangle.calendar, duration=triangle.duration,
+            loss=triangle.loss, premium=triangle.premium, grain=triangle.grain,
+            covariates=list(covariates),
+        )
 
     boot_spec = None
     seg_seeds: dict[Any, np.random.SeedSequence] = {}
@@ -1384,6 +1484,7 @@ def _fit_loss(
 
     long_parts: list[pl.DataFrame] = []
     cred_parts: list[pl.DataFrame] = []
+    coef_parts: list[pl.DataFrame] = []
     balance_parts: list[pl.DataFrame] = []
     reasons: list[str] = []
     n_observed = n_projected = n_unfittable = n_borrowed = 0
@@ -1430,6 +1531,22 @@ def _fit_loss(
 
         if mechanism == "credible":
             extra = {"psi": psi}
+            if cov_cells is not None:
+                from ._covariate import segment_effective_intensity
+                seg_cov = cov_cells
+                if seg_cols:
+                    vals = (group_value,) if len(seg_cols) == 1 else group_value
+                    for col, val in zip(seg_cols, vals):
+                        seg_cov = seg_cov.filter(pl.col(col) == val)
+                g_eff, covfit = segment_effective_intensity(
+                    seg_cov.select(["cohort", "duration", *covariates,
+                                    "incr_loss", "incr_premium"]),
+                    list(covariates), cohorts, loss_obs.shape[1] - 1, lam=lam_cov,
+                )
+                extra["g_override"] = g_eff
+                coef_parts.append(
+                    _segment_coefficients_df(covfit, groups, group_value)
+                )
         elif mechanism == "smooth":
             extra = {"psi": psi, "n_basis": n_basis, "lam": lam}
         else:
@@ -1508,6 +1625,7 @@ def _fit_loss(
 
     long_df = pl.concat(long_parts)
     credibility = pl.concat(cred_parts) if cred_parts else None
+    coefficients = pl.concat(coef_parts) if coef_parts else None
     balance_factor = pl.concat(balance_parts) if balance_parts else None
     if n_unfittable:
         reasons.append("projection_gap")
@@ -1527,6 +1645,7 @@ def _fit_loss(
         conf_level=conf_level,
         uncertainty=boot_spec,
         credibility=credibility,
+        coefficients=coefficients,
         balance=balance_factor,
         output_type=triangle._output_type,
         status=status,
@@ -1571,10 +1690,12 @@ class LossFit:
         cell_counts: dict[str, int],
         uncertainty: Any = None,
         credibility: "pl.DataFrame | None" = None,
+        coefficients: "pl.DataFrame | None" = None,
         balance: "pl.DataFrame | None" = None,
     ) -> None:
         self._df = df
         self._credibility = credibility
+        self._coefficients = coefficients
         self._balance = balance
         self._output_type = output_type
         self.groups = groups
@@ -1601,6 +1722,17 @@ class LossFit:
         if self._credibility is None:
             return None
         return mirror_output(self._credibility, self._output_type)
+
+    @property
+    def coefficients(self) -> "FrameLike | None":
+        """Covariate log-relativities (``[groups?, covariate, level, beta,
+        exp_beta]``) for a ``CredibleLoss`` fit run with ``covariates=``, else
+        ``None``. ``beta`` is the treatment-coded log effect against the
+        reference level (``beta = 0``), ``exp_beta`` its multiplicative
+        loss-ratio relativity."""
+        if self._coefficients is None:
+            return None
+        return mirror_output(self._coefficients, self._output_type)
 
     @property
     def balance_factor(self) -> "FrameLike | None":

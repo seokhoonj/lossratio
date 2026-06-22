@@ -213,3 +213,108 @@ def test_reaggregate_source_missing_column_raises():
             duration="duration_m", loss="incr_loss", premium="incr_premium",
             grain="M", covariates=["sex"],
         )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: CredibleLoss(covariates=, source=)
+# ---------------------------------------------------------------------------
+
+
+def _add_months(d: date, n: int) -> date:
+    m = d.month - 1 + n
+    return date(d.year + m // 12, m % 12 + 1, 1)
+
+
+def _experience_source(factor, n_cohorts=6, max_cal=8, seed=0):
+    """A small triangle-shaped raw source with a ``sex`` split: cohort i is
+    observed from its inception through calendar month ``max_cal``."""
+    rng = np.random.default_rng(seed)
+    base = date(2024, 1, 1)
+    g = {1: 0.05, 2: 0.04, 3: 0.03, 4: 0.025, 5: 0.02, 6: 0.018, 7: 0.015, 8: 0.012}
+    rows = []
+    for i in range(n_cohorts):
+        coh = _add_months(base, i)
+        for d in range(1, max_cal - i + 1):
+            cal = _add_months(coh, d - 1)
+            for sex in factor:
+                ip = float(rng.uniform(800.0, 1600.0))
+                # loss increment ~ g_d * relativity * premium (+ mild noise)
+                il = g[d] * factor[sex] * ip * float(rng.uniform(0.9, 1.1))
+                rows.append({
+                    "uy_m": coh, "cy_m": cal, "sex": sex,
+                    "incr_loss": il, "incr_premium": ip,
+                })
+    return pl.DataFrame(rows)
+
+
+def _credible(**kw):
+    import lossratio as lr
+    return lr.CredibleLoss(**kw)
+
+
+def _triangle(df):
+    import lossratio as lr
+    return lr.Triangle(df)
+
+
+def test_covariate_fit_nests_plain_when_single_level():
+    """A single covariate level adds no relativity, so the marginalized fit
+    reproduces the plain CredibleLoss projection (kernel-precision)."""
+    df = _experience_source({"M": 1.0})
+    tri = _triangle(df)
+    plain = _credible().fit(tri)
+    cov = _credible(covariates=["sex"], source=df).fit(tri)
+    p = plain.to_polars().sort(["cohort", "duration"])
+    c = cov.to_polars().sort(["cohort", "duration"])
+    assert p["cohort"].to_list() == c["cohort"].to_list()
+    pl_ = p["loss_proj"].to_numpy()
+    cl_ = c["loss_proj"].to_numpy()
+    both = ~np.isnan(pl_) & ~np.isnan(cl_)
+    assert both.any()
+    assert np.allclose(pl_[both], cl_[both], rtol=1e-6)
+    coef = cov.coefficients
+    assert coef is not None
+    assert coef.to_dict(as_series=False)["level"] == ["M"]   # one level, reference
+    assert coef.to_dict(as_series=False)["beta"] == [0.0]
+
+
+def test_covariate_fit_reports_relativity():
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    cov = _credible(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    coef = cov.coefficients.sort("level")
+    rec = coef.to_dict(as_series=False)
+    assert rec["covariate"] == ["sex", "sex"]
+    assert rec["level"] == ["F", "M"]                        # F sorts first -> reference
+    assert rec["beta"][0] == 0.0                             # reference
+    # M is ~1/1.3 of F; exp_beta recovers the down-relativity within noise
+    assert 0.6 < rec["exp_beta"][1] < 0.95
+    assert np.isclose(rec["beta"][1], -np.log(1.3), atol=0.1)
+
+
+def test_covariate_df_shape_matches_plain():
+    df = _experience_source({"F": 1.2, "M": 1.0})
+    tri = _triangle(df)
+    plain = _credible().fit(tri).to_polars()
+    cov = _credible(covariates=["sex"], source=df).fit(tri).to_polars()
+    assert plain.columns == cov.columns
+    assert plain.height == cov.height
+    assert _credible().fit(tri).coefficients is None         # plain carries none
+
+
+def test_covariate_validation():
+    import lossratio as lr
+    df = _experience_source({"M": 1.0})
+    tri = _triangle(df)
+    # missing source
+    with pytest.raises(ValueError, match="requires source"):
+        lr.CredibleLoss(covariates=["sex"]).fit(tri)
+    # borrow + covariates -> construction error
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        lr.CredibleLoss(covariates=["sex"], source=df, borrow="pooled")
+    # covariate column overlapping groups
+    grouped = _triangle(df.with_columns(pl.col("sex").alias("seg")))
+    with pytest.raises(ValueError):
+        lr.CredibleLoss(covariates=["seg"], source=df.with_columns(
+            pl.col("sex").alias("seg")
+        )).fit(lr.Triangle(df.with_columns(pl.col("sex").alias("seg")), groups="seg"))
