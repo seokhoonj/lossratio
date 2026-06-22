@@ -567,6 +567,23 @@ def test_smooth_covariate_fit_and_surface():
                        rtol=1e-9)
 
 
+def test_smooth_covariate_auto_eb():
+    """SmoothLoss + covariates + lam_cov='auto': the EB ridge is estimated under
+    the selected smoothing penalty (P1-2 fix) and the surface still marginalizes."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    fit = lr.SmoothLoss(covariates=["sex"], source=df, lam_cov="auto").fit(tri)
+    assert fit.coefficients is not None
+    head = fit.predict().sort(["cohort", "duration"])
+    roll = (fit.predict(by="sex").group_by(["cohort", "duration"])
+            .agg(pl.col("loss_proj").sum()).sort(["cohort", "duration"]))
+    j = head.join(roll, on=["cohort", "duration"], suffix="_s")
+    a, b = j["loss_proj"].to_numpy(), j["loss_proj_s"].to_numpy()
+    m = ~np.isnan(a) & ~np.isnan(b)
+    assert m.any() and np.allclose(a[m], b[m], rtol=1e-7)
+
+
 def test_smooth_covariate_bootstrap():
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})

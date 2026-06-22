@@ -133,42 +133,42 @@ def _covariate_design(
 
 
 def _cov_ridge_diag(
-    lam: "float | dict",
+    lam: "float | str | dict",
     beta_cols: "list[tuple[str, object]]",
     B: np.ndarray,
     n_shape: int,
     response: np.ndarray,
     offset: np.ndarray,
-) -> np.ndarray:
-    """Per-covariate-column ridge penalty diagonal (data-scaled).
+    shape_penalty: "np.ndarray | None" = None,
+) -> "tuple[np.ndarray, bool]":
+    """Per-covariate-column ridge penalty diagonal. Returns ``(ridge, converged)``.
 
-    ``lam`` is a scalar (uniform over every covariate column) or a
-    ``{covariate: lam}`` dict (per-covariate; an unlisted covariate -> 0 = fixed
-    effect). The penalty on a column is ``lam_c * w_j`` where ``w_j`` is that
-    level's fitted data weight (``sum mu``), so ``lam`` is dimensionless and
-    book-invariant: a fixed raw ridge would be negligible against a large-premium
-    book's ``B'WB``. Returns a length-``ncov`` array; all-zero (the default
-    ``lam = 0``) is the fixed-effect MLE with no extra fit cost.
+    ``lam = "auto"`` -> data-estimated random-effect shrinkage (Schall 1991 EB,
+    see :func:`_eb_ridge_diag`; ``shape_penalty`` carries the smooth shape
+    penalty so the EB variance matches the deployed shape). Otherwise ``lam`` is
+    a fixed dimensionless ridge -- a scalar (uniform) or a ``{covariate: lam}``
+    dict (unlisted -> 0). The fixed penalty on a column is ``lam_c * w_j`` where
+    ``w_j`` is that level's fitted data weight (``sum mu``), so a fixed ``lam`` is
+    book-invariant. All-zero (the default ``lam = 0``) is the fixed-effect MLE.
+    ``converged`` is ``True`` for the fixed paths and the EB flag for ``"auto"``.
     """
     ncov = len(beta_cols)
     if ncov == 0:
-        return np.zeros(0, dtype=np.float64)
-    # "auto" = data-estimated random-effect shrinkage (Schall 1991 EB). A dict
-    # may set "auto" per covariate; if ANY covariate is auto, the EB fixed point
-    # resolves the whole covariate block jointly (fixed floats are honoured as a
-    # fixed prior precision inside the same loop is overkill -- "auto" is all or
-    # the explicitly-listed ones, others default to auto too here).
+        return np.zeros(0, dtype=np.float64), True
+    # "auto" (scalar or any dict value) -> EB fixed point over the whole block.
     auto = (lam == "auto") or (
         isinstance(lam, dict) and any(v == "auto" for v in lam.values())
     )
     if auto:
-        return _eb_ridge_diag(response, offset, B, n_shape, beta_cols)
+        return _eb_ridge_diag(
+            response, offset, B, n_shape, beta_cols, shape_penalty=shape_penalty
+        )
     if isinstance(lam, dict):
         mult = np.array([float(lam.get(name, 0.0)) for name, _lv in beta_cols])
     else:
         mult = np.full(ncov, float(lam), dtype=np.float64)
     if not np.any(mult > 0.0):
-        return np.zeros(ncov, dtype=np.float64)
+        return np.zeros(ncov, dtype=np.float64), True
     f0 = penalized_irls(
         response, offset, B, np.zeros((B.shape[1], B.shape[1])), 0.0
     )
@@ -177,7 +177,7 @@ def _cov_ridge_diag(
     # zero ridge -- no protection where it is needed most; the average gives it a
     # typical-strength ridge that dominates its thin likelihood and stays finite.
     scale = float((B[:, n_shape:].T @ f0.mu).sum()) / ncov
-    return mult * scale
+    return mult * scale, True
 
 
 def _eb_ridge_diag(
@@ -187,9 +187,10 @@ def _eb_ridge_diag(
     n_shape: int,
     beta_cols: "list[tuple[str, object]]",
     *,
+    shape_penalty: "np.ndarray | None" = None,
     max_iter: int = 40,
     tol: float = 1e-2,
-) -> np.ndarray:
+) -> "tuple[np.ndarray, bool]":
     """Empirical-Bayes (random-effect) ridge for the covariate block.
 
     Treats each covariate's level effects as a random effect with its own
@@ -206,13 +207,14 @@ def _eb_ridge_diag(
     A data-rich, well-separated covariate keeps a large ``sigma_c^2`` (light
     shrinkage); a noisy / sparse high-cardinality covariate gets a small
     ``sigma_c^2`` (strong shrinkage toward the reference) -- automatic, not a
-    hand-set ``lam``. Returns the per-column ridge diagonal (length ``ncov``).
+    hand-set ``lam``. Returns ``(ridge, converged)`` -- the per-column ridge
+    diagonal (length ``ncov``) and the EB fixed-point convergence flag.
 
-    NOTE (smooth path): the EB fit here uses the UNPENALIZED shape block, so when
-    paired with ``SmoothLoss`` the ridge is estimated against the saturated shape
-    and then deployed under the P-spline-penalized shape -- a second-order
-    mismatch (the ridge is already an approximation). The credible / pooled paths
-    have no such mismatch.
+    ``shape_penalty`` (a full ``n_shape x n_shape`` matrix, e.g. ``lam_smooth *
+    P2`` on the smooth path) is applied to the duration-shape block so the EB
+    variance is estimated against the SAME shape model that is deployed; the
+    Schur complement is then against ``X'WX + shape_penalty`` (still exact). For
+    the saturated / credible / pooled paths it is ``None`` (unpenalized shape).
     """
     ncov = len(beta_cols)
     names = [nm for nm, _lv in beta_cols]
@@ -221,21 +223,25 @@ def _eb_ridge_diag(
                for c in uniq}
     n = response.size
     p = B.shape[1]
-    full_idx = np.arange(p)
+    pen_shape = np.zeros((p, p))
+    if shape_penalty is not None:
+        pen_shape[:n_shape, :n_shape] = shape_penalty
+    cov_idx = n_shape + np.arange(ncov)
 
     # seed: a moderate Tikhonov ridge (average covariate-level data weight) so
     # the first fit is well-conditioned even under separation pressure.
-    f0 = penalized_irls(response, offset, B, np.zeros((p, p)), 0.0)
+    f0 = penalized_irls(response, offset, B, pen_shape, 1.0)
     scale = max(float((B[:, n_shape:].T @ f0.mu).sum()) / max(ncov, 1), 1e-8)
     ridge = np.full(ncov, scale, dtype=np.float64)
 
+    converged = False
     for _ in range(max_iter):
-        pen = np.zeros(p)
-        pen[n_shape:] = ridge
-        fit = penalized_irls(response, offset, B, np.diag(pen), 1.0)
+        pen_mat = pen_shape.copy()
+        pen_mat[cov_idx, cov_idx] = ridge
+        fit = penalized_irls(response, offset, B, pen_mat, 1.0)
         phi = max(fit.pearson / max(n - fit.edf, 1.0), 1e-8)
         A = (B.T * fit.mu) @ B
-        M = A + np.diag(pen)
+        M = A + pen_mat
         try:
             Cd = np.diag(np.linalg.inv(M))
         except np.linalg.LinAlgError:
@@ -245,7 +251,7 @@ def _eb_ridge_diag(
             cc = cols_of[c]
             full = n_shape + cc
             b = fit.beta[full]
-            tr = float(np.sum(pen[full] * Cd[full]))      # ridge_c * sum_j C_jj
+            tr = float(np.sum(ridge[cc] * Cd[full]))      # ridge_c * sum_j C_jj
             denom = max(len(cc) - tr, 1e-3)
             s2 = max(float(b @ b) / denom, 1e-12)
             # cap sigma^2 (floor the ridge) so a near-separated level cannot run
@@ -258,9 +264,10 @@ def _eb_ridge_diag(
             new[cc] = phi / s2
         if np.allclose(new, ridge, rtol=tol):
             ridge = new
+            converged = True
             break
         ridge = 0.5 * ridge + 0.5 * new                    # damped fixed point
-    return ridge
+    return ridge, converged
 
 
 def fit_covariate_intensity(
@@ -316,15 +323,16 @@ def fit_covariate_intensity(
         )
         n_dur = len(durations)
         penalty_diag = penalty_diag.copy()
-        penalty_diag[n_dur:] = _cov_ridge_diag(
+        ridge_d, eb_conv = _cov_ridge_diag(
             lam, beta_cols, B, n_dur, response, offset
         )
+        penalty_diag[n_dur:] = ridge_d
         fit = penalized_irls(response, offset, B, np.diag(penalty_diag), 1.0)
         s = fit.beta[:n_dur]
         beta = {col: float(fit.beta[n_dur + j]) for j, col in enumerate(beta_cols)}
         return CovariateFit(
             durations=durations, s=s, levels=levels, beta=beta,
-            converged=bool(fit.converged),
+            converged=bool(fit.converged) and eb_conv,
         )
 
     # smooth duration basis: B = [B-spline | covariate dummies], penalty =
@@ -337,7 +345,12 @@ def fit_covariate_intensity(
     blocks, levels, beta_cols = _covariate_dummies(covariates)
     ncov = len(beta_cols)
     B = np.hstack([Bdur, *blocks]) if blocks else Bdur
-    ridge_diag = _cov_ridge_diag(lam, beta_cols, B, nb, response, offset)
+    is_auto_cov = (lam == "auto") or (
+        isinstance(lam, dict) and any(v == "auto" for v in lam.values())
+    )
+    # initial ridge (EB against the unpenalized shape, or fixed) to seed the
+    # lam_smooth GCV.
+    ridge_diag, eb_conv = _cov_ridge_diag(lam, beta_cols, B, nb, response, offset)
 
     def _pen(ls: float) -> np.ndarray:
         pen = np.zeros((nb + ncov, nb + ncov), dtype=np.float64)
@@ -346,8 +359,9 @@ def fit_covariate_intensity(
             pen[nb:, nb:] = np.diag(ridge_diag)
         return pen
 
+    # select the smoothing parameter lam_smooth (GCV or fixed)
     if lam_smooth != "auto":
-        fit = penalized_irls(response, offset, B, _pen(float(lam_smooth)), 1.0)
+        ls_star = float(lam_smooth)
     else:
         f0 = penalized_irls(response, offset, B, _pen(0.0), 1.0)
         BtWB = (Bdur.T * f0.mu) @ Bdur
@@ -355,13 +369,21 @@ def fit_covariate_intensity(
         scale = (float(np.trace(BtWB)) / tr_p) if tr_p > 0 else 1.0
         n = response.size
         best_gcv = np.inf
-        fit = f0
+        ls_star = 0.0
         for lg in scale * np.geomspace(1e-4, 1e4, 13):
             f = penalized_irls(response, offset, B, _pen(float(lg)), 1.0)
             denom = n - f.edf
             gcv = np.inf if denom <= 0 else n * f.pearson / denom ** 2
             if gcv < best_gcv:
-                best_gcv, fit = gcv, f
+                best_gcv, ls_star = gcv, float(lg)
+
+    # auto: re-estimate the EB ridge under the SELECTED smoothing penalty so the
+    # covariate variance matches the deployed (penalized) shape, then refit.
+    if is_auto_cov and ncov:
+        ridge_diag, eb_conv = _cov_ridge_diag(
+            lam, beta_cols, B, nb, response, offset, shape_penalty=ls_star * P2,
+        )
+    fit = penalized_irls(response, offset, B, _pen(ls_star), 1.0)
 
     spline_coef = fit.beta[:nb]
     Bk, _ = bspline_design(np.array(durations, dtype=np.float64), nb, degree)
@@ -369,7 +391,7 @@ def fit_covariate_intensity(
     beta = {col: float(fit.beta[nb + j]) for j, col in enumerate(beta_cols)}
     return CovariateFit(
         durations=durations, s=s, levels=levels, beta=beta,
-        converged=bool(fit.converged),
+        converged=bool(fit.converged) and eb_conv,
     )
 
 
