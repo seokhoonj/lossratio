@@ -510,6 +510,157 @@ def bootstrap_segment_additive(
     return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
 
 
+def bootstrap_segment_covariate(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    data: "Any",
+    covariates: "list[str]",
+    *,
+    sigma_method: str,
+    psi: "float | str",
+    lam: float,
+    spec: ResidualBootstrap,
+    conf_level: float,
+    rng: np.random.Generator,
+) -> dict[str, np.ndarray]:
+    """Residual-bootstrap SE / CI for a CredibleLoss covariate fit.
+
+    The resampling is at the SUB-CELL link grain (the kernel's estimation
+    cells): each replicate resamples standardized Pearson residuals about the
+    full fitted mean ``mu = u_i * g_d(x) * P_from``, rebuilds pseudo sub-cell
+    increments, and re-fits the WHOLE profiled pipeline -- the covariate kernel
+    (-> ``g_eff_b``) and the credibility level (-> ``u_b``) -- so the dominant
+    long-horizon trend-parameter (``beta`` / ``s_k``) uncertainty is propagated,
+    not just the level. The aggregate pseudo cumulative (sub-cell increments
+    summed per cohort x duration) feeds the conjugate; the predictive band adds
+    the over-dispersed process draw + calendar drift on the aggregate residuals,
+    matching :func:`bootstrap_segment_additive`. Premium projection is
+    deterministic (v1). ``data`` is the segment's :class:`SegmentCovData`.
+    """
+    from ._covariate import _build_g_eff, fit_covariate_intensity
+
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    premium_proj = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
+
+    # --- point fit: kernel -> g_eff, conjugate -> u, projection ---
+    covfit = fit_covariate_intensity(data.resp, data.expo, data.dur, data.codes, lam=lam)
+    g_eff = _build_g_eff(covfit, data)
+    u_vec, _z, _p = _credible_levels(loss_obs, premium_obs, g_eff, sigma_method, psi)
+    point_proj = _project_credible(loss_obs, premium_proj, g_eff, u_vec)
+
+    # --- sub-cell fitted mean, dispersion, standardized residuals ---
+    dur = data.dur.astype(np.int64)
+    coh = data.coh_idx.astype(np.int64)
+    g_link = np.array(
+        [covfit.intensity(int(dur[j]), {c: data.codes[c][j] for c in covariates})
+         for j in range(dur.size)],
+        dtype=np.float64,
+    )
+    mu = u_vec[coh] * g_link * data.expo
+    y = data.resp.astype(np.float64)
+    usable = np.isfinite(mu) & (mu > 0.0)
+    phi_map = _engine.pearson_dispersion(
+        response=y[usable].tolist(), fitted=mu[usable].tolist(),
+        duration=dur[usable].tolist(), sigma_method=sigma_method,
+    )
+    phi_link = np.array(
+        [phi_map.get(int(d)) if phi_map.get(int(d)) is not None else np.nan
+         for d in dur],
+        dtype=np.float64,
+    )
+    scale = np.sqrt(phi_link * mu)
+    res_ok = usable & np.isfinite(scale) & (scale > 0.0)
+    resid = np.full(mu.shape, np.nan, dtype=np.float64)
+    resid[res_ok] = (y[res_ok] - mu[res_ok]) / scale[res_ok]
+
+    global_pool = resid[np.isfinite(resid)]
+    if global_pool.size < 1:
+        nan = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+        return {"proc_se": nan, "param_se": nan.copy(), "total_se": nan.copy(),
+                "ci_lo": nan.copy(), "ci_hi": nan.copy()}
+    dur_pools: dict[int, np.ndarray] = {}
+    for d in np.unique(dur):
+        pool = resid[(dur == d) & np.isfinite(resid)]
+        dur_pools[int(d)] = pool if pool.size >= spec.min_pool else global_pool
+
+    obs_mask = ~np.isnan(loss_obs)
+    has_obs = obs_mask.any(axis=1)
+    last_obs = np.where(
+        has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
+    )
+    # calendar drift on the AGGREGATE-cell residuals (mu_agg = u * g_eff * P)
+    aii, akk, ay, ap = _valid_cells(loss_obs, premium_obs)
+    amu = u_vec[aii] * g_eff[aii, akk] * ap
+    a_ok = np.isfinite(amu) & (amu > 0.0)
+    aphi = np.array(
+        [phi_map.get(int(k + 1)) if phi_map.get(int(k + 1)) is not None else np.nan
+         for k in akk], dtype=np.float64,
+    )
+    ascale = np.sqrt(aphi * amu)
+    a_ok = a_ok & np.isfinite(ascale) & (ascale > 0.0)
+    aresid = np.full(amu.shape, np.nan, dtype=np.float64)
+    aresid[a_ok] = (ay[a_ok] - amu[a_ok]) / ascale[a_ok]
+    drift_se = _calendar_drift_se(aresid, aii, akk, a_ok) if spec.drift else 0.0
+    oi, ok_ = np.where(obs_mask)
+    frontier = int((oi + ok_).max()) if oi.size else 0
+    rows = np.arange(n_cohorts)
+
+    orig_agg_incr = np.diff(loss_obs, axis=1)             # (N, n_links)
+    flat = coh * n_links + (dur - 1)                      # aggregate-cell index
+    B = spec.n_replicates
+    param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
+    pred_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
+
+    for b in range(B):
+        rstar = np.empty(mu.shape, dtype=np.float64)
+        for d in np.unique(dur):
+            sel = dur == d
+            rstar[sel] = rng.choice(dur_pools[int(d)], size=int(sel.sum()), replace=True)
+        ystar = np.where(res_ok, mu + rstar * scale, y)   # pseudo sub-cell dLoss
+        # refit the kernel on the pseudo sub-cell links -> g_eff_b
+        covfit_b = fit_covariate_intensity(ystar, data.expo, dur, data.codes, lam=lam)
+        g_eff_b = _build_g_eff(covfit_b, data)
+        # aggregate the pseudo increments to a cohort x duration pseudo cumulative
+        dY = np.zeros(n_cohorts * n_links, dtype=np.float64)
+        contributed = np.zeros(n_cohorts * n_links, dtype=bool)
+        np.add.at(dY, flat, ystar)
+        contributed[flat] = True
+        dY = dY.reshape(n_cohorts, n_links)
+        contributed = contributed.reshape(n_cohorts, n_links)
+        cum = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
+        cum[:, 0] = loss_obs[:, 0]
+        for k in range(n_links):
+            nxt = ~np.isnan(loss_obs[:, k + 1]) & ~np.isnan(loss_obs[:, k])
+            inc = np.where(contributed[:, k], dY[:, k], orig_agg_incr[:, k])
+            cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
+        u_b, _zb, _pb = _credible_levels(cum, premium_obs, g_eff_b, sigma_method, psi)
+        param_cum = _project_credible(loss_obs, premium_proj, g_eff_b, u_b)
+        param_draws[b] = param_cum
+
+        if spec.process == "none":
+            pred_draws[b] = param_cum
+            continue
+        pred_cum = loss_obs.copy()
+        phi_b = _refit_phi(cum, premium_obs, g_eff_b, u_b, sigma_method, True, n_links)
+        eps_b = rng.normal(0.0, drift_se) if drift_se > 0.0 else 0.0
+        for k in range(n_links):
+            active = has_obs & (last_obs <= k) & ~np.isnan(param_cum[:, k + 1]) \
+                & ~np.isnan(pred_cum[:, k])
+            if not active.any():
+                continue
+            mean_inc = param_cum[:, k + 1] - param_cum[:, k]
+            draw = _process_draw(mean_inc, phi_b[k], active, rng)
+            if eps_b != 0.0 and np.isfinite(phi_b[k]):
+                c = np.maximum((rows + (k + 1)) - frontier, 0)
+                shift = c * eps_b * np.sqrt(phi_b[k] * np.maximum(mean_inc, 0.0))
+                draw = draw + shift
+            pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
+        pred_draws[b] = pred_cum
+
+    return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
+
+
 # ---------------------------------------------------------------------------
 # ChainLadder bootstrap -- England-Verrall ODP residuals
 # ---------------------------------------------------------------------------
@@ -771,7 +922,10 @@ def _refit_phi(
     ii, kk, y, p = _valid_cells(cum, premium_obs, link_mask)
     if ii.size == 0:
         return np.full(n_links, np.nan, dtype=np.float64)
-    mu = u_b[ii] * g_b[kk] * p
+    # g_b is the per-duration pooled intensity (1-D) or the per-cohort effective
+    # intensity g_eff (2-D, covariate path).
+    g_at = g_b[kk] if g_b.ndim == 1 else g_b[ii, kk]
+    mu = u_b[ii] * g_at * p
     ok = np.isfinite(mu) & (mu > 0.0)
     if not ok.any():
         return np.full(n_links, np.nan, dtype=np.float64)

@@ -287,35 +287,36 @@ def reconcile_coverage(
         )
 
 
-def segment_effective_intensity(
+@dataclass
+class SegmentCovData:
+    """Per-segment covariate link data (reused by the point fit and the
+    bootstrap). ``resp`` / ``expo`` / ``dur`` are the sub-cell loss links
+    (response = ``dLoss``, exposure = from-cell cumulative premium, ``dur`` =
+    1-based from-duration), ``coh_idx`` the cohort row index per link, ``codes``
+    the per-covariate level codes per link. ``by_cd`` maps ``(cohort_value,
+    from-duration) -> [(cell, from-premium)]`` and ``last_obs`` the cohort's last
+    observed from-duration -- together they carry the premium mix used to
+    collapse ``g_d(x)`` to ``g_eff``.
+    """
+
+    resp: np.ndarray
+    expo: np.ndarray
+    dur: np.ndarray
+    coh_idx: np.ndarray
+    codes: "dict[str, np.ndarray]"
+    by_cd: "dict[tuple, list[tuple[dict, float]]]"
+    last_obs: "dict[object, int]"
+    cohorts: list
+    n_links: int
+
+
+def _covariate_segment_data(
     sub_cells: pl.DataFrame,
     covariates: "list[str]",
     cohorts: list,
     n_links: int,
-    *,
-    lam: float = 1.0,
-) -> "tuple[np.ndarray, CovariateFit]":
-    """Per-cohort effective intensity ``g_eff[i, k]`` for one segment.
-
-    ``sub_cells`` carries this segment's disaggregated cells (columns
-    ``cohort``, ``duration``, ``*covariates``, ``incr_loss``, ``incr_premium``);
-    ``cohorts`` is the matrix row order (from :func:`_build_value_matrices`) and
-    ``n_links`` the projection horizon. The covariate intensity kernel is fit on
-    the sub-cell links, then for each cohort ``i`` and link ``k`` (from-duration
-    ``d = k + 1``)::
-
-        g_eff[i, k] = sum_x  g_d(x) * share[i, d, x]
-
-    where ``g_d(x) = exp(s_d + X'beta)`` is the fitted per-cell intensity and
-    ``share[i, d, x]`` is covariate cell ``x``'s from-premium share within cohort
-    ``i`` at duration ``d``. Beyond a cohort's last observed from-duration the
-    mix is frozen at its last observed shares (fixed-attribute covariates keep a
-    near-constant mix, drifting only through differential lapse). Marginalizing
-    the cell intensities by the premium mix collapses the cohort x duration x
-    covariate layout back to a 2-D ``g_eff`` that the kept credibility +
-    projection kernels consume unchanged. Returns ``(g_eff, CovariateFit)`` with
-    ``g_eff`` shape ``(len(cohorts), n_links)`` (``nan`` where unfittable).
-    """
+) -> SegmentCovData:
+    """Build the sub-cell loss links + premium-mix structure for one segment."""
     keys = ["cohort", *covariates]
     s = sub_cells.sort([*keys, "duration"]).with_columns(
         pl.col("incr_loss").cum_sum().over(keys).alias("_cl"),
@@ -334,16 +335,11 @@ def segment_effective_intensity(
         .with_columns((pl.col("_cl_to") - pl.col("_cl")).alias("_resp"))
         .filter(pl.col("_cp") > 0)
     )
-
-    covfit = fit_covariate_intensity(
-        links["_resp"].to_numpy(),
-        links["_cp"].to_numpy(),
-        links["duration"].to_numpy(),
-        {c: links[c].to_numpy() for c in covariates},
-        lam=lam,
+    coh_pos = {c: i for i, c in enumerate(cohorts)}
+    coh_idx = np.array(
+        [coh_pos.get(c, -1) for c in links["cohort"].to_list()], dtype=np.int64
     )
 
-    # premium mix shares: cohort x from-duration -> [(covariate cell, from-cp)]
     by_cd: "dict[tuple, list[tuple[dict, float]]]" = defaultdict(list)
     last_obs: "dict[object, int]" = {}
     for r in s.select(["cohort", "duration", "_cp", *covariates]).iter_rows(named=True):
@@ -354,19 +350,37 @@ def segment_effective_intensity(
         if cp > 0 and d > last_obs.get(r["cohort"], 0):
             last_obs[r["cohort"]] = d
 
+    return SegmentCovData(
+        resp=links["_resp"].to_numpy(),
+        expo=links["_cp"].to_numpy(),
+        dur=links["duration"].to_numpy(),
+        coh_idx=coh_idx,
+        codes={c: links[c].to_numpy() for c in covariates},
+        by_cd=by_cd,
+        last_obs=last_obs,
+        cohorts=cohorts,
+        n_links=n_links,
+    )
+
+
+def _build_g_eff(covfit: CovariateFit, data: SegmentCovData) -> np.ndarray:
+    """Collapse the per-cell intensity ``g_d(x)`` to the 2-D effective intensity
+    ``g_eff[i, k] = sum_x g_d(x) * share[i, d, x]`` (mix frozen beyond a cohort's
+    last observed from-duration). ``nan`` where the from-duration is unfittable
+    or the cohort has no premium mix."""
     est_durs = set(covfit.durations)
-    g_eff = np.full((len(cohorts), n_links), np.nan, dtype=np.float64)
-    for i, coh in enumerate(cohorts):
-        for k in range(n_links):
+    g_eff = np.full((len(data.cohorts), data.n_links), np.nan, dtype=np.float64)
+    for i, coh in enumerate(data.cohorts):
+        for k in range(data.n_links):
             d = k + 1                                # from-duration label
             if d not in est_durs:
                 continue
-            cells = by_cd.get((coh, d))
+            cells = data.by_cd.get((coh, d))
             if cells is None:                        # projected link: freeze mix
-                ld = last_obs.get(coh)
+                ld = data.last_obs.get(coh)
                 if ld is None:
                     continue
-                cells = by_cd.get((coh, ld))
+                cells = data.by_cd.get((coh, ld))
             tot = sum(cp for _, cp in cells if cp > 0)
             if tot <= 0:
                 continue
@@ -374,4 +388,26 @@ def segment_effective_intensity(
                 covfit.intensity(d, cell) * (cp / tot)
                 for cell, cp in cells if cp > 0
             )
-    return g_eff, covfit
+    return g_eff
+
+
+def segment_effective_intensity(
+    sub_cells: pl.DataFrame,
+    covariates: "list[str]",
+    cohorts: list,
+    n_links: int,
+    *,
+    lam: float = 1.0,
+) -> "tuple[np.ndarray, CovariateFit]":
+    """Per-cohort effective intensity ``g_eff[i, k]`` for one segment.
+
+    The covariate intensity kernel is fit on the sub-cell links, then the
+    per-cell intensity ``g_d(x) = exp(s_d + X'beta)`` is marginalized by each
+    cohort's premium mix into the 2-D ``g_eff`` (see :func:`_build_g_eff`) that
+    the kept credibility + projection kernels consume unchanged. Returns
+    ``(g_eff, CovariateFit)``."""
+    data = _covariate_segment_data(sub_cells, covariates, cohorts, n_links)
+    covfit = fit_covariate_intensity(
+        data.resp, data.expo, data.dur, data.codes, lam=lam,
+    )
+    return _build_g_eff(covfit, data), covfit

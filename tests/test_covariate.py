@@ -324,12 +324,46 @@ def test_covariate_validation():
     # balance + covariates not wired
     with pytest.raises(NotImplementedError, match="balance"):
         lr.CredibleLoss(covariates=["sex"], source=df, balance=True).fit(tri)
-    # bootstrap + covariates not wired
-    with pytest.raises(NotImplementedError, match="Bootstrap"):
-        lr.CredibleLoss(
-            covariates=["sex"], source=df,
-            uncertainty=lr.ResidualBootstrap(n_replicates=5, seed=0),
-        ).fit(tri)
+
+
+def test_covariate_bootstrap_produces_intervals():
+    """ResidualBootstrap on a covariate fit gives finite SE / CI on projected
+    cells (null on observed) and a band that widens with the horizon."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    fit = lr.CredibleLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3,
+        uncertainty=lr.ResidualBootstrap(n_replicates=60, seed=0),
+    ).fit(tri)
+    d = fit.to_polars()
+    obs = d.filter(pl.col("source") == "observed")
+    proj = d.filter(pl.col("source") == "own")     # projected own cells
+    # observed cells carry no SE; projected cells do
+    assert np.all(np.isnan(obs["loss_total_se"].to_numpy()))
+    se = proj["loss_total_se"].to_numpy()
+    assert np.isfinite(se).any()
+    assert np.all(se[np.isfinite(se)] >= 0)
+    # a CI band exists on projected cells
+    assert proj["loss_ci_lo"].drop_nulls().len() > 0
+    assert proj["loss_ci_hi"].drop_nulls().len() > 0
+
+
+def test_covariate_bootstrap_marginalizes_to_headline():
+    """The bootstrap point projection still marginalizes: the covariate-fit
+    loss_proj equals a no-bootstrap covariate fit (CI is additive only)."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    base = lr.CredibleLoss(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    boot = lr.CredibleLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3,
+        uncertainty=lr.ResidualBootstrap(n_replicates=40, seed=1),
+    ).fit(tri)
+    a = base.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
+    b = boot.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
+    both = ~np.isnan(a) & ~np.isnan(b)
+    assert np.allclose(a[both], b[both], rtol=1e-9)
 
 
 def test_covariate_reconciliation_fail_fast():

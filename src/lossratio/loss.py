@@ -1543,10 +1543,6 @@ def _fit_loss(
             raise ValueError("covariates= requires source= (the raw frame).")
         if borrow:
             raise ValueError("borrow= and covariates= are mutually exclusive.")
-        if uncertainty is not None:
-            raise NotImplementedError(
-                "ResidualBootstrap is not yet wired for the covariate path."
-            )
         if balance:
             raise NotImplementedError(
                 "balance= is not yet wired for the covariate path."
@@ -1648,21 +1644,31 @@ def _fit_loss(
             pd_f, pd_sig, pd_var, _ = premium_donors[sid]
             premium_donor = (pd_f, pd_sig, pd_var)
 
+        cov_data = None
+        covfit = None
+        seg_cov = None
         if mechanism == "credible":
             extra = {"psi": psi}
             if cov_cells is not None:
-                from ._covariate import segment_effective_intensity
+                from ._covariate import (
+                    _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
+                )
                 seg_cov = cov_cells
                 if seg_cols:
                     vals = (group_value,) if len(seg_cols) == 1 else group_value
                     for col, val in zip(seg_cols, vals):
                         seg_cov = seg_cov.filter(pl.col(col) == val)
-                g_eff, covfit = segment_effective_intensity(
-                    seg_cov.select(["cohort", "duration", *covariates,
-                                    "incr_loss", "incr_premium"]),
-                    list(covariates), cohorts, loss_obs.shape[1] - 1, lam=lam_cov,
+                seg_cov = seg_cov.select(
+                    ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
                 )
-                extra["g_override"] = g_eff
+                cov_data = _covariate_segment_data(
+                    seg_cov, list(covariates), cohorts, loss_obs.shape[1] - 1,
+                )
+                covfit = fit_covariate_intensity(
+                    cov_data.resp, cov_data.expo, cov_data.dur, cov_data.codes,
+                    lam=lam_cov,
+                )
+                extra["g_override"] = _build_g_eff(covfit, cov_data)
                 coef_parts.append(
                     _segment_coefficients_df(covfit, groups, group_value)
                 )
@@ -1695,6 +1701,13 @@ def _fit_loss(
                     fit["loss_obs"], fit["premium_obs"],
                     sigma_method=sigma_method, spec=boot_spec,
                     conf_level=conf_level, rng=rng, recent=recent, donor=donor,
+                )
+            elif cov_data is not None:
+                from ._resample import bootstrap_segment_covariate
+                boot = bootstrap_segment_covariate(
+                    fit["loss_obs"], fit["premium_obs"], cov_data,
+                    list(covariates), sigma_method=sigma_method, psi=psi,
+                    lam=lam_cov, spec=boot_spec, conf_level=conf_level, rng=rng,
                 )
             else:
                 from ._resample import bootstrap_segment_additive
