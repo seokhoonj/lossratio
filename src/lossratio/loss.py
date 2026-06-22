@@ -1359,98 +1359,85 @@ def _segment_coefficients_df(
 
 
 def _segment_covariate_surface(
-    seg_cov: pl.DataFrame,
-    covariates: "list[str]",
-    covfit: "Any",
+    loss_proj: np.ndarray,
+    loss_obs: np.ndarray,
     premium_proj: np.ndarray,
-    u_vec: np.ndarray,
-    cohorts: list,
+    cov_data: "Any",
+    covfit: "Any",
+    covariates: "list[str]",
     groups: "str | list[str] | None",
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Disaggregated per-covariate-cell projection surface for one segment.
 
-    For each covariate cell ``x`` the sub-cell cumulative loss is projected with
-    the same credibility level ``u_i`` and the cell's own intensity
-    ``g_d(x) = exp(s_d + X'beta)`` over a frozen-mix sub-premium
-    ``P_sub = share[i, x] * premium_proj[i, :]`` (``share`` = cohort ``i``'s
-    observed premium fraction in cell ``x``). Because the shares sum to 1 and
-    ``sum_x g_d(x) * share = g_eff``, summing the surface over the covariates
-    reproduces the headline cohort x duration ``loss_proj`` cell-for-cell.
-    Returns a long frame ``[groups?, cohort, duration, *covariates, loss_proj,
-    incr_loss_proj, premium_proj, ratio_proj, source]``.
+    At each cohort x duration the headline cumulative ``loss_proj`` is ALLOCATED
+    across the covariate cells by their relativity-weighted from-premium share
+    ``g_d(x) * cp_x / sum_x g_d(x) cp_x`` (premium share where ``g_d`` is not
+    estimable; the mix is frozen at the cohort's last observed duration for the
+    projected tail). Because the per-cell shares sum to one at every duration,
+    summing the surface over the covariates reproduces the headline cohort x
+    duration ``loss_proj`` and ``premium_proj`` EXACTLY -- robust to a
+    duration-varying mix, premium-only cells, and left-truncated cohorts. The
+    per-cell ratio is ``headline_ratio * g_d(x) / g_eff``. Returns a long frame
+    ``[groups?, cohort, duration, *covariates, loss_proj, incr_loss_proj,
+    premium_proj, ratio_proj, source]``.
     """
-    n_cohorts = len(cohorts)
-    n_dur = premium_proj.shape[1]
-    coh_idx = {c: i for i, c in enumerate(cohorts)}
-
-    # gather per (cohort, covariate-cell): incremental loss / premium by duration
-    incr_loss: "dict[tuple, np.ndarray]" = {}
-    incr_prem: "dict[tuple, np.ndarray]" = {}
-    cell_levels: "dict[tuple, tuple]" = {}
-    for r in seg_cov.select(
-        ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
-    ).iter_rows(named=True):
-        i = coh_idx.get(r["cohort"])
-        if i is None:
-            continue
-        d = int(r["duration"])
-        if d < 1 or d > n_dur:
-            continue
-        cellkey = tuple(r[c] for c in covariates)
-        key = (i, cellkey)
-        if key not in incr_loss:
-            incr_loss[key] = np.full(n_dur, np.nan)
-            incr_prem[key] = np.full(n_dur, np.nan)
-            cell_levels[cellkey] = cellkey
-        incr_loss[key][d - 1] = r["incr_loss"]
-        incr_prem[key][d - 1] = r["incr_premium"]
-
-    # cohort premium total (over observed cells, all cells) for the mix shares
-    coh_prem_total = np.zeros(n_cohorts)
-    for (i, _ck), ip in incr_prem.items():
-        coh_prem_total[i] += np.nansum(ip)
-
+    n_cohorts, n_dur = loss_proj.shape
+    by_cd = cov_data.by_cd
     parts: list[dict] = []
-    for (i, cellkey), il in incr_loss.items():
-        ip = incr_prem[(i, cellkey)]
-        obs = ~np.isnan(il)
-        if not obs.any():
+    for i, coh in enumerate(cov_data.cohorts):
+        durs = sorted(d for (c, d) in by_cd if c == coh)
+        if not durs:
             continue
-        # frozen mix share = this cell's premium fraction within the cohort
-        denom = coh_prem_total[i]
-        share = (np.nansum(ip) / denom) if denom > 0 else 0.0
-        if share <= 0:
-            continue
-        cell = dict(zip(covariates, cellkey))
-        g_x = np.array(
-            [covfit.intensity(k + 1, cell) for k in range(n_dur - 1)],
-            dtype=np.float64,
-        )
-        cum_loss = np.where(obs, np.nancumsum(np.where(obs, il, 0.0)), np.nan)
-        loss_obs_x = np.full((n_cohorts, n_dur), np.nan)
-        loss_obs_x[i, :] = cum_loss
-        p_sub = np.full((n_cohorts, n_dur), np.nan)
-        p_sub[i, :] = share * premium_proj[i, :]
-        g_mat = np.full((n_cohorts, n_dur - 1), np.nan)
-        g_mat[i, :] = g_x
-        loss_proj_x = _project_credible(loss_obs_x, p_sub, g_mat, u_vec)
-        last_obs = int(np.flatnonzero(obs)[-1])
-        for d in range(n_dur):
-            lp = loss_proj_x[i, d]
-            if np.isnan(lp):
+        last_obs_d = durs[-1]
+        cp: "dict[int, dict]" = {}
+        cells: "dict[tuple, dict]" = {}
+        for d in durs:
+            cp[d] = {}
+            for cell_dict, c_cp in by_cd[(coh, d)]:
+                ck = tuple(cell_dict[c] for c in covariates)
+                cells[ck] = cell_dict
+                cp[d][ck] = float(c_cp)
+        obs_cols = np.flatnonzero(~np.isnan(loss_obs[i, :]))
+        last_col = int(obs_cols.max()) if obs_cols.size else -1
+
+        for col in range(n_dur):
+            H = loss_proj[i, col]
+            if not np.isfinite(H):
                 continue
-            ps = p_sub[i, d]
-            row: dict[str, Any] = {"cohort": cohorts[i], "duration": d + 1}
-            for c in covariates:
-                row[c] = cell[c]
-            row["loss_proj"] = float(lp)
-            row["premium_proj"] = float(ps) if np.isfinite(ps) else None
-            row["ratio_proj"] = (
-                float(lp / ps) if np.isfinite(ps) and ps > 0 else None
-            )
-            row["source"] = "observed" if d <= last_obs else "projected"
-            parts.append(row)
+            d = col + 1                              # 1-based duration of this cell
+            src = cp.get(d if (d in cp and d <= last_obs_d) else last_obs_d, {})
+            # relativity-weighted allocation weight per cell (premium share where
+            # the intensity is not estimable at this duration)
+            w = {}
+            for ck in cells:
+                c_cp = src.get(ck, 0.0)
+                if c_cp <= 0:
+                    w[ck] = 0.0
+                    continue
+                gi = covfit.intensity(d, cells[ck])
+                w[ck] = (gi * c_cp) if (np.isfinite(gi) and gi > 0) else c_cp
+            tot_w = sum(w.values())
+            tot_p = sum(v for v in src.values() if v > 0)
+            if tot_w <= 0:
+                continue
+            pk = premium_proj[i, col]
+            for ck in cells:
+                if w[ck] <= 0:
+                    continue
+                lp = H * (w[ck] / tot_w)
+                share_p = (src.get(ck, 0.0) / tot_p) if tot_p > 0 else 0.0
+                ps = share_p * pk
+                row: dict[str, Any] = {"cohort": coh, "duration": d}
+                for c in covariates:
+                    row[c] = cells[ck][c]
+                row["loss_proj"] = float(lp)
+                row["premium_proj"] = float(ps) if np.isfinite(ps) else None
+                row["ratio_proj"] = (
+                    float(lp / ps) if np.isfinite(ps) and ps > 0 else None
+                )
+                row["source"] = "observed" if col <= last_col else "projected"
+                parts.append(row)
 
     df = pl.DataFrame(parts)
     df = df.sort(["cohort", *covariates, "duration"]).with_columns(
@@ -1467,11 +1454,6 @@ def _segment_covariate_surface(
         "loss_proj", "incr_loss_proj", "premium_proj", "ratio_proj", "source",
     ]
     return df.select(order)
-
-
-# ---------------------------------------------------------------------------
-# Fit entry point
-# ---------------------------------------------------------------------------
 
 
 # mechanism -> (per-segment fitter, method label, public model name)
@@ -1827,11 +1809,10 @@ def _fit_loss(
                 coef_parts.append(
                     _segment_coefficients_df(covfit, groups, group_value)
                 )
-                u_surface = fit.get("u", np.ones(len(cohorts), dtype=np.float64))
                 surface_parts.append(
                     _segment_covariate_surface(
-                        seg_cov, list(covariates), covfit,
-                        fit["premium_proj"], u_surface, cohorts, groups, group_value,
+                        fit["loss_proj"], fit["loss_obs"], fit["premium_proj"],
+                        cov_data, covfit, list(covariates), groups, group_value,
                     )
                 )
 

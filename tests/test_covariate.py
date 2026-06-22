@@ -415,7 +415,12 @@ def test_predict_by_covariate_shows_relativity():
     piv = by.pivot(values="ratio_proj", index=["cohort", "duration"],
                    on="sex").drop_nulls(["F", "M"])
     assert piv.height > 0
-    assert (piv["F"] > piv["M"]).all()
+    fa, ma = piv["F"].to_numpy(), piv["M"].to_numpy()
+    # the relativity never inverts (F >= M everywhere) and shows at the
+    # durations where the intensity is estimable (most cells); a few cells where
+    # g_d falls back to the premium share have F == M.
+    assert np.all(fa >= ma - 1e-9)
+    assert int(np.sum(fa > ma)) >= piv.height // 2
 
 
 def test_pooled_covariate_equals_credible_psi0():
@@ -575,6 +580,43 @@ def test_backtest_covariate_masks_source_per_fold():
     cc = clean.fit.coefficients.sort("level").to_dict(as_series=False)["beta"]
     rc = corrupt.fit.coefficients.sort("level").to_dict(as_series=False)["beta"]
     assert np.allclose(cc, rc, atol=1e-9)                  # held-out source did not leak
+
+
+def _varying_mix_source(n_cohorts=6, max_cal=8, seed=0):
+    """Source whose covariate premium mix VARIES by duration (group A dominates
+    early, B late) -- the case a frozen cohort-total share gets wrong."""
+    rng = np.random.default_rng(seed)
+    base = date(2024, 1, 1)
+    g = {d: 0.05 - 0.004 * d for d in range(1, max_cal + 1)}
+    factor = {"A": 1.0, "B": 1.4}
+    rows = []
+    for i in range(n_cohorts):
+        coh = _add_months(base, i)
+        for d in range(1, max_cal - i + 1):
+            cal = _add_months(coh, d - 1)
+            a_share = 0.8 - 0.5 * (d - 1) / (max_cal - 1)        # 0.8 -> ~0.3
+            for lvl, sh in (("A", a_share), ("B", 1.0 - a_share)):
+                ip = float(rng.uniform(800.0, 1600.0)) * sh * 2.0
+                il = g[d] * factor[lvl] * ip * float(rng.uniform(0.95, 1.05))
+                rows.append({"uy_m": coh, "cy_m": cal, "grp": lvl,
+                             "incr_loss": il, "incr_premium": ip})
+    return pl.DataFrame(rows)
+
+
+def test_predict_by_marginalizes_with_duration_varying_mix():
+    """predict(by=) must sum to the headline even when the covariate premium
+    mix varies by duration (regression test for the per-duration share fix)."""
+    df = _varying_mix_source()
+    tri = _triangle(df)
+    fit = _credible(covariates=["grp"], source=df).fit(tri)
+    head = fit.predict().sort(["cohort", "duration"])
+    roll = (fit.predict(by="grp").group_by(["cohort", "duration"])
+            .agg(pl.col("loss_proj").sum()).sort(["cohort", "duration"]))
+    j = head.join(roll, on=["cohort", "duration"], suffix="_s")
+    a, b = j["loss_proj"].to_numpy(), j["loss_proj_s"].to_numpy()
+    m = ~np.isnan(a) & ~np.isnan(b)
+    assert m.any()
+    assert np.allclose(a[m], b[m], rtol=1e-9)
 
 
 def test_predict_by_requires_covariate_fit():
