@@ -63,7 +63,7 @@ def test_recovers_known_covariate_relativity():
     cov = {"levels": ["M", "F"], "factor": {"M": 1.0, "F": 1.3}}
     (resp, expo, dur), codes = _synth(g_true, cov=cov)
     fit = fit_covariate_intensity(
-        resp, expo, dur, {"sex": codes}, lam=1e-6     # near-zero ridge -> exact
+        resp, expo, dur, {"sex": codes}, lam=0.0      # fixed effect -> exact
     )
     assert fit.levels["sex"] == ["F", "M"]            # sorted; reference = "F"
     # the design drops the reference; recover the M-vs-F log-relativity. With
@@ -153,7 +153,7 @@ def test_segment_effective_intensity_marginalizes_mix():
     cohorts = list(range(8))
     n_links = 5
     g_eff, covfit = segment_effective_intensity(
-        sub, ["sex"], cohorts, n_links, lam=1e-6     # near-zero ridge -> exact
+        sub, ["sex"], cohorts, n_links, lam=0.0      # fixed effect -> exact
     )
     assert np.isclose(covfit.beta[("sex", "M")], -np.log(1.3), atol=1e-3)
     for i in cohorts:
@@ -281,7 +281,7 @@ def test_covariate_fit_nests_plain_when_single_level():
 def test_covariate_fit_reports_relativity():
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
-    cov = _credible(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    cov = _credible(covariates=["sex"], source=df, lam_cov=0.0).fit(tri)
     coef = cov.coefficients.sort("level")
     rec = coef.to_dict(as_series=False)
     assert rec["covariate"] == ["sex", "sex"]
@@ -333,7 +333,7 @@ def test_covariate_bootstrap_produces_intervals():
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
     fit = lr.CredibleLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3,
+        covariates=["sex"], source=df, lam_cov=0.0,
         uncertainty=lr.ResidualBootstrap(n_replicates=60, seed=0),
     ).fit(tri)
     d = fit.to_polars()
@@ -355,9 +355,9 @@ def test_covariate_bootstrap_marginalizes_to_headline():
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
-    base = lr.CredibleLoss(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    base = lr.CredibleLoss(covariates=["sex"], source=df, lam_cov=0.0).fit(tri)
     boot = lr.CredibleLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3,
+        covariates=["sex"], source=df, lam_cov=0.0,
         uncertainty=lr.ResidualBootstrap(n_replicates=40, seed=1),
     ).fit(tri)
     a = base.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
@@ -387,7 +387,7 @@ def test_predict_by_covariate_marginalizes_to_headline():
     headline cohort x duration projection cell-for-cell."""
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
-    cov = _credible(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    cov = _credible(covariates=["sex"], source=df, lam_cov=0.0).fit(tri)
     head = cov.predict().sort(["cohort", "duration"])
     by = cov.predict(by="sex")
     rolled = (
@@ -409,7 +409,7 @@ def test_predict_by_covariate_shows_relativity():
     morbidity) projects a higher ratio than M in the same cohort x duration."""
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
-    cov = _credible(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    cov = _credible(covariates=["sex"], source=df, lam_cov=0.0).fit(tri)
     by = cov.predict(by="sex").filter(pl.col("source") == "projected")
     # pick a cohort x duration with both sexes projected
     piv = by.pivot(values="ratio_proj", index=["cohort", "duration"],
@@ -424,9 +424,9 @@ def test_pooled_covariate_equals_credible_psi0():
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
-    pooled = lr.PooledLoss(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    pooled = lr.PooledLoss(covariates=["sex"], source=df, lam_cov=0.0).fit(tri)
     cred0 = lr.CredibleLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3, psi=0
+        covariates=["sex"], source=df, lam_cov=0.0, psi=0
     ).fit(tri)
     a = pooled.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
     b = cred0.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
@@ -452,7 +452,7 @@ def test_pooled_covariate_bootstrap_and_validation():
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
     fit = lr.PooledLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3,
+        covariates=["sex"], source=df, lam_cov=0.0,
         uncertainty=lr.ResidualBootstrap(n_replicates=40, seed=0),
     ).fit(tri)
     proj = fit.to_polars().filter(pl.col("source") == "own")
@@ -486,7 +486,7 @@ def test_kernel_smooth_mode_recovers_relativity():
 
     resp, expo, dur, codes = synth()
     fit = fit_covariate_intensity(
-        resp, expo, dur, {"sex": codes}, lam=1e-3, n_basis=6, lam_smooth="auto"
+        resp, expo, dur, {"sex": codes}, lam=0.0, n_basis=6, lam_smooth="auto"
     )
     assert np.isclose(fit.beta[("sex", "M")], -np.log(1.3), atol=0.1)
     # smooth s(d) tracks the declining true intensity
@@ -497,7 +497,7 @@ def test_smooth_covariate_fit_and_surface():
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
-    fit = lr.SmoothLoss(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    fit = lr.SmoothLoss(covariates=["sex"], source=df, lam_cov=0.0).fit(tri)
     assert fit.coefficients is not None
     rec = fit.coefficients.sort("level").to_dict(as_series=False)
     assert rec["level"] == ["F", "M"]
@@ -520,7 +520,7 @@ def test_smooth_covariate_bootstrap():
     df = _experience_source({"F": 1.3, "M": 1.0})
     tri = _triangle(df)
     fit = lr.SmoothLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3,
+        covariates=["sex"], source=df, lam_cov=0.0,
         uncertainty=lr.ResidualBootstrap(n_replicates=20, seed=0),
     ).fit(tri)
     proj = fit.to_polars().filter(pl.col("source") == "own")
@@ -535,19 +535,19 @@ def test_covariate_respects_regime_cut():
     cut = date(2024, 4, 1)
     tri = _triangle(df)
     with_regime = lr.CredibleLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3, regime=lr.Regime.at(cut)
+        covariates=["sex"], source=df, lam_cov=0.0, regime=lr.Regime.at(cut)
     ).fit(tri)
     # manual cut: drop pre-change cohorts from BOTH the triangle and the source
     df_cut = df.filter(pl.col("uy_m") >= cut)
     manual = lr.CredibleLoss(
-        covariates=["sex"], source=df_cut, lam_cov=1e-3
+        covariates=["sex"], source=df_cut, lam_cov=0.0
     ).fit(_triangle(df_cut))
     b_reg = with_regime.coefficients.sort("level").to_dict(as_series=False)["beta"]
     b_man = manual.coefficients.sort("level").to_dict(as_series=False)["beta"]
     assert np.allclose(b_reg, b_man, atol=1e-6)
     # bootstrap must not crash / wrap a -1 cohort index under a regime cut
     booted = lr.CredibleLoss(
-        covariates=["sex"], source=df, lam_cov=1e-3, regime=lr.Regime.at(cut),
+        covariates=["sex"], source=df, lam_cov=0.0, regime=lr.Regime.at(cut),
         uncertainty=lr.ResidualBootstrap(n_replicates=15, seed=0),
     ).fit(tri)
     assert booted.coefficients is not None

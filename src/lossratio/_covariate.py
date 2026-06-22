@@ -126,13 +126,51 @@ def _covariate_design(
     return B, penalty_diag, durations, levels, beta_cols
 
 
+def _cov_ridge_diag(
+    lam: "float | dict",
+    beta_cols: "list[tuple[str, object]]",
+    B: np.ndarray,
+    n_shape: int,
+    response: np.ndarray,
+    offset: np.ndarray,
+) -> np.ndarray:
+    """Per-covariate-column ridge penalty diagonal (data-scaled).
+
+    ``lam`` is a scalar (uniform over every covariate column) or a
+    ``{covariate: lam}`` dict (per-covariate; an unlisted covariate -> 0 = fixed
+    effect). The penalty on a column is ``lam_c * w_j`` where ``w_j`` is that
+    level's fitted data weight (``sum mu``), so ``lam`` is dimensionless and
+    book-invariant: a fixed raw ridge would be negligible against a large-premium
+    book's ``B'WB``. Returns a length-``ncov`` array; all-zero (the default
+    ``lam = 0``) is the fixed-effect MLE with no extra fit cost.
+    """
+    ncov = len(beta_cols)
+    if ncov == 0:
+        return np.zeros(0, dtype=np.float64)
+    if isinstance(lam, dict):
+        mult = np.array([float(lam.get(name, 0.0)) for name, _lv in beta_cols])
+    else:
+        mult = np.full(ncov, float(lam), dtype=np.float64)
+    if not np.any(mult > 0.0):
+        return np.zeros(ncov, dtype=np.float64)
+    f0 = penalized_irls(
+        response, offset, B, np.zeros((B.shape[1], B.shape[1])), 0.0
+    )
+    # AVERAGE covariate-level weight (tr(B_cov' W B_cov) / ncov, the smooth
+    # scaling). A per-column weight would give a sparse / separated level a near-
+    # zero ridge -- no protection where it is needed most; the average gives it a
+    # typical-strength ridge that dominates its thin likelihood and stays finite.
+    scale = float((B[:, n_shape:].T @ f0.mu).sum()) / ncov
+    return mult * scale
+
+
 def fit_covariate_intensity(
     response: np.ndarray,
     exposure: np.ndarray,
     duration: np.ndarray,
     covariates: "dict[str, np.ndarray]",
     *,
-    lam: float = 1.0,
+    lam: "float | dict" = 0.0,
     n_basis: "int | None" = None,
     lam_smooth: "float | str" = "auto",
     degree: int = 3,
@@ -142,16 +180,21 @@ def fit_covariate_intensity(
     ``response`` = per-cell incremental loss, ``exposure`` = per-cell from-cell
     cumulative premium (> 0), ``duration`` = per-cell from-duration,
     ``covariates`` = ``{name: per-cell level codes}`` (empty dict = pooled
-    intensity, exact nesting). ``lam`` is the ridge strength on the covariate
-    coefficients. Cells with non-positive exposure are dropped.
+    intensity, exact nesting). Cells with non-positive exposure are dropped.
+
+    Covariates enter as treatment-coded FIXED effects on a shared duration shape
+    (the credibility-regression / GLMM template -- Hachemeister 1975,
+    Buhlmann-Straub 1970, Oh et al. 2023): the cohort credibility level is the
+    only shrinkage. ``lam`` (default ``0`` = pure MLE fixed effects) optionally
+    ridge-shrinks the covariate block -- a pragmatic regularizer for sparse /
+    high-cardinality covariates that would otherwise separate, NOT a standard
+    credibility method. ``lam`` is a scalar (uniform) or a ``{covariate: lam}``
+    dict (per-covariate), data-scaled so the value is book-invariant.
 
     With ``n_basis=None`` (default) the duration shape is the saturated one-hot
-    (unpenalized) -- the credible / pooled covariate path. With ``n_basis`` set
-    the duration block is a clamped B-spline of the given ``degree`` with a
-    2nd-difference (P-spline) penalty whose strength ``lam_smooth`` is either a
-    fixed float or GCV-selected (``"auto"``) -- the smooth covariate path. Either
-    way the covariate block stays treatment-coded + ridge-shrunk, so the fitted
-    ``s_d`` (smooth or saturated) plus ``X'beta`` give ``g_d(x)`` identically.
+    (unpenalized). With ``n_basis`` set the duration block is a clamped B-spline
+    with a 2nd-difference (P-spline) penalty whose strength ``lam_smooth`` is a
+    fixed float or GCV-selected (``"auto"``) -- the smooth covariate path.
     """
     response = np.asarray(response, dtype=np.float64)
     exposure = np.asarray(exposure, dtype=np.float64)
@@ -168,8 +211,12 @@ def fit_covariate_intensity(
         B, penalty_diag, durations, levels, beta_cols = _covariate_design(
             duration, covariates
         )
-        fit = penalized_irls(response, offset, B, np.diag(penalty_diag), float(lam))
         n_dur = len(durations)
+        penalty_diag = penalty_diag.copy()
+        penalty_diag[n_dur:] = _cov_ridge_diag(
+            lam, beta_cols, B, n_dur, response, offset
+        )
+        fit = penalized_irls(response, offset, B, np.diag(penalty_diag), 1.0)
         s = fit.beta[:n_dur]
         beta = {col: float(fit.beta[n_dur + j]) for j, col in enumerate(beta_cols)}
         return CovariateFit(
@@ -178,8 +225,8 @@ def fit_covariate_intensity(
         )
 
     # smooth duration basis: B = [B-spline | covariate dummies], penalty =
-    # blockdiag(lam_smooth * P2, lam * I); pass lam = 1 so the assembled penalty
-    # applies as-is (the cov block stays ridged even at lam_smooth = 0).
+    # blockdiag(lam_smooth * P2, diag(ridge)); pass lam = 1 so the assembled
+    # penalty applies as-is.
     durations = sorted(int(d) for d in np.unique(duration))
     nb = max(degree + 1, min(int(n_basis), len(durations)))
     Bdur, P2 = bspline_design(duration, nb, degree)
@@ -187,12 +234,13 @@ def fit_covariate_intensity(
     blocks, levels, beta_cols = _covariate_dummies(covariates)
     ncov = len(beta_cols)
     B = np.hstack([Bdur, *blocks]) if blocks else Bdur
+    ridge_diag = _cov_ridge_diag(lam, beta_cols, B, nb, response, offset)
 
     def _pen(ls: float) -> np.ndarray:
         pen = np.zeros((nb + ncov, nb + ncov), dtype=np.float64)
         pen[:nb, :nb] = ls * P2
         if ncov:
-            pen[nb:, nb:] = float(lam) * np.eye(ncov)
+            pen[nb:, nb:] = np.diag(ridge_diag)
         return pen
 
     if lam_smooth != "auto":

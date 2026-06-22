@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .loss import LossFit, _LossEstimatorBase, _fit_loss
+from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -54,7 +54,7 @@ class CredibleLoss(_LossEstimatorBase):
     balance: bool = False
     covariates: "list[str] | None" = None
     source: "Any" = None
-    lam_cov: float = 1.0
+    lam_cov: "float | dict" = 0.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -78,9 +78,7 @@ class CredibleLoss(_LossEstimatorBase):
                     "a single level-invariant donor shape, covariates require "
                     "per-cell intensities."
                 )
-        if isinstance(self.lam_cov, bool) or not isinstance(self.lam_cov, (int, float)) \
-                or self.lam_cov < 0:
-            raise ValueError(f"lam_cov must be a non-negative float, got {self.lam_cov!r}")
+        _validate_lam_cov(self.lam_cov)
 
     def fit(self, triangle: "Triangle") -> LossFit:
         """Fit the credibility loss projection on a :class:`Triangle`."""
