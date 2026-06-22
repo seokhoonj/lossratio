@@ -380,7 +380,12 @@ def reconcile_coverage(
         pl.col("incr_loss").sum().alias("_cl"),
         pl.col("incr_premium").sum().alias("_cp"),
     )
-    tri = triangle_frame.select([*keys, "incr_loss", "incr_premium"])
+    # only reconcile OBSERVED cells: a backtest masks the held-out diagonals to
+    # null in the triangle, and the (correspondingly masked) source no longer
+    # covers them -- that is expected, not a mismatch.
+    tri = triangle_frame.select([*keys, "incr_loss", "incr_premium"]).filter(
+        pl.col("incr_premium").is_not_null()
+    )
     joined = tri.join(rolled, on=keys, how="left")
 
     missing = joined.filter(pl.col("_cp").is_null())

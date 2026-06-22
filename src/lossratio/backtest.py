@@ -90,6 +90,56 @@ def _build_masked_df(
 
 
 _VALID_TARGETS = ("ratio", "loss", "premium")
+_GRAIN_MONTHS = {"M": 1, "Q": 3, "H": 6, "Y": 12}
+
+
+def _mask_source_for_fold(
+    estimator: Any, triangle: "Triangle", annotated_df: pl.DataFrame
+) -> Any:
+    """Mask a covariate estimator's ``source`` to the fold's training cells.
+
+    A covariate estimator reads the raw ``source`` frame at fit time; a backtest
+    masks the held-out calendar diagonals from the triangle but the ``source``
+    is the FULL frame, so the held-out period would leak into the covariate fit
+    (look-ahead). Return a clone of the estimator whose ``source`` drops the rows
+    on the held-out calendar diagonals -- the same mask the triangle gets, so the
+    covariate kernel sees exactly the training data. Non-covariate estimators are
+    returned unchanged.
+    """
+    if not getattr(estimator, "covariates", None) or getattr(estimator, "source", None) is None:
+        return estimator
+    if triangle.calendar is None:
+        raise NotImplementedError(
+            "Backtest with covariates= needs a calendar-axis (mode-1) triangle "
+            "to mask the source per fold; a duration-only triangle is not wired."
+        )
+    from dataclasses import replace
+
+    from ._io import to_polars
+    from ._period import coerce_cols_to_date, floor_to_period
+
+    groups = normalize_groups(triangle._groups)
+    months = _GRAIN_MONTHS[triangle.grain]
+    # held-out (group, calendar-period) cells from the triangle's own mask
+    held = (
+        annotated_df.filter(pl.col("masked"))
+        .with_columns(
+            _cal=pl.col("cohort").dt.offset_by(
+                (((pl.col("duration") - 1) * months).cast(pl.Int64).cast(pl.Utf8)) + "mo"
+            )
+        )
+        .select([*groups, "_cal"])
+        .unique()
+    )
+    src = to_polars(estimator.source)
+    src = coerce_cols_to_date(src, [triangle.calendar])
+    src = src.with_columns(
+        floor_to_period(pl.col(triangle.calendar), triangle.grain).alias("_cal")
+    )
+    masked_src = src.join(
+        held, on=[*groups, "_cal"], how="anti"
+    ).drop("_cal")
+    return replace(estimator, source=masked_src)
 
 
 def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
@@ -307,8 +357,11 @@ class _FoldFit:
         # 2. Build a masked Triangle (same metadata, masked cells)
         masked_tri = Triangle._from_masked(triangle, masked_df)
 
-        # 3. Refit estimator on masked Triangle
-        refit = bt.estimator.fit(masked_tri)
+        # 3. Refit estimator on masked Triangle. A covariate estimator's source
+        # is masked to the same fold so the held-out diagonals never leak into
+        # the covariate fit.
+        fold_estimator = _mask_source_for_fold(bt.estimator, triangle, annotated_df)
+        refit = fold_estimator.fit(masked_tri)
         self._refit = refit
 
         refit_df = refit.to_polars()

@@ -553,6 +553,30 @@ def test_covariate_respects_regime_cut():
     assert booted.coefficients is not None
 
 
+def test_backtest_covariate_masks_source_per_fold():
+    """A backtest masks the source to the fold: corrupting the held-out
+    calendar months in the source must NOT change the refit (no look-ahead)."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0}, n_cohorts=6)
+    tri = _triangle(df)
+    H = 3
+    held = sorted(df["cy_m"].unique().to_list())[-H:]      # most-recent H diagonals
+    df_corrupt = df.with_columns(
+        pl.when(pl.col("cy_m").is_in(held))
+        .then(pl.col("incr_loss") * 50.0)
+        .otherwise(pl.col("incr_loss")).alias("incr_loss")
+    )
+    clean = lr.Backtest(
+        lr.CredibleLoss(covariates=["sex"], source=df), holdouts=H, target="loss"
+    ).fit(tri)
+    corrupt = lr.Backtest(
+        lr.CredibleLoss(covariates=["sex"], source=df_corrupt), holdouts=H, target="loss"
+    ).fit(tri)
+    cc = clean.fit.coefficients.sort("level").to_dict(as_series=False)["beta"]
+    rc = corrupt.fit.coefficients.sort("level").to_dict(as_series=False)["beta"]
+    assert np.allclose(cc, rc, atol=1e-9)                  # held-out source did not leak
+
+
 def test_predict_by_requires_covariate_fit():
     df = _experience_source({"M": 1.0})
     tri = _triangle(df)
