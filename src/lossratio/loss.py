@@ -1776,7 +1776,10 @@ def _fit_loss(
                 vals = (group_value,) if len(seg_cols) == 1 else group_value
                 for col, val in zip(seg_cols, vals):
                     seg_cov = seg_cov.filter(pl.col(col) == val)
-            seg_cov = seg_cov.select(
+            # restrict the source cells to this segment's (regime-cut) cohort
+            # set -- otherwise the kernel would fit on cohorts the regime cut
+            # dropped, and excluded cohorts would index as -1 downstream.
+            seg_cov = seg_cov.filter(pl.col("cohort").is_in(cohorts)).select(
                 ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
             )
             cov_data = _covariate_segment_data(

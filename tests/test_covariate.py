@@ -527,6 +527,32 @@ def test_smooth_covariate_bootstrap():
     assert np.isfinite(proj["loss_total_se"].to_numpy()).any()
 
 
+def test_covariate_respects_regime_cut():
+    """A regime cut must drop the pre-change cohorts from the covariate kernel
+    too: fitting with regime= must match fitting on the manually-cut source."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0}, n_cohorts=6)
+    cut = date(2024, 4, 1)
+    tri = _triangle(df)
+    with_regime = lr.CredibleLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3, regime=lr.Regime.at(cut)
+    ).fit(tri)
+    # manual cut: drop pre-change cohorts from BOTH the triangle and the source
+    df_cut = df.filter(pl.col("uy_m") >= cut)
+    manual = lr.CredibleLoss(
+        covariates=["sex"], source=df_cut, lam_cov=1e-3
+    ).fit(_triangle(df_cut))
+    b_reg = with_regime.coefficients.sort("level").to_dict(as_series=False)["beta"]
+    b_man = manual.coefficients.sort("level").to_dict(as_series=False)["beta"]
+    assert np.allclose(b_reg, b_man, atol=1e-6)
+    # bootstrap must not crash / wrap a -1 cohort index under a regime cut
+    booted = lr.CredibleLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3, regime=lr.Regime.at(cut),
+        uncertainty=lr.ResidualBootstrap(n_replicates=15, seed=0),
+    ).fit(tri)
+    assert booted.coefficients is not None
+
+
 def test_predict_by_requires_covariate_fit():
     df = _experience_source({"M": 1.0})
     tri = _triangle(df)
