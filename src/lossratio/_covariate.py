@@ -183,17 +183,17 @@ def fit_covariate_intensity(
     intensity, exact nesting). Cells with non-positive exposure are dropped.
 
     Covariates enter as treatment-coded FIXED effects on a shared duration shape,
-    with the per-cohort credibility level the only shrinkage -- the GLM +
-    credibility structure (Buhlmann-Straub 1970 for the exposure-weighted cohort
-    level; Oh et al. 2023 for the GLMM fixed-effects + random-intercept form).
-    ``lam`` (default ``0`` = pure MLE fixed effects) optionally shrinks the
-    covariate block toward zero relativity. Shrinking a high-cardinality rating
-    factor's level effects this way is established actuarial practice -- GLM +
-    credibility for multi-level factors (Ohlsson 2008), the credibility / ridge
-    realization of a random factor effect (cf. Hachemeister 1975 regression
-    credibility). ``lam`` is a scalar (uniform) or a ``{covariate: lam}`` dict
-    (per-covariate), data-scaled by the average covariate-level weight so the
-    value is dimensionless / book-invariant.
+    with the per-cohort credibility level the only shrinkage: the exposure-
+    weighted credibility of Buhlmann-Straub (1970) on the cohort level, combined
+    with a GLM for the duration shape and the covariate effects (the GLM +
+    credibility combination, Ohlsson 2008). ``lam`` (default ``0`` = pure MLE
+    fixed effects) optionally shrinks the covariate block toward zero relativity.
+    Shrinking a high-cardinality rating factor's level effects this way is
+    established actuarial practice -- GLM + credibility for multi-level factors
+    (Ohlsson 2008), the credibility / ridge realization of a random factor effect
+    (cf. Hachemeister 1975 regression credibility). ``lam`` is a scalar (uniform)
+    or a ``{covariate: lam}`` dict (per-covariate), data-scaled by the average
+    covariate-level weight so the value is dimensionless / book-invariant.
 
     With ``n_basis=None`` (default) the duration shape is the saturated one-hot
     (unpenalized). With ``n_basis`` set the duration block is a clamped B-spline
