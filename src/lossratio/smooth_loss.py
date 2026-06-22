@@ -65,6 +65,18 @@ class SmoothLoss(_LossEstimatorBase):
         shape + ``lambda`` selection + backfitting, so the selection uncertainty
         is captured (charter Sec.5.2). NOTE: this is materially heavier than the
         pooled / credible bootstrap (a backfitting per replicate).
+    covariates
+        Cell-level fixed-effect covariates (e.g. ``["sex"]``) fit jointly with
+        the smooth duration shape (P-spline shape + ridge covariate block in the
+        backfit), marginalized to the headline projection (.coefficients /
+        predict(by=) expose them). Requires ``source=``.
+    source
+        The raw disaggregated frame the covariates are read from at fit time
+        (must roll up to this triangle's cells); required iff ``covariates`` set.
+    lam_cov
+        Covariate ridge: ``0`` (default) = fixed-effect MLE; ``>0`` shrinks the
+        covariate relativities (a scalar, or a ``{covariate: lam}`` dict), for
+        high-cardinality factors that would otherwise separate (Ohlsson 2008).
     """
 
     psi: "float | str" = "auto"

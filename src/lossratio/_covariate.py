@@ -182,14 +182,18 @@ def fit_covariate_intensity(
     ``covariates`` = ``{name: per-cell level codes}`` (empty dict = pooled
     intensity, exact nesting). Cells with non-positive exposure are dropped.
 
-    Covariates enter as treatment-coded FIXED effects on a shared duration shape
-    (the credibility-regression / GLMM template -- Hachemeister 1975,
-    Buhlmann-Straub 1970, Oh et al. 2023): the cohort credibility level is the
-    only shrinkage. ``lam`` (default ``0`` = pure MLE fixed effects) optionally
-    ridge-shrinks the covariate block -- a pragmatic regularizer for sparse /
-    high-cardinality covariates that would otherwise separate, NOT a standard
-    credibility method. ``lam`` is a scalar (uniform) or a ``{covariate: lam}``
-    dict (per-covariate), data-scaled so the value is book-invariant.
+    Covariates enter as treatment-coded FIXED effects on a shared duration shape,
+    with the per-cohort credibility level the only shrinkage -- the GLM +
+    credibility structure (Buhlmann-Straub 1970 for the exposure-weighted cohort
+    level; Oh et al. 2023 for the GLMM fixed-effects + random-intercept form).
+    ``lam`` (default ``0`` = pure MLE fixed effects) optionally shrinks the
+    covariate block toward zero relativity. Shrinking a high-cardinality rating
+    factor's level effects this way is established actuarial practice -- GLM +
+    credibility for multi-level factors (Ohlsson 2008), the credibility / ridge
+    realization of a random factor effect (cf. Hachemeister 1975 regression
+    credibility). ``lam`` is a scalar (uniform) or a ``{covariate: lam}`` dict
+    (per-covariate), data-scaled by the average covariate-level weight so the
+    value is dimensionless / book-invariant.
 
     With ``n_basis=None`` (default) the duration shape is the saturated one-hot
     (unpenalized). With ``n_basis`` set the duration block is a clamped B-spline

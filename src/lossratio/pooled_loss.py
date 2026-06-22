@@ -43,6 +43,18 @@ class PooledLoss(_LossEstimatorBase):
         the projection stays seeded from the full triangle.
     conf_level
         Two-sided confidence level for the analytical CI columns.
+    covariates
+        Cell-level fixed-effect covariates (e.g. ``["sex"]``) on a shared
+        duration shape, marginalized to the headline projection (.coefficients /
+        predict(by=) expose them). ``PooledLoss`` keeps ``u = 1``, so this equals
+        ``CredibleLoss(covariates=..., psi=0)``. Requires ``source=``.
+    source
+        The raw disaggregated frame the covariates are read from at fit time
+        (must roll up to this triangle's cells); required iff ``covariates`` set.
+    lam_cov
+        Covariate ridge: ``0`` (default) = fixed-effect MLE; ``>0`` shrinks the
+        covariate relativities (a scalar, or a ``{covariate: lam}`` dict), for
+        high-cardinality factors that would otherwise separate (Ohlsson 2008).
     """
 
     balance: bool = False

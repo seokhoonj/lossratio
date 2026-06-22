@@ -48,6 +48,18 @@ class CredibleLoss(_LossEstimatorBase):
         Resolved cohort cut: ``None``, a ``date``, or a ``dict[segment -> date]``.
     conf_level
         Two-sided confidence level (unused in v1 -- SE/CI are null point-only).
+    covariates
+        Cell-level fixed-effect covariates (e.g. ``["sex"]``) that shift the
+        loss-ratio level on a shared duration shape, marginalized back to the
+        headline cohort x duration projection (.coefficients / predict(by=)
+        expose them). Requires ``source=``; ``None`` (default) = no covariates.
+    source
+        The raw disaggregated frame the covariates are read from at fit time
+        (must roll up to this triangle's cells); required iff ``covariates`` set.
+    lam_cov
+        Covariate ridge: ``0`` (default) = fixed-effect MLE; ``>0`` shrinks the
+        covariate relativities (a scalar, or a ``{covariate: lam}`` dict), for
+        high-cardinality factors that would otherwise separate (Ohlsson 2008).
     """
 
     psi: "float | str" = "auto"
