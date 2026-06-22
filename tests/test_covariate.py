@@ -346,3 +346,51 @@ def test_covariate_reconciliation_fail_fast():
     src_bad = df.with_columns((pl.col("incr_premium") * 2).alias("incr_premium"))
     with pytest.raises(ValueError, match="does not sum"):
         lr.CredibleLoss(covariates=["sex"], source=src_bad).fit(tri)
+
+
+def test_predict_by_covariate_marginalizes_to_headline():
+    """Summing the disaggregated surface over the covariate reproduces the
+    headline cohort x duration projection cell-for-cell."""
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    cov = _credible(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    head = cov.predict().sort(["cohort", "duration"])
+    by = cov.predict(by="sex")
+    rolled = (
+        by.group_by(["cohort", "duration"])
+        .agg(pl.col("loss_proj").sum())
+        .sort(["cohort", "duration"])
+    )
+    j = head.join(rolled, on=["cohort", "duration"], suffix="_sum")
+    assert j.height == head.height
+    a = j["loss_proj"].to_numpy()
+    b = j["loss_proj_sum"].to_numpy()
+    both = ~np.isnan(a) & ~np.isnan(b)
+    assert both.any()
+    assert np.allclose(a[both], b[both], rtol=1e-9)
+
+
+def test_predict_by_covariate_shows_relativity():
+    """The disaggregated surface carries the loss-ratio relativity: F (1.3x
+    morbidity) projects a higher ratio than M in the same cohort x duration."""
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    cov = _credible(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    by = cov.predict(by="sex").filter(pl.col("source") == "projected")
+    # pick a cohort x duration with both sexes projected
+    piv = by.pivot(values="ratio_proj", index=["cohort", "duration"],
+                   on="sex").drop_nulls(["F", "M"])
+    assert piv.height > 0
+    assert (piv["F"] > piv["M"]).all()
+
+
+def test_predict_by_requires_covariate_fit():
+    df = _experience_source({"M": 1.0})
+    tri = _triangle(df)
+    plain = _credible().fit(tri)
+    assert plain.covariate_surface is None
+    with pytest.raises(ValueError, match="requires a fit run with covariates"):
+        plain.predict(by="sex")
+    cov = _credible(covariates=["sex"], source=df).fit(tri)
+    with pytest.raises(ValueError, match="not fitted covariates"):
+        cov.predict(by="age_band")

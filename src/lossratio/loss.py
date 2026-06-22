@@ -1232,6 +1232,117 @@ def _segment_coefficients_df(
     return df.select(order)
 
 
+def _segment_covariate_surface(
+    seg_cov: pl.DataFrame,
+    covariates: "list[str]",
+    covfit: "Any",
+    premium_proj: np.ndarray,
+    u_vec: np.ndarray,
+    cohorts: list,
+    groups: "str | list[str] | None",
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """Disaggregated per-covariate-cell projection surface for one segment.
+
+    For each covariate cell ``x`` the sub-cell cumulative loss is projected with
+    the same credibility level ``u_i`` and the cell's own intensity
+    ``g_d(x) = exp(s_d + X'beta)`` over a frozen-mix sub-premium
+    ``P_sub = share[i, x] * premium_proj[i, :]`` (``share`` = cohort ``i``'s
+    observed premium fraction in cell ``x``). Because the shares sum to 1 and
+    ``sum_x g_d(x) * share = g_eff``, summing the surface over the covariates
+    reproduces the headline cohort x duration ``loss_proj`` cell-for-cell.
+    Returns a long frame ``[groups?, cohort, duration, *covariates, loss_proj,
+    incr_loss_proj, premium_proj, ratio_proj, source]``.
+    """
+    n_cohorts = len(cohorts)
+    n_dur = premium_proj.shape[1]
+    coh_idx = {c: i for i, c in enumerate(cohorts)}
+
+    # gather per (cohort, covariate-cell): incremental loss / premium by duration
+    incr_loss: "dict[tuple, np.ndarray]" = {}
+    incr_prem: "dict[tuple, np.ndarray]" = {}
+    cell_levels: "dict[tuple, tuple]" = {}
+    for r in seg_cov.select(
+        ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
+    ).iter_rows(named=True):
+        i = coh_idx.get(r["cohort"])
+        if i is None:
+            continue
+        d = int(r["duration"])
+        if d < 1 or d > n_dur:
+            continue
+        cellkey = tuple(r[c] for c in covariates)
+        key = (i, cellkey)
+        if key not in incr_loss:
+            incr_loss[key] = np.full(n_dur, np.nan)
+            incr_prem[key] = np.full(n_dur, np.nan)
+            cell_levels[cellkey] = cellkey
+        incr_loss[key][d - 1] = r["incr_loss"]
+        incr_prem[key][d - 1] = r["incr_premium"]
+
+    # cohort premium total (over observed cells, all cells) for the mix shares
+    coh_prem_total = np.zeros(n_cohorts)
+    for (i, _ck), ip in incr_prem.items():
+        coh_prem_total[i] += np.nansum(ip)
+
+    parts: list[dict] = []
+    for (i, cellkey), il in incr_loss.items():
+        ip = incr_prem[(i, cellkey)]
+        obs = ~np.isnan(il)
+        if not obs.any():
+            continue
+        # frozen mix share = this cell's premium fraction within the cohort
+        denom = coh_prem_total[i]
+        share = (np.nansum(ip) / denom) if denom > 0 else 0.0
+        if share <= 0:
+            continue
+        cell = dict(zip(covariates, cellkey))
+        g_x = np.array(
+            [covfit.intensity(k + 1, cell) for k in range(n_dur - 1)],
+            dtype=np.float64,
+        )
+        cum_loss = np.where(obs, np.nancumsum(np.where(obs, il, 0.0)), np.nan)
+        loss_obs_x = np.full((n_cohorts, n_dur), np.nan)
+        loss_obs_x[i, :] = cum_loss
+        p_sub = np.full((n_cohorts, n_dur), np.nan)
+        p_sub[i, :] = share * premium_proj[i, :]
+        g_mat = np.full((n_cohorts, n_dur - 1), np.nan)
+        g_mat[i, :] = g_x
+        loss_proj_x = _project_credible(loss_obs_x, p_sub, g_mat, u_vec)
+        last_obs = int(np.flatnonzero(obs)[-1])
+        for d in range(n_dur):
+            lp = loss_proj_x[i, d]
+            if np.isnan(lp):
+                continue
+            ps = p_sub[i, d]
+            row: dict[str, Any] = {"cohort": cohorts[i], "duration": d + 1}
+            for c in covariates:
+                row[c] = cell[c]
+            row["loss_proj"] = float(lp)
+            row["premium_proj"] = float(ps) if np.isfinite(ps) else None
+            row["ratio_proj"] = (
+                float(lp / ps) if np.isfinite(ps) and ps > 0 else None
+            )
+            row["source"] = "observed" if d <= last_obs else "projected"
+            parts.append(row)
+
+    df = pl.DataFrame(parts)
+    df = df.sort(["cohort", *covariates, "duration"]).with_columns(
+        (pl.col("loss_proj")
+         - pl.col("loss_proj").shift(1, fill_value=0.0).over(["cohort", *covariates]))
+        .alias("incr_loss_proj")
+    )
+    if groups is not None:
+        gdata: dict[str, Any] = {}
+        fill_group_columns(gdata, groups, group_value, df.height)
+        df = df.with_columns([pl.Series(k, v) for k, v in gdata.items()])
+    order = ([*normalize_groups(groups)] if groups is not None else []) + [
+        "cohort", "duration", *covariates,
+        "loss_proj", "incr_loss_proj", "premium_proj", "ratio_proj", "source",
+    ]
+    return df.select(order)
+
+
 # ---------------------------------------------------------------------------
 # Fit entry point
 # ---------------------------------------------------------------------------
@@ -1492,6 +1603,7 @@ def _fit_loss(
     long_parts: list[pl.DataFrame] = []
     cred_parts: list[pl.DataFrame] = []
     coef_parts: list[pl.DataFrame] = []
+    surface_parts: list[pl.DataFrame] = []
     balance_parts: list[pl.DataFrame] = []
     reasons: list[str] = []
     n_observed = n_projected = n_unfittable = n_borrowed = 0
@@ -1566,6 +1678,14 @@ def _fit_loss(
             n_smooth_fallback += int(not fit["representable"])
             n_smooth_nonconv += int(not fit["smooth_converged"])
 
+        if cov_cells is not None and mechanism == "credible":
+            surface_parts.append(
+                _segment_covariate_surface(
+                    seg_cov, list(covariates), covfit,
+                    fit["premium_proj"], fit["u"], cohorts, groups, group_value,
+                )
+            )
+
         ci = None
         if boot_spec is not None:
             rng = np.random.default_rng(seg_seeds[sid])
@@ -1633,6 +1753,7 @@ def _fit_loss(
     long_df = pl.concat(long_parts)
     credibility = pl.concat(cred_parts) if cred_parts else None
     coefficients = pl.concat(coef_parts) if coef_parts else None
+    covariate_surface = pl.concat(surface_parts) if surface_parts else None
     balance_factor = pl.concat(balance_parts) if balance_parts else None
     if n_unfittable:
         reasons.append("projection_gap")
@@ -1653,6 +1774,7 @@ def _fit_loss(
         uncertainty=boot_spec,
         credibility=credibility,
         coefficients=coefficients,
+        covariate_surface=covariate_surface,
         balance=balance_factor,
         output_type=triangle._output_type,
         status=status,
@@ -1698,11 +1820,13 @@ class LossFit:
         uncertainty: Any = None,
         credibility: "pl.DataFrame | None" = None,
         coefficients: "pl.DataFrame | None" = None,
+        covariate_surface: "pl.DataFrame | None" = None,
         balance: "pl.DataFrame | None" = None,
     ) -> None:
         self._df = df
         self._credibility = credibility
         self._coefficients = coefficients
+        self._covariate_surface = covariate_surface
         self._balance = balance
         self._output_type = output_type
         self.groups = groups
@@ -1773,14 +1897,64 @@ class LossFit:
         )
         return mirror_output(agg, self._output_type)
 
-    def predict(self) -> "FrameLike":
+    def predict(self, by: "str | list[str] | None" = None) -> "FrameLike":
         """Per-cell projection surface: cumulative + incremental projected
         loss, the projected loss ratio, and each cell's ``source`` (observed /
         own / borrowed). A focused view of :attr:`df` without the SE / CI
-        columns."""
+        columns.
+
+        ``by`` (covariate fits only) disaggregates the surface by one or more
+        of the fitted covariates -- one row per ``cohort x duration x by`` cell,
+        summing loss / premium over the covariates NOT in ``by`` (the ratio is
+        recomputed from the summed totals). ``by=None`` (default) returns the
+        headline cohort x duration surface (marginalized over every covariate)."""
         keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
-        cols = keys + ["loss_proj", "incr_loss_proj", "ratio_proj", "source"]
-        return mirror_output(self._df.select(cols), self._output_type)
+        if by is None:
+            cols = keys + ["loss_proj", "incr_loss_proj", "ratio_proj", "source"]
+            return mirror_output(self._df.select(cols), self._output_type)
+
+        if self._covariate_surface is None:
+            raise ValueError("predict(by=...) requires a fit run with covariates=.")
+        by = [by] if isinstance(by, str) else list(by)
+        surf = self._covariate_surface
+        covs = [c for c in surf.columns if c not in (
+            *keys, "loss_proj", "incr_loss_proj", "premium_proj", "ratio_proj",
+            "source",
+        )]
+        unknown = [c for c in by if c not in covs]
+        if unknown:
+            raise ValueError(f"by={unknown} are not fitted covariates {covs}.")
+        gb = keys + by
+        out = (
+            surf.group_by(gb)
+            .agg(
+                pl.col("loss_proj").sum(),
+                pl.col("incr_loss_proj").sum(),
+                pl.col("premium_proj").sum(),
+                # a cell is observed only if every sub-cell is observed
+                (pl.col("source") == "observed").all().alias("_all_obs"),
+            )
+            .with_columns(
+                (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
+                pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
+                .otherwise(pl.lit("projected")).alias("source"),
+            )
+            .drop("_all_obs")
+            .sort(gb)
+        )
+        order = gb + ["loss_proj", "incr_loss_proj", "premium_proj",
+                      "ratio_proj", "source"]
+        return mirror_output(out.select(order), self._output_type)
+
+    @property
+    def covariate_surface(self) -> "FrameLike | None":
+        """The full disaggregated per-covariate-cell projection surface for a
+        ``covariates=`` fit (else ``None``); ``predict(by=...)`` is the usual
+        entry point. Summing ``loss_proj`` over the covariates reproduces the
+        headline projection."""
+        if self._covariate_surface is None:
+            return None
+        return mirror_output(self._covariate_surface, self._output_type)
 
     def plot(
         self,
