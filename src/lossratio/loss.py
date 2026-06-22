@@ -216,9 +216,18 @@ def _fit_segment_additive(
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
     premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    g_override: "np.ndarray | None" = None,
 ) -> dict[str, np.ndarray]:
     """Saturated-mode complete-pooling intensity fit for one segment's loss /
     premium matrices.
+
+    ``g_override`` (the covariate path) supplies the per-cohort effective
+    intensity ``g_eff`` (2-D, premium-marginalized over the covariate cells) in
+    place of the pooled saturated ``g_k``. The projection is the additive
+    recursion at ``u = 1`` (no credibility level -- ``PooledLoss``); the
+    analytical SE is left null (the covariate estimation variance is not in the
+    closed-form recursion, so coverage rides the ResidualBootstrap, as on the
+    credible path).
 
     Returns the projection matrices and per-link parameter arrays. ``g_k``
     is the engine's closed-form intensity; ``sigma2_g_k`` / ``var_g_k`` reuse
@@ -236,6 +245,27 @@ def _fit_segment_additive(
 
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
+
+    if g_override is not None:
+        # covariate path: project the effective intensity at u = 1, SE null.
+        premium_proj = _segment_premium_proj(
+            premium_obs, sigma_method, premium_mask, premium_donor
+        )
+        loss_proj = _project_credible(
+            loss_obs, premium_proj, g_override, np.ones(n_cohorts)
+        )
+        nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
+        return {
+            "loss_obs": loss_obs,
+            "loss_proj": loss_proj,
+            "premium_obs": premium_obs,
+            "premium_proj": premium_proj,
+            "proc_se": nan_se,
+            "param_se": nan_se.copy(),
+            "total_se": nan_se.copy(),
+            "borrowed": np.zeros(loss_obs.shape, dtype=bool),
+            "g_k": g_override,
+        }
 
     # 1. engine intensity g_k (keyed by from-duration 1..n_links)
     resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
@@ -1535,9 +1565,9 @@ def _fit_loss(
         # architecture B: read the raw disaggregated source at fit time and
         # re-aggregate to (groups, cohort, duration, *covariates) sub-cells that
         # match the Triangle's own binning (charter Sec.4.3 covariate design).
-        if mechanism != "credible":
+        if mechanism not in ("pooled", "credible"):
             raise NotImplementedError(
-                f"covariates= is only wired for CredibleLoss, not {model!r}."
+                f"covariates= is not wired for {model!r}."
             )
         if source is None:
             raise ValueError("covariates= requires source= (the raw frame).")
@@ -1646,36 +1676,35 @@ def _fit_loss(
 
         cov_data = None
         covfit = None
-        seg_cov = None
         if mechanism == "credible":
             extra = {"psi": psi}
-            if cov_cells is not None:
-                from ._covariate import (
-                    _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
-                )
-                seg_cov = cov_cells
-                if seg_cols:
-                    vals = (group_value,) if len(seg_cols) == 1 else group_value
-                    for col, val in zip(seg_cols, vals):
-                        seg_cov = seg_cov.filter(pl.col(col) == val)
-                seg_cov = seg_cov.select(
-                    ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
-                )
-                cov_data = _covariate_segment_data(
-                    seg_cov, list(covariates), cohorts, loss_obs.shape[1] - 1,
-                )
-                covfit = fit_covariate_intensity(
-                    cov_data.resp, cov_data.expo, cov_data.dur, cov_data.codes,
-                    lam=lam_cov,
-                )
-                extra["g_override"] = _build_g_eff(covfit, cov_data)
-                coef_parts.append(
-                    _segment_coefficients_df(covfit, groups, group_value)
-                )
         elif mechanism == "smooth":
             extra = {"psi": psi, "n_basis": n_basis, "lam": lam}
         else:
             extra = {}
+        if cov_cells is not None:
+            from ._covariate import (
+                _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
+            )
+            seg_cov = cov_cells
+            if seg_cols:
+                vals = (group_value,) if len(seg_cols) == 1 else group_value
+                for col, val in zip(seg_cols, vals):
+                    seg_cov = seg_cov.filter(pl.col(col) == val)
+            seg_cov = seg_cov.select(
+                ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
+            )
+            cov_data = _covariate_segment_data(
+                seg_cov, list(covariates), cohorts, loss_obs.shape[1] - 1,
+            )
+            covfit = fit_covariate_intensity(
+                cov_data.resp, cov_data.expo, cov_data.dur, cov_data.codes,
+                lam=lam_cov,
+            )
+            extra["g_override"] = _build_g_eff(covfit, cov_data)
+            coef_parts.append(
+                _segment_coefficients_df(covfit, groups, group_value)
+            )
         fit = fit_segment(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor,
             premium_donor=premium_donor, **extra
@@ -1684,11 +1713,13 @@ def _fit_loss(
             n_smooth_fallback += int(not fit["representable"])
             n_smooth_nonconv += int(not fit["smooth_converged"])
 
-        if cov_cells is not None and mechanism == "credible":
+        if cov_data is not None:
+            # pooled covariate has no credibility level (u = 1)
+            u_surface = fit.get("u", np.ones(len(cohorts), dtype=np.float64))
             surface_parts.append(
                 _segment_covariate_surface(
                     seg_cov, list(covariates), covfit,
-                    fit["premium_proj"], fit["u"], cohorts, groups, group_value,
+                    fit["premium_proj"], u_surface, cohorts, groups, group_value,
                 )
             )
 
@@ -1704,9 +1735,11 @@ def _fit_loss(
                 )
             elif cov_data is not None:
                 from ._resample import bootstrap_segment_covariate
+                # pooled covariate keeps u = 1 (psi = 0); credible uses its psi
+                boot_psi = 0.0 if mechanism == "pooled" else psi
                 boot = bootstrap_segment_covariate(
                     fit["loss_obs"], fit["premium_obs"], cov_data,
-                    list(covariates), sigma_method=sigma_method, psi=psi,
+                    list(covariates), sigma_method=sigma_method, psi=boot_psi,
                     lam=lam_cov, spec=boot_spec, conf_level=conf_level, rng=rng,
                 )
             else:

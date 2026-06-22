@@ -418,6 +418,52 @@ def test_predict_by_covariate_shows_relativity():
     assert (piv["F"] > piv["M"]).all()
 
 
+def test_pooled_covariate_equals_credible_psi0():
+    """PooledLoss keeps u = 1, so PooledLoss(covariates=) reproduces
+    CredibleLoss(covariates=, psi=0) cell-for-cell."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    pooled = lr.PooledLoss(covariates=["sex"], source=df, lam_cov=1e-3).fit(tri)
+    cred0 = lr.CredibleLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3, psi=0
+    ).fit(tri)
+    a = pooled.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
+    b = cred0.to_polars().sort(["cohort", "duration"])["loss_proj"].to_numpy()
+    both = ~np.isnan(a) & ~np.isnan(b)
+    assert both.any()
+    assert np.allclose(a[both], b[both], rtol=1e-9)
+    # coefficients + disaggregated surface available on the pooled fit too
+    assert pooled.coefficients is not None
+    by = pooled.predict(by="sex")
+    rolled = (
+        by.group_by(["cohort", "duration"]).agg(pl.col("loss_proj").sum())
+        .sort(["cohort", "duration"])
+    )
+    head = pooled.predict().sort(["cohort", "duration"])
+    j = head.join(rolled, on=["cohort", "duration"], suffix="_s")
+    m = ~np.isnan(j["loss_proj"].to_numpy()) & ~np.isnan(j["loss_proj_s"].to_numpy())
+    assert np.allclose(j["loss_proj"].to_numpy()[m], j["loss_proj_s"].to_numpy()[m],
+                       rtol=1e-9)
+
+
+def test_pooled_covariate_bootstrap_and_validation():
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    tri = _triangle(df)
+    fit = lr.PooledLoss(
+        covariates=["sex"], source=df, lam_cov=1e-3,
+        uncertainty=lr.ResidualBootstrap(n_replicates=40, seed=0),
+    ).fit(tri)
+    proj = fit.to_polars().filter(pl.col("source") == "own")
+    assert np.isfinite(proj["loss_total_se"].to_numpy()).any()
+    # validation: borrow + covariates rejected at construction
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        lr.PooledLoss(covariates=["sex"], source=df, borrow="pooled")
+    with pytest.raises(ValueError, match="requires source"):
+        lr.PooledLoss(covariates=["sex"]).fit(tri)
+
+
 def test_predict_by_requires_covariate_fit():
     df = _experience_source({"M": 1.0})
     tri = _triangle(df)

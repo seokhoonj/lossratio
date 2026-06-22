@@ -14,7 +14,7 @@ contract: a pure-config object (free ``repr`` / ``eq``, keyword-only) whose
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .loss import LossFit, _LossEstimatorBase, _fit_loss
 
@@ -46,9 +46,35 @@ class PooledLoss(_LossEstimatorBase):
     """
 
     balance: bool = False
+    covariates: "list[str] | None" = None
+    source: "Any" = None
+    lam_cov: float = 1.0
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.covariates is not None:
+            if isinstance(self.covariates, str):
+                self.covariates = [self.covariates]
+            if not all(isinstance(c, str) for c in self.covariates):
+                raise ValueError("covariates must be a string or list of strings.")
+            if self.borrow:
+                raise ValueError(
+                    "borrow= and covariates= are mutually exclusive: borrow lends "
+                    "a single level-invariant donor shape, covariates require "
+                    "per-cell intensities."
+                )
+        if isinstance(self.lam_cov, bool) or not isinstance(self.lam_cov, (int, float)) \
+                or self.lam_cov < 0:
+            raise ValueError(f"lam_cov must be a non-negative float, got {self.lam_cov!r}")
 
     def fit(self, triangle: "Triangle") -> LossFit:
-        """Fit the saturated-mode loss projection on a :class:`Triangle`."""
+        """Fit the saturated-mode loss projection on a :class:`Triangle`.
+
+        With ``covariates`` the pooled intensity carries cell-level fixed-effect
+        relativities (``PooledLoss`` keeps ``u = 1``, so this is exactly
+        ``CredibleLoss(covariates=..., psi=0)``); ``.coefficients`` reports the
+        log-relativities and ``predict(by=...)`` the disaggregated surface.
+        """
         return _fit_loss(
             triangle,
             mechanism="pooled",
@@ -59,4 +85,7 @@ class PooledLoss(_LossEstimatorBase):
             borrow=self.borrow,
             balance=self.balance,
             uncertainty=self.uncertainty,
+            covariates=self.covariates,
+            source=self.source,
+            lam_cov=self.lam_cov,
         )
