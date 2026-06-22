@@ -66,6 +66,12 @@ flowchart LR
 * - 7
   - 예측 검증
   - 달력 대각선 hold-out 백테스트, A/E Error로 읽는 예측 정확도, rolling-origin 신뢰도 곡선과 방법 간 비교
+* - 8
+  - 예측의 안정성
+  - 손해율이 자리 잡았는지(go-forward 신뢰성) 측정, freeze 게이트
+* - 9
+  - 셀 수준 공변량
+  - groups(쪼개기) vs covariate(회귀), 고정효과 + 신뢰도, `.coefficients` 해석과 `predict(by=)` 분해, `lam_cov` 수축
 ```
 
 ```{toctree}
@@ -80,4 +86,5 @@ flowchart LR
 06-regime
 07-backtest
 08-stability
+09-covariates
 ```
