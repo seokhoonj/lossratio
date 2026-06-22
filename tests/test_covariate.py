@@ -619,6 +619,24 @@ def test_predict_by_marginalizes_with_duration_varying_mix():
     assert np.allclose(a[m], b[m], rtol=1e-9)
 
 
+def test_backtest_covariate_mode2_duration_only():
+    """Covariate backtest works on a duration-only (mode-2) triangle: the
+    source is masked by (cohort, duration) cells, not by a calendar axis."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0}, n_cohorts=6)
+    df2 = df.with_columns(
+        (((pl.col("cy_m").dt.year() - pl.col("uy_m").dt.year()) * 12
+          + (pl.col("cy_m").dt.month() - pl.col("uy_m").dt.month())) + 1)
+        .cast(pl.Int64).alias("duration_m")
+    ).drop("cy_m")
+    tri = lr.Triangle(df2, calendar=None, duration="duration_m",
+                      loss="incr_loss", premium="incr_premium")
+    bt = lr.Backtest(
+        lr.CredibleLoss(covariates=["sex"], source=df2), holdouts=3, target="loss"
+    ).fit(tri)
+    assert bt.fit.coefficients is not None        # ran (no NotImplementedError)
+
+
 def test_predict_by_requires_covariate_fit():
     df = _experience_source({"M": 1.0})
     tri = _triangle(df)

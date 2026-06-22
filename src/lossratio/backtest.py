@@ -90,7 +90,6 @@ def _build_masked_df(
 
 
 _VALID_TARGETS = ("ratio", "loss", "premium")
-_GRAIN_MONTHS = {"M": 1, "Q": 3, "H": 6, "Y": 12}
 
 
 def _mask_source_for_fold(
@@ -99,46 +98,45 @@ def _mask_source_for_fold(
     """Mask a covariate estimator's ``source`` to the fold's training cells.
 
     A covariate estimator reads the raw ``source`` frame at fit time; a backtest
-    masks the held-out calendar diagonals from the triangle but the ``source``
-    is the FULL frame, so the held-out period would leak into the covariate fit
-    (look-ahead). Return a clone of the estimator whose ``source`` drops the rows
-    on the held-out calendar diagonals -- the same mask the triangle gets, so the
-    covariate kernel sees exactly the training data. Non-covariate estimators are
-    returned unchanged.
+    masks the held-out cells from the triangle but the ``source`` is the FULL
+    frame, so the held-out period would leak into the covariate fit (look-ahead).
+    Return a clone of the estimator whose ``source`` drops the rows on the
+    held-out ``(group, cohort, duration)`` cells -- the same mask the triangle
+    gets (so the covariate kernel sees exactly the training data), keying on the
+    cohort x duration cell so it works for both a calendar-axis (mode-1) and a
+    duration-only (mode-2) triangle. Non-covariate estimators are returned
+    unchanged.
     """
     if not getattr(estimator, "covariates", None) or getattr(estimator, "source", None) is None:
         return estimator
-    if triangle.calendar is None:
-        raise NotImplementedError(
-            "Backtest with covariates= needs a calendar-axis (mode-1) triangle "
-            "to mask the source per fold; a duration-only triangle is not wired."
-        )
     from dataclasses import replace
 
     from ._io import to_polars
-    from ._period import coerce_cols_to_date, floor_to_period
+    from ._period import (
+        coerce_cols_to_date, count_periods, floor_cols_to_period,
+    )
 
     groups = normalize_groups(triangle._groups)
-    months = _GRAIN_MONTHS[triangle.grain]
-    # held-out (group, calendar-period) cells from the triangle's own mask
+    grain = triangle.grain
+    coh_col, cal_col = triangle.cohort, triangle.calendar
+    # held-out (group, cohort, duration) cells from the triangle's own mask
     held = (
         annotated_df.filter(pl.col("masked"))
-        .with_columns(
-            _cal=pl.col("cohort").dt.offset_by(
-                (((pl.col("duration") - 1) * months).cast(pl.Int64).cast(pl.Utf8)) + "mo"
-            )
-        )
-        .select([*groups, "_cal"])
+        .select([*groups, "cohort", "duration"])
         .unique()
+        .rename({"cohort": coh_col, "duration": "_dur"})
     )
     src = to_polars(estimator.source)
-    src = coerce_cols_to_date(src, [triangle.calendar])
-    src = src.with_columns(
-        floor_to_period(pl.col(triangle.calendar), triangle.grain).alias("_cal")
-    )
-    masked_src = src.join(
-        held, on=[*groups, "_cal"], how="anti"
-    ).drop("_cal")
+    date_cols = [coh_col] + ([cal_col] if cal_col is not None else [])
+    src = coerce_cols_to_date(src, date_cols)
+    src = floor_cols_to_period(src, date_cols, grain)        # match the floored cohort
+    if cal_col is not None:                                  # mode-1: derive duration
+        src = src.with_columns(
+            count_periods(pl.col(coh_col), pl.col(cal_col), grain).alias("_dur")
+        )
+    else:                                                    # mode-2: duration column
+        src = src.with_columns(pl.col(triangle.duration).cast(pl.Int64).alias("_dur"))
+    masked_src = src.join(held, on=[*groups, coh_col, "_dur"], how="anti").drop("_dur")
     return replace(estimator, source=masked_src)
 
 
