@@ -59,14 +59,18 @@ if TYPE_CHECKING:
     from .triangle import Triangle
 
 
-def _validate_lam_cov(lam_cov: "float | dict") -> None:
-    """Validate a covariate ridge spec: a non-negative scalar, or a
-    ``{covariate: non-negative float}`` dict (per-covariate)."""
+def _validate_lam_cov(lam_cov: "float | str | dict") -> None:
+    """Validate a covariate ridge spec: ``"auto"`` (data-estimated random-effect
+    shrinkage), a non-negative scalar (fixed ridge), or a ``{covariate: "auto"
+    or non-negative float}`` dict (per-covariate)."""
     items = lam_cov.values() if isinstance(lam_cov, dict) else [lam_cov]
     for v in items:
+        if v == "auto":
+            continue
         if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
             raise ValueError(
-                f"lam_cov must be a non-negative float or a dict of them, got {v!r}"
+                'lam_cov must be "auto", a non-negative float, or a dict of '
+                f"those, got {v!r}"
             )
 
 

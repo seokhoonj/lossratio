@@ -131,6 +131,53 @@ def _synth_subcells(g_true, factor, n_cohorts=8, seed=0):
     return pl.DataFrame(rows)
 
 
+def test_eb_auto_keeps_signal_shrinks_noise():
+    """lam='auto' (Schall EB random-effect shrinkage) keeps a real covariate
+    relativity but shrinks a no-effect (noise) covariate toward zero."""
+    rng = np.random.default_rng(0)
+    g = np.array([0.05, 0.04, 0.03, 0.02, 0.015, 0.01])
+    n_dur = len(g)
+    resp, expo, dur, sex, noise = [], [], [], [], []
+    for i in range(24):
+        for k in range(1, n_dur + 1):
+            p = float(rng.uniform(500.0, 1500.0))
+            sx = "F" if i % 2 else "M"                     # real 1.3x signal
+            nz = ["a", "b", "c", "d"][int(rng.integers(4))]  # no true effect
+            fac = 1.3 if sx == "F" else 1.0
+            resp.append(p * g[k - 1] * fac * float(rng.uniform(0.9, 1.1)))
+            expo.append(p); dur.append(k); sex.append(sx); noise.append(nz)
+    fit = fit_covariate_intensity(
+        np.array(resp), np.array(expo), np.array(dur),
+        {"sex": np.array(sex, dtype=object), "noise": np.array(noise, dtype=object)},
+        lam="auto",
+    )
+    sex_b = abs(fit.beta[("sex", "M")])
+    noise_b = [abs(v) for (nm, _lv), v in fit.beta.items() if nm == "noise"]
+    # the real sex effect survives (near -log(1.3)); the noise levels are shrunk
+    # much harder (data-estimated variance ~ 0)
+    assert abs(fit.beta[("sex", "M")] - (-np.log(1.3))) < 0.2
+    assert max(noise_b) < sex_b
+
+
+def test_eb_auto_keeps_separated_level_finite():
+    """lam='auto' tames a near-separated high-cardinality level (no blow-up)."""
+    g = np.array([0.05, 0.04, 0.03, 0.02])
+    rng = np.random.default_rng(1)
+    resp, expo, dur, codes = [], [], [], []
+    for i in range(10):
+        for k in range(1, 5):
+            p = float(rng.uniform(500.0, 1500.0))
+            resp.append(p * g[k - 1]); expo.append(p); dur.append(k)
+            codes.append("common")
+    resp.append(1e5); expo.append(1.0); dur.append(1); codes.append("rare")
+    fit = fit_covariate_intensity(
+        np.array(resp), np.array(expo), np.array(dur),
+        {"grp": np.array(codes, dtype=object)}, lam="auto",
+    )
+    b = fit.beta.get(("grp", "rare"))
+    assert b is not None and np.isfinite(b) and abs(b) < 50.0
+
+
 def test_segment_effective_intensity_single_level_nests_pooled():
     g_true = {1: 0.05, 2: 0.04, 3: 0.03, 4: 0.02, 5: 0.015}    # n_dur = 6
     sub = _synth_subcells(g_true, {"M": 1.0})

@@ -147,6 +147,16 @@ def _cov_ridge_diag(
     ncov = len(beta_cols)
     if ncov == 0:
         return np.zeros(0, dtype=np.float64)
+    # "auto" = data-estimated random-effect shrinkage (Schall 1991 EB). A dict
+    # may set "auto" per covariate; if ANY covariate is auto, the EB fixed point
+    # resolves the whole covariate block jointly (fixed floats are honoured as a
+    # fixed prior precision inside the same loop is overkill -- "auto" is all or
+    # the explicitly-listed ones, others default to auto too here).
+    auto = (lam == "auto") or (
+        isinstance(lam, dict) and any(v == "auto" for v in lam.values())
+    )
+    if auto:
+        return _eb_ridge_diag(response, offset, B, n_shape, beta_cols)
     if isinstance(lam, dict):
         mult = np.array([float(lam.get(name, 0.0)) for name, _lv in beta_cols])
     else:
@@ -162,6 +172,79 @@ def _cov_ridge_diag(
     # typical-strength ridge that dominates its thin likelihood and stays finite.
     scale = float((B[:, n_shape:].T @ f0.mu).sum()) / ncov
     return mult * scale
+
+
+def _eb_ridge_diag(
+    response: np.ndarray,
+    offset: np.ndarray,
+    B: np.ndarray,
+    n_shape: int,
+    beta_cols: "list[tuple[str, object]]",
+    *,
+    max_iter: int = 40,
+    tol: float = 1e-2,
+) -> np.ndarray:
+    """Empirical-Bayes (random-effect) ridge for the covariate block.
+
+    Treats each covariate's level effects as a random effect with its own
+    variance ``sigma_c^2`` and estimates it from the data by Schall's (1991)
+    PQL variance-component fixed point -- the GLM realization of credibility for
+    a multi-level factor (Ohlsson 2008). With ``X`` the unpenalized duration
+    shape and ``Z`` the covariate dummies, iterate::
+
+        ridge_c = phi / sigma_c^2                     (penalty on covariate c)
+        fit (X|Z) by penalized IRLS;  C = (B'WB + diag(ridge))^{-1}
+        sigma_c^2 <- (b_c' b_c) / (q_c - ridge_c * sum_j C_jj)   (Schall 1991)
+        phi <- Pearson / (n - edf)
+
+    A data-rich, well-separated covariate keeps a large ``sigma_c^2`` (light
+    shrinkage); a noisy / sparse high-cardinality covariate gets a small
+    ``sigma_c^2`` (strong shrinkage toward the reference) -- automatic, not a
+    hand-set ``lam``. Returns the per-column ridge diagonal (length ``ncov``).
+    """
+    ncov = len(beta_cols)
+    names = [nm for nm, _lv in beta_cols]
+    uniq = list(dict.fromkeys(names))
+    cols_of = {c: np.array([j for j, nm in enumerate(names) if nm == c], dtype=int)
+               for c in uniq}
+    n = response.size
+    p = B.shape[1]
+    full_idx = np.arange(p)
+
+    # seed: a moderate Tikhonov ridge (average covariate-level data weight) so
+    # the first fit is well-conditioned even under separation pressure.
+    f0 = penalized_irls(response, offset, B, np.zeros((p, p)), 0.0)
+    scale = max(float((B[:, n_shape:].T @ f0.mu).sum()) / max(ncov, 1), 1e-8)
+    ridge = np.full(ncov, scale, dtype=np.float64)
+
+    for _ in range(max_iter):
+        pen = np.zeros(p)
+        pen[n_shape:] = ridge
+        fit = penalized_irls(response, offset, B, np.diag(pen), 1.0)
+        phi = max(fit.pearson / max(n - fit.edf, 1.0), 1e-8)
+        A = (B.T * fit.mu) @ B
+        M = A + np.diag(pen)
+        try:
+            Cd = np.diag(np.linalg.inv(M))
+        except np.linalg.LinAlgError:
+            Cd = np.diag(np.linalg.pinv(M))
+        new = ridge.copy()
+        for c in uniq:
+            cc = cols_of[c]
+            full = n_shape + cc
+            b = fit.beta[full]
+            tr = float(np.sum(pen[full] * Cd[full]))      # ridge_c * sum_j C_jj
+            denom = max(len(cc) - tr, 1e-3)
+            s2 = max(float(b @ b) / denom, 1e-12)
+            # cap sigma^2 (floor the ridge) so a near-separated level cannot run
+            # to no-shrinkage / +-inf -- the EB analogue of a weak prior.
+            s2 = min(s2, 1e6 / scale)
+            new[cc] = phi / s2
+        if np.allclose(new, ridge, rtol=tol):
+            ridge = new
+            break
+        ridge = 0.5 * ridge + 0.5 * new                    # damped fixed point
+    return ridge
 
 
 def fit_covariate_intensity(

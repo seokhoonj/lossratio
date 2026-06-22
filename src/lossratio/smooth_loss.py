@@ -74,9 +74,12 @@ class SmoothLoss(_LossEstimatorBase):
         The raw disaggregated frame the covariates are read from at fit time
         (must roll up to this triangle's cells); required iff ``covariates`` set.
     lam_cov
-        Covariate ridge: ``0`` (default) = fixed-effect MLE; ``>0`` shrinks the
-        covariate relativities (a scalar, or a ``{covariate: lam}`` dict), for
-        high-cardinality factors that would otherwise separate (Ohlsson 2008).
+        Covariate shrinkage: ``0`` (default) = fixed-effect MLE; ``"auto"`` =
+        data-estimated random-effect shrinkage (Schall 1991 EB variance
+        component -- keeps a real relativity, shrinks a noisy / high-cardinality
+        factor toward the reference); or a fixed ridge (a scalar, or a
+        ``{covariate: "auto" or lam}`` dict). GLM + credibility for multi-level
+        factors (Ohlsson 2008).
     """
 
     psi: "float | str" = "auto"
@@ -85,7 +88,7 @@ class SmoothLoss(_LossEstimatorBase):
     balance: bool = False
     covariates: "list[str] | None" = None
     source: "Any" = None
-    lam_cov: "float | dict" = 0.0
+    lam_cov: "float | str | dict" = 0.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
