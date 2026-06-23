@@ -24,7 +24,7 @@ extends the tail.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
@@ -51,11 +51,10 @@ class CredibleLoss(_LossEstimatorBase):
     covariates
         Cell-level fixed-effect covariates (e.g. ``["sex"]``) that shift the
         loss-ratio level on a shared duration shape, marginalized back to the
-        headline cohort x duration projection (.coefficients / predict(by=)
-        expose them). Requires ``source=``; ``None`` (default) = no covariates.
-    source
-        The raw disaggregated frame the covariates are read from at fit time
-        (must roll up to this triangle's cells); required iff ``covariates`` set.
+        reporting-grain cohort x duration projection (.coefficients /
+        predict(by=) expose them). Each must be one of the triangle's
+        ``groups``; the projection reports at ``groups - covariates``.
+        ``None`` (default) = no covariates.
     lam_cov
         Covariate shrinkage: ``0`` (default) = fixed-effect MLE; ``"auto"`` =
         data-estimated random-effect shrinkage (Schall 1991 EB variance
@@ -68,7 +67,6 @@ class CredibleLoss(_LossEstimatorBase):
     psi: "float | str" = "auto"
     balance: bool = False
     covariates: "list[str] | None" = None
-    source: "Any" = None
     lam_cov: "float | str | dict" = 0.0
 
     def __post_init__(self) -> None:
@@ -109,6 +107,5 @@ class CredibleLoss(_LossEstimatorBase):
             balance=self.balance,
             uncertainty=self.uncertainty,
             covariates=self.covariates,
-            source=self.source,
             lam_cov=self.lam_cov,
         )

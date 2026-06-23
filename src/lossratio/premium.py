@@ -531,7 +531,7 @@ def _fit_premium(
 class PremiumFit:
     """Premium projection result (denominator analogue of ``LossFit``).
 
-    The long-format frame (one row per cohort x duration cell) is the headline
+    The long-format frame (one row per cohort x duration cell) is the primary
     output; ``status`` / ``status_reasons`` / ``cell_counts`` are first-class
     machine-readable diagnostics.
     """
@@ -584,7 +584,7 @@ class PremiumFit:
         return self._df
 
     def summary(self) -> "FrameLike":
-        """Per-cohort headline: last observed cumulative premium, the
+        """Per-cohort summary: last observed cumulative premium, the
         within-triangle projection, the unobserved remainder, and the
         projection SE."""
         keys = (normalize_groups(self.groups) or []) + ["cohort"]

@@ -41,7 +41,7 @@ def plot_rolling_backtest(
 ) -> Any:
     """Reliability curve: A/E error vs a rolling axis.
 
-    ``by`` selects the axis (``"horizon"`` -- how far ahead, the headline
+    ``by`` selects the axis (``"horizon"`` -- how far ahead, the primary
     reliability curve; ``"anchor"`` -- how much history the cohort had;
     ``"holdout"`` -- the as-of depth). ``metric`` selects ``"ae_err"`` (relative
     ``actual / expected - 1``, dimensionless -- the natural read for

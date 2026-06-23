@@ -14,7 +14,7 @@ contract: a pure-config object (free ``repr`` / ``eq``, keyword-only) whose
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
@@ -45,12 +45,11 @@ class PooledLoss(_LossEstimatorBase):
         Two-sided confidence level for the analytical CI columns.
     covariates
         Cell-level fixed-effect covariates (e.g. ``["sex"]``) on a shared
-        duration shape, marginalized to the headline projection (.coefficients /
-        predict(by=) expose them). ``PooledLoss`` keeps ``u = 1``, so this equals
-        ``CredibleLoss(covariates=..., psi=0)``. Requires ``source=``.
-    source
-        The raw disaggregated frame the covariates are read from at fit time
-        (must roll up to this triangle's cells); required iff ``covariates`` set.
+        duration shape, marginalized back to the reporting-grain projection
+        (.coefficients / predict(by=) expose them). Each must be one of the
+        triangle's ``groups``; the projection reports at ``groups - covariates``.
+        ``PooledLoss`` keeps ``u = 1``, so this equals
+        ``CredibleLoss(covariates=..., psi=0)``.
     lam_cov
         Covariate shrinkage: ``0`` (default) = fixed-effect MLE; ``"auto"`` =
         data-estimated random-effect shrinkage (Schall 1991 EB variance
@@ -62,7 +61,6 @@ class PooledLoss(_LossEstimatorBase):
 
     balance: bool = False
     covariates: "list[str] | None" = None
-    source: "Any" = None
     lam_cov: "float | str | dict" = 0.0
 
     def __post_init__(self) -> None:
@@ -99,6 +97,5 @@ class PooledLoss(_LossEstimatorBase):
             balance=self.balance,
             uncertainty=self.uncertainty,
             covariates=self.covariates,
-            source=self.source,
             lam_cov=self.lam_cov,
         )

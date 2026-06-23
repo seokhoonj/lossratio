@@ -324,7 +324,7 @@ class RatioFit:
         return self._df
 
     def summary(self) -> "FrameLike":
-        """Per-cohort headline: the latest within-triangle projected loss ratio
+        """Per-cohort summary: the latest within-triangle projected loss ratio
         and its SE."""
         keys = (normalize_groups(self.groups) or []) + ["cohort"]
         agg = self._df.group_by(keys, maintain_order=True).agg(

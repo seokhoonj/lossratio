@@ -56,7 +56,7 @@ class EstimatorComparison:
     Runs a :class:`~lossratio.backtest.Backtest` per
     labelled estimator on the same triangle / hold-out depths / target, and
     assembles the per-cell A/E errors into matched-population comparison
-    frames (see the module docstring). The headline outputs are the
+    frames (see the module docstring). The primary outputs are the
     baseline-relative ``horizon_comparison`` and the
     :meth:`EstimatorComparisonFit.crossover` read.
 

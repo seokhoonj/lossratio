@@ -168,18 +168,27 @@ def _resolve_by(
     if isinstance(by, str):
         if by == "":
             return None
-        return by
-    if isinstance(by, Sequence):
+        seq = [by]
+    elif isinstance(by, Sequence):
         seq = normalize_groups(by)  # validates str-only + no duplicates
         if not seq:
             return None
-        if len(seq) == 1:
-            return seq[0]
-        return seq
-    raise TypeError(
-        f"`by` must be None, str, or sequence of str; got "
-        f"{type(by).__name__}"
-    )
+    else:
+        raise TypeError(
+            f"`by` must be None, str, or sequence of str; got "
+            f"{type(by).__name__}"
+        )
+    # `by` selects a coarser detection grain: it must be a subset of the
+    # triangle's own group columns (else the group_by hits a missing column
+    # and polars raises a bare ColumnNotFoundError far downstream).
+    gcols = normalize_groups(triangle.groups)
+    extra = [c for c in seq if c not in gcols]
+    if extra:
+        raise ValueError(
+            f"by={seq} must be a subset of the triangle's groups {gcols}; "
+            f"{extra} {'is' if len(extra) == 1 else 'are'} not a group column."
+        )
+    return seq[0] if len(seq) == 1 else seq
 
 
 def _detect_regime_single(
@@ -535,7 +544,7 @@ def _grain_sweep_candidates(
 
     # Representative row = the grain with the STRONGEST step evidence
     # (lowest step_p), tie-broken by finest grain then most window-stable.
-    # So a phased-in transition's coarse-grain step is the headline, while
+    # So a phased-in transition's coarse-grain step is the primary signal, while
     # `change_type` (below) carries the full per-grain profile.
     sort_cols, desc = ["_sp", "_gm"], [False, False]
     if "window_stability" in allc.columns:
@@ -1810,6 +1819,7 @@ class Regime:
         window: int = 12,
         method: str = "e_divisive",
         *,
+        by: "str | Sequence[str] | None" = None,
         n_regimes: int | None = None,
         sig_level: float = 0.05,
         n_permutations: int = 999,
@@ -1828,6 +1838,10 @@ class Regime:
         backtest this is the **masked** training triangle of each fold, so
         change points never peek at held-out cells.
 
+        ``by`` selects a coarser detection grain (a subset of the consumer
+        triangle's groups), e.g. to detect a regime at the reporting grain of a
+        covariate fit; ``None`` defers to the triangle's own groups.
+
         Contrast with :meth:`at`, which produces an eager Regime fixed at
         construction time.
         """
@@ -1835,6 +1849,7 @@ class Regime:
             regime = tri.detect_regime(
                 target=target,
                 window=window,
+                by=by,
                 method=method,
                 n_regimes=n_regimes,
                 sig_level=sig_level,

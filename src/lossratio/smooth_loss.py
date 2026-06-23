@@ -27,7 +27,7 @@ for a data-thin segment's horizon) are both supported.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
@@ -68,11 +68,9 @@ class SmoothLoss(_LossEstimatorBase):
     covariates
         Cell-level fixed-effect covariates (e.g. ``["sex"]``) fit jointly with
         the smooth duration shape (P-spline shape + ridge covariate block in the
-        backfit), marginalized to the headline projection (.coefficients /
-        predict(by=) expose them). Requires ``source=``.
-    source
-        The raw disaggregated frame the covariates are read from at fit time
-        (must roll up to this triangle's cells); required iff ``covariates`` set.
+        backfit), marginalized back to the reporting-grain projection
+        (.coefficients / predict(by=) expose them). Each must be one of the
+        triangle's ``groups``; the projection reports at ``groups - covariates``.
     lam_cov
         Covariate shrinkage: ``0`` (default) = fixed-effect MLE; ``"auto"`` =
         data-estimated random-effect shrinkage (Schall 1991 EB variance
@@ -87,7 +85,6 @@ class SmoothLoss(_LossEstimatorBase):
     n_basis: "int | None" = None
     balance: bool = False
     covariates: "list[str] | None" = None
-    source: "Any" = None
     lam_cov: "float | str | dict" = 0.0
 
     def __post_init__(self) -> None:
@@ -145,6 +142,5 @@ class SmoothLoss(_LossEstimatorBase):
             balance=self.balance,
             uncertainty=self.uncertainty,
             covariates=self.covariates,
-            source=self.source,
             lam_cov=self.lam_cov,
         )

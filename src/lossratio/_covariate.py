@@ -22,9 +22,9 @@ sum(exposure_k)`` -- exactly :func:`lossratio._engine.saturated_intensity`, so
 the covariate path nests the current pooled intensity cell-for-cell.
 
 This module is the standalone, separately-tested numeric core; the
-``CredibleLoss`` / ``SmoothLoss`` integration (design assembly from a
-disaggregated source frame, the credibility level on the covariate-adjusted
-mean, the marginalized projection) is wired on top of it.
+``CredibleLoss`` / ``SmoothLoss`` integration (design assembly from the
+triangle's own reporting x covariate sub-cells, the credibility level on the
+covariate-adjusted mean, the marginalized projection) is wired on top of it.
 """
 from __future__ import annotations
 
@@ -395,141 +395,6 @@ def fit_covariate_intensity(
     )
 
 
-# ---------------------------------------------------------------------------
-# Side-channel integration (architecture B): the estimator keeps the Triangle
-# aggregated + byte-identical and reads the RAW disaggregated source frame at
-# fit time to recover the per-covariate sub-cells. These two helpers are the
-# bridge: re-aggregate the source to (groups, cohort, duration, *covariates)
-# cells matching the Triangle's own binning, then per segment collapse the
-# fitted per-cell intensity g_k(x) and the cohort's premium mix into a single
-# 2-D effective-intensity matrix g_eff[cohort, link] -- so the existing
-# cohort x duration credibility + projection machinery is reused unchanged
-# (it only sees a per-cohort-modulated intensity, no third axis).
-# ---------------------------------------------------------------------------
-
-
-def reaggregate_source(
-    source: "pl.DataFrame | object",
-    *,
-    groups: "str | list[str] | None",
-    cohort: str,
-    calendar: "str | None",
-    duration: str,
-    loss: str,
-    premium: str,
-    grain: str,
-    covariates: "list[str]",
-) -> pl.DataFrame:
-    """Re-aggregate a raw source frame to disaggregated covariate sub-cells.
-
-    Mirrors the Triangle's own aggregation (floor cohort / calendar to ``grain``,
-    derive the 1-based duration, sum loss + premium) but keeps the covariate
-    columns as additional grouping keys, so summing the result over the
-    covariates reproduces the Triangle's ``(groups, cohort, duration)`` cells
-    exactly. Returns a polars frame with the standardized columns
-    ``[*group_cols, "cohort", "duration", *covariates, "incr_loss",
-    "incr_premium"]`` (``"cohort"`` = the floored cohort Date, ``"duration"`` =
-    Int64). ``calendar`` may be ``None`` (mode-2 triangle: the ``duration``
-    column is taken directly).
-    """
-    if not isinstance(source, pl.DataFrame):
-        source = pl.from_pandas(source)              # pandas-in mirroring
-    group_cols = normalize_groups(groups)
-
-    missing = [c for c in (*group_cols, cohort, loss, premium, *covariates)
-               if c not in source.columns]
-    if calendar is not None and calendar not in source.columns:
-        missing.append(calendar)
-    if calendar is None and duration not in source.columns:
-        missing.append(duration)
-    if missing:
-        raise ValueError(
-            f"source is missing column(s) required to build the covariate "
-            f"cells: {missing}"
-        )
-
-    date_cols = [cohort] + ([calendar] if calendar is not None else [])
-    df = coerce_cols_to_date(source, date_cols).with_columns(
-        pl.col(loss).cast(pl.Float64),
-        pl.col(premium).cast(pl.Float64),
-    )
-    input_grain = infer_grain(df[cohort])
-    grain = resolve_grain(input_grain, grain)
-    if date_cols and grain != input_grain:
-        df = floor_cols_to_period(df, date_cols, grain)
-
-    if calendar is not None:
-        df = df.with_columns(
-            count_periods(pl.col(cohort), pl.col(calendar), grain)
-            .alias("_duration")
-        )
-    else:
-        df = df.with_columns(pl.col(duration).cast(pl.Int64).alias("_duration"))
-
-    keys = [*group_cols, cohort, "_duration", *covariates]
-    agg = (
-        df.group_by(keys)
-        .agg(
-            pl.col(loss).sum().alias("incr_loss"),
-            pl.col(premium).sum().alias("incr_premium"),
-        )
-        .rename({cohort: "cohort", "_duration": "duration"})
-        .sort([*group_cols, "cohort", "duration", *covariates])
-    )
-    return agg
-
-
-def reconcile_coverage(
-    cov_cells: pl.DataFrame,
-    triangle_frame: pl.DataFrame,
-    *,
-    groups: "str | list[str] | None",
-    rtol: float = 1e-6,
-) -> None:
-    """Fail fast if the covariate sub-cells do not roll up to the Triangle.
-
-    Summing ``cov_cells`` over the covariates must reproduce the Triangle's own
-    ``(groups, cohort, duration)`` increments -- otherwise the covariate mix and
-    the marginalized prior mean ``m0_adj`` would be built on cells that disagree
-    with the headline fit, and an uncovered cohort would silently project to
-    ``nan``. Raises with the first offending key. ``triangle_frame`` is
-    ``triangle.to_polars()`` (carries ``incr_loss`` / ``incr_premium``).
-    """
-    group_cols = normalize_groups(groups)
-    keys = [*group_cols, "cohort", "duration"]
-    rolled = cov_cells.group_by(keys).agg(
-        pl.col("incr_loss").sum().alias("_cl"),
-        pl.col("incr_premium").sum().alias("_cp"),
-    )
-    # only reconcile OBSERVED cells: a backtest masks the held-out diagonals to
-    # null in the triangle, and the (correspondingly masked) source no longer
-    # covers them -- that is expected, not a mismatch.
-    tri = triangle_frame.select([*keys, "incr_loss", "incr_premium"]).filter(
-        pl.col("incr_premium").is_not_null()
-    )
-    joined = tri.join(rolled, on=keys, how="left")
-
-    missing = joined.filter(pl.col("_cp").is_null())
-    if missing.height:
-        raise ValueError(
-            f"source does not cover {missing.height} Triangle cell(s) "
-            f"(the covariate frame is missing them); first uncovered key "
-            f"{dict(zip(keys, missing.select(keys).row(0)))}."
-        )
-    bad = joined.filter(
-        ((pl.col("incr_premium") - pl.col("_cp")).abs()
-         > rtol * pl.col("incr_premium").abs() + 1e-6)
-        | ((pl.col("incr_loss") - pl.col("_cl")).abs()
-           > rtol * pl.col("incr_loss").abs() + 1e-6)
-    )
-    if bad.height:
-        raise ValueError(
-            f"source does not sum to the Triangle in {bad.height} cell(s) "
-            f"(covariate cells must aggregate to the same loss / premium); "
-            f"first mismatch key {dict(zip(keys, bad.select(keys).row(0)))}."
-        )
-
-
 @dataclass
 class SegmentCovData:
     """Per-segment covariate link data (reused by the point fit and the
@@ -632,25 +497,3 @@ def _build_g_eff(covfit: CovariateFit, data: SegmentCovData) -> np.ndarray:
                 for cell, cp in cells if cp > 0
             )
     return g_eff
-
-
-def segment_effective_intensity(
-    sub_cells: pl.DataFrame,
-    covariates: "list[str]",
-    cohorts: list,
-    n_links: int,
-    *,
-    lam: float = 1.0,
-) -> "tuple[np.ndarray, CovariateFit]":
-    """Per-cohort effective intensity ``g_eff[i, k]`` for one segment.
-
-    The covariate intensity kernel is fit on the sub-cell links, then the
-    per-cell intensity ``g_d(x) = exp(s_d + X'beta)`` is marginalized by each
-    cohort's premium mix into the 2-D ``g_eff`` (see :func:`_build_g_eff`) that
-    the kept credibility + projection kernels consume unchanged. Returns
-    ``(g_eff, CovariateFit)``."""
-    data = _covariate_segment_data(sub_cells, covariates, cohorts, n_links)
-    covfit = fit_covariate_intensity(
-        data.resp, data.expo, data.dur, data.codes, lam=lam,
-    )
-    return _build_g_eff(covfit, data), covfit

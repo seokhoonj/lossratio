@@ -280,15 +280,23 @@ def test_derived_target_multi_column_per_combination():
 
 
 def test_resolve_by_helper():
-    """Direct unit test of the ``by`` resolver semantics."""
-    tri = _multi_group_triangle()
-    assert _resolve_by(None, tri) == "coverage"
+    """Direct unit test of the ``by`` resolver semantics: ``by`` must be a
+    subset of the triangle's own group columns."""
+    tri = _multi_group_triangle()                    # groups="coverage"
+    assert _resolve_by(None, tri) == "coverage"      # defer to the triangle
     assert _resolve_by("", tri) is None
     assert _resolve_by([], tri) is None
-    assert _resolve_by("explicit", tri) == "explicit"
-    assert _resolve_by(["solo"], tri) == "solo"
-    # multi-element sequence -> the list form (per-combination detection)
-    assert _resolve_by(["coverage", "channel"], tri) == ["coverage", "channel"]
+    assert _resolve_by("coverage", tri) == "coverage"
+    assert _resolve_by(["coverage"], tri) == "coverage"   # length-1 -> scalar
+    # a column that is not one of the triangle's groups is rejected up front
+    # (rather than failing far downstream in a polars group_by).
+    with pytest.raises(ValueError, match="subset of the triangle's groups"):
+        _resolve_by("explicit", tri)
+    with pytest.raises(ValueError, match="subset of the triangle's groups"):
+        _resolve_by(["coverage", "channel"], tri)    # channel not a group here
+    # multi-element sequence (subset of a 2-column grouping) -> the list form
+    multi = lr.Triangle(lr.load_experience(), groups=["coverage", "channel"])
+    assert _resolve_by(["coverage", "channel"], multi) == ["coverage", "channel"]
     sur = _sur_triangle()
     assert _resolve_by(None, sur) is None
 

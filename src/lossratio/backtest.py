@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output, normalize_groups
+from ._io import collapse_groups, mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from ._types import RegimeArg
@@ -90,54 +90,6 @@ def _build_masked_df(
 
 
 _VALID_TARGETS = ("ratio", "loss", "premium")
-
-
-def _mask_source_for_fold(
-    estimator: Any, triangle: "Triangle", annotated_df: pl.DataFrame
-) -> Any:
-    """Mask a covariate estimator's ``source`` to the fold's training cells.
-
-    A covariate estimator reads the raw ``source`` frame at fit time; a backtest
-    masks the held-out cells from the triangle but the ``source`` is the FULL
-    frame, so the held-out period would leak into the covariate fit (look-ahead).
-    Return a clone of the estimator whose ``source`` drops the rows on the
-    held-out ``(group, cohort, duration)`` cells -- the same mask the triangle
-    gets (so the covariate kernel sees exactly the training data), keying on the
-    cohort x duration cell so it works for both a calendar-axis (mode-1) and a
-    duration-only (mode-2) triangle. Non-covariate estimators are returned
-    unchanged.
-    """
-    if not getattr(estimator, "covariates", None) or getattr(estimator, "source", None) is None:
-        return estimator
-    from dataclasses import replace
-
-    from ._io import to_polars
-    from ._period import (
-        coerce_cols_to_date, count_periods, floor_cols_to_period,
-    )
-
-    groups = normalize_groups(triangle._groups)
-    grain = triangle.grain
-    coh_col, cal_col = triangle.cohort, triangle.calendar
-    # held-out (group, cohort, duration) cells from the triangle's own mask
-    held = (
-        annotated_df.filter(pl.col("masked"))
-        .select([*groups, "cohort", "duration"])
-        .unique()
-        .rename({"cohort": coh_col, "duration": "_dur"})
-    )
-    src = to_polars(estimator.source)
-    date_cols = [coh_col] + ([cal_col] if cal_col is not None else [])
-    src = coerce_cols_to_date(src, date_cols)
-    src = floor_cols_to_period(src, date_cols, grain)        # match the floored cohort
-    if cal_col is not None:                                  # mode-1: derive duration
-        src = src.with_columns(
-            count_periods(pl.col(coh_col), pl.col(cal_col), grain).alias("_dur")
-        )
-    else:                                                    # mode-2: duration column
-        src = src.with_columns(pl.col(triangle.duration).cast(pl.Int64).alias("_dur"))
-    masked_src = src.join(held, on=[*groups, coh_col, "_dur"], how="anti").drop("_dur")
-    return replace(estimator, source=masked_src)
 
 
 def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
@@ -339,27 +291,70 @@ class _FoldFit:
         from .triangle import Triangle
 
         self = cls.__new__(cls)
-        self._output_type = triangle._output_type
-        self._groups = triangle._groups
-        self._cohort = triangle._cohort
-        self._duration = triangle._duration
-        self._triangle = triangle
+        # A covariate estimator projects at the REPORTING grain
+        # (triangle.groups - covariates): it pools the duration shape across the
+        # covariate columns and reports them as level effects. The actual cells,
+        # masking and scoring therefore live at the reporting grain, while the
+        # REFIT keeps the finer triangle (its sub-cells carry the covariate
+        # effects). Without covariates the reporting grain IS the triangle grain.
+        covs = getattr(bt.estimator, "covariates", None)
+        if covs:
+            report_cols = [
+                g for g in normalize_groups(triangle._groups)
+                if g not in set(covs)
+            ]
+            report_tri = triangle.collapse(
+                collapse_groups(report_cols) if report_cols else None
+            )
+        else:
+            report_tri = triangle
+
+        self._output_type = report_tri._output_type
+        self._groups = report_tri._groups
+        self._cohort = report_tri._cohort
+        self._duration = report_tri._duration
+        self._triangle = report_tri
         self.holdout = bt.holdout
         self.estimator = bt.estimator
 
-        # 1. Mask the most recent calendar diagonals
+        # 1. Mask the most recent calendar diagonals (reporting-grain actuals).
         masked_df, annotated_df = _build_masked_df(
-            triangle._df, bt.holdout, triangle._groups
+            report_tri._df, bt.holdout, report_tri._groups
         )
 
-        # 2. Build a masked Triangle (same metadata, masked cells)
-        masked_tri = Triangle._from_masked(triangle, masked_df)
-
-        # 3. Refit estimator on masked Triangle. A covariate estimator's source
-        # is masked to the same fold so the held-out diagonals never leak into
-        # the covariate fit.
-        fold_estimator = _mask_source_for_fold(bt.estimator, triangle, annotated_df)
-        refit = fold_estimator.fit(masked_tri)
+        # 2./3. Refit on the masked triangle. The covariate fit needs the FINER
+        # triangle, but the hold-out is defined ONCE at the reporting grain (the
+        # scoring grain): null exactly the sub-cells of the held-out report cells.
+        # Masking the finer triangle on its OWN cal_idx would diverge from the
+        # report grain when a coverage's covariate levels have unequal cohort
+        # spans (the per-level dense rank differs), leaving a report cell
+        # half-observed -- which collapse would silently under-count. A plain fit
+        # uses the reporting-grain masked triangle directly.
+        if covs:
+            report_gcols = normalize_groups(report_tri._groups)
+            held = (
+                annotated_df.filter(pl.col("masked"))
+                .select([*report_gcols, "cohort", "duration"])
+                .unique()
+                .with_columns(pl.lit(True).alias("_held"))
+            )
+            null_cols = [
+                c for c in ("loss", "incr_loss", "premium", "incr_premium",
+                            "ratio", "incr_ratio")
+                if c in triangle._df.columns
+            ]
+            fine_masked_df = (
+                triangle._df
+                .join(held, on=[*report_gcols, "cohort", "duration"], how="left")
+                .with_columns(
+                    [pl.when(pl.col("_held")).then(None).otherwise(pl.col(c)).alias(c)
+                     for c in null_cols]
+                )
+                .drop("_held")
+            )
+            refit = bt.estimator.fit(Triangle._from_masked(triangle, fine_masked_df))
+        else:
+            refit = bt.estimator.fit(Triangle._from_masked(triangle, masked_df))
         self._refit = refit
 
         refit_df = refit.to_polars()
@@ -369,7 +364,7 @@ class _FoldFit:
         self.target = bt.target
 
         # 4. Build per-cell A/E Error by joining masked cells with refit
-        keys: list[str] = [*normalize_groups(triangle._groups), "cohort", "duration"]
+        keys: list[str] = [*normalize_groups(self._groups), "cohort", "duration"]
 
         # `actual` is the cumulative column on the original Triangle that
         # corresponds to the chosen scoring lane; `incr_actual` is its
@@ -447,7 +442,7 @@ class _FoldFit:
         # cohort per origin; a cohort wholly inside the held-out diagonals has
         # no non-masked cell and gets a null anchor (already dropped above as
         # unreachable).
-        gcols = normalize_groups(triangle._groups)
+        gcols = normalize_groups(self._groups)
         anchor = (
             annotated_df.filter(~pl.col("masked"))
             .group_by([*gcols, "cohort"])
@@ -472,13 +467,13 @@ class _FoldFit:
         # 5. Summaries -- mean / median / weighted A/E - 1 per duration or per
         #    calendar diagonal, with `incr_*` companions when the
         #    incremental projection is available.
-        col_keys: list[str] = [*normalize_groups(triangle._groups), "duration"]
+        col_keys: list[str] = [*normalize_groups(self._groups), "duration"]
 
         self._col_summary = self._aggregate_ae_err(
             ae_err, col_keys, has_incr
         ).sort(col_keys)
 
-        diag_keys: list[str] = [*normalize_groups(triangle._groups), "cal_idx"]
+        diag_keys: list[str] = [*normalize_groups(self._groups), "cal_idx"]
 
         self._diag_summary = self._aggregate_ae_err(
             ae_err, diag_keys, has_incr
@@ -864,13 +859,28 @@ class BacktestFit:
         cls, triangle: "Triangle", rbt: "Backtest"
     ) -> "BacktestFit":
         self = cls.__new__(cls)
-        self._output_type = triangle._output_type
-        self._groups = triangle._groups
+        # Scoring happens at the estimator's REPORTING grain (triangle.groups -
+        # covariates); the per-fold refit keeps the finer triangle. Mirror the
+        # _FoldFit collapse so the cross-fold aggregation keys match the folds'
+        # reporting-grain A/E frames.
+        covs = getattr(rbt.estimator, "covariates", None)
+        if covs:
+            report_cols = [
+                g for g in normalize_groups(triangle._groups)
+                if g not in set(covs)
+            ]
+            report_tri = triangle.collapse(
+                collapse_groups(report_cols) if report_cols else None
+            )
+        else:
+            report_tri = triangle
+        self._output_type = report_tri._output_type
+        self._groups = report_tri._groups
         self.estimator = rbt.estimator
         self.target = rbt.target
         self.holdouts = rbt.holdouts
 
-        gcols = normalize_groups(triangle._groups)
+        gcols = normalize_groups(report_tri._groups)
 
         # Per-group max calendar index over the FULL (unmasked) triangle.
         # A depth H masks cells with cal_idx > max_cal - H, so a held-out
@@ -878,7 +888,7 @@ class BacktestFit:
         # max_cal from the full triangle (not from a fold's surviving cells)
         # keeps the horizon anchored to the true as-of date even when the
         # oldest cohort does not reach the latest diagonal.
-        full = _add_cal_idx(triangle._df, triangle._groups)
+        full = _add_cal_idx(report_tri._df, report_tri._groups)
         max_cal_scalar = 0
         max_cal: pl.DataFrame | None = None
         if gcols:
@@ -1381,7 +1391,7 @@ class BacktestFit:
         growing with duration, so an apparent flattening of the cumulative
         loss ratio is an inertia illusion -- eyeballing that curve is not
         evidence; the out-of-sample bias is. ``lane`` selects which bias to
-        walk: the cumulative lane is the smoother headline read, while the
+        walk: the cumulative lane is the smoother primary read, while the
         incremental lane strips the cumulative-magnitude confound (see the
         module docstring's lane discussion).
 
@@ -1485,7 +1495,7 @@ class BacktestFit:
         unchanged -- on a lumpy book the per-period absolute error never
         shrinks, so the bias band, not the absolute error, is what carries
         the evidence. ``lane`` selects which bias to walk: the cumulative
-        lane is the smoother headline read, while the incremental lane
+        lane is the smoother primary read, while the incremental lane
         strips the cumulative-magnitude confound (the per-horizon population
         drifts toward higher durations as horizon grows -- see the module
         docstring's lane discussion). Unlike :meth:`convergence` there is no

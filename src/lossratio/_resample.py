@@ -5,7 +5,7 @@ plugs in point estimates of ``sigma^2`` / ``Var(f)`` and propagates the
 recursion, this module re-estimates the WHOLE pipeline on each pseudo-triangle
 -- ``g_k`` (and, for the credible rung, ``phi``, ``psi``, ``u_i``) is refit per
 replicate, so the between-cohort estimation error the analytical recursion
-cannot carry shows up in the spread. That is the charter's headline correction
+cannot carry shows up in the spread. That is the charter's primary correction
 to the 86%-overconfident analytical band (Sec.5.2 item 1: "u fixed + residuals
 only" reintroduces the overconfidence; the selection stays inside the loop).
 
@@ -991,7 +991,7 @@ def _summarize(
     predictive draw beyond the refit spread, i.e. the process noise and, when
     enabled, the calendar-drift band term, which both ride the predictive draw
     not the parameter spread). The CI band is the empirical
-    predictive quantile SHAPE re-centred on the headline point projection
+    predictive quantile SHAPE re-centred on the point projection
     (bias-corrected: ``ci = point + (quantile - mean_pred)``) so the reported
     band brackets its own point estimate -- the resampling bias and the gamma
     process skew would otherwise leave the point outside the raw quantiles

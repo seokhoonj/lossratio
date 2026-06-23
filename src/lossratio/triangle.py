@@ -421,6 +421,90 @@ class Triangle:
         tri._duration = original._duration
         return tri
 
+    def collapse(self, groups: "str | Sequence[str] | None") -> "Triangle":
+        """Re-aggregate to a SUBSET of the current group columns.
+
+        Sums the incremental loss / premium over the dropped group columns
+        and re-derives every cumulative / ratio / share column, returning a
+        new Triangle keyed by ``groups`` (which must be a subset of
+        :attr:`groups`; ``None`` / ``[]`` collapses to a single ungrouped
+        triangle). Because summation is associative, the result is identical
+        cell-for-cell to building the Triangle from the raw frame at the
+        coarser grouping -- the standardized ``cohort`` (Date) and
+        ``duration`` (Int) cells already carry the binning, so this re-build
+        re-floors nothing.
+
+        Used by the covariate fit to project at the reporting grain
+        (``groups - covariates``) while keeping the finer cells for the
+        covariate level effects, and available as the general "operate at a
+        coarser grain" lever (e.g. ``tri.collapse('coverage')``).
+
+        Null preservation: a backtest masks held-out diagonals to ``null``. A
+        ``(group, cohort, duration)`` cell with ANY null finer sub-cell stays
+        null in the result (a sum with a missing addend is missing, not a
+        partial ``0`` -- which would silently under-count the cell and corrupt
+        the cumulative chain of the observed cells after it), so the report fit
+        still PROJECTS it rather than reading a spurious value. (``absent``
+        sub-cells -- a ragged grid -- are summed normally; only explicit nulls
+        propagate.)
+        """
+        cur = normalize_groups(self._groups)
+        sub = normalize_groups(groups)
+        extra = [g for g in sub if g not in cur]
+        if extra:
+            raise ValueError(
+                f"collapse groups {extra} are not a subset of the triangle's "
+                f"groups {cur}."
+            )
+        keys = [*sub, "cohort", "duration"]
+        cells = self._df.select([*keys, "incr_loss", "incr_premium"])
+        # cells with no observed sub-cell (all-null increments) -- the held-out
+        # diagonals a backtest masks. polars sums these to 0; track them so they
+        # can be restored to null after the (summing) re-build.
+        held = None
+        if cells["incr_premium"].null_count():
+            held = (
+                cells.group_by(keys)
+                .agg((pl.col("incr_premium").null_count() > 0).alias("_hold"))
+                .filter(pl.col("_hold"))
+                .select(keys)
+            )
+        out = Triangle(
+            cells,
+            groups=(collapse_groups(sub) if sub else None),
+            cohort="cohort",
+            calendar=None,
+            duration="duration",
+            loss="incr_loss",
+            premium="incr_premium",
+            grain=self._grain,
+        )
+        if held is not None and held.height:
+            # mirror the backtest mask: null the cumulative + incremental value
+            # lanes on the fully-held-out cells (the share / margin lanes do not
+            # feed the fit). The held cells are trailing diagonals, so the 0-fill
+            # never corrupts an observed cell's cumulative upstream of them.
+            null_cols = [
+                c for c in ("loss", "incr_loss", "premium", "incr_premium",
+                            "ratio", "incr_ratio")
+                if c in out._df.columns
+            ]
+            odf = out._df.join(
+                held.with_columns(pl.lit(True).alias("_hold")), on=keys, how="left"
+            )
+            out._df = odf.with_columns(
+                [pl.when(pl.col("_hold")).then(None).otherwise(pl.col(c)).alias(c)
+                 for c in null_cols]
+            ).drop("_hold")
+        # preserve the raw-name metadata for labels / formatting (the rebuild
+        # only knows the standardized "cohort" / "incr_loss" names).
+        out._output_type = self._output_type
+        out._cohort = self._cohort
+        out._calendar = self._calendar
+        out._loss = self._loss
+        out._premium = self._premium
+        return out
+
     def calendar_agg(self) -> "Calendar":
         """Aggregate this triangle to its calendar-period diagonals.
 

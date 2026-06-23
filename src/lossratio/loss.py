@@ -1382,15 +1382,16 @@ def _segment_covariate_surface(
 ) -> pl.DataFrame:
     """Disaggregated per-covariate-cell projection surface for one segment.
 
-    At each cohort x duration the headline cumulative ``loss_proj`` is ALLOCATED
-    across the covariate cells by their relativity-weighted from-premium share
-    ``g_d(x) * cp_x / sum_x g_d(x) cp_x`` (premium share where ``g_d`` is not
-    estimable; the mix is frozen at the cohort's last observed duration for the
-    projected tail). Because the per-cell shares sum to one at every duration,
-    summing the surface over the covariates reproduces the headline cohort x
-    duration ``loss_proj`` and ``premium_proj`` EXACTLY -- robust to a
-    duration-varying mix, premium-only cells, and left-truncated cohorts. The
-    per-cell ratio is ``headline_ratio * g_d(x) / g_eff``. Returns a long frame
+    At each cohort x duration the reporting-grain cumulative ``loss_proj`` is
+    ALLOCATED across the covariate cells by their relativity-weighted
+    from-premium share ``g_d(x) * cp_x / sum_x g_d(x) cp_x`` (premium share
+    where ``g_d`` is not estimable; the mix is frozen at the cohort's last
+    observed duration for the projected tail). Because the per-cell shares sum
+    to one at every duration, summing the surface over the covariates reproduces
+    the reporting-grain cohort x duration ``loss_proj`` and ``premium_proj``
+    EXACTLY -- robust to a duration-varying mix, premium-only cells, and
+    left-truncated cohorts. The per-cell ratio is
+    ``report_ratio * g_d(x) / g_eff``. Returns a long frame
     ``[groups?, cohort, duration, *covariates, loss_proj, incr_loss_proj,
     premium_proj, ratio_proj, source]``.
     """
@@ -1624,7 +1625,6 @@ def _fit_loss(
     balance: bool = False,
     uncertainty: "Any" = None,
     covariates: "list[str] | None" = None,
-    source: "Any" = None,
     lam_cov: float = 1.0,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
@@ -1649,18 +1649,21 @@ def _fit_loss(
     """
     fit_segment, method, model = _MECHANISMS[mechanism]
     groups = triangle.groups
+    # the driver fits / projects at the REPORTING grain. Without covariates
+    # that is the triangle's own grain; with covariates it is the grain left
+    # once the covariate columns are marginalized out (groups - covariates),
+    # and the finer triangle is kept only to read the covariate sub-cells.
+    fit_triangle = triangle
 
     cov_cells = None
     if covariates:
-        # architecture B: read the raw disaggregated source at fit time and
-        # re-aggregate to (groups, cohort, duration, *covariates) sub-cells that
-        # match the Triangle's own binning (charter Sec.4.3 covariate design).
+        # covariate design: one shared duration shape per reporting unit plus a
+        # treatment-coded level effect per covariate, read from the triangle's
+        # own (reporting x covariate) sub-cells (charter Sec.4.3).
         if mechanism not in ("pooled", "credible", "smooth"):
             raise NotImplementedError(
                 f"covariates= is not wired for {model!r}."
             )
-        if source is None:
-            raise ValueError("covariates= requires source= (the raw frame).")
         if borrow:
             raise ValueError("borrow= and covariates= are mutually exclusive.")
         if balance:
@@ -1673,20 +1676,37 @@ def _fit_loss(
             raise NotImplementedError(
                 "recent= is not yet wired for the covariate path."
             )
-        overlap = set(covariates) & set(normalize_groups(groups))
-        if overlap:
+        all_groups = normalize_groups(groups)
+        missing = [c for c in covariates if c not in all_groups]
+        if missing:
             raise ValueError(
-                f"covariate column(s) {sorted(overlap)} also appear in groups=; "
-                "partition by a column (groups) XOR regress on it (covariate)."
+                f"covariate column(s) {missing} are not in groups={all_groups}; "
+                "a covariate must be one of the triangle's group columns -- "
+                "build the triangle grouped by it, then regress on it."
             )
-        from ._covariate import reaggregate_source, reconcile_coverage
-        cov_cells = reaggregate_source(
-            source, groups=groups, cohort=triangle.cohort,
-            calendar=triangle.calendar, duration=triangle.duration,
-            loss=triangle.loss, premium=triangle.premium, grain=triangle.grain,
-            covariates=list(covariates),
+        cov_set = set(covariates)
+        report_cols = [g for g in all_groups if g not in cov_set]
+        report_groups = collapse_groups(report_cols) if report_cols else None
+        # collapse the finer triangle to the reporting grain: the projection,
+        # credibility level and regime cut all key on the reporting unit.
+        fit_triangle = triangle.collapse(report_groups)
+        # the covariate sub-cells ARE the finer triangle's own cells (the
+        # reporting cells split by the covariate columns); they reconcile to
+        # the reporting triangle by construction. Drop the held-out cells a
+        # backtest nulls so the covariate kernel never trains on the masked
+        # diagonals (the leakage guard), then match the (report, cohort,
+        # duration, covariates) column order + sort so the treatment-coded
+        # design is assembled in a stable order.
+        cov_cells = (
+            triangle.to_polars()
+            .filter(pl.col("incr_premium").is_not_null())
+            .select(
+                [*report_cols, "cohort", "duration", *covariates,
+                 "incr_loss", "incr_premium"]
+            )
+            .sort([*report_cols, "cohort", "duration", *covariates])
         )
-        reconcile_coverage(cov_cells, triangle.to_polars(), groups=groups)
+        groups = report_groups
 
     boot_spec = None
     seg_seeds: dict[Any, np.random.SeedSequence] = {}
@@ -1702,12 +1722,12 @@ def _fit_loss(
     if borrow:
         if borrow != "pooled":
             raise ValueError(f"borrow must be False or 'pooled', got {borrow!r}")
-        donors = _segment_donors(triangle, sigma_method)
+        donors = _segment_donors(fit_triangle, sigma_method)
         # the denominator borrows the same way (full-history premium f^P_k), so
         # the loss ratio stays defined across the borrowed loss tail.
-        premium_donors = _segment_donors(triangle, sigma_method, value="premium")
+        premium_donors = _segment_donors(fit_triangle, sigma_method, value="premium")
 
-    mf = ModelFrame.from_triangle(triangle, regime=regime)
+    mf = ModelFrame.from_triangle(fit_triangle, regime=regime)
     frame = mf.df
     seg_cols = normalize_groups(groups)
     if frame.is_empty():
@@ -1929,7 +1949,7 @@ def _fit_loss(
         coefficients=coefficients,
         covariate_surface=covariate_surface,
         balance=balance_factor,
-        output_type=triangle._output_type,
+        output_type=fit_triangle._output_type,
         status=status,
         status_reasons=reasons,
         converged=n_smooth_nonconv == 0,    # smooth backfitting / IRLS may fail
@@ -1950,7 +1970,7 @@ def _fit_loss(
 class LossFit:
     """Saturated-mode loss projection result (charter Sec.3.1 / Sec.3.2).
 
-    The long-format frame (one row per cohort x duration cell) is the headline
+    The long-format frame (one row per cohort x duration cell) is the primary
     output; ``status`` / ``status_reasons`` / ``converged`` / ``cell_counts``
     are first-class machine-readable diagnostics.
     """
@@ -2032,7 +2052,7 @@ class LossFit:
         return self._df
 
     def summary(self) -> "FrameLike":
-        """Per-cohort headline: last observed cumulative loss, within-triangle
+        """Per-cohort summary: last observed cumulative loss, within-triangle
         projection, the unobserved remainder, and the projection SE."""
         keys = (normalize_groups(self.groups) or []) + ["cohort"]
         df = self._df
@@ -2060,7 +2080,8 @@ class LossFit:
         of the fitted covariates -- one row per ``cohort x duration x by`` cell,
         summing loss / premium over the covariates NOT in ``by`` (the ratio is
         recomputed from the summed totals). ``by=None`` (default) returns the
-        headline cohort x duration surface (marginalized over every covariate)."""
+        reporting-grain cohort x duration surface (marginalized over every
+        covariate)."""
         keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
         if by is None:
             cols = keys + ["loss_proj", "incr_loss_proj", "ratio_proj", "source"]
@@ -2104,7 +2125,7 @@ class LossFit:
         """The full disaggregated per-covariate-cell projection surface for a
         ``covariates=`` fit (else ``None``); ``predict(by=...)`` is the usual
         entry point. Summing ``loss_proj`` over the covariates reproduces the
-        headline projection."""
+        reporting-grain projection."""
         if self._covariate_surface is None:
             return None
         return mirror_output(self._covariate_surface, self._output_type)
