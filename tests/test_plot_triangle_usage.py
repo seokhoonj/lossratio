@@ -314,9 +314,19 @@ def test_usage_borrow_matches_the_fit_source_exactly():
     assert ucnt["observed"] == scnt["observed"]
     assert ucnt["own"] == scnt["own"]
     assert ucnt["borrowed"] == scnt["borrowed"]
-    # donor = old (pre-change) observed cohorts
+    # donor split is a pure refinement: donor + donor_used == all dropped
+    # (pre-change) observed cohorts.
     donor_obs = tri._df.filter(pl.col("cohort") < change).height
-    assert ucnt["donor"] == donor_obs
+    assert ucnt["donor"] + ucnt.get("donor_used", 0) == donor_obs
+    # donor_used = the dropped cells at duration >= K (K = kept cohorts' max
+    # observed duration) -- the late-duration donor cells that feed the borrowed
+    # link ratios. A borrowed tail exists here (D > K) so donor_used is non-empty.
+    K = tri._df.filter(pl.col("cohort") >= change)["duration"].max()
+    used_expected = tri._df.filter(
+        (pl.col("cohort") < change) & (pl.col("duration") >= K)
+    ).height
+    assert ucnt["donor_used"] == used_expected
+    assert ucnt["donor_used"] > 0
 
 
 def test_usage_borrow_off_is_unchanged(tri_with_groups):

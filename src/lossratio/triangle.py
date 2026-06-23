@@ -715,11 +715,13 @@ class Triangle:
             ``False`` (default) or ``"pooled"``. With a ``regime`` cut,
             relabel the grid to the borrow provenance of a
             ``borrow="pooled"`` loss fit: the dropped (pre-change) observed
-            cohorts become ``"donor"`` (they lend the development shape), and
-            the kept segment's projection tail splits into ``"own"`` (its own
-            data horizon) and ``"borrowed"`` (filled from the donor). The
-            split matches the live fit exactly. ``"pooled"`` only -- the loss
-            baseline is the sole rung that borrows.
+            cohorts become the donor (they lend the development shape) -- split
+            into ``"donor_used"`` (the late-duration cells, ``duration >= K``,
+            that actually feed the borrowed link ratios) and ``"donor"`` (the
+            rest) -- and the kept segment's projection tail splits into
+            ``"own"`` (its own data horizon) and ``"borrowed"`` (filled from the
+            donor). The split matches the live fit exactly. ``"pooled"`` only --
+            the loss baseline is the sole rung that borrows.
 
         Returns
         -------

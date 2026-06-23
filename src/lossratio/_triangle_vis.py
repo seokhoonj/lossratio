@@ -60,15 +60,20 @@ _USAGE_COLORS: dict[str, str] = {
     "holdout":  "#d62728",
     "future":   "#ffffff",
     # borrow view (regime + borrow="pooled"): the cut splits into a donor
-    # (dropped, lends shape) and a kept segment whose tail is borrowed.
-    "donor":    "#9aa0a6",
-    "observed": "#1f77b4",
-    "own":      "#3a9b5c",
-    "borrowed": "#d39e00",
+    # (dropped, lends shape) and a kept segment whose tail is borrowed. The
+    # donor in turn splits: "donor_used" are the donor's late-duration cells
+    # (duration >= K) that actually feed the borrowed link ratios f_K..f_{D-1}
+    # filling the kept tail; "donor" is the rest of the dropped segment (early
+    # durations the kept segment covers with its own data, so not borrowed from).
+    "donor":      "#c3c7cb",
+    "donor_used": "#6b7075",
+    "observed":   "#1f77b4",
+    "own":        "#3a9b5c",
+    "borrowed":   "#d39e00",
 }
 _USAGE_STATES: tuple[str, ...] = ("unused", "used", "holdout", "future")
 _USAGE_STATES_BORROW: tuple[str, ...] = (
-    "donor", "observed", "own", "borrowed", "holdout", "future",
+    "donor", "donor_used", "observed", "own", "borrowed", "holdout", "future",
 )
 
 
@@ -445,9 +450,13 @@ def _apply_borrow_overlay(
     own horizon ``K`` = max observed duration among KEPT (post-cut) cohorts, the
     donor horizon ``D`` = max observed duration among ALL cohorts. The kept
     projection tail is ``own`` up to ``K`` then ``borrowed`` up to ``D``; the
-    dropped (pre-cut) observed cohorts become the ``donor`` (they lend the
-    development shape). Without a cut (``regime_cut`` ``None`` / a segment not in
-    the cut) there is no thin segment, so ``K == D`` -- no donor, no borrowed.
+    dropped (pre-cut) observed cohorts become the donor (they lend the
+    development shape), split into ``donor_used`` (duration ``>= K``, the cells
+    that actually feed the borrowed link ratios ``f_K..f_{D-1}`` -- only when a
+    tail exists, ``D > K``) and ``donor`` (the rest, early durations the kept
+    segment covers itself). Without a cut (``regime_cut`` ``None`` / a segment
+    not in the cut) there is no thin segment, so ``K == D`` -- no donor, no
+    borrowed.
     """
     cd_scalar, cd_df = _regime_cut_frames(regime_cut, grp_cols)
     if cd_df is not None:
@@ -484,7 +493,15 @@ def _apply_borrow_overlay(
         pl.when(pl.col("status") == "used").then(pl.lit("observed"))
         .when(pl.col("status") == "holdout").then(pl.lit("holdout"))
         .when(pl.col("status") == "unused").then(
-            pl.when((~kept) & pl.col("is_observed")).then(pl.lit("donor"))
+            # dropped (donor) cells; the late ones (duration >= K) feed the
+            # borrowed tail f_K..f_{D-1} -> "donor_used"; only when a tail
+            # exists (D > K). The rest of the dropped segment stays "donor".
+            pl.when(
+                (~kept) & pl.col("is_observed")
+                & (pl.col("duration") >= pl.col("_K"))
+                & (pl.col("_D") > pl.col("_K"))
+            ).then(pl.lit("donor_used"))
+            .when((~kept) & pl.col("is_observed")).then(pl.lit("donor"))
             .otherwise(pl.lit("unused"))
         )
         .otherwise(  # "future"
