@@ -4,7 +4,7 @@
 코호트 안에는 성별·연령대·채널처럼 셀을 더 잘게 가르는 속성이 있다. 이
 장은 그런 속성을 **공변량(covariate)** 으로 모델에 넣어 (1) 그 속성이
 손해율 수준을 얼마나 올리고 내리는지 *해석*하고, (2) 속성별 손해율을
-*분해*해서 보는 법을 다룬다.
+*나눠서* 보는 법을 다룬다.
 
 ## 9.1 쪼갤 것인가, 회귀할 것인가 — groups vs covariate
 
@@ -41,7 +41,7 @@ fit = lr.CredibleLoss(covariates=["age_band"], source=df).fit(tri)
 ```
 
 - `covariates=` 는 셀 수준 공변량 컬럼 목록이다.
-- `source=` 는 그 공변량을 읽어올 **원본 frame** 이다. `source` 를 공변량에
+- `source=` 는 그 공변량을 읽어올 **원본 데이터** 다. `source` 를 공변량에
   대해 합산하면 삼각형의 셀과 정확히 일치해야 하며, 어긋나면 즉시 에러로
   멈춘다(조용히 틀린 값을 내지 않는다).
 - 공변량은 `PooledLoss` · `CredibleLoss` · `SmoothLoss` 어디서나 쓴다.
@@ -66,17 +66,17 @@ fit.coefficients
 
 4장의 `predict()` 는 공변량으로 쪼개지 않은 **전체 예측** — 코호트 x 경과 한
 장의 손해율 예측 — 을 준다. 공변량을 넣었으면 `predict(by="age_band")` 로 그
-전체 예측을 속성별로 *분해*해 볼 수 있다.
+전체 예측을 속성별로 *나눠* 볼 수 있다.
 
 ```python
 fit.predict()               # 전체 예측: 코호트 x 경과
-fit.predict(by="age_band")  # 분해: 코호트 x 경과 x 연령대
+fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 #> coverage cohort duration age_band loss_proj incr_loss_proj premium_proj ratio_proj source
 ```
 
-각 (코호트, 경과)의 전체 예측을 연령대 셀로 나눠 담은 표면이다 — 연령대별
-예측 손해율을 따로 본다. 이 표면을 다시 연령대에 대해 합치면 **전체 예측과
-정확히 같아진다**: 분해일 뿐 다른 모델이 아니다(한 판을 조각냈다 다시 합치면
+각 (코호트, 경과)의 전체 예측을 연령대 셀로 나눠 담은 표다 — 연령대별
+예측 손해율을 따로 본다. 이 표를 다시 연령대에 대해 합치면 **전체 예측과
+정확히 같아진다**: 나눠 본 것일 뿐 다른 모델이 아니다(한 판을 조각냈다 다시 합치면
 같은 한 판).
 
 ## 9.5 수축 — lam_cov
@@ -114,11 +114,11 @@ lr.CredibleLoss(covariates=["channel"], source=df, lam_cov="auto").fit(tri)
 ## 9.6 전체 예측은 (거의) 안 바뀐다
 
 정직하게 짚을 점. 담보별로 쪼개 손해율만 예측한다면, **공변량은 전체 예측을
-거의 바꾸지 않는다.** 분해한 뒤 합치면(9.4) 같은 값으로 돌아오기 때문이다
+거의 바꾸지 않는다.** 속성별로 나눈 뒤 합치면(9.4) 같은 값으로 돌아오기 때문이다
 (실데이터 검증: 공변량 유 vs 무의 전체 예측 차이 ~0.1%).
 
 그러므로 공변량의 가치는 *전체 예측의 정확도* 가 아니라 **`.coefficients`
-(해석, 9.3)와 `predict(by=)`(분해, 9.4)** 에 있다. 전체 손해율만 필요하면
+(해석, 9.3)와 `predict(by=)`(속성별 예측, 9.4)** 에 있다. 전체 손해율만 필요하면
 공변량은 넣지 않아도 된다.
 
 ## 9.7 제약
@@ -131,7 +131,7 @@ lr.CredibleLoss(covariates=["channel"], source=df, lam_cov="auto").fit(tri)
 ## 9.8 함께 보기
 
 - {doc}`4장 — 손해율 예측 <04-projection>`: 공변량이 다듬는 그 예측.
-- {doc}`공변량 레시피 <../cookbook/covariates>`: 분해 표면이 전체 예측과
+- {doc}`공변량 레시피 <../cookbook/covariates>`: 속성별 예측이 전체 예측과
   정확히 맞는 까닭을 한 단계 아래에서.
 - {doc}`API 레퍼런스 <../api>` 의 `PooledLoss` · `CredibleLoss` ·
   `SmoothLoss` 의 `covariates` · `source` · `lam_cov`.
