@@ -1449,7 +1449,7 @@ def _segment_covariate_surface(
                 row["ratio_proj"] = (
                     float(lp / ps) if np.isfinite(ps) and ps > 0 else None
                 )
-                row["source"] = "observed" if col <= last_col else "projected"
+                row["source"] = "observed" if col <= last_col else "own"
                 parts.append(row)
 
     df = pl.DataFrame(parts)
@@ -1895,8 +1895,8 @@ def _fit_loss(
             )
 
         obs_mask = ~np.isnan(fit["loss_obs"])
-        # projected = own projections only; borrowed is a disjoint category so
-        # observed / projected / borrowed / unfittable partition the cells.
+        # own = own projections only; borrowed is a disjoint category so
+        # observed / own / borrowed / unfittable partition the cells.
         proj_mask = ~np.isnan(fit["loss_proj"]) & ~obs_mask & ~fit["borrowed"]
         n_observed += int(obs_mask.sum())
         n_projected += int(proj_mask.sum())
@@ -1956,7 +1956,7 @@ def _fit_loss(
         converged=n_smooth_nonconv == 0,    # smooth backfitting / IRLS may fail
         cell_counts={
             "observed": n_observed,
-            "projected": n_projected,
+            "own": n_projected,
             "unfittable": n_unfittable,
             "borrowed": n_borrowed,
         },
@@ -2195,7 +2195,7 @@ class LossFit:
             .with_columns(
                 (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
                 pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
-                .otherwise(pl.lit("projected")).alias("source"),
+                .otherwise(pl.lit("own")).alias("source"),
             )
             .drop("_all_obs")
             .sort(gb)

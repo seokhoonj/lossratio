@@ -51,7 +51,7 @@ def test_status_fields(exp):
     assert fit.status_reasons == []
     assert fit.converged is True
     assert fit.cell_counts["observed"] == 2664
-    assert fit.cell_counts["projected"] > 0
+    assert fit.cell_counts["own"] > 0
     assert fit.cell_counts["unfittable"] == 0
 
 

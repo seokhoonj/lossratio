@@ -371,7 +371,7 @@ def test_predict_by_covariate_shows_relativity():
     morbidity) projects a higher ratio than M in the same cohort x duration."""
     df = _experience_source({"F": 1.3, "M": 1.0})
     cov = _credible(covariates=["sex"], lam_cov=0.0).fit(_tri(df))
-    by = cov.predict(by="sex").filter(pl.col("source") == "projected")
+    by = cov.predict(by="sex").filter(pl.col("source") == "own")
     piv = by.pivot(values="ratio_proj", index=["cohort", "duration"],
                    on="sex").drop_nulls(["F", "M"])
     assert piv.height > 0
