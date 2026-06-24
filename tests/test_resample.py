@@ -105,6 +105,29 @@ def test_bootstrap_is_reproducible(tri):
     assert diff == 0.0
 
 
+def test_n_jobs_is_bit_identical(tri):
+    # segments carry independent per-segment streams, so running them across
+    # processes (n_jobs=-1) must reproduce the serial path to the last bit.
+    serial = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=60, seed=11, n_jobs=1)
+    ).fit(tri).to_polars().sort(["coverage", "cohort", "duration"])
+    par = CredibleLoss(
+        uncertainty=ResidualBootstrap(n_replicates=60, seed=11, n_jobs=-1)
+    ).fit(tri).to_polars().sort(["coverage", "cohort", "duration"])
+    for c in ("loss_proc_se", "loss_param_se", "loss_total_se",
+              "loss_ci_lo", "loss_ci_hi", "loss_proj"):
+        assert (serial[c].fill_null(-1) - par[c].fill_null(-1)).abs().max() == 0.0
+
+
+def test_n_jobs_validation():
+    with pytest.raises(ValueError):
+        ResidualBootstrap(n_jobs=0)
+    with pytest.raises(ValueError):
+        ResidualBootstrap(n_jobs=-2)
+    with pytest.raises(TypeError):
+        ResidualBootstrap(n_jobs=2.0)
+
+
 def test_seed_changes_the_draw(tri):
     a = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=60, seed=11)).fit(tri).to_polars()
     b = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=60, seed=22)).fit(tri).to_polars()

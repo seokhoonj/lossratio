@@ -172,6 +172,12 @@ class ResidualBootstrap:
         Without it the bootstrap re-narrows to overconfidence at long horizons
         (the published CBD quantum: half the long-horizon variance is
         drift-parameter uncertainty).
+    n_jobs
+        Segments carry independent reproducible streams, so their bootstraps
+        run independently. ``1`` (default) is serial; ``-1`` uses all cores; a
+        positive int caps the worker processes. Parallelism is bit-identical to
+        the serial path -- a segment's result depends only on its own data and
+        seed, not on how many run at once.
     """
 
     n_replicates: int = 499
@@ -180,6 +186,7 @@ class ResidualBootstrap:
     hat_adjust: bool = True
     process: str = "gamma"
     drift: bool = True
+    n_jobs: int = 1
 
     def __post_init__(self) -> None:
         if not isinstance(self.n_replicates, int) or isinstance(self.n_replicates, bool):
@@ -196,6 +203,13 @@ class ResidualBootstrap:
         if self.process not in ("gamma", "none"):
             raise ValueError(
                 f"process must be 'gamma' or 'none', got {self.process!r}"
+            )
+        if not isinstance(self.n_jobs, int) or isinstance(self.n_jobs, bool):
+            raise TypeError("n_jobs must be an int")
+        if self.n_jobs == 0 or self.n_jobs < -1:
+            raise ValueError(
+                f"n_jobs must be -1 (all cores) or a positive int, got "
+                f"{self.n_jobs!r}"
             )
 
 
@@ -1027,3 +1041,81 @@ def _summarize(
         "ci_lo": ci_lo,
         "ci_hi": ci_hi,
     }
+
+
+# ---------------------------------------------------------------------------
+# Per-segment dispatch + optional cross-segment parallelism
+# ---------------------------------------------------------------------------
+#
+# Each segment owns an independent reproducible stream (a SeedSequence child),
+# so the segments' bootstraps are embarrassingly parallel AND bit-identical to
+# the serial path: a segment's result depends only on its own matrices and its
+# seed, never on how many run concurrently. The fit collects one task dict per
+# segment and hands the list to `map_segment_bootstraps`, which fans out over a
+# process pool when `n_jobs != 1` (the GIL makes threads useless for this
+# Python-bound work). `rng` is rebuilt inside the worker from the (picklable)
+# SeedSequence so nothing stateful crosses the process boundary.
+
+
+def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
+    """Run one segment's bootstrap from a self-contained task dict.
+
+    Module-level (picklable) so a ``ProcessPoolExecutor`` worker can call it.
+    The ``rng`` is reconstructed here from ``task["seedseq"]`` -- the same
+    ``SeedSequence`` child the serial path would use for this segment -- so the
+    draws (and thus every SE / CI value) match the serial run bit-for-bit.
+    """
+    rng = np.random.default_rng(task["seedseq"])
+    kind = task["kind"]
+    if kind == "multiplicative":
+        return bootstrap_segment_multiplicative(
+            task["loss_obs"], task["premium_obs"],
+            sigma_method=task["sigma_method"], spec=task["spec"],
+            confidence_level=task["confidence_level"], rng=rng,
+            recent=task["recent"], donor=task["donor"],
+        )
+    if kind == "covariate":
+        return bootstrap_segment_covariate(
+            task["loss_obs"], task["premium_obs"], task["cov_data"],
+            task["covariates"], sigma_method=task["sigma_method"],
+            psi=task["psi"], lam=task["lam"], spec=task["spec"],
+            confidence_level=task["confidence_level"], rng=rng,
+            n_basis=task["n_basis"], lam_smooth=task["lam_smooth"],
+        )
+    return bootstrap_segment_additive(
+        task["loss_obs"], task["premium_obs"],
+        mechanism=task["mechanism"], sigma_method=task["sigma_method"],
+        psi=task["psi"], spec=task["spec"],
+        confidence_level=task["confidence_level"], rng=rng,
+        n_basis=task["n_basis"], lam=task["lam"], recent=task["recent"],
+        donor=task["donor"],
+    )
+
+
+def map_segment_bootstraps(tasks: list[dict], n_jobs: int) -> list[dict]:
+    """Run the segment bootstrap tasks, in order, serially or across processes.
+
+    ``n_jobs == 1`` (or a single task) stays in-process -- identical to the old
+    inline path. Otherwise a ``ProcessPoolExecutor`` fans the tasks out;
+    ``ex.map`` preserves order, so the results realign to the segments by
+    position. Bit-identical either way (per-segment seeds)."""
+    if not tasks:
+        return []
+    if n_jobs == 1 or len(tasks) == 1:
+        return [run_segment_bootstrap(t) for t in tasks]
+    import multiprocessing as mp
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+
+    workers = (os.cpu_count() or 1) if n_jobs < 0 else n_jobs
+    workers = max(1, min(workers, len(tasks)))
+    if workers == 1:
+        return [run_segment_bootstrap(t) for t in tasks]
+    # "spawn", not the Linux default "fork": the parent holds a live polars
+    # thread pool, and forking a multi-threaded process risks a child deadlock
+    # if a lock is held at fork time (Python 3.12 warns about exactly this). The
+    # worker re-imports cleanly, paid once per reused worker -- negligible
+    # against a per-segment bootstrap.
+    ctx = mp.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as ex:
+        return list(ex.map(run_segment_bootstrap, tasks))

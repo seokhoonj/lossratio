@@ -1736,6 +1736,11 @@ def _fit_loss(
     coef_parts: list[pl.DataFrame] = []
     surface_parts: list[pl.DataFrame] = []
     balance_parts: list[pl.DataFrame] = []
+    # per-segment point fits + bootstrap tasks: collected in pass 1, the
+    # bootstraps run (optionally across processes) in pass 1.5, and the SE / CI
+    # splice + balance + accumulation happen in pass 2 (see below).
+    seg_states: list[tuple] = []
+    boot_tasks: list[dict | None] = []
     reasons: list[str] = []
     n_observed = n_projected = n_unfittable = n_borrowed = 0
     n_smooth_fallback = n_smooth_nonconv = 0
@@ -1843,35 +1848,63 @@ def _fit_loss(
                     )
                 )
 
-        ci = None
+        seg_states.append((fit, cohorts, group_value))
+
+        # collect (don't run) the bootstrap; each segment owns an independent
+        # reproducible stream, so the tasks fan out across processes below with
+        # no change to any value (pass 1.5).
         if boot_spec is not None:
-            rng = np.random.default_rng(seg_seeds[sid])
             if mechanism == "chain_ladder":
-                from ._resample import bootstrap_segment_multiplicative
-                boot = bootstrap_segment_multiplicative(
-                    fit["loss_obs"], fit["premium_obs"],
-                    sigma_method=sigma_method, spec=boot_spec,
-                    confidence_level=confidence_level, rng=rng, recent=recent, donor=donor,
-                )
+                task = {
+                    "kind": "multiplicative",
+                    "loss_obs": fit["loss_obs"], "premium_obs": fit["premium_obs"],
+                    "sigma_method": sigma_method, "spec": boot_spec,
+                    "confidence_level": confidence_level, "seedseq": seg_seeds[sid],
+                    "recent": recent, "donor": donor,
+                }
             elif cov_data is not None:
-                from ._resample import bootstrap_segment_covariate
                 # pooled covariate keeps u = 1 (psi = 0); credible uses its psi
-                boot_psi = 0.0 if mechanism == "pooled" else psi
-                boot = bootstrap_segment_covariate(
-                    fit["loss_obs"], fit["premium_obs"], cov_data,
-                    list(covariates), sigma_method=sigma_method, psi=boot_psi,
-                    lam=lam_cov, spec=boot_spec, confidence_level=confidence_level, rng=rng,
-                    n_basis=(n_basis if mechanism == "smooth" else None),
-                    lam_smooth=(lam if mechanism == "smooth" else "auto"),
-                )
+                task = {
+                    "kind": "covariate",
+                    "loss_obs": fit["loss_obs"], "premium_obs": fit["premium_obs"],
+                    "cov_data": cov_data, "covariates": list(covariates),
+                    "sigma_method": sigma_method,
+                    "psi": 0.0 if mechanism == "pooled" else psi,
+                    "lam": lam_cov, "spec": boot_spec,
+                    "confidence_level": confidence_level, "seedseq": seg_seeds[sid],
+                    "n_basis": (n_basis if mechanism == "smooth" else None),
+                    "lam_smooth": (lam if mechanism == "smooth" else "auto"),
+                }
             else:
-                from ._resample import bootstrap_segment_additive
-                boot = bootstrap_segment_additive(
-                    fit["loss_obs"], fit["premium_obs"],
-                    mechanism=mechanism, sigma_method=sigma_method, psi=psi,
-                    spec=boot_spec, confidence_level=confidence_level, rng=rng,
-                    n_basis=n_basis, lam=lam, recent=recent, donor=donor,
-                )
+                task = {
+                    "kind": "additive",
+                    "loss_obs": fit["loss_obs"], "premium_obs": fit["premium_obs"],
+                    "mechanism": mechanism, "sigma_method": sigma_method, "psi": psi,
+                    "spec": boot_spec, "confidence_level": confidence_level,
+                    "seedseq": seg_seeds[sid], "n_basis": n_basis, "lam": lam,
+                    "recent": recent, "donor": donor,
+                }
+            boot_tasks.append(task)
+        else:
+            boot_tasks.append(None)
+
+    # pass 1.5: run the bootstraps (serial when n_jobs == 1, else across a
+    # process pool). Order-preserving + bit-identical to the serial path.
+    if boot_spec is not None:
+        from ._resample import map_segment_bootstraps
+        results = iter(
+            map_segment_bootstraps([t for t in boot_tasks if t is not None],
+                                   boot_spec.n_jobs)
+        )
+        seg_boots = [next(results) if t is not None else None for t in boot_tasks]
+    else:
+        seg_boots = [None] * len(boot_tasks)
+
+    # pass 2: splice the bootstrap SE / CI into each segment's fit, apply the
+    # balance rescale, and accumulate (segments stay in stable id order).
+    for (fit, cohorts, group_value), boot in zip(seg_states, seg_boots):
+        ci = None
+        if boot is not None:
             # replace the analytical / null SE with the bootstrap spread and
             # carry the empirical quantile band (Sec.5.2 -- predictive interval)
             fit["proc_se"] = boot["proc_se"]
