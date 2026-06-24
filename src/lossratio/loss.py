@@ -179,21 +179,16 @@ def _segment_factor_links(
     inside the wedge: since the intensity is additive, masking the engine
     here is exactly dropping the masked-out cells from the feed.
     """
-    n_cohorts, n_durations = loss_obs.shape
-    resp: list[float] = []
-    expo: list[float] = []
-    dur: list[int] = []
-    for k in range(n_durations - 1):                  # link k -> k+1, k 0-based
-        ck = premium_obs[:, k]
-        dl = loss_obs[:, k + 1] - loss_obs[:, k]
-        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
-        if link_mask is not None:
-            mask = mask & link_mask[:, k]
-        for i in np.flatnonzero(mask):
-            resp.append(float(dl[i]))
-            expo.append(float(ck[i]))
-            dur.append(k + 1)                         # from-duration (1-based)
-    return resp, expo, dur
+    n_links = loss_obs.shape[1] - 1
+    ck = premium_obs[:, :n_links]                     # (N, n_links) from-premium
+    dl = loss_obs[:, 1:] - loss_obs[:, :n_links]      # (N, n_links) increments
+    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+    if link_mask is not None:
+        mask = mask & link_mask[:, :n_links]
+    # k-major, i-minor order (matches the nested k-outer / cohort-inner loops):
+    # nonzero on the transpose walks rows (link k) outer, columns (cohort) inner.
+    kk, ii = np.nonzero(mask.T)
+    return dl[ii, kk].tolist(), ck[ii, kk].tolist(), (kk + 1).tolist()
 
 
 def _segment_premium_proj(
@@ -605,14 +600,14 @@ def _credible_levels(
     n_links = n_durations - 1
 
     resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, link_mask)
-    coh: list[int] = []
-    for k in range(n_links):
-        ck = premium_obs[:, k]
-        dl = loss_obs[:, k + 1] - loss_obs[:, k]
-        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
-        if link_mask is not None:
-            mask = mask & link_mask[:, k]
-        coh.extend(int(i) for i in np.flatnonzero(mask))
+    ck = premium_obs[:, :n_links]
+    dl = loss_obs[:, 1:] - loss_obs[:, :n_links]
+    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+    if link_mask is not None:
+        mask = mask & link_mask[:, :n_links]
+    # cohort row per feed cell, in the same k-major / cohort-minor order as
+    # _segment_factor_links (the columns of the transposed-mask nonzero).
+    coh = np.nonzero(mask.T)[1].tolist()
     if g_k.ndim == 1:
         m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
     else:

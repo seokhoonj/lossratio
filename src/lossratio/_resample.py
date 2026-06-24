@@ -259,27 +259,19 @@ def _valid_cells(
     from-premium ``p`` -- exactly the cells :func:`_segment_factor_links` feeds
     the engine, kept index-aligned so residuals can be placed back.
     """
-    n_cohorts, n_durations = loss_obs.shape
-    ii: list[int] = []
-    kk: list[int] = []
-    yy: list[float] = []
-    pp: list[float] = []
-    for k in range(n_durations - 1):
-        ck = premium_obs[:, k]
-        dl = loss_obs[:, k + 1] - loss_obs[:, k]
-        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
-        if link_mask is not None:
-            mask = mask & link_mask[:, k]
-        for i in np.flatnonzero(mask):
-            ii.append(int(i))
-            kk.append(k)
-            yy.append(float(dl[i]))
-            pp.append(float(ck[i]))
+    n_links = loss_obs.shape[1] - 1
+    ck = premium_obs[:, :n_links]
+    dl = loss_obs[:, 1:] - loss_obs[:, :n_links]
+    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+    if link_mask is not None:
+        mask = mask & link_mask[:, :n_links]
+    # k-major, cohort-minor (matches the original k-outer / cohort-inner loop).
+    kk, ii = np.nonzero(mask.T)
     return (
-        np.array(ii, dtype=np.int64),
-        np.array(kk, dtype=np.int64),
-        np.array(yy, dtype=np.float64),
-        np.array(pp, dtype=np.float64),
+        ii.astype(np.int64),
+        kk.astype(np.int64),
+        dl[ii, kk].astype(np.float64),
+        ck[ii, kk].astype(np.float64),
     )
 
 
