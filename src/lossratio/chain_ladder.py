@@ -44,7 +44,7 @@ class ChainLadder(_LossEstimatorBase):
         Calendar-diagonal fit window: ``None`` (all data) or a positive integer
         ``N`` -- only the most-recent ``N`` diagonals feed factor estimation;
         the projection stays seeded from the full triangle.
-    conf_level
+    confidence_level
         Two-sided confidence level for the analytical CI columns.
     """
 
@@ -56,7 +56,7 @@ class ChainLadder(_LossEstimatorBase):
             sigma_method=self.sigma_method,
             regime=self.regime,
             recent=self.recent,
-            conf_level=self.conf_level,
+            confidence_level=self.confidence_level,
             borrow=self.borrow,
             uncertainty=self.uncertainty,
         )

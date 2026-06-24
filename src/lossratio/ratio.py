@@ -75,7 +75,7 @@ class Ratio:
         (default) estimates it per group from the data (the correlation of the
         loss and premium relative residuals); or a float in ``[-1, 1]``
         (``0.0`` = independent). Ignored when ``se_method="fixed"``.
-    conf_level
+    confidence_level
         Two-sided confidence level for the ratio CI columns.
     """
 
@@ -83,7 +83,7 @@ class Ratio:
     premium: "_PremiumEstimatorBase" = field(default_factory=lambda: _default_premium())
     se_method: str = "fixed"
     rho: "float | Literal['auto']" = "auto"
-    conf_level: float = 0.95
+    confidence_level: float = 0.95
 
     def __post_init__(self) -> None:
         if not isinstance(self.loss, _LossEstimatorBase):
@@ -109,8 +109,8 @@ class Ratio:
             raise ValueError(
                 f"rho must be a float in [-1, 1] or 'auto', got {self.rho!r}"
             )
-        if not (0.0 < self.conf_level < 1.0):
-            raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
+        if not (0.0 < self.confidence_level < 1.0):
+            raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
 
     def fit(self, triangle: "Triangle") -> "RatioFit":
         """Fit both sides on ``triangle`` and compose the loss ratio."""
@@ -125,7 +125,7 @@ class Ratio:
         right = premium_fit._df.select([*keys, "premium_proj", "premium_total_se"])
         joined = left.join(right, on=keys, how="left")
 
-        z = float(norm.ppf((1 + self.conf_level) / 2))
+        z = float(norm.ppf((1 + self.confidence_level) / 2))
         # deterministic denominator unless `delta`; a zero/null premium yields a
         # null ratio rather than an inf.
         safe_pp = (
@@ -190,7 +190,7 @@ class Ratio:
             premium_model=premium_fit.model,
             se_method=self.se_method,
             rho=self.rho,
-            conf_level=self.conf_level,
+            confidence_level=self.confidence_level,
             output_type=triangle._output_type,
             loss_fit=loss_fit,
             premium_fit=premium_fit,
@@ -298,7 +298,7 @@ class RatioFit:
         premium_model: str,
         se_method: str,
         rho: float,
-        conf_level: float,
+        confidence_level: float,
         output_type: str,
         loss_fit: LossFit,
         premium_fit: PremiumFit,
@@ -312,7 +312,7 @@ class RatioFit:
         self.premium_model = premium_model
         self.se_method = se_method
         self.rho = rho
-        self.conf_level = conf_level
+        self.confidence_level = confidence_level
         self.loss_fit = loss_fit
         self.premium_fit = premium_fit
 

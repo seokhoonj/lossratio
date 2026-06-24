@@ -85,7 +85,7 @@ class _PremiumEstimatorBase:
     regime: "RegimeArg" = None
     borrow: "bool | str" = False
     sigma_method: str = "locf"
-    conf_level: float = 0.95
+    confidence_level: float = 0.95
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
@@ -103,8 +103,8 @@ class _PremiumEstimatorBase:
                 )
         if isinstance(self.regime, str) and self.regime != "auto":
             raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
-        if not (0.0 < self.conf_level < 1.0):
-            raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
+        if not (0.0 < self.confidence_level < 1.0):
+            raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
 
 
 def _segment_premium_df(
@@ -116,11 +116,11 @@ def _segment_premium_df(
     cohorts: list,
     groups: "str | list[str] | None",
     group_value: Any | None,
-    conf_level: float,
+    confidence_level: float,
     borrowed: np.ndarray | None = None,
 ) -> pl.DataFrame:
     """Assemble one segment's premium matrices into the long premium frame."""
-    z = float(norm.ppf((1 + conf_level) / 2))
+    z = float(norm.ppf((1 + confidence_level) / 2))
     n_cohorts, n_durations = mk_proj.shape
 
     incr_premium_proj = _nan_skip_diff(mk_proj)
@@ -362,7 +362,7 @@ def _fit_premium(
     sigma_method: str = "locf",
     regime: "Any" = None,
     recent: int | None = None,
-    conf_level: float = 0.95,
+    confidence_level: float = 0.95,
     borrow: "bool | str" = False,
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
@@ -490,7 +490,7 @@ def _fit_premium(
         long_parts.append(
             _segment_premium_df(
                 premium_obs, mk_proj, proc_se, param_se, total_se,
-                cohorts, groups, group_value, conf_level, borrowed,
+                cohorts, groups, group_value, confidence_level, borrowed,
             )
         )
 
@@ -508,7 +508,7 @@ def _fit_premium(
         model=model_name,
         sigma_method=sigma_method,
         regime=regime,
-        conf_level=conf_level,
+        confidence_level=confidence_level,
         output_type=triangle._output_type,
         status=status,
         status_reasons=reasons,
@@ -545,7 +545,7 @@ class PremiumFit:
         model: str,
         sigma_method: str,
         regime: Any,
-        conf_level: float,
+        confidence_level: float,
         output_type: str,
         status: str,
         status_reasons: list[str],
@@ -560,7 +560,7 @@ class PremiumFit:
         self.model = model
         self.sigma_method = sigma_method
         self.regime = regime
-        self.conf_level = conf_level
+        self.confidence_level = confidence_level
         self.status = status
         self.status_reasons = status_reasons
         self.cell_counts = cell_counts

@@ -319,7 +319,7 @@ def bootstrap_segment_additive(
     sigma_method: str,
     psi: "float | str",
     spec: ResidualBootstrap,
-    conf_level: float,
+    confidence_level: float,
     rng: np.random.Generator,
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
@@ -507,7 +507,7 @@ def bootstrap_segment_additive(
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
+    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 def bootstrap_segment_covariate(
@@ -520,7 +520,7 @@ def bootstrap_segment_covariate(
     psi: "float | str",
     lam: float,
     spec: ResidualBootstrap,
-    conf_level: float,
+    confidence_level: float,
     rng: np.random.Generator,
     n_basis: "int | None" = None,
     lam_smooth: "float | str" = "auto",
@@ -677,7 +677,7 @@ def bootstrap_segment_covariate(
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
+    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 # ---------------------------------------------------------------------------
@@ -766,7 +766,7 @@ def bootstrap_segment_multiplicative(
     *,
     sigma_method: str,
     spec: ResidualBootstrap,
-    conf_level: float,
+    confidence_level: float,
     rng: np.random.Generator,
     recent: int | None = None,
     donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
@@ -913,7 +913,7 @@ def bootstrap_segment_multiplicative(
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, conf_level)
+    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 def _phi_at_dur(phi_cell: np.ndarray, jj: np.ndarray, dur0: int) -> float:
@@ -981,7 +981,7 @@ def _summarize(
     pred_draws: np.ndarray,
     point_proj: np.ndarray,
     obs_mask: np.ndarray,
-    conf_level: float,
+    confidence_level: float,
 ) -> dict[str, np.ndarray]:
     """Collapse the replicate cube into SE / CI matrices (projected cells only).
 
@@ -1006,7 +1006,7 @@ def _summarize(
         param_se = np.nanstd(param_draws, axis=0, ddof=1)
         total_se = np.nanstd(pred_draws, axis=0, ddof=1)
         mean_pred = np.nanmean(pred_draws, axis=0)
-    lo_q, hi_q = (1 - conf_level) / 2, (1 + conf_level) / 2
+    lo_q, hi_q = (1 - confidence_level) / 2, (1 + confidence_level) / 2
 
     def _band(q: float) -> np.ndarray:
         out = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)

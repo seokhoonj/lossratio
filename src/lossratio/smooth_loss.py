@@ -55,7 +55,7 @@ class SmoothLoss(_LossEstimatorBase):
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).
     regime
         Resolved cohort cut: ``None``, a ``date``, or a ``dict[segment -> date]``.
-    conf_level
+    confidence_level
         Two-sided confidence level for the bootstrap band (used when an
         ``uncertainty=ResidualBootstrap(...)`` is attached; SE / CI are null
         otherwise).
@@ -134,7 +134,7 @@ class SmoothLoss(_LossEstimatorBase):
             sigma_method=self.sigma_method,
             regime=self.regime,
             recent=self.recent,
-            conf_level=self.conf_level,
+            confidence_level=self.confidence_level,
             borrow=self.borrow,
             psi=self.psi,
             n_basis=self.n_basis,

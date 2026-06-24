@@ -98,7 +98,7 @@ class _LossEstimatorBase:
     regime: "RegimeArg" = None
     borrow: "bool | str" = False
     sigma_method: str = "locf"
-    conf_level: float = 0.95
+    confidence_level: float = 0.95
     uncertainty: "Any" = None
 
     def __post_init__(self) -> None:
@@ -117,8 +117,8 @@ class _LossEstimatorBase:
                 )
         if isinstance(self.regime, str) and self.regime != "auto":
             raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
-        if not (0.0 < self.conf_level < 1.0):
-            raise ValueError(f"conf_level must be in (0, 1), got {self.conf_level!r}")
+        if not (0.0 < self.confidence_level < 1.0):
+            raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
         if self.uncertainty is not None:
             from ._resample import ResidualBootstrap
             if not isinstance(self.uncertainty, ResidualBootstrap):
@@ -1228,7 +1228,7 @@ def _segment_long_df(
     cohorts: list,
     groups: "str | list[str] | None",
     group_value: Any | None,
-    conf_level: float,
+    confidence_level: float,
     ci: "tuple[np.ndarray, np.ndarray] | None" = None,
 ) -> pl.DataFrame:
     """Assemble one segment's fit matrices into the long loss frame.
@@ -1237,7 +1237,7 @@ def _segment_long_df(
     ``(ci_lo, ci_hi)`` pair (the ResidualBootstrap empirical quantiles); when
     ``None`` the band is the closed-form ``loss_proj +/- z * total_se``.
     """
-    z = float(norm.ppf((1 + conf_level) / 2))
+    z = float(norm.ppf((1 + confidence_level) / 2))
     loss_proj = fit["loss_proj"]
     premium_proj = fit["premium_proj"]
     total_se = fit["total_se"]
@@ -1617,7 +1617,7 @@ def _fit_loss(
     sigma_method: str,
     regime: "Any" = None,
     recent: int | None = None,
-    conf_level: float = 0.95,
+    confidence_level: float = 0.95,
     borrow: "bool | str" = False,
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
@@ -1856,7 +1856,7 @@ def _fit_loss(
                 boot = bootstrap_segment_multiplicative(
                     fit["loss_obs"], fit["premium_obs"],
                     sigma_method=sigma_method, spec=boot_spec,
-                    conf_level=conf_level, rng=rng, recent=recent, donor=donor,
+                    confidence_level=confidence_level, rng=rng, recent=recent, donor=donor,
                 )
             elif cov_data is not None:
                 from ._resample import bootstrap_segment_covariate
@@ -1865,7 +1865,7 @@ def _fit_loss(
                 boot = bootstrap_segment_covariate(
                     fit["loss_obs"], fit["premium_obs"], cov_data,
                     list(covariates), sigma_method=sigma_method, psi=boot_psi,
-                    lam=lam_cov, spec=boot_spec, conf_level=conf_level, rng=rng,
+                    lam=lam_cov, spec=boot_spec, confidence_level=confidence_level, rng=rng,
                     n_basis=(n_basis if mechanism == "smooth" else None),
                     lam_smooth=(lam if mechanism == "smooth" else "auto"),
                 )
@@ -1874,7 +1874,7 @@ def _fit_loss(
                 boot = bootstrap_segment_additive(
                     fit["loss_obs"], fit["premium_obs"],
                     mechanism=mechanism, sigma_method=sigma_method, psi=psi,
-                    spec=boot_spec, conf_level=conf_level, rng=rng,
+                    spec=boot_spec, confidence_level=confidence_level, rng=rng,
                     n_basis=n_basis, lam=lam, recent=recent, donor=donor,
                 )
             # replace the analytical / null SE with the bootstrap spread and
@@ -1916,7 +1916,7 @@ def _fit_loss(
         n_borrowed += int(fit["borrowed"].sum())
 
         long_parts.append(
-            _segment_long_df(fit, cohorts, groups, group_value, conf_level, ci=ci)
+            _segment_long_df(fit, cohorts, groups, group_value, confidence_level, ci=ci)
         )
         if mechanism in ("credible", "smooth"):
             cred_parts.append(
@@ -1943,7 +1943,7 @@ def _fit_loss(
         model=model,
         sigma_method=sigma_method,
         regime=regime,
-        conf_level=conf_level,
+        confidence_level=confidence_level,
         grain=triangle.grain,
         uncertainty=boot_spec,
         credibility=credibility,
@@ -1985,7 +1985,7 @@ class LossFit:
         model: str,
         sigma_method: str,
         regime: Any,
-        conf_level: float,
+        confidence_level: float,
         grain: str,
         output_type: str,
         status: str,
@@ -2009,7 +2009,7 @@ class LossFit:
         self.model = model
         self.sigma_method = sigma_method
         self.regime = regime
-        self.conf_level = conf_level
+        self.confidence_level = confidence_level
         self.grain = grain
         self.uncertainty = uncertainty
         self.status = status

@@ -40,7 +40,7 @@ class CrediblePremium(_PremiumEstimatorBase):
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).
     regime
         Resolved cohort cut: ``None``, a ``date``, or a ``dict[segment -> date]``.
-    conf_level
+    confidence_level
         Two-sided confidence level (unused in v1 -- SE/CI are null point-only).
     """
 
@@ -66,7 +66,7 @@ class CrediblePremium(_PremiumEstimatorBase):
             sigma_method=self.sigma_method,
             regime=self.regime,
             recent=self.recent,
-            conf_level=self.conf_level,
+            confidence_level=self.confidence_level,
             borrow=self.borrow,
             psi=self.psi,
         )
