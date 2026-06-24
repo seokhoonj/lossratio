@@ -90,7 +90,10 @@ def test_weighted_multiplicative_w1_is_point():
     assert np.allclose(f[0], f_pt, rtol=1e-12, atol=0.0, equal_nan=True)
 
 
-def test_weighted_rejects_borrow(tri):
-    # the borrow donor is not wired for the weighted path yet
-    with pytest.raises(NotImplementedError):
-        lr.CredibleLoss(borrow="pooled", uncertainty=WeightedBootstrap(n_replicates=20, seed=1)).fit(tri)
+def test_weighted_borrow_runs(tri):
+    # the borrow donor is wired (own body refit + perturbed donor tail, batched)
+    d = lr.CredibleLoss(regime="auto", borrow="pooled",
+                        uncertainty=WeightedBootstrap(n_replicates=60, seed=7)).fit(tri).to_polars()
+    own = d.filter(pl.col("source").is_in(["own", "borrowed"]))
+    assert own["loss_total_se"].is_finite().all()
+    assert (own["loss_total_se"] > 0).all()

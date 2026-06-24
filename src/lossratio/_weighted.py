@@ -16,7 +16,8 @@ Only the PARAMETER spread changes scheme; the predictive process draw, the
 calendar-drift band, and the summary are the SAME as the residual bootstrap
 (reused, batched), so the methodological difference is isolated to the refit.
 
-Scope (v1): the additive ``pooled`` / ``credible`` mechanisms, no borrow donor.
+Scope: the additive ``pooled`` / ``credible`` mechanisms, the ``ChainLadder``
+benchmark (per-cohort weighted link ratio), and the ``borrow`` donor tail.
 This is an UNVALIDATED-in-reserving method (the FRW literature is general
 statistics, not loss reserving) -- adopt only after a coverage backtest beats
 or matches the residual bootstrap on real data.
@@ -54,7 +55,15 @@ class WeightedBootstrap:
     NOTE: not yet validated for reserving -- the FRW weight scheme gives a
     SYSTEMATICALLY WIDER parameter spread than the residual bootstrap on small
     triangles; whether that is better-calibrated is a per-book coverage
-    question. Default uncertainty stays the residual bootstrap.
+    question. Default uncertainty stays the residual bootstrap. On a BORROWED
+    tail (regime-thinned segment + ``borrow``) the own-body weight spread
+    amplifies through the multiplicative donor recursion, so the borrowed-cell
+    SE runs materially wider than the residual bootstrap (own cells track it);
+    treat the borrow path as the most experimental.
+
+    Supports the additive ``pooled`` / ``credible`` mechanisms, the
+    ``ChainLadder`` benchmark, and the ``borrow`` donor (``smooth`` / covariate
+    fits fall back to ResidualBootstrap).
 
     Parameters
     ----------
@@ -250,11 +259,6 @@ def bootstrap_segment_weighted_additive(
     donor=None,
 ) -> dict[str, np.ndarray]:
     """FRW bootstrap SE / CI for one additive segment (pooled / credible)."""
-    if donor is not None:
-        raise NotImplementedError(
-            "WeightedBootstrap does not support the borrow donor yet "
-            "(use ResidualBootstrap)."
-        )
     if mechanism not in ("pooled", "credible"):
         raise NotImplementedError(
             f"WeightedBootstrap supports 'pooled'/'credible', got {mechanism!r} "
@@ -286,7 +290,13 @@ def bootstrap_segment_weighted_additive(
                                 link_mask=loss_mask)[0]
     else:
         u_pt = np.ones(n_cohorts)
-    point_proj = _project_credible(loss_obs, premium_proj, g_pt, u_pt)
+    if donor is None:
+        point_proj = _project_credible(loss_obs, premium_proj, g_pt, u_pt)
+    else:
+        from ._resample import _project_borrow_cum
+        point_proj = _project_borrow_cum(
+            loss_obs, premium_proj, "additive", g_pt, donor, own_u=u_pt
+        )
     drift_se = _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method,
                                loss_mask) if spec.drift else 0.0
     oi, ok_ = np.where(obs_mask)
@@ -298,10 +308,17 @@ def bootstrap_segment_weighted_additive(
     g, u, phi = _weighted_refit_additive(
         resp, expo, dur0, coh0, W, mechanism, psi, n_cohorts, n_links
     )
-    param_draws = _project_additive_batched(loss_obs, premium_proj, g, u)
-    pred_draws = _process_additive_batched(
-        loss_obs, param_draws, phi, drift_se, frontier, rng, spec.process
-    )
+    if donor is None:
+        param_draws = _project_additive_batched(loss_obs, premium_proj, g, u)
+        pred_draws = _process_additive_batched(
+            loss_obs, param_draws, phi, drift_se, frontier, rng, spec.process
+        )
+    else:
+        param_draws, pred_draws = _borrow_draws(
+            loss_obs, premium_proj=premium_proj, body="additive", own=g, own_u=u,
+            f_pt=g_pt, donor=donor, phi=phi, drift_se=drift_se, frontier=frontier,
+            rng=rng, process=spec.process,
+        )
     return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
@@ -433,18 +450,20 @@ def bootstrap_segment_weighted_multiplicative(
     donor=None,
 ) -> dict[str, np.ndarray]:
     """FRW bootstrap SE / CI for the ChainLadder benchmark (one segment)."""
-    if donor is not None:
-        raise NotImplementedError(
-            "WeightedBootstrap does not support the borrow donor yet "
-            "(use ResidualBootstrap)."
-        )
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
     loss_mask = recent_link_mask(loss_obs, recent)
     obs_mask = ~np.isnan(loss_obs)
 
     f_pt = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
-    point_proj = _project_multiplicative_cum(loss_obs, f_pt)
+    if donor is None:
+        point_proj = _project_multiplicative_cum(loss_obs, f_pt)
+    else:
+        from ._resample import _project_borrow_cum
+        premium_proj_b = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
+        point_proj = _project_borrow_cum(
+            loss_obs, premium_proj_b, "multiplicative", f_pt, donor
+        )
     m_mat = _ev_fitted_increments(loss_obs, f_pt)
     ii, jj, y = _multiplicative_increments(loss_obs)
     if ii.size == 0:
@@ -475,8 +494,108 @@ def bootstrap_segment_weighted_multiplicative(
     B = spec.n_replicates
     W = rng.gamma(1.0, 1.0, size=(B, n_cohorts))         # per-cohort weights
     f = _weighted_refit_multiplicative(loss_obs, W, obs_mask, loss_mask, n_links)
-    param_draws = _project_multiplicative_batched(loss_obs, f)
-    pred_draws = _process_multiplicative_batched(
-        loss_obs, param_draws, phi_link, drift_se, frontier, rng, spec.process
-    )
+    if donor is None:
+        param_draws = _project_multiplicative_batched(loss_obs, f)
+        pred_draws = _process_multiplicative_batched(
+            loss_obs, param_draws, phi_link, drift_se, frontier, rng, spec.process
+        )
+    else:
+        param_draws, pred_draws = _borrow_draws(
+            loss_obs, premium_proj=None, body="multiplicative", own=f, own_u=None,
+            f_pt=f_pt, donor=donor, phi=np.tile(phi_link, (B, 1)),
+            drift_se=drift_se, frontier=frontier, rng=rng, process=spec.process,
+        )
     return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
+
+
+# ---------------------------------------------------------------------------
+# Borrow donor (regime-thinned segments) -- batched
+# ---------------------------------------------------------------------------
+#
+# Own body up to the own-data boundary (refit g_k / f_k per replicate), then the
+# level-invariant donor link-ratio tail (held at its point estimate + a
+# parametric per-replicate perturbation f_b = f + N(0, sqrt(Var f))). The tail
+# process rides the donor's per-link sigma2 (normal), the own body the refit ODP
+# dispersion (gamma) -- the same split as the residual bootstrap, batched.
+
+
+def _perturb_donor_batched(donor, rng, B):
+    f, _sig, var = donor
+    ok = np.isfinite(f) & np.isfinite(var) & (var > 0.0)
+    fb = np.broadcast_to(f, (B, f.size)).copy()
+    if ok.any():
+        fb[:, ok] = f[ok] + rng.standard_normal((B, int(ok.sum()))) * np.sqrt(var[ok])
+    fb = np.where(np.isfinite(fb), np.maximum(fb, 1e-9), fb)
+    for k in range(1, fb.shape[1]):                      # LOCF forward (row-wise)
+        bad = np.isnan(fb[:, k]); fb[bad, k] = fb[bad, k - 1]
+    return fb
+
+
+def _own_boundary(f_pt):
+    links = np.flatnonzero(np.isfinite(f_pt))
+    return int(links.max()) if links.size else -1
+
+
+def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
+                  phi, drift_se, frontier, rng, process):
+    """Batched borrow projection (param) + predictive draw (pred)."""
+    from ._resample import _project_borrow_cum
+
+    B = own.shape[0]
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    bnd = _own_boundary(f_pt)
+    fdon = _perturb_donor_batched(donor, rng, B)         # (B, n_links)
+    donor_sig = donor[1]
+
+    obs = ~np.isnan(loss_obs)
+    has = obs.any(1)
+    last = np.where(has, n_durations - 1 - obs[:, ::-1].argmax(1), -1)
+    elig = (last >= 0) & (last < n_links)
+    u_body = np.ones((B, n_cohorts)) if own_u is None else own_u
+
+    param = np.broadcast_to(loss_obs, (B, n_cohorts, n_durations)).copy()
+    for k in range(n_links):
+        active = elig & (last <= k)
+        ck = param[:, :, k]
+        if k <= bnd and body == "additive":
+            gk = own[:, k][:, None]
+            pk = premium_proj[:, k]
+            add = u_body * gk * pk[None, :]
+            pos = active[None, :] & ~np.isnan(pk)[None, :] & (pk > 0)[None, :] \
+                & np.isfinite(gk) & np.isfinite(add)
+            param[:, :, k + 1] = np.where(pos, ck + add, param[:, :, k + 1])
+        else:
+            fk = (own[:, k] if k <= bnd else fdon[:, k])[:, None]
+            pos = active[None, :] & ~np.isnan(ck) & (ck > 0) & np.isfinite(fk)
+            param[:, :, k + 1] = np.where(pos, fk * ck, param[:, :, k + 1])
+
+    if process == "none":
+        return param, param
+
+    eps = rng.normal(0.0, drift_se, size=B) if drift_se > 0.0 else np.zeros(B)
+    rows = np.arange(n_cohorts)
+    pred = np.broadcast_to(loss_obs, (B, n_cohorts, n_durations)).copy()
+    for k in range(n_links):
+        active = has & (last <= k)
+        if not active.any():
+            continue
+        mean_inc = param[:, :, k + 1] - param[:, :, k]
+        phik = phi[:, k][:, None] if k < phi.shape[1] else np.full((B, 1), np.nan)
+        draw = mean_inc.copy()
+        g_ok = (mean_inc > 0) & np.isfinite(mean_inc) & np.isfinite(phik) & (phik > 0)
+        if g_ok.any():
+            shape = np.where(g_ok, mean_inc / np.where(phik > 0, phik, 1.0), 1.0)
+            draw = np.where(g_ok, rng.gamma(np.where(g_ok, shape, 1.0)) * np.broadcast_to(phik, mean_inc.shape), draw)
+            if (eps != 0.0).any():
+                c = np.maximum((rows[None, :] + (k + 1)) - frontier, 0)
+                draw = draw + np.where(g_ok, c * eps[:, None] * np.sqrt(np.where(phik > 0, phik, 0.0) * np.maximum(mean_inc, 0.0)), 0.0)
+        sig = donor_sig[k] if k < donor_sig.size else np.nan
+        use_d = (~np.isfinite(phik) | (phik <= 0))
+        if np.isfinite(sig) and sig > 0 and np.any(use_d):
+            sd = np.sqrt(np.maximum(sig * np.maximum(pred[:, :, k], 0.0), 0.0))
+            noise = rng.standard_normal((B, n_cohorts)) * sd
+            draw = np.where(np.broadcast_to(use_d, mean_inc.shape), mean_inc + noise, draw)
+        amask = active[None, :] & ~np.isnan(pred[:, :, k]) & ~np.isnan(param[:, :, k + 1])
+        pred[:, :, k + 1] = np.where(amask, pred[:, :, k] + draw, pred[:, :, k + 1])
+    return param, pred
