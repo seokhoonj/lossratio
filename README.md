@@ -1,4 +1,4 @@
-# lossratio (Python)
+# lossratio
 
 Loss ratio analytics for long-term health insurance — cohort experience
 analysis, a ladder of loss-side projection models, a denominator (premium)
