@@ -1068,6 +1068,14 @@ def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
             confidence_level=task["confidence_level"], rng=rng,
             recent=task["recent"], donor=task["donor"],
         )
+    if kind == "weighted_multiplicative":
+        from ._weighted import bootstrap_segment_weighted_multiplicative
+        return bootstrap_segment_weighted_multiplicative(
+            task["loss_obs"], task["premium_obs"],
+            sigma_method=task["sigma_method"], spec=task["spec"],
+            confidence_level=task["confidence_level"], rng=rng,
+            recent=task["recent"], donor=task["donor"],
+        )
     if kind == "multiplicative":
         return bootstrap_segment_multiplicative(
             task["loss_obs"], task["premium_obs"],

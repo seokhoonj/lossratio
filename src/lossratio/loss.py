@@ -1843,9 +1843,11 @@ def _fit_loss(
         if boot_spec is not None:
             from ._weighted import WeightedBootstrap
             if isinstance(boot_spec, WeightedBootstrap):
-                # FRW path -- batched weighted refit (additive pooled / credible)
+                # FRW path -- batched weighted refit (additive pooled/credible
+                # via g_k, ChainLadder via the weighted link ratio f_k)
                 task = {
-                    "kind": "weighted_additive",
+                    "kind": ("weighted_multiplicative"
+                             if mechanism == "chain_ladder" else "weighted_additive"),
                     "loss_obs": fit["loss_obs"], "premium_obs": fit["premium_obs"],
                     "mechanism": mechanism, "sigma_method": sigma_method, "psi": psi,
                     "spec": boot_spec, "confidence_level": confidence_level,

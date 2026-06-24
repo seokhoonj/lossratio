@@ -33,6 +33,9 @@ from ._recursion import _fit_multiplicative
 from ._recent import recent_link_mask
 from ._resample import (
     _calendar_drift_se,
+    _ev_fitted_increments,
+    _multiplicative_increments,
+    _project_multiplicative_cum,
     _summarize,
     _valid_cells,
 )
@@ -321,3 +324,159 @@ def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
     resid = np.full(mu.shape, np.nan)
     resid[res_ok] = (y[res_ok] - mu[res_ok]) / scale[res_ok]
     return _calendar_drift_se(resid, ii, kk, res_ok)
+
+
+# ---------------------------------------------------------------------------
+# Multiplicative (ChainLadder benchmark) FRW
+# ---------------------------------------------------------------------------
+#
+# The volume-weighted link ratio is a ratio of cumulatives, and a cumulative is
+# a sum of increments, so weighting the increments makes f_k a ratio of WEIGHTED
+# sums of fixed cell values -- batched, exactly as the additive g_k. The process
+# / drift use the POINT per-development dispersion (England-Verrall ODP), which
+# does not depend on the resampling scheme.
+
+
+def _weighted_refit_multiplicative(
+    loss_obs: np.ndarray, W: np.ndarray, obs: np.ndarray,
+    loss_mask: np.ndarray | None, n_links: int,
+) -> np.ndarray:
+    """Batched weighted volume-weighted link ratio ``f[B, n_links]``.
+
+    The weights are PER-COHORT (``W`` is ``(B, n_cohorts)``), not per-cell: a
+    chain-ladder link ratio is a ratio of cumulatives, and the relevant
+    uncertainty is between-cohort (which development rows feed the factor), so a
+    cohort weight reproduces the residual bootstrap's parameter spread (a cell
+    weight would amplify ~4x through the cumulative sum). ``W = 1`` reproduces
+    the point ``f_k``. Cohort ``i`` feeds link ``k`` when observed at both ``k``
+    and ``k+1`` with from-cumulative > 0; ``loss_mask`` restricts to the recent
+    wedge."""
+    C_from = np.where(np.isnan(loss_obs[:, :n_links]), 0.0, loss_obs[:, :n_links])
+    C_to = np.where(np.isnan(loss_obs[:, 1:]), 0.0, loss_obs[:, 1:])
+    both = obs[:, :n_links] & obs[:, 1:]                  # (nC, n_links)
+    if loss_mask is not None:
+        both = both & loss_mask[:, :n_links]
+    sel = both[None, :, :] & (C_from[None, :, :] > 0.0)   # (B, nC, n_links)
+    num = np.where(sel, W[:, :, None] * C_to[None, :, :], 0.0).sum(axis=1)
+    den = np.where(sel, W[:, :, None] * C_from[None, :, :], 0.0).sum(axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(den > 0.0, num / np.where(den > 0.0, den, 1.0), np.nan)
+
+
+def _project_multiplicative_batched(loss_obs: np.ndarray, f: np.ndarray) -> np.ndarray:
+    """Batched ``C_{k+1} = f_k C_k`` from each cohort's last observed cell."""
+    B = f.shape[0]
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    proj = np.broadcast_to(loss_obs, (B, n_cohorts, n_durations)).copy()
+    obs = ~np.isnan(loss_obs)
+    has = obs.any(1)
+    last = np.where(has, n_durations - 1 - obs[:, ::-1].argmax(1), -1)
+    for k in range(n_links):
+        active = has & (last >= 0) & (last <= k)
+        if not active.any():
+            continue
+        ck = proj[:, :, k]
+        pos = active[None, :] & ~np.isnan(ck) & (ck > 0)
+        fk = f[:, k][:, None]
+        nxt = fk * ck
+        valid = pos & np.isfinite(fk) & np.isfinite(nxt)
+        proj[:, :, k + 1] = np.where(valid, nxt, proj[:, :, k + 1])
+    return proj
+
+
+def _process_multiplicative_batched(
+    loss_obs: np.ndarray, param_draws: np.ndarray, phi_link: np.ndarray,
+    drift_se: float, frontier: int, rng: np.random.Generator, process: str,
+) -> np.ndarray:
+    """Batched ODP gamma process draw + calendar drift (point per-dev phi)."""
+    B = param_draws.shape[0]
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    if process == "none":
+        return param_draws
+    pred = np.broadcast_to(loss_obs, (B, n_cohorts, n_durations)).copy()
+    obs = ~np.isnan(loss_obs)
+    has = obs.any(1)
+    last = np.where(has, n_durations - 1 - obs[:, ::-1].argmax(1), -1)
+    eps = rng.normal(0.0, drift_se, size=B) if drift_se > 0.0 else np.zeros(B)
+    rows = np.arange(n_cohorts)
+    for k in range(n_links):
+        active = has & (last <= k)
+        if not active.any():
+            continue
+        mean_inc = param_draws[:, :, k + 1] - param_draws[:, :, k]
+        phik = phi_link[k]
+        draw = mean_inc.copy()
+        if np.isfinite(phik) and phik > 0:
+            good = (mean_inc > 0) & np.isfinite(mean_inc)
+            if good.any():
+                shape = np.where(good, mean_inc / phik, 1.0)
+                draw = np.where(good, rng.gamma(np.where(good, shape, 1.0)) * phik, draw)
+            if (eps != 0.0).any():
+                c = np.maximum((rows[None, :] + (k + 1)) - frontier, 0)
+                draw = draw + c * eps[:, None] * np.sqrt(phik * np.maximum(mean_inc, 0.0))
+        amask = active[None, :] & ~np.isnan(pred[:, :, k]) & ~np.isnan(param_draws[:, :, k + 1])
+        pred[:, :, k + 1] = np.where(amask, pred[:, :, k] + draw, pred[:, :, k + 1])
+    return pred
+
+
+def bootstrap_segment_weighted_multiplicative(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    *,
+    sigma_method: str,
+    spec: WeightedBootstrap,
+    confidence_level: float,
+    rng: np.random.Generator,
+    recent: int | None = None,
+    donor=None,
+) -> dict[str, np.ndarray]:
+    """FRW bootstrap SE / CI for the ChainLadder benchmark (one segment)."""
+    if donor is not None:
+        raise NotImplementedError(
+            "WeightedBootstrap does not support the borrow donor yet "
+            "(use ResidualBootstrap)."
+        )
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+    loss_mask = recent_link_mask(loss_obs, recent)
+    obs_mask = ~np.isnan(loss_obs)
+
+    f_pt = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
+    point_proj = _project_multiplicative_cum(loss_obs, f_pt)
+    m_mat = _ev_fitted_increments(loss_obs, f_pt)
+    ii, jj, y = _multiplicative_increments(loss_obs)
+    if ii.size == 0:
+        nan = np.full((n_cohorts, n_durations), np.nan)
+        return {"proc_se": nan, "param_se": nan.copy(), "total_se": nan.copy(),
+                "ci_lo": nan.copy(), "ci_hi": nan.copy()}
+    m = m_mat[ii, jj]
+    usable = np.isfinite(m) & (m > 0.0)
+    if recent is not None:
+        cal = ii + jj
+        usable = usable & (cal > int(cal.max()) - recent)
+    phi = _engine_fast.pearson_dispersion(
+        y[usable], m[usable], jj[usable], n_durations, sigma_method
+    )
+    phi_link = phi[1:]                                   # dispersion at to-dev k+1
+
+    # point residuals -> calendar drift SE (scheme-independent)
+    drift_se = 0.0
+    if spec.drift:
+        scale = np.sqrt(np.where(np.isfinite(phi[jj]), phi[jj], np.nan) * m)
+        res_ok = usable & np.isfinite(scale) & (scale > 0.0)
+        resid = np.full(m.shape, np.nan)
+        resid[res_ok] = (y[res_ok] - m[res_ok]) / scale[res_ok]
+        drift_se = _calendar_drift_se(resid, ii, jj, res_ok)
+    oi, ok_ = np.where(obs_mask)
+    frontier = int((oi + ok_).max()) if oi.size else 0
+
+    B = spec.n_replicates
+    W = rng.gamma(1.0, 1.0, size=(B, n_cohorts))         # per-cohort weights
+    f = _weighted_refit_multiplicative(loss_obs, W, obs_mask, loss_mask, n_links)
+    param_draws = _project_multiplicative_batched(loss_obs, f)
+    pred_draws = _process_multiplicative_batched(
+        loss_obs, param_draws, phi_link, drift_se, frontier, rng, spec.process
+    )
+    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)

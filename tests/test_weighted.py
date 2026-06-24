@@ -69,7 +69,28 @@ def test_weighted_validation():
         WeightedBootstrap(n_jobs=0)
 
 
-def test_weighted_rejects_unsupported(tri):
-    # chain_ladder / borrow are not wired for the weighted path yet
+def test_weighted_chain_ladder_fills_se(tri):
+    d = lr.ChainLadder(uncertainty=WeightedBootstrap(n_replicates=120, seed=7)).fit(tri).to_polars()
+    own = d.filter(pl.col("source") == "own")
+    for c in ("loss_param_se", "loss_total_se", "loss_ci_lo", "loss_ci_hi"):
+        assert own[c].is_not_null().all(), c
+    assert (own["loss_total_se"] > 0).all()
+
+
+def test_weighted_multiplicative_w1_is_point():
+    from lossratio._recursion import _fit_multiplicative
+    from lossratio._weighted import _weighted_refit_multiplicative
+    rng = np.random.default_rng(0)
+    nC = nD = 8
+    L = np.full((nC, nD), np.nan)
+    for i in range(nC):
+        L[i, : nD - i] = np.cumsum(np.abs(rng.normal(50, 10, nD - i)))
+    f_pt = _fit_multiplicative(L).f_k
+    f = _weighted_refit_multiplicative(L, np.ones((1, nC)), ~np.isnan(L), None, nD - 1)
+    assert np.allclose(f[0], f_pt, rtol=1e-12, atol=0.0, equal_nan=True)
+
+
+def test_weighted_rejects_borrow(tri):
+    # the borrow donor is not wired for the weighted path yet
     with pytest.raises(NotImplementedError):
-        lr.ChainLadder(uncertainty=WeightedBootstrap(n_replicates=20, seed=1)).fit(tri)
+        lr.CredibleLoss(borrow="pooled", uncertainty=WeightedBootstrap(n_replicates=20, seed=1)).fit(tri)
