@@ -50,13 +50,13 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import _engine
+from . import _engine_fast
 from ._recursion import _fit_multiplicative
 from ._recent import recent_link_mask
 from .loss import (
     _credible_levels,
     _project_borrow,
     _project_credible,
-    _segment_factor_links,
     _smooth_backfit,
 )
 
@@ -250,9 +250,8 @@ def _estimate(
         )
         return bf["g_k"], bf["u"]
     n_links = loss_obs.shape[1] - 1
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, link_mask)
-    g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
-    g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
+    resp, expo, dur0, _coh = _engine_fast.link_feed(loss_obs, premium_obs, link_mask)
+    g_k = _engine_fast.saturated_intensity(resp, expo, dur0, n_links)
     if mechanism == "credible":
         u_vec = _credible_levels(
             loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
@@ -954,16 +953,9 @@ def _refit_phi(
     ok = np.isfinite(mu) & (mu > 0.0)
     if not ok.any():
         return np.full(n_links, np.nan, dtype=np.float64)
-    dur1 = (kk[ok] + 1).tolist()
-    phi_map = _engine.pearson_dispersion(
-        response=y[ok].tolist(), fitted=mu[ok].tolist(),
-        duration=dur1, sigma_method=sigma_method,
-    )
-    return np.array(
-        [phi_map.get(k + 1) if phi_map.get(k + 1) is not None else np.nan
-         for k in range(n_links)],
-        dtype=np.float64,
-    )
+    # kk is k-major (from _valid_cells), so kk[ok] stays non-decreasing -- the
+    # contiguous-run precondition the vectorized pearson needs.
+    return _engine_fast.pearson_dispersion(y[ok], mu[ok], kk[ok], n_links, sigma_method)
 
 
 def _process_draw(

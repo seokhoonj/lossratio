@@ -31,6 +31,7 @@ import polars as pl
 from scipy.stats import norm
 
 from . import _engine
+from . import _engine_fast
 from ._io import (
     _nan_skip_diff,
     _nan_to_null,
@@ -599,62 +600,47 @@ def _credible_levels(
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, link_mask)
-    ck = premium_obs[:, :n_links]
-    dl = loss_obs[:, 1:] - loss_obs[:, :n_links]
-    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
-    if link_mask is not None:
-        mask = mask & link_mask[:, :n_links]
-    # cohort row per feed cell, in the same k-major / cohort-minor order as
-    # _segment_factor_links (the columns of the transposed-mask nonzero).
-    coh = np.nonzero(mask.T)[1].tolist()
+    # numpy feed (k-major / cohort-minor); the vectorized engine matches the
+    # dict-loop primitives to the rounding floor, so this is the single source
+    # of truth for the point fit AND every bootstrap replicate (charter Sec.5.2).
+    resp, expo, dur0, coh0 = _engine_fast.link_feed(loss_obs, premium_obs, link_mask)
     if g_k.ndim == 1:
-        m0 = [g_k[k - 1] * p for p, k in zip(expo, dur)]
+        m0 = g_k[dur0] * expo
     else:
-        # covariate path: g is the per-cohort effective intensity g_eff[i, k-1],
-        # so m0 = g_eff[cohort, from-duration] * P -- the premium-marginalized
-        # covariate-adjusted prior mean (coh aligns cell-for-cell with expo/dur).
-        m0 = [g_k[ci, k - 1] * p for ci, p, k in zip(coh, expo, dur)]
+        # covariate path: g is the per-cohort effective intensity g_eff[i, k],
+        # so m0 = g_eff[cohort, from-duration] * P (cell-aligned with expo/dur0).
+        m0 = g_k[coh0, dur0] * expo
 
     u_vec = np.ones(n_cohorts, dtype=np.float64)
     z_vec = np.zeros(n_cohorts, dtype=np.float64)
     psi_hat = 0.0
-    finite = [j for j, v in enumerate(m0) if np.isfinite(v) and v > 0]
-    if finite:
-        resp_f = [resp[j] for j in finite]
-        m0_f = [m0[j] for j in finite]
-        coh_f = [coh[j] for j in finite]
-        dur_f = [dur[j] for j in finite]
-        phi = _engine.pearson_dispersion(
-            response=resp_f, fitted=m0_f, duration=dur_f, sigma_method=sigma_method
-        )
+    fin = np.isfinite(m0) & (m0 > 0)
+    if fin.any():
+        resp_f, m0_f, dur_f, coh_f = resp[fin], m0[fin], dur0[fin], coh0[fin]
+        phi = _engine_fast.pearson_dispersion(resp_f, m0_f, dur_f, n_links, sigma_method)
         # Degenerate cases (charter Sec.4.4) collapse to pooled (u = 1) instead
-        # of crashing the conjugate: phi is None for a present duration when NO
+        # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
         # to carry), and the Buhlmann-Straub psi moment is undefined (0/0) with
         # a single cohort. Both leave u = 1 = exactly PooledLoss.
-        phi_ok = all(phi.get(d) is not None for d in set(dur_f))
-        n_coh = len(set(coh_f))
+        phi_ok = not np.isnan(phi[np.unique(dur_f)]).any()
+        n_coh = int(np.unique(coh_f).size)
         if phi_ok:
             if psi == "auto":
                 psi_hat = (
-                    _engine.buhlmann_straub_psi(
-                        response=resp_f, fitted=m0_f, phi=phi,
-                        cohort=coh_f, duration=dur_f,
+                    _engine_fast.buhlmann_straub_psi(
+                        resp_f, m0_f, phi, coh_f, dur_f, n_cohorts
                     )
                     if n_coh >= 2
                     else 0.0
                 )
             else:
                 psi_hat = float(psi)
-            levels = _engine.conjugate_levels(
-                response=resp_f, fitted=m0_f, phi=phi, psi=psi_hat,
-                cohort=coh_f, duration=dur_f,
+            u_arr, z_arr, present = _engine_fast.conjugate_levels(
+                resp_f, m0_f, phi, psi_hat, coh_f, dur_f, n_cohorts
             )
-            for i, u in levels.u.items():
-                u_vec[i] = max(u, 0.0)     # recovery-dominated floor (Sec.4.3)
-            for i, z in levels.Z.items():
-                z_vec[i] = z
+            u_vec[present] = np.maximum(u_arr[present], 0.0)   # recovery floor (Sec.4.3)
+            z_vec[present] = z_arr[present]
     return u_vec, z_vec, psi_hat
 
 
