@@ -15,7 +15,7 @@ API 레퍼런스
 
 .. autofunction:: lossratio.derive_grain_columns
 
-.. autofunction:: lossratio.inception_stability
+.. autofunction:: lossratio.inception_credibility
 
 .. autoclass:: lossratio.Triangle
    :members:

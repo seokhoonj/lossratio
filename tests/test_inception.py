@@ -16,7 +16,7 @@ import math
 import polars as pl
 import pytest
 
-from lossratio.inception import inception_stability
+from lossratio.inception import inception_credibility
 
 COUNTS = pl.DataFrame({
     "coh": [1, 1, 1, 2],
@@ -31,7 +31,7 @@ def _row(df, coh):
 
 
 def test_basic_oracle():
-    out = inception_stability(COUNTS, RATES, on="seg", by="coh",
+    out = inception_credibility(COUNTS, RATES, on="seg", by="coh",
                               full_credibility=1082.0)
     r1, r2 = _row(out, 1), _row(out, 2)
 
@@ -51,7 +51,7 @@ def test_basic_oracle():
 
 def test_severity_inflation():
     sev = pl.DataFrame({"coh": [1, 2], "cv_sev": [0.5, 0.0]})
-    out = inception_stability(COUNTS, RATES, on="seg", by="coh", severity=sev,
+    out = inception_credibility(COUNTS, RATES, on="seg", by="coh", severity=sev,
                               full_credibility=1082.0)
     r1 = _row(out, 1)
     assert r1["cv_sev"] == pytest.approx(0.5)
@@ -61,7 +61,7 @@ def test_severity_inflation():
 
 def test_z_caps_at_one():
     big = pl.DataFrame({"coh": [9], "seg": ["a"], "count": [10_000_000]})
-    out = inception_stability(big, RATES, on="seg", by="coh")
+    out = inception_credibility(big, RATES, on="seg", by="coh")
     assert _row(out, 9)["Z"] == pytest.approx(1.0)
     assert _row(out, 9)["status"] == "usable"
 
@@ -74,7 +74,7 @@ def test_multi_key_join_and_grouping():
     rates = pl.DataFrame({
         "sex": [0, 1], "age": [40, 40], "rate": [0.10, 0.05],
     })
-    out = inception_stability(counts, rates, on=["sex", "age"],
+    out = inception_credibility(counts, rates, on=["sex", "age"],
                               by=["coh", "cov"])
     assert out.height == 1
     # lambda = 100*0.10 + 200*0.05 = 20
@@ -83,19 +83,19 @@ def test_multi_key_join_and_grouping():
 
 def test_pandas_mirroring():
     pd = pytest.importorskip("pandas")
-    out = inception_stability(COUNTS.to_pandas(), RATES.to_pandas(),
+    out = inception_credibility(COUNTS.to_pandas(), RATES.to_pandas(),
                               on="seg", by="coh")
     assert isinstance(out, pd.DataFrame)
 
 
 def test_missing_column_raises():
     with pytest.raises(ValueError, match="missing column"):
-        inception_stability(COUNTS.drop("count"), RATES, on="seg", by="coh")
+        inception_credibility(COUNTS.drop("count"), RATES, on="seg", by="coh")
 
 
 def test_bad_thresholds_raise():
     with pytest.raises(ValueError, match="thin"):
-        inception_stability(COUNTS, RATES, on="seg", by="coh",
+        inception_credibility(COUNTS, RATES, on="seg", by="coh",
                             usable=0.2, thin=0.5)
 
 
@@ -104,4 +104,4 @@ def test_duplicate_rate_keys_rejected():
     # join and inflate lam/Z/cv; reject it up front.
     dup_rates = pl.DataFrame({"seg": ["a", "a", "b"], "rate": [0.05, 0.06, 0.02]})
     with pytest.raises(ValueError, match="duplicate"):
-        inception_stability(COUNTS, dup_rates, on="seg", by="coh")
+        inception_credibility(COUNTS, dup_rates, on="seg", by="coh")

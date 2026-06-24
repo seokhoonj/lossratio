@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 FULL_CREDIBILITY_90_5 = (1.645 / 0.05) ** 2
 
 
-def inception_stability(
+def inception_credibility(
     counts: Any,
     rates: Any,
     *,

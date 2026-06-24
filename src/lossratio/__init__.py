@@ -19,7 +19,7 @@ from .credible_loss import CredibleLoss
 from .credible_premium import CrediblePremium
 from .datasets import load_experience, make_experience
 from .experience import validate_experience
-from .inception import inception_stability
+from .inception import inception_credibility
 from .intensity import Intensity
 from .link import Link
 from .loss import LossFit
@@ -65,7 +65,7 @@ __all__ = [
     "TriangleValidation",
     "__version__",
     "derive_grain_columns",
-    "inception_stability",
+    "inception_credibility",
     "load_experience",
     "make_experience",
     "validate_experience",
