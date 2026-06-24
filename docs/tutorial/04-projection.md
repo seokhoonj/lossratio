@@ -505,4 +505,7 @@ lr.PooledLoss().fit(tri).plot()     # 누적 손해 궤적 (LossFit, 기본 metr
   신뢰구간을 입혀 "얼마나 믿을 수 있나"를 정량화한다.
 - {doc}`7장 — 예측 검증 <07-backtest>`: 방법 선택을 데이터로 가리는
   백테스트, rolling-origin 신뢰도 곡선, 방법 간 매칭 비교.
+- {doc}`집계 주기 안정성 <../cookbook/grain-stability>`: 월·분기 예측이 갈리는
+  이유와, 월에서 한 번 적합하고 `LossFit.at_grain()` 으로 거친 주기를 *집계
+  뷰*로 보는 grain-안정 패턴.
 - {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `CredibleLoss`, `SmoothLoss`, `ChainLadder`, `Ratio`

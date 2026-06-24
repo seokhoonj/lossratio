@@ -1944,6 +1944,7 @@ def _fit_loss(
         sigma_method=sigma_method,
         regime=regime,
         conf_level=conf_level,
+        grain=triangle.grain,
         uncertainty=boot_spec,
         credibility=credibility,
         coefficients=coefficients,
@@ -1985,6 +1986,7 @@ class LossFit:
         sigma_method: str,
         regime: Any,
         conf_level: float,
+        grain: str,
         output_type: str,
         status: str,
         status_reasons: list[str],
@@ -2008,6 +2010,7 @@ class LossFit:
         self.sigma_method = sigma_method
         self.regime = regime
         self.conf_level = conf_level
+        self.grain = grain
         self.uncertainty = uncertainty
         self.status = status
         self.status_reasons = status_reasons
@@ -2017,6 +2020,87 @@ class LossFit:
     @property
     def df(self) -> "FrameLike":
         return mirror_output(self._df, self._output_type)
+
+    def at_grain(self, grain: str) -> "FrameLike":
+        """View the projection at a COARSER grain by aggregating this fit.
+
+        The fit is computed once at its own (finer) grain; a coarser view is a
+        deterministic aggregation of the projected per-period increments, NOT a
+        re-fit -- so the coarse numbers are exactly this fit summed up, and do
+        not drift the way an independently re-binned coarse fit would. The
+        regime cut and the borrow provenance are already baked into the
+        increments, so they carry through unchanged.
+
+        Mechanism: each cell's calendar period (``cohort`` advanced by
+        ``duration - 1`` steps) and its cohort are floored to ``grain``, the
+        incremental projected loss / premium are summed per coarse
+        ``(group, cohort, calendar)`` cell, the coarse duration is re-derived,
+        and the cumulative columns + ``ratio_proj`` are rebuilt. A coarse cell
+        is ``"observed"`` only if every finer sub-cell is observed, ``"borrowed"``
+        if any sub-cell is borrowed, else ``"own"``.
+
+        ``grain`` must be the fit's own grain (identity) or coarser
+        (``"M" < "Q" < "H" < "Y"``). Returns the long projection frame
+        ``[groups?, cohort, duration, loss_proj, incr_loss_proj, premium_proj,
+        incr_premium_proj, ratio_proj, source]`` (point columns only -- standard
+        errors are not summable cell-wise and are left to a bootstrap run at the
+        target grain).
+        """
+        from ._period import GRAIN_ORDER, count_periods, floor_to_period
+        if grain not in GRAIN_ORDER:
+            raise ValueError(
+                f"grain must be one of {sorted(GRAIN_ORDER)}, got {grain!r}"
+            )
+        if GRAIN_ORDER[grain] < GRAIN_ORDER[self.grain]:
+            raise ValueError(
+                f"at_grain only views a COARSER grain: this fit is at "
+                f"{self.grain!r}, cannot view the finer {grain!r}."
+            )
+        gcols = normalize_groups(self.groups)
+        out_cols = [*gcols, "cohort", "duration", "loss_proj", "incr_loss_proj",
+                    "premium_proj", "incr_premium_proj", "ratio_proj", "source"]
+        if grain == self.grain:
+            return mirror_output(self._df.select(out_cols), self._output_type)
+
+        from .model_frame import _GRAIN_MONTHS
+        months = _GRAIN_MONTHS[self.grain]
+        # the cell's calendar period at the fit grain, then floor both axes.
+        df = self._df.with_columns(
+            pl.col("cohort").dt.offset_by(
+                ((pl.col("duration") - 1) * months).cast(pl.Utf8) + "mo"
+            ).alias("_cal")
+        ).with_columns(
+            floor_to_period(pl.col("cohort"), grain).alias("_uc"),
+            floor_to_period(pl.col("_cal"), grain).alias("_cc"),
+        )
+        agg = (
+            df.group_by([*gcols, "_uc", "_cc"])
+            .agg(
+                pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
+                pl.col("incr_premium_proj").sum().alias("incr_premium_proj"),
+                (pl.col("source") == "observed").all().alias("_all_obs"),
+                (pl.col("source") == "borrowed").any().alias("_any_borrow"),
+            )
+            .with_columns(
+                count_periods(pl.col("_uc"), pl.col("_cc"), grain).alias("duration")
+            )
+            .rename({"_uc": "cohort"})
+            .drop("_cc")
+            .sort([*gcols, "cohort", "duration"])
+            .with_columns(
+                pl.col("incr_loss_proj").cum_sum().over([*gcols, "cohort"])
+                  .alias("loss_proj"),
+                pl.col("incr_premium_proj").cum_sum().over([*gcols, "cohort"])
+                  .alias("premium_proj"),
+            )
+            .with_columns(
+                (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
+                pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
+                  .when(pl.col("_any_borrow")).then(pl.lit("borrowed"))
+                  .otherwise(pl.lit("own")).alias("source"),
+            )
+        )
+        return mirror_output(agg.select(out_cols), self._output_type)
 
     @property
     def credibility(self) -> "FrameLike | None":
