@@ -207,23 +207,11 @@ Pandas inputs are accepted too; outputs mirror the input type (pandas in ->
 pandas out, polars in -> polars out). Use the ``[pandas]`` install extra (see
 above) to pull in `pandas` and `pyarrow`.
 
-## Sibling R package
-
-- Source: <https://github.com/seokhoonj/lossratio-r>
-- Documentation: <https://seokhoonj.github.io/lossratio-r/>
-- 한국어 문서: <https://seokhoonj.github.io/lossratio-r/ko/>
-
-```r
-remotes::install_github("seokhoonj/lossratio-r")
-library(lossratio)
-```
-
 ## Author
 
 Seokhoon Joo
 ([@seokhoonj](https://github.com/seokhoonj),
-<seokhoonj@gmail.com>) — also maintains the
-[R package](https://github.com/seokhoonj/lossratio-r).
+<seokhoonj@gmail.com>)
 
 ## License
 
