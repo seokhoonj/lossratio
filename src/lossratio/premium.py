@@ -16,9 +16,12 @@ duration cell) with ``premium_proj`` + the analytical SE block + an analytical C
 plus the same machine-readable ``status`` / ``cell_counts`` diagnostics.
 
 The credibility / smooth premium rungs (``CrediblePremium`` / ``SmoothPremium``
--- per-cohort credibility-shrunk or smoothed link ratios) are reserved but not
-built in v1: they are new engine work and earn their place only once premium
-OOS validation shows they beat the pooled link ratio on real data.
+-- per-cohort credibility-shrunk or smoothed link ratios) complete the
+denominator ladder symmetric to the loss side. Like their loss counterparts
+they extend the projection horizon and are bootstrap-covered; on a single book
+premium usually develops smoothly enough that they track the pooled link ratio
+closely, so ``PooledPremium`` stays the default and the richer rungs earn their
+place per book.
 """
 
 from __future__ import annotations

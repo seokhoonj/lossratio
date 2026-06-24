@@ -265,7 +265,8 @@ class _FoldFit:
         Per-cell hold-out comparison
         ``[groups?, cohort, duration, actual, expected, aeg, ae_err,
         incr_actual, incr_expected, incr_aeg, incr_ae_err, cal_idx]``.
-        ``aeg = actual - expected`` (signed gap, target units) and
+        ``aeg = actual - expected`` (Actual-minus-Expected Gap; signed,
+        target units) and
         ``ae_err = actual / expected - 1`` (signed relative error;
         positive = under-projection, negative = over-projection). The
         ``incr_`` columns are the per-period (incremental) counterparts.

@@ -1,6 +1,6 @@
 # lossratio (Python)
 
-Loss ratio analytics for long-term health insurance — cohort development
+Loss ratio analytics for long-term health insurance — cohort experience
 analysis, a ladder of loss-side projection models, a denominator (premium)
 model, loss-ratio composition with an uncertainty band, regime detection, and
 out-of-sample backtest validation on long-format experience data.
@@ -34,14 +34,14 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
   default (`loss`, `premium`, `ratio`); per-period values carry an `incr_`
   prefix (`incr_loss`, `incr_premium`, `incr_ratio`).
 - **Loss-side ladder** — sklearn-style estimators, each returning a `LossFit`:
-  - `PooledLoss` — complete pooling: one shared development shape (the
+  - `PooledLoss` — complete pooling: one shared duration shape (the
     incremental loss intensity per unit premium), premium-anchored additive
     projection. The default, safe baseline.
   - `CredibleLoss` — `PooledLoss` plus a per-cohort credibility level
     (empirical-Bayes / Buhlmann-Straub shrinkage toward the pooled shape).
     Partial pooling; exposes per-cohort `u` / `Z` / `psi` via `.credibility`.
   - `SmoothLoss` — `CredibleLoss` with a smooth (penalized P-spline)
-    development shape in place of the saturated one.
+    duration shape in place of the saturated one.
   - `ChainLadder` — the chain-ladder benchmark: own-loss multiplicative link
     ratios (age-to-age factors), no premium anchor.
 - **Premium side** — `PooledPremium` returns a `PremiumFit`. Premium has no

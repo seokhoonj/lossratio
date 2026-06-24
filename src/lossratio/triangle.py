@@ -41,11 +41,11 @@ _GRAIN_TO_DURATION_COL = {
 
 
 class Triangle:
-    """Cohort x development period aggregated experience data.
+    """Cohort x duration aggregated experience data.
 
     A Triangle is built by aggregating a raw experience DataFrame
     (polars or pandas) over ``groups`` (optional), cohort, and
-    development period.
+    duration (the elapsed-period axis since cohort inception).
 
     Input flexibility:
 
@@ -73,7 +73,7 @@ class Triangle:
     * ``groups`` -- present only if supplied
     * ``n_cohorts`` -- distinct cohorts observed per (group, duration)
     * ``cohort`` -- the underwriting period
-    * ``duration`` -- the development index (1, 2, ...) within each cohort
+    * ``duration`` -- the elapsed-period index (1, 2, ...) within each cohort
     * ``loss``, ``premium`` -- cumulative sums within each (group, cohort)
     * ``incr_loss``, ``incr_premium`` -- per-period sums per cell
     * ``ratio``, ``incr_ratio`` -- cumulative / per-period loss ratio
@@ -799,7 +799,7 @@ class Triangle:
             ``False`` (default) or ``"pooled"``. With a ``regime`` cut,
             relabel the grid to the borrow provenance of a
             ``borrow="pooled"`` loss fit: the dropped (pre-change) observed
-            cohorts become the donor (they lend the development shape) -- split
+            cohorts become the donor (they lend the duration shape) -- split
             into ``"donor_used"`` (the late-duration cells, ``duration >= K``,
             that actually feed the borrowed link ratios) and ``"donor"`` (the
             rest) -- and the kept segment's projection tail splits into
@@ -852,7 +852,7 @@ class Triangle:
             ``holdout`` masks; with ``borrow="pooled"`` the regime view
             instead shows donor / observed / own / borrowed provenance).
         x_axis
-            ``"duration"`` (default; columns are the development index, the
+            ``"duration"`` (default; columns are the duration index, the
             aligned right-triangle layout) or ``"calendar"`` (columns
             are the calendar period of each cell, so cohorts sit on
             their own diagonal -- the staircase layout the raw data sits
@@ -931,11 +931,11 @@ class Triangle:
     ) -> Any:
         """Cohort-trajectory line plot.
 
-        One line per cohort -- x is the development index, y the selected
+        One line per cohort -- x is the duration index, y the selected
         ``metric`` (default cumulative loss ``"ratio"``) -- faceted by
         ``groups``. With ``summary=True`` (ratio metrics only) the
         per-cohort lines fade to grey and Mean / Median / Weighted summary
-        lines are overlaid, masked at development periods where fewer than
+        lines are overlaid, masked at durations where fewer than
         ``summary_min_n`` cohorts contribute (a dotted vline marks the
         first such period).
 
