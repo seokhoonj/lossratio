@@ -122,10 +122,11 @@ class _LossEstimatorBase:
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
         if self.uncertainty is not None:
             from ._resample import ResidualBootstrap
-            if not isinstance(self.uncertainty, ResidualBootstrap):
+            from ._weighted import WeightedBootstrap
+            if not isinstance(self.uncertainty, (ResidualBootstrap, WeightedBootstrap)):
                 raise TypeError(
-                    "uncertainty must be None or a ResidualBootstrap, got "
-                    f"{type(self.uncertainty).__name__}"
+                    "uncertainty must be None, a ResidualBootstrap, or a "
+                    f"WeightedBootstrap, got {type(self.uncertainty).__name__}"
                 )
 
 
@@ -1840,7 +1841,17 @@ def _fit_loss(
         # reproducible stream, so the tasks fan out across processes below with
         # no change to any value (pass 1.5).
         if boot_spec is not None:
-            if mechanism == "chain_ladder":
+            from ._weighted import WeightedBootstrap
+            if isinstance(boot_spec, WeightedBootstrap):
+                # FRW path -- batched weighted refit (additive pooled / credible)
+                task = {
+                    "kind": "weighted_additive",
+                    "loss_obs": fit["loss_obs"], "premium_obs": fit["premium_obs"],
+                    "mechanism": mechanism, "sigma_method": sigma_method, "psi": psi,
+                    "spec": boot_spec, "confidence_level": confidence_level,
+                    "seedseq": seg_seeds[sid], "recent": recent, "donor": donor,
+                }
+            elif mechanism == "chain_ladder":
                 task = {
                     "kind": "multiplicative",
                     "loss_obs": fit["loss_obs"], "premium_obs": fit["premium_obs"],

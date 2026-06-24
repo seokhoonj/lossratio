@@ -1059,6 +1059,15 @@ def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
     """
     rng = np.random.default_rng(task["seedseq"])
     kind = task["kind"]
+    if kind == "weighted_additive":
+        from ._weighted import bootstrap_segment_weighted_additive
+        return bootstrap_segment_weighted_additive(
+            task["loss_obs"], task["premium_obs"],
+            mechanism=task["mechanism"], sigma_method=task["sigma_method"],
+            psi=task["psi"], spec=task["spec"],
+            confidence_level=task["confidence_level"], rng=rng,
+            recent=task["recent"], donor=task["donor"],
+        )
     if kind == "multiplicative":
         return bootstrap_segment_multiplicative(
             task["loss_obs"], task["premium_obs"],

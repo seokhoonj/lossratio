@@ -10,6 +10,7 @@ Sibling R package: https://github.com/seokhoonj/lossratio-r
 
 from ._period import derive_grain_columns
 from ._resample import ResidualBootstrap
+from ._weighted import WeightedBootstrap
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .calendar import Calendar
@@ -63,6 +64,7 @@ __all__ = [
     "Total",
     "Triangle",
     "TriangleValidation",
+    "WeightedBootstrap",
     "__version__",
     "derive_grain_columns",
     "inception_credibility",
