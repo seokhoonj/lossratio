@@ -605,6 +605,7 @@ class Triangle:
         edge_threshold: float = 10.0,
         window_sweep: Sequence[int] | None = None,
         grain_sweep: Sequence[str] | None = None,
+        treatment: str = "latest_only",
     ) -> Regime:
         """Detect structural regime shifts across underwriting cohorts.
 
@@ -674,6 +675,12 @@ class Triangle:
             even when invisible at M. Grains finer than the triangle's own
             grain are skipped. Combines with ``window_sweep``. Default
             ``None``.
+        treatment
+            How a fit consumes the detected regime. ``"latest_only"``
+            (default) keeps only the newest regime; ``"segment_wise"`` keeps
+            every regime, fitting each on its own cohorts and borrowing the
+            deep tail from the older regimes (see :class:`Regime`). Default
+            ``"latest_only"``.
         """
         from .regime import Regime
 
@@ -694,6 +701,7 @@ class Triangle:
             edge_threshold=edge_threshold,
             window_sweep=window_sweep,
             grain_sweep=grain_sweep,
+            treatment=treatment,
         )
 
     def mask(self, holdout: int = 0) -> Triangle:

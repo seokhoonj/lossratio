@@ -40,6 +40,15 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
+_VALID_TREATMENTS = ("latest_only", "segment_wise")
+
+
+def _check_treatment(treatment: str) -> str:
+    if treatment not in _VALID_TREATMENTS:
+        raise ValueError(
+            f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
+        )
+    return treatment
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_intensity")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -1365,7 +1374,16 @@ class Regime:
     dropped : list
         Cohorts excluded because they had fewer than ``window`` observed
         development periods.
+    treatment : str
+        How a fit consumes this regime. ``"latest_only"`` (default) keeps
+        only the newest regime (drops every cohort before the latest change).
+        ``"segment_wise"`` keeps ALL regimes: each regime is fit on its own
+        cohorts (own level + own shape to its own observed depth) and borrows
+        only the unobservable deep tail from the pooled level-invariant link
+        ratio of the older (deeper) regimes.
     """
+
+    treatment: str = "latest_only"
 
     def __init__(self) -> None:
         raise TypeError(
@@ -1393,11 +1411,13 @@ class Regime:
         edge_threshold: float = 10.0,
         window_sweep: Sequence[int] | None = None,
         grain_sweep: Sequence[str] | None = None,
+        treatment: str = "latest_only",
     ) -> "Regime":
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
             )
+        _check_treatment(treatment)
 
         # `premium_intensity` is an alias of `premium_ata` (constant offset of 1
         # absorbed by PCA standardisation -- detection produces identical
@@ -1698,6 +1718,7 @@ class Regime:
         self.change_points = change_points
         self.n_regimes = n_regimes_total
         self.dropped = dropped
+        self.treatment = treatment
         return self
 
     @classmethod
@@ -1706,6 +1727,7 @@ class Regime:
         *,
         changes_df: pl.DataFrame,
         groups: str | list[str] | None,
+        treatment: str = "latest_only",
     ) -> "Regime":
         """Construct a Regime by hand (no auto-detection).
 
@@ -1713,6 +1735,7 @@ class Regime:
         ``changes_df`` carries one row per change point with at least a
         ``change`` (Date) column plus the group column if any.
         """
+        _check_treatment(treatment)
         self = cls.__new__(cls)
         self._changes_df = changes_df
         self._labels_df = pl.DataFrame(
@@ -1731,6 +1754,7 @@ class Regime:
         self.change_points = changes_df["change"].to_list()
         self.n_regimes = 0
         self.dropped = []
+        self.treatment = treatment
         return self
 
     @classmethod
@@ -1739,6 +1763,7 @@ class Regime:
         change: Any,
         *,
         groups: Mapping[str, Sequence[Any]] | None = None,
+        treatment: str = "latest_only",
     ) -> "Regime":
         """Build a :class:`Regime` from explicit, user-supplied change points.
 
@@ -1758,6 +1783,10 @@ class Regime:
             Optional mapping ``{column_name: [values]}`` of group columns
             aligned 1:1 with ``change``. Required when the Triangle is
             grouped and different groups carry different change points.
+        treatment
+            ``"latest_only"`` (default) keeps only the newest regime;
+            ``"segment_wise"`` fits every regime on its own cohorts and borrows
+            the deep tail from the older regimes (see :class:`Regime`).
 
         Returns
         -------
@@ -1810,6 +1839,7 @@ class Regime:
         return cls._manual(
             changes_df=changes_df,
             groups=group_spec,
+            treatment=treatment,
         )
 
     @classmethod
