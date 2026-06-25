@@ -129,6 +129,16 @@ def penalized_irls(
     the floor."""
     n = y.size
     p = B.shape[1]
+    if n == 0:
+        # nothing to fit: the convergence check max|d eta| reduces over an empty
+        # array (undefined -- no identity), so guard it here and return a
+        # degenerate, non-converged fit with NaN coefficients. Callers then
+        # produce NaN intensities (a projection gap / degraded status) instead
+        # of crashing. Reached when every cell of a segment is filtered out
+        # (e.g. a coverage left with no usable links inside a thin train window).
+        return _IRLSResult(
+            np.full(p, np.nan), y.copy(), y.copy(), 0.0, float("nan"), False, 0
+        )
     # seed beta at the crude pooled log-rate so the seed eta is CONSISTENT with
     # beta: B @ (s0 * ones) = s0 (the basis is a partition of unity), so a
     # line-search step toward the Newton point never silently drops the level.

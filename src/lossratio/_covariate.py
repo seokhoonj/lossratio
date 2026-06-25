@@ -315,6 +315,19 @@ def fit_covariate_intensity(
         covariates = {k: np.asarray(v)[keep] for k, v in covariates.items()}
     else:
         covariates = {k: np.asarray(v) for k, v in covariates.items()}
+    if response.size == 0:
+        # no fittable cells (every cell dropped by the exposure>0 / finite
+        # filter, e.g. an empty or too-thin segment): return a degenerate fit
+        # with no durations, so intensity() is NaN everywhere and the projection
+        # falls to a gap -- never build an empty design / call the IRLS solver.
+        levels = {
+            name: sorted(np.unique(c).tolist(), key=str)
+            for name, c in covariates.items()
+        }
+        return CovariateFit(
+            durations=[], s=np.zeros(0, dtype=np.float64), levels=levels,
+            beta={}, converged=False,
+        )
     offset = np.log(exposure)
 
     if n_basis is None:
