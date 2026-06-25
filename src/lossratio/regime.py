@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
-_VALID_TREATMENTS = ("latest_only", "segment_wise")
+_VALID_TREATMENTS = ("latest_only", "segment_wise", "covariate")
 
 
 def _check_treatment(treatment: str) -> str:
@@ -1380,7 +1380,15 @@ class Regime:
         ``"segment_wise"`` keeps ALL regimes: each regime is fit on its own
         cohorts (own level + own shape to its own observed depth) and borrows
         only the unobservable deep tail from the pooled level-invariant link
-        ratio of the older (deeper) regimes.
+        ratio of the older (deeper) regimes. ``"covariate"`` keeps all regimes
+        and enters the regime as a treatment-coded covariate: one SHARED
+        duration shape with a per-regime LEVEL (a single ``g_k`` shape, a
+        ``beta_r`` level per regime), so a thin regime's level is POOLED across
+        its cohorts rather than estimated per cohort. The regime label is
+        derived from the cohort (a regime is a property of the cohort), so no
+        manual column or regrouping is needed -- ``CredibleLoss(regime=reg)``
+        with ``reg.treatment == "covariate"`` is the symmetric counterpart of
+        the segment_wise cascade.
     """
 
     treatment: str = "latest_only"

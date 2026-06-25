@@ -1560,6 +1560,32 @@ def _segment_change_dates(
     return sorted(changes.get_column("change").to_list())
 
 
+def _regime_covariate_codes(
+    frame: pl.DataFrame, regime: "Any", group_cols: list[str],
+) -> pl.DataFrame:
+    """Add a treatment-coded ``"regime"`` covariate column derived from the cohort.
+
+    A regime is a property of the cohort (a cohort sits wholly in one regime),
+    so the label is the count of the segment's change dates at or before the
+    cohort: ``"R0"`` (oldest / deepest) is the treatment reference, ``"R1"`` the
+    next, and so on. Matched per group when the :class:`Regime` carries group
+    columns; an ungrouped regime applies to every row. Used by
+    ``treatment="covariate"`` so the regime enters the covariate design without
+    a manual column or a regroup.
+    """
+    changes = getattr(regime, "_changes_df", None)
+    idx = pl.lit(0, dtype=pl.Int32)
+    if changes is not None and not changes.is_empty():
+        gcols = [c for c in changes.columns if c not in ("change", "regime_id")]
+        for row in changes.iter_rows(named=True):
+            cond = pl.col("cohort") >= pl.lit(row["change"])
+            for g in gcols:
+                if g in group_cols:
+                    cond = cond & (pl.col(g) == pl.lit(row[g]))
+            idx = idx + cond.cast(pl.Int32)
+    return frame.with_columns(("R" + idx.cast(pl.Utf8)).alias("regime"))
+
+
 def _stack_cascade_fits(
     parts: list[dict], mechanism: str,
 ) -> dict[str, "Any"]:
@@ -1811,10 +1837,31 @@ def _fit_loss(
                 "ResidualBootstrap with regime treatment='segment_wise' is not "
                 "yet wired (regime-aware bootstrap pending)."
             )
-    # the ModelFrame cohort cut: None under segment_wise (keep every cohort); the
-    # resolved latest-change cut otherwise. The Regime object is still stored on
-    # the LossFit unchanged.
-    mf_regime = None if segment_wise else regime
+    # treatment="covariate": keep all regimes and enter the regime as a
+    # treatment-coded covariate (shared shape + per-regime level). The regime
+    # label is a property of the cohort, so it is derived and injected into the
+    # covariate design below -- no manual column / regroup. Symmetric to the
+    # segment_wise cascade (same `regime=` slot, same `fit(triangle)`).
+    regime_covariate = (
+        isinstance(regime, Regime)
+        and getattr(regime, "treatment", "latest_only") == "covariate"
+    )
+    if regime_covariate:
+        if mechanism not in ("pooled", "credible", "smooth"):
+            raise NotImplementedError(
+                f"regime treatment='covariate' is wired for PooledLoss / "
+                f"CredibleLoss / SmoothLoss, not {model!r}."
+            )
+        if "regime" in normalize_groups(triangle.groups):
+            raise ValueError(
+                "regime treatment='covariate' derives a 'regime' covariate "
+                "column, but the triangle already has a group column named "
+                "'regime'; rename it."
+            )
+    # the ModelFrame cohort cut: None under segment_wise / covariate (keep every
+    # cohort); the resolved latest-change cut otherwise. The Regime object is
+    # still stored on the LossFit unchanged.
+    mf_regime = None if (segment_wise or regime_covariate) else regime
 
     groups = triangle.groups
     # the driver fits / projects at the REPORTING grain. Without covariates
@@ -1824,7 +1871,14 @@ def _fit_loss(
     fit_triangle = triangle
 
     cov_cells = None
-    if covariates:
+    # effective covariate list: the user's columns plus, under
+    # treatment="covariate", a derived "regime" covariate (a cohort property, so
+    # it does NOT subdivide a cell -- exempt from the group-membership check and
+    # the reporting collapse; only its design column is added).
+    eff_covariates = list(covariates) if covariates else []
+    if regime_covariate and "regime" not in eff_covariates:
+        eff_covariates.append("regime")
+    if eff_covariates:
         # covariate design: one shared duration shape per reporting unit plus a
         # treatment-coded level effect per covariate, read from the triangle's
         # own (reporting x covariate) sub-cells (charter Sec.4.3).
@@ -1845,15 +1899,19 @@ def _fit_loss(
                 "recent= is not yet wired for the covariate path."
             )
         all_groups = normalize_groups(groups)
-        missing = [c for c in covariates if c not in all_groups]
+        # the derived regime covariate is exempt: it is not a group column.
+        user_covariates = [c for c in eff_covariates if c != "regime"] \
+            if regime_covariate else list(eff_covariates)
+        missing = [c for c in user_covariates if c not in all_groups]
         if missing:
             raise ValueError(
                 f"covariate column(s) {missing} are not in groups={all_groups}; "
                 "a covariate must be one of the triangle's group columns -- "
                 "build the triangle grouped by it, then regress on it."
             )
-        cov_set = set(covariates)
-        report_cols = [g for g in all_groups if g not in cov_set]
+        # report grain = groups minus the USER covariates (regime is derived, so
+        # it does not reduce the reporting grain).
+        report_cols = [g for g in all_groups if g not in set(user_covariates)]
         report_groups = collapse_groups(report_cols) if report_cols else None
         # collapse the finer triangle to the reporting grain: the projection,
         # credibility level and regime cut all key on the reporting unit.
@@ -1865,15 +1923,21 @@ def _fit_loss(
         # diagonals (the leakage guard), then match the (report, cohort,
         # duration, covariates) column order + sort so the treatment-coded
         # design is assembled in a stable order.
+        src = triangle.to_polars()
+        if regime_covariate:
+            # derive the per-cohort regime label (R0 = oldest/deepest, the
+            # treatment reference) from the change dates -- a cohort property.
+            src = _regime_covariate_codes(src, regime, all_groups)
         cov_cells = (
-            triangle.to_polars()
+            src
             .filter(pl.col("incr_premium").is_not_null())
             .select(
-                [*report_cols, "cohort", "duration", *covariates,
+                [*report_cols, "cohort", "duration", *eff_covariates,
                  "incr_loss", "incr_premium"]
             )
-            .sort([*report_cols, "cohort", "duration", *covariates])
+            .sort([*report_cols, "cohort", "duration", *eff_covariates])
         )
+        covariates = eff_covariates
         groups = report_groups
 
     boot_spec = None
