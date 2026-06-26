@@ -70,12 +70,6 @@ class PooledLoss(_LossEstimatorBase):
                 self.covariates = [self.covariates]
             if not all(isinstance(c, str) for c in self.covariates):
                 raise ValueError("covariates must be a string or list of strings.")
-            if self.borrow:
-                raise ValueError(
-                    "borrow= and covariates= are mutually exclusive: borrow lends "
-                    "a single level-invariant donor shape, covariates require "
-                    "per-cell intensities."
-                )
         _validate_lam_cov(self.lam_cov)
 
     def fit(self, triangle: "Triangle") -> LossFit:
@@ -93,7 +87,6 @@ class PooledLoss(_LossEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             confidence_level=self.confidence_level,
-            borrow=self.borrow,
             balance=self.balance,
             uncertainty=self.uncertainty,
             covariates=self.covariates,

@@ -298,9 +298,6 @@ def test_covariate_validation():
     import lossratio as lr
     df = _experience_source({"M": 1.0})
     tri = _tri(df)
-    # borrow + covariates -> construction error
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        lr.CredibleLoss(covariates=["sex"], borrow="pooled")
     # recent + covariates not wired
     with pytest.raises(NotImplementedError, match="recent"):
         lr.CredibleLoss(covariates=["sex"], recent=3).fit(tri)
@@ -414,8 +411,6 @@ def test_pooled_covariate_bootstrap_and_validation():
     ).fit(_tri(df))
     proj = fit.to_polars().filter(pl.col("source") == "own")
     assert np.isfinite(proj["loss_total_se"].to_numpy()).any()
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        lr.PooledLoss(covariates=["sex"], borrow="pooled")
     with pytest.raises(ValueError, match="not in groups"):
         lr.PooledLoss(covariates=["sex"]).fit(lr.Triangle(df))
 

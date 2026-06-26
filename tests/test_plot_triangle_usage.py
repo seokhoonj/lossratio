@@ -293,70 +293,14 @@ def test_usage_never_marks_absent_cells_used_in_gappy_groups():
 # --- Public usage() data accessor -----------------------------------
 
 
-def test_usage_borrow_matches_the_fit_source_exactly():
-    """`usage(borrow="pooled")` relabels the grid to donor / observed / own /
-    borrowed, and the observed/own/borrowed split must match a real
-    `PooledLoss(borrow="pooled")` fit's `source` column cell-for-cell; donor =
-    the regime-dropped (pre-change) observed cohorts."""
-    tri = lr.Triangle(
-        lr.load_experience().filter(pl.col("coverage") == "SURGERY"),
-        groups="coverage", grain="Q",
-    )
-    reg = tri.detect_regime()
-    change = reg.changes["change"][0]
-
-    u = tri.usage(regime=reg, borrow="pooled")
-    ucnt = {r["status"]: r["len"] for r in u.group_by("status").len().to_dicts()}
-
-    fit = lr.PooledLoss(regime=reg, borrow="pooled").fit(tri).to_polars()
-    scnt = {r["source"]: r["len"] for r in fit.group_by("source").len().to_dicts()}
-
-    assert ucnt["observed"] == scnt["observed"]
-    assert ucnt["own"] == scnt["own"]
-    assert ucnt["borrowed"] == scnt["borrowed"]
-    # donor split is a pure refinement: donor + donor_used == all dropped
-    # (pre-change) observed cohorts.
-    donor_obs = tri._df.filter(pl.col("cohort") < change).height
-    assert ucnt["donor"] + ucnt.get("donor_used", 0) == donor_obs
-    # donor_used = the dropped cells at duration >= K (K = kept cohorts' max
-    # observed duration) -- the late-duration donor cells that feed the borrowed
-    # link ratios. A borrowed tail exists here (D > K) so donor_used is non-empty.
-    K = tri._df.filter(pl.col("cohort") >= change)["duration"].max()
-    used_expected = tri._df.filter(
-        (pl.col("cohort") < change) & (pl.col("duration") >= K)
-    ).height
-    assert ucnt["donor_used"] == used_expected
-    assert ucnt["donor_used"] > 0
-
-
-def test_usage_borrow_off_is_unchanged(tri_with_groups):
-    """borrow=False keeps the classic used/unused/holdout/future vocabulary."""
+def test_usage_uses_classic_vocabulary(tri_with_groups):
+    """The usage view colours only data cells -- the classic
+    used/unused/holdout/future vocabulary; projection cells stay 'future'."""
     r = tri_with_groups.detect_regime(window=12)
     seen = set(tri_with_groups.usage(regime=r)["status"].unique().to_list())
     assert seen <= {"used", "unused", "holdout", "future"}
     assert "donor" not in seen and "borrowed" not in seen
 
-
-def test_usage_borrow_without_regime_has_no_donor_or_borrowed(tri_single):
-    """No cut -> no thin segment -> own horizon == donor horizon: no donor,
-    no borrowed (the projection is all `own`)."""
-    seen = set(tri_single.usage(borrow="pooled")["status"].unique().to_list())
-    assert "donor" not in seen and "borrowed" not in seen
-    assert seen <= {"observed", "own", "future", "holdout"}
-
-
-def test_usage_borrow_rejects_bad_value(tri_with_groups):
-    with pytest.raises(ValueError, match="borrow"):
-        tri_with_groups.usage(borrow="bogus")
-
-
-def test_plot_usage_borrow_renders(tri_with_groups):
-    r = tri_with_groups.detect_regime(window=12)
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=r, borrow="pooled")
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
 
 
 def test_usage_data_matches_plot_compute(tri_with_groups):

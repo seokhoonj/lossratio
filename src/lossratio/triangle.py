@@ -778,7 +778,6 @@ class Triangle:
         recent: int | None = None,
         regime: "RegimeArg" = None,
         holdout: int | None = None,
-        borrow: "bool | str" = False,
     ) -> "FrameLike":
         """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
 
@@ -803,17 +802,6 @@ class Triangle:
         holdout
             Number of trailing calendar diagonals flagged ``"holdout"`` (the
             :class:`Backtest` hold-out pattern).
-        borrow
-            ``False`` (default) or ``"pooled"``. With a ``regime`` cut,
-            relabel the grid to the borrow provenance of a
-            ``borrow="pooled"`` loss fit: the dropped (pre-change) observed
-            cohorts become the donor (they lend the duration shape) -- split
-            into ``"donor_used"`` (the late-duration cells, ``duration >= K``,
-            that actually feed the borrowed link ratios) and ``"donor"`` (the
-            rest) -- and the kept segment's projection tail splits into
-            ``"own"`` (its own data horizon) and ``"borrowed"`` (filled from the
-            donor). The split matches the live fit exactly. ``"pooled"`` only --
-            the loss baseline is the sole rung that borrows.
 
         Returns
         -------
@@ -828,7 +816,6 @@ class Triangle:
         regime_cut = _resolve_regime(regime, self)
         usage_df = _compute_triangle_usage(
             self, recent=recent, regime_cut=regime_cut, holdout=holdout,
-            borrow=borrow,
         )
         return mirror_output(usage_df, self._output_type)
 
@@ -847,7 +834,6 @@ class Triangle:
         recent: int | None = None,
         regime: "RegimeArg" = None,
         holdout: int | None = None,
-        borrow: "bool | str" = False,
     ) -> Any:
         """Triangle heatmap (cell-value or status), backed by matplotlib.
 
@@ -857,8 +843,7 @@ class Triangle:
             ``"value"`` (default; cell-value heatmap of one metric) or
             ``"usage"`` (status heatmap showing which cells the fit
             would use vs. drop under the given ``recent`` / ``regime`` /
-            ``holdout`` masks; with ``borrow="pooled"`` the regime view
-            instead shows donor / observed / own / borrowed provenance).
+            ``holdout`` masks).
         x_axis
             ``"duration"`` (default; columns are the duration index, the
             aligned right-triangle layout) or ``"calendar"`` (columns
@@ -924,7 +909,6 @@ class Triangle:
             recent=recent,
             regime=regime,
             holdout=holdout,
-            borrow=borrow,
         )
 
     def plot(

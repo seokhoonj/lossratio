@@ -81,9 +81,12 @@ def test_predict_mirrors_pandas_input():
 
 
 def test_predict_marks_borrowed_under_regime(tri_g):
-    """A regime cut + borrow produces all three provenance states."""
-    reg = lr.Regime.at(change="2024-07-01", groups={"coverage": ["SURGERY"]})
-    fit = lr.PooledLoss(regime=reg, borrow="pooled").fit(tri_g)
+    """A segment_wise regime fit produces all three provenance states."""
+    reg = lr.Regime.at(
+        change="2024-07-01", groups={"coverage": ["SURGERY"]},
+        treatment="segment_wise",
+    )
+    fit = lr.PooledLoss(regime=reg).fit(tri_g)
     seen = set(fit.predict()["source"].unique().to_list())
     assert "borrowed" in seen
     assert {"observed", "own"} <= seen

@@ -83,7 +83,6 @@ class SmoothPremium(_PremiumEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             confidence_level=self.confidence_level,
-            borrow=self.borrow,
             psi=self.psi,
             n_basis=self.n_basis,
             lam=self.lam,

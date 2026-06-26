@@ -135,8 +135,6 @@ def test_multi_regime_cascade_three_regimes():
 def test_segment_wise_rejects_unsupported_combinations():
     tri = _tri()
     reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        lr.PooledLoss(regime=reg, borrow="pooled").fit(tri)
     with pytest.raises(NotImplementedError, match="balance"):
         lr.PooledLoss(regime=reg, balance=True).fit(tri)
     with pytest.raises(NotImplementedError, match="ResidualBootstrap"):

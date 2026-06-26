@@ -20,8 +20,8 @@ recursion, so SE / CI are null UNLESS a :class:`~lossratio._resample.ResidualBoo
 is attached -- the bootstrap re-runs the whole smooth pipeline (shape +
 ``lambda`` selection + level) per replicate, so the interval and the coverage
 lane are available for ``SmoothLoss`` like the credible rung. ``recent`` (the
-calendar-diagonal fit window) and ``borrow`` (the level-invariant donor tail
-for a data-thin segment's horizon) are both supported.
+calendar-diagonal fit window) is supported; a data-thin segment's tail is
+extended under the ``segment_wise`` regime treatment.
 """
 
 from __future__ import annotations
@@ -112,12 +112,6 @@ class SmoothLoss(_LossEstimatorBase):
                 self.covariates = [self.covariates]
             if not all(isinstance(c, str) for c in self.covariates):
                 raise ValueError("covariates must be a string or list of strings.")
-            if self.borrow:
-                raise ValueError(
-                    "borrow= and covariates= are mutually exclusive: borrow lends "
-                    "a single level-invariant donor shape, covariates require "
-                    "per-cell intensities."
-                )
         _validate_lam_cov(self.lam_cov)
 
     def fit(self, triangle: "Triangle") -> LossFit:
@@ -135,7 +129,6 @@ class SmoothLoss(_LossEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             confidence_level=self.confidence_level,
-            borrow=self.borrow,
             psi=self.psi,
             n_basis=self.n_basis,
             lam=self.lam,

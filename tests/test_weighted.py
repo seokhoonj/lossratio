@@ -89,11 +89,3 @@ def test_weighted_multiplicative_w1_is_point():
     f = _weighted_refit_multiplicative(L, np.ones((1, nC)), ~np.isnan(L), None, nD - 1)
     assert np.allclose(f[0], f_pt, rtol=1e-12, atol=0.0, equal_nan=True)
 
-
-def test_weighted_borrow_runs(tri):
-    # the borrow donor is wired (own body refit + perturbed donor tail, batched)
-    d = lr.CredibleLoss(regime="auto", borrow="pooled",
-                        uncertainty=WeightedBootstrap(n_replicates=60, seed=7)).fit(tri).to_polars()
-    own = d.filter(pl.col("source").is_in(["own", "borrowed"]))
-    assert own["loss_total_se"].is_finite().all()
-    assert (own["loss_total_se"] > 0).all()

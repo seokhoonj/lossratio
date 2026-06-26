@@ -121,9 +121,11 @@ def test_at_grain_guards():
 
 
 def test_at_grain_carries_borrow_provenance():
-    """A borrow fit's coarse view keeps borrowed cells (the increments are
+    """A segment_wise fit's coarse view keeps borrowed cells (the increments are
     already borrow-filled), labelled 'borrowed' when any sub-cell is borrowed."""
     from datetime import date
-    fit = lr.CredibleLoss(borrow="pooled", regime=lr.Regime.at(date(2024, 7, 1))).fit(_tri("M"))
+    fit = lr.CredibleLoss(
+        regime=lr.Regime.at(date(2024, 7, 1), treatment="segment_wise")
+    ).fit(_tri("M"))
     src = set(fit.at_grain("Q")["source"].unique().to_list())
     assert "borrowed" in src

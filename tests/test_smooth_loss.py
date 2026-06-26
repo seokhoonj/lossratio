@@ -88,15 +88,11 @@ def test_multi_group(tri):
 
 
 def test_config_guards(tri):
-    # recent (re-estimates factors on the recent diagonals) and borrow (donor
-    # tail) are both supported; only an unknown borrow value is rejected.
+    # recent (re-estimates factors on the recent diagonals) is supported.
     full = SmoothLoss().fit(tri).to_polars()
     rec = SmoothLoss(recent=12).fit(tri).to_polars()
     assert not full.equals(rec)
     assert full.equals(SmoothLoss(recent=None).fit(tri).to_polars())
-    assert SmoothLoss(borrow="pooled").borrow == "pooled"
-    with pytest.raises(ValueError):
-        SmoothLoss(borrow="donor")
 
 
 def test_point_only_when_no_uncertainty(tri):

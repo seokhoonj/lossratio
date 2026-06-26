@@ -59,22 +59,8 @@ _USAGE_COLORS: dict[str, str] = {
     "used":     "#1f77b4",
     "holdout":  "#d62728",
     "future":   "#ffffff",
-    # borrow view (regime + borrow="pooled"): the cut splits into a donor
-    # (dropped, lends shape) and a kept segment whose tail is borrowed. The
-    # donor in turn splits: "donor_used" are the donor's late-duration cells
-    # (duration >= K) that actually feed the borrowed link ratios f_K..f_{D-1}
-    # filling the kept tail; "donor" is the rest of the dropped segment (early
-    # durations the kept segment covers with its own data, so not borrowed from).
-    "donor":      "#c3c7cb",
-    "donor_used": "#6b7075",
-    "observed":   "#1f77b4",
-    "own":        "#3a9b5c",
-    "borrowed":   "#d39e00",
 }
 _USAGE_STATES: tuple[str, ...] = ("unused", "used", "holdout", "future")
-_USAGE_STATES_BORROW: tuple[str, ...] = (
-    "donor", "donor_used", "observed", "own", "borrowed", "holdout", "future",
-)
 
 
 def plot_triangle(
@@ -92,7 +78,6 @@ def plot_triangle(
     recent: int | None = None,
     regime: Any = None,
     holdout: int | None = None,
-    borrow: "bool | str" = False,
 ) -> Any:
     """Triangle heatmap dispatcher. See
     :meth:`lossratio.Triangle.plot_triangle` for the public docs.
@@ -112,7 +97,6 @@ def plot_triangle(
             recent=recent,
             regime=regime,
             holdout=holdout,
-            borrow=borrow,
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
@@ -439,88 +423,11 @@ def _regime_cut_frames(
     )
 
 
-def _apply_borrow_overlay(
-    expanded: pl.DataFrame,
-    grp_cols: list[str],
-    regime_cut: "date | dict | None",
-) -> pl.DataFrame:
-    """Relabel a usage grid's ``status`` to the borrow provenance.
-
-    Geometric, matching a ``borrow="pooled"`` fit cell-for-cell: per segment the
-    own horizon ``K`` = max observed duration among KEPT (post-cut) cohorts, the
-    donor horizon ``D`` = max observed duration among ALL cohorts. The kept
-    projection tail is ``own`` up to ``K`` then ``borrowed`` up to ``D``; the
-    dropped (pre-cut) observed cohorts become the donor (they lend the
-    development shape), split into ``donor_used`` (duration ``>= K``, the cells
-    that actually feed the borrowed link ratios ``f_K..f_{D-1}`` -- only when a
-    tail exists, ``D > K``) and ``donor`` (the rest, early durations the kept
-    segment covers itself). Without a cut (``regime_cut`` ``None`` / a segment
-    not in the cut) there is no thin segment, so ``K == D`` -- no donor, no
-    borrowed.
-    """
-    cd_scalar, cd_df = _regime_cut_frames(regime_cut, grp_cols)
-    if cd_df is not None:
-        expanded = expanded.join(
-            cd_df.rename({"_cd_join": "_change"}), on=grp_cols, how="left"
-        )
-    elif cd_scalar is not None:
-        expanded = expanded.with_columns(pl.lit(cd_scalar).alias("_change"))
-    else:
-        expanded = expanded.with_columns(
-            pl.lit(None, dtype=pl.Date).alias("_change")
-        )
-
-    kept = pl.col("_change").is_null() | (pl.col("cohort") >= pl.col("_change"))
-    # per-(segment, cohort) last observed duration, broadcast onto every row
-    coh_over = (grp_cols + ["cohort"]) if grp_cols else ["cohort"]
-    expanded = expanded.with_columns(
-        pl.when(pl.col("is_observed")).then(pl.col("duration")).otherwise(None)
-        .max().over(coh_over).alias("_L")
-    )
-    L_kept = pl.when(kept).then(pl.col("_L")).otherwise(None)
-    if grp_cols:
-        expanded = expanded.with_columns(
-            pl.col("_L").max().over(grp_cols).alias("_D"),
-            L_kept.max().over(grp_cols).alias("_K"),
-        )
-    else:
-        expanded = expanded.with_columns(
-            pl.col("_L").max().alias("_D"),
-            L_kept.max().alias("_K"),
-        )
-
-    status = (
-        pl.when(pl.col("status") == "used").then(pl.lit("observed"))
-        .when(pl.col("status") == "holdout").then(pl.lit("holdout"))
-        .when(pl.col("status") == "unused").then(
-            # dropped (donor) cells; the late ones (duration >= K) feed the
-            # borrowed tail f_K..f_{D-1} -> "donor_used"; only when a tail
-            # exists (D > K). The rest of the dropped segment stays "donor".
-            pl.when(
-                (~kept) & pl.col("is_observed")
-                & (pl.col("duration") >= pl.col("_K"))
-                & (pl.col("_D") > pl.col("_K"))
-            ).then(pl.lit("donor_used"))
-            .when((~kept) & pl.col("is_observed")).then(pl.lit("donor"))
-            .otherwise(pl.lit("unused"))
-        )
-        .otherwise(  # "future"
-            pl.when(kept & (pl.col("duration") <= pl.col("_K"))).then(pl.lit("own"))
-            .when(kept & (pl.col("duration") <= pl.col("_D"))).then(pl.lit("borrowed"))
-            .otherwise(pl.lit("future"))
-        )
-    )
-    return expanded.with_columns(status.alias("status")).drop(
-        ["_change", "_L", "_K", "_D"]
-    )
-
-
 def _compute_triangle_usage(
     triangle: Triangle,
     recent: int | None = None,
     regime_cut: "date | dict | None" = None,
     holdout: int | None = None,
-    borrow: "bool | str" = False,
 ) -> pl.DataFrame:
     """Build the per-cell status grid driving the usage heatmap.
 
@@ -533,21 +440,7 @@ def _compute_triangle_usage(
     :func:`lossratio.regime._resolve_regime` hands the fit. Cohorts before the
     change drop from ``used`` to ``unused``, so the usage view mirrors the live
     fit exactly: a plain per-segment cohort cut, no mini-triangle wall.
-
-    ``borrow`` (``False`` / ``"pooled"``): with a regime cut, relabel the grid
-    to the borrow provenance -- the dropped (pre-change) observed cohorts become
-    ``donor`` (they lend the development SHAPE), the kept segment's projection
-    tail splits into ``own`` (up to its own-data horizon) and ``borrowed``
-    (filled from the donor up to the donor's horizon). The split is geometric
-    and exactly matches the live ``borrow="pooled"`` fit (own horizon = max
-    observed duration among kept cohorts; donor horizon = max observed duration
-    among all cohorts). ``"pooled"`` only -- the loss baseline is the sole rung
-    that borrows.
     """
-    if borrow not in (False, True, "pooled"):
-        raise ValueError(
-            f"`borrow` must be False or 'pooled'; got {borrow!r}."
-        )
     if recent is not None and (
         isinstance(recent, bool)
         or not isinstance(recent, (int, np.integer))
@@ -709,11 +602,6 @@ def _compute_triangle_usage(
         .alias("status")
     )
 
-    # 9. borrow overlay: relabel to the donor / observed / own / borrowed
-    # provenance of a borrow="pooled" fit (geometric, exactly matching the fit).
-    if borrow:
-        expanded = _apply_borrow_overlay(expanded, grp_cols, regime_cut)
-
     keep = grp_cols + ["cohort", "duration", "status"]
     # Deterministic order: the per-group grid is built via a `group_by`
     # fan-out (unordered in polars), so sort before returning -- the public
@@ -752,7 +640,6 @@ def _plot_triangle_usage(
     ncol: int | None,
     figsize: tuple[float, float] | None,
     x_axis: str = "duration",
-    borrow: "bool | str" = False,
 ) -> Any:
     """Categorical status heatmap; see ``plot_triangle.Triangle(kind="usage")``."""
     import matplotlib.pyplot as plt
@@ -767,9 +654,8 @@ def _plot_triangle_usage(
         recent=recent,
         regime_cut=regime_cut,
         holdout=holdout,
-        borrow=borrow,
     )
-    legend_states = _USAGE_STATES_BORROW if borrow else _USAGE_STATES
+    legend_states = _USAGE_STATES
 
     grp = triangle.groups
     coh = triangle.cohort

@@ -97,17 +97,12 @@ class _LossEstimatorBase:
 
     recent: int | None = None
     regime: "RegimeArg" = None
-    borrow: "bool | str" = False
     sigma_method: str = "locf"
     confidence_level: float = 0.95
     uncertainty: "Any" = None
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
-        if self.borrow not in (False, "pooled"):
-            raise ValueError(
-                f"borrow must be False or 'pooled', got {self.borrow!r}"
-            )
         if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
             from .regime import Regime
             if not isinstance(self.regime, Regime) and not callable(self.regime):
@@ -1475,44 +1470,6 @@ def _pad_cols(mat: np.ndarray, n_cols: int) -> np.ndarray:
     return np.hstack([mat, pad])
 
 
-def _segment_donors(
-    triangle: "Triangle", sigma_method: str, value: str = "loss"
-) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]]:
-    """Per-segment level-invariant borrow donors (charter borrow design).
-
-    For each segment, the donor is the link ratio (``ChainLadder``) of THAT
-    segment's own FULL (regime-unfiltered) cohorts -- the data-rich older
-    cohorts a thin (e.g. post-regime) sub-set cannot see. The donor is
-    same-segment by design: development SHAPE is a property of the book
-    (coverage), so a coverage borrows from its own history, never across
-    coverages (that is precisely why coverages are separate ``groups``). ``f_k``
-    cancels the level, so only shape is lent, not the donor cohorts' level.
-
-    ``value`` selects the donor quantity: ``"loss"`` (cumulated from
-    ``incr_loss``) for the loss tail, or ``"premium"`` (already cumulative in
-    the frame) for the denominator tail -- the premium donor is the same
-    construction, the self-anchored full-history premium link ratio ``f^P_k``,
-    so a thinned segment's premium can be projected to the same horizon as its
-    borrowed loss (and the loss ratio stays defined across the borrowed tail).
-
-    Returns ``{segment_id: (f_k, sigma2_f_k, var_f_k, n_durations)}`` where
-    ``n_durations`` is that segment's own full development horizon -- the depth
-    its thinned cohorts can be projected out to.
-    """
-    frame = ModelFrame.from_triangle(triangle).df
-    donors: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, int]] = {}
-    for sid in frame.get_column("_segment_id").unique().sort().to_list():
-        sub = frame.filter(pl.col("_segment_id") == sid).sort(["cohort", "duration"])
-        if value == "loss":
-            sub = sub.with_columns(
-                pl.col("incr_loss").cum_sum().over("cohort").alias("loss")
-            )
-        (mat,), _, nd = _build_value_matrices(sub, value_cols=(value,))
-        mk = _fit_multiplicative(mat, sigma_method=sigma_method)
-        donors[sid] = (mk.f_k, mk.sigma2_k, _multiplicative_var(mk), nd)
-    return donors
-
-
 def _cohort_subset_donor(
     seg_sub: pl.DataFrame, sigma_method: str, value: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1522,9 +1479,9 @@ def _cohort_subset_donor(
     its own cohorts, and lends the deep tail from the link ratio ``f_k`` of the
     OLDER (deeper) regimes pooled -- their data-rich cohorts reach the depth a
     younger regime cannot. ``f_k`` cancels the level, so only shape is lent.
-    Mirrors :func:`_segment_donors` on a frame already restricted to the donor
-    cohorts (``value="loss"`` cumulates ``incr_loss``; ``"premium"`` is already
-    cumulative). Returns ``(f_k, sigma2_f_k, var_f_k)``.
+    The frame is already restricted to the donor cohorts (``value="loss"``
+    cumulates ``incr_loss``; ``"premium"`` is already cumulative). Returns
+    ``(f_k, sigma2_f_k, var_f_k)``.
     """
     sub = seg_sub.sort(["cohort", "duration"])
     if value == "loss":
@@ -1774,7 +1731,6 @@ def _fit_loss(
     regime: "Any" = None,
     recent: int | None = None,
     confidence_level: float = 0.95,
-    borrow: "bool | str" = False,
     psi: "float | str" = "auto",
     n_basis: "int | None" = None,
     lam: "float | str" = "auto",
@@ -1792,16 +1748,7 @@ def _fit_loss(
     cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
     :class:`ModelFrame`. ``recent`` (calendar-diagonal window) is the data-intact
     fit mask -- only the most-recent ``N`` diagonals feed each segment's factor
-    estimation, the projection seed stays full (charter Sec.7-4). It applies to
-    each segment's OWN factors; a ``borrow`` donor stays full-history (the donor
-    exists precisely to lend the data-rich older shape).
-
-    ``borrow`` (``False`` / ``"pooled"``) fills a segment's links beyond its
-    own data with the level-invariant donor link ratio pooled over the full
-    triangle: own body up to the own-data boundary, then borrowed ``f_k`` for
-    the tail (so a thin segment projects to the global development horizon
-    instead of leaving gaps). Borrowed cells are flagged in the ``source``
-    column.
+    estimation, the projection seed stays full (charter Sec.7-4).
     """
     fit_segment, method, model = _MECHANISMS[mechanism]
 
@@ -1818,11 +1765,6 @@ def _fit_loss(
             raise NotImplementedError(
                 f"regime treatment='segment_wise' is wired for PooledLoss / "
                 f"CredibleLoss / SmoothLoss, not {model!r}."
-            )
-        if borrow:
-            raise ValueError(
-                "borrow= and regime treatment='segment_wise' are mutually "
-                "exclusive: segment_wise already borrows the deep tail per regime."
             )
         if covariates:
             raise NotImplementedError(
@@ -1886,8 +1828,6 @@ def _fit_loss(
             raise NotImplementedError(
                 f"covariates= is not wired for {model!r}."
             )
-        if borrow:
-            raise ValueError("borrow= and covariates= are mutually exclusive.")
         if balance:
             raise NotImplementedError(
                 "balance= is not yet wired for the covariate path."
@@ -1949,15 +1889,6 @@ def _fit_loss(
             )
         boot_spec = uncertainty
 
-    donors = None
-    premium_donors = None
-    if borrow:
-        if borrow != "pooled":
-            raise ValueError(f"borrow must be False or 'pooled', got {borrow!r}")
-        donors = _segment_donors(fit_triangle, sigma_method)
-        # the denominator borrows the same way (full-history premium f^P_k), so
-        # the loss ratio stays defined across the borrowed loss tail.
-        premium_donors = _segment_donors(fit_triangle, sigma_method, value="premium")
 
     mf = ModelFrame.from_triangle(fit_triangle, regime=mf_regime)
     frame = mf.df
@@ -2031,15 +1962,6 @@ def _fit_loss(
         )
         donor = None
         premium_donor = None
-        if donors is not None:
-            d_f, d_sig, d_var, full_n_dur = donors[sid]
-            # widen to the segment's own full horizon so the borrowed tail can
-            # fill the cells beyond this (regime-thinned) sub-set's observation.
-            loss_obs = _pad_cols(loss_obs, full_n_dur)
-            premium_obs = _pad_cols(premium_obs, full_n_dur)
-            donor = (d_f, d_sig, d_var)
-            pd_f, pd_sig, pd_var, _ = premium_donors[sid]
-            premium_donor = (pd_f, pd_sig, pd_var)
 
         cov_data = None
         covfit = None

@@ -57,6 +57,5 @@ class ChainLadder(_LossEstimatorBase):
             regime=self.regime,
             recent=self.recent,
             confidence_level=self.confidence_level,
-            borrow=self.borrow,
             uncertainty=self.uncertainty,
         )
