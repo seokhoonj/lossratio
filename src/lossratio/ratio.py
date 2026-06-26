@@ -3,25 +3,16 @@
 ``Ratio`` pairs a loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
 ``SmoothLoss`` / ``ChainLadder``) with a premium-side estimator
 (``PooledPremium``) and composes the projected loss ratio
-``ratio_proj = loss_proj / premium_proj`` cell by cell, propagating the two
-projections' uncertainty into a ratio band.
+``ratio_proj = loss_proj / premium_proj`` cell by cell, banding the result from
+the loss projection's uncertainty.
 
-Two ``se_method`` settings control how premium uncertainty enters:
-
-* ``"fixed"`` -- premium is treated as known (the projected denominator is
-  deterministic): ``ratio_se = loss_total_se / premium_proj``. This is the
-  band the loss fit already carries internally; ``Ratio(se_method="fixed")``
-  reproduces it while letting the denominator model be chosen and inspected.
-* ``"delta"`` -- the full first-order delta method on ``R = L / P``, adding the
-  premium variance and an optional loss-premium correlation ``rho``::
-
-      ratio_se = (1 / |P|) * sqrt(seL^2 + R^2 seP^2 - 2 R rho seL seP)
-
-  ``rho = "auto"`` (default) estimates the coupling per group from the data
-  (the correlation of the loss and premium relative residuals) instead of
-  assuming a value. A fixed ``rho = 0`` treats the loss and premium projections
-  as independent; a positive ``rho`` (claims and premium moving together within
-  a cohort) narrows the band.
+The premium denominator is treated as known: ``ratio_se = loss_total_se /
+premium_proj``. The risk premium is an allocated exposure (rate x in-force), not
+a stochastic claims-development process -- its development-factor scatter is
+compositional, not forecast uncertainty -- so banding it would inject an
+artifact that, where it does not simply cancel against the numerator, only
+widens the ratio band spuriously. The ratio band therefore carries the loss
+fit's own uncertainty, divided by the projected denominator.
 
 The result is a :class:`RatioFit` -- a long-format frame with ``ratio_proj`` +
 the ratio band, carrying the contributing ``loss_proj`` / ``premium_proj`` and
@@ -31,7 +22,7 @@ their SEs for transparency.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
@@ -67,22 +58,12 @@ class Ratio:
     premium
         A premium-side estimator (``PooledPremium``). Defaults to a plain
         ``PooledPremium()``.
-    se_method
-        ``"fixed"`` (premium deterministic; default) or ``"delta"`` (full
-        delta method with premium variance + ``rho``).
-    rho
-        Loss-premium correlation used by ``se_method="delta"``. ``"auto"``
-        (default) estimates it per group from the data (the correlation of the
-        loss and premium relative residuals); or a float in ``[-1, 1]``
-        (``0.0`` = independent). Ignored when ``se_method="fixed"``.
     confidence_level
         Two-sided confidence level for the ratio CI columns.
     """
 
     loss: "_LossEstimatorBase"
     premium: "_PremiumEstimatorBase" = field(default_factory=lambda: _default_premium())
-    se_method: str = "fixed"
-    rho: "float | Literal['auto']" = "auto"
     confidence_level: float = 0.95
 
     def __post_init__(self) -> None:
@@ -95,19 +76,6 @@ class Ratio:
             raise TypeError(
                 "premium must be a premium-side estimator (PooledPremium), got "
                 f"{type(self.premium).__name__}"
-            )
-        if self.se_method not in ("fixed", "delta"):
-            raise ValueError(
-                f"se_method must be 'fixed' or 'delta', got {self.se_method!r}"
-            )
-        if isinstance(self.rho, str):
-            if self.rho != "auto":
-                raise ValueError(
-                    f"rho must be a float in [-1, 1] or 'auto', got {self.rho!r}"
-                )
-        elif not (-1.0 <= self.rho <= 1.0):
-            raise ValueError(
-                f"rho must be a float in [-1, 1] or 'auto', got {self.rho!r}"
             )
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
@@ -126,39 +94,15 @@ class Ratio:
         joined = left.join(right, on=keys, how="left")
 
         z = float(norm.ppf((1 + self.confidence_level) / 2))
-        # deterministic denominator unless `delta`; a zero/null premium yields a
-        # null ratio rather than an inf.
+        # The denominator is known (allocated exposure); a zero/null premium
+        # yields a null ratio rather than an inf.
         safe_pp = (
             pl.when(pl.col("premium_proj").is_null() | (pl.col("premium_proj") == 0.0))
             .then(None)
             .otherwise(pl.col("premium_proj"))
         )
         ratio_proj = pl.col("loss_proj") / safe_pp
-        if self.se_method == "fixed":
-            ratio_se = pl.col("loss_total_se") / safe_pp.abs()
-        else:
-            seL = pl.col("loss_total_se")
-            seP = pl.col("premium_total_se")
-            if self.rho == "auto":
-                rho_frame = _estimate_rho(triangle, groups)
-                if groups:
-                    joined = joined.join(rho_frame, on=groups, how="left")
-                    rho_expr = pl.col("_rho_auto").fill_null(0.0)
-                else:
-                    rho_expr = pl.lit(float(rho_frame["_rho_auto"][0]))
-            else:
-                rho_expr = pl.lit(float(self.rho))
-            radicand = (
-                seL**2
-                + ratio_proj**2 * seP**2
-                - 2.0 * rho_expr * ratio_proj * seL * seP
-            )
-            # clamp a negative radicand to 0 while PRESERVING null: a missing
-            # loss/premium SE (e.g. on an observed cell) must yield a null
-            # ratio_se, matching the "fixed" path -- pl.max_horizontal would
-            # swallow the null into 0 (a spurious zero-width band).
-            clamped = pl.when(radicand < 0.0).then(pl.lit(0.0)).otherwise(radicand)
-            ratio_se = clamped.sqrt() / safe_pp.abs()
+        ratio_se = pl.col("loss_total_se") / safe_pp.abs()
 
         composed = joined.with_columns(
             ratio_proj.alias("ratio_proj"),
@@ -188,8 +132,6 @@ class Ratio:
             groups=triangle.groups,
             loss_model=loss_fit.model,
             premium_model=premium_fit.model,
-            se_method=self.se_method,
-            rho=self.rho,
             confidence_level=self.confidence_level,
             output_type=triangle._output_type,
             loss_fit=loss_fit,
@@ -204,51 +146,6 @@ def _default_premium() -> "_PremiumEstimatorBase":
     from .pooled_premium import PooledPremium
 
     return PooledPremium()
-
-
-def _estimate_rho(triangle: "Triangle", groups: "list[str] | None") -> pl.DataFrame:
-    """Per-group empirical loss-premium correlation for ``rho="auto"``.
-
-    Returns a frame ``[*groups, _rho_auto]``. ``_rho_auto`` is the correlation,
-    within each group, of the RELATIVE residuals of the incremental loss and
-    incremental premium after removing the group's pooled per-duration intensity
-    ``g_k = sum(loss_delta) / sum(premium_from)`` and premium link ratio
-    ``f^P_k = sum(premium_to) / sum(premium_from)``. It captures how the loss and
-    premium NOISE co-move -- the coupling the delta method takes as ``rho``.
-    Model-agnostic (built from the triangle's own pooled factors, not the chosen
-    estimator). Groups with < 10 usable links fall back to 0.
-    """
-    gcols = groups or []
-    link = triangle.link().to_polars()
-    fac = link.group_by([*gcols, "duration_from"]).agg(
-        _g=pl.col("loss_delta").sum() / pl.col("premium_from").sum(),
-        _fp=pl.col("premium_to").sum() / pl.col("premium_from").sum(),
-    )
-    work = (
-        link.join(fac, on=[*gcols, "duration_from"], how="left")
-        .with_columns(
-            _lhat=pl.col("_g") * pl.col("premium_from"),
-            _phat=(pl.col("_fp") - 1.0) * pl.col("premium_from"),
-        )
-        .filter((pl.col("_lhat").abs() > 1.0) & (pl.col("_phat").abs() > 1.0))
-        .with_columns(
-            _rl=(pl.col("loss_delta") - pl.col("_lhat")) / pl.col("_lhat"),
-            _rp=(pl.col("premium_delta") - pl.col("_phat")) / pl.col("_phat"),
-        )
-        .filter(pl.col("_rl").is_finite() & pl.col("_rp").is_finite())
-    )
-    if gcols:
-        rho = work.group_by(gcols).agg(
-            _rho_auto=pl.corr("_rl", "_rp"), _n=pl.len()
-        )
-    else:
-        rho = work.select(_rho_auto=pl.corr("_rl", "_rp"), _n=pl.len())
-    rho = rho.with_columns(
-        _rho_auto=pl.when(pl.col("_n") >= 10)
-        .then(pl.col("_rho_auto").clip(-1.0, 1.0).fill_null(0.0))
-        .otherwise(0.0)
-    )
-    return rho.select([*gcols, "_rho_auto"])
 
 
 def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:
@@ -296,8 +193,6 @@ class RatioFit:
         groups: "str | list[str] | None",
         loss_model: str,
         premium_model: str,
-        se_method: str,
-        rho: float,
         confidence_level: float,
         output_type: str,
         loss_fit: LossFit,
@@ -310,8 +205,6 @@ class RatioFit:
         self.groups = groups
         self.loss_model = loss_model
         self.premium_model = premium_model
-        self.se_method = se_method
-        self.rho = rho
         self.confidence_level = confidence_level
         self.loss_fit = loss_fit
         self.premium_fit = premium_fit
@@ -508,6 +401,5 @@ class RatioFit:
     def __repr__(self) -> str:
         return (
             f"RatioFit(loss_model={self.loss_model!r}, "
-            f"premium_model={self.premium_model!r}, "
-            f"se_method={self.se_method!r}, rows={self._df.height})"
+            f"premium_model={self.premium_model!r}, rows={self._df.height})"
         )

@@ -1238,10 +1238,10 @@ def _segment_long_df(
         ci_lo = np.where(both, np.maximum(0.0, loss_proj - z * total_se), np.nan)
         ci_hi = np.where(both, loss_proj + z * total_se, np.nan)
 
-    # ratio band: premium is deterministic in v1 (not bootstrapped), so the
-    # loss-ratio uncertainty is the loss band scaled by the fixed projected
-    # premium (charter Sec.5.3 se_method="fixed"). Works for the analytical
-    # Gaussian band and the bootstrap empirical band alike.
+    # ratio band: premium is a known allocated exposure (not bootstrapped), so
+    # the loss-ratio uncertainty is the loss band scaled by the projected
+    # premium denominator. Works for the analytical Gaussian band and the
+    # bootstrap empirical band alike.
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio_se = total_se / safe_pp
         ratio_ci_lo = ci_lo / safe_pp

@@ -75,9 +75,10 @@ tri = lr.Triangle(df_sur, groups="coverage")
 - `ChainLadder` — 손해 자체의 곱셈 link ratio(자기손해 링크비)를 쓰는
   고전적 참조 비교군입니다.
 
-`se_method="fixed"`(기본)는 분모를 알려진 값으로 보고 손해쪽 밴드만
-전달하고, `se_method="delta"`는 분모의 분산과 손해-보험료 상관 `rho`까지
-더합니다.
+손해율 밴드는 분모(위험보험료)를 **알려진 노출**로 두고 손해쪽 밴드를 그
+분모로 나눠 만듭니다(`ratio_se = loss_total_se / premium`). 보험료는 확률
+과정이 아니라 할당된 노출이라 분산을 얹지 않으며, 진짜 forward-보험료
+불확실성(해지)은 비율에서 대부분 상쇄됩니다.
 
 ```python
 fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)

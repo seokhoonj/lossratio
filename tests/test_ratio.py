@@ -20,7 +20,6 @@ def test_fit_returns_ratio_fit(tri):
     assert isinstance(rf, lr.RatioFit)
     assert rf.loss_model == "pooled_loss"
     assert rf.premium_model == "pooled_premium"
-    assert rf.se_method == "fixed"
 
 
 def test_default_premium_is_pooled(tri):
@@ -45,12 +44,12 @@ def test_ratio_is_loss_over_premium(tri):
 
 
 def test_fixed_reproduces_lossfit_internal_ratio(tri):
-    # PooledPremium == the loss fit's internal link-ratio premium, so se_method="fixed"
-    # is bit-identical to the band LossFit already carries.
+    # PooledPremium == the loss fit's internal link-ratio premium, so the
+    # composed ratio band is bit-identical to the band LossFit already carries.
     lf = lr.PooledLoss().fit(tri).to_polars().select(
         ["coverage", "cohort", "duration", "ratio_proj", "ratio_se"]
     ).rename({"ratio_proj": "r0", "ratio_se": "se0"})
-    rf = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed").fit(tri).to_polars().select(
+    rf = lr.Ratio(loss=lr.PooledLoss()).fit(tri).to_polars().select(
         ["coverage", "cohort", "duration", "ratio_proj", "ratio_se"]
     ).rename({"ratio_proj": "r1", "ratio_se": "se1"})
     j = lf.join(rf, on=["coverage", "cohort", "duration"]).drop_nulls()
@@ -58,21 +57,8 @@ def test_fixed_reproduces_lossfit_internal_ratio(tri):
     assert (j["se0"] - j["se1"]).abs().max() == pytest.approx(0.0, abs=1e-12)
 
 
-def test_delta_band_at_least_fixed(tri):
-    # premium variance with explicit rho=0 only widens the band (the default
-    # rho="auto" can instead narrow it -- see test_rho_auto_narrows_vs_independent)
-    fixed = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed").fit(tri).to_polars().select(
-        ["coverage", "cohort", "duration", "ratio_se"]
-    ).rename({"ratio_se": "se_fixed"})
-    delta = lr.Ratio(loss=lr.PooledLoss(), se_method="delta", rho=0.0).fit(tri).to_polars().select(
-        ["coverage", "cohort", "duration", "ratio_se"]
-    ).rename({"ratio_se": "se_delta"})
-    j = fixed.join(delta, on=["coverage", "cohort", "duration"]).drop_nulls()
-    assert (j["se_delta"] >= j["se_fixed"] - 1e-12).all()
-
-
 def test_ci_brackets_point(tri):
-    df = lr.Ratio(loss=lr.PooledLoss(), se_method="delta").fit(tri).to_polars().drop_nulls(
+    df = lr.Ratio(loss=lr.PooledLoss()).fit(tri).to_polars().drop_nulls(
         ["ratio_proj", "ratio_se"]
     )
     assert (df["ratio_ci_lo"] <= df["ratio_proj"] + 1e-12).all()
@@ -83,16 +69,6 @@ def test_ci_brackets_point(tri):
 def test_chain_ladder_loss_side_allowed(tri):
     rf = lr.Ratio(loss=lr.ChainLadder()).fit(tri)
     assert rf.loss_model == "chain_ladder"
-
-
-def test_invalid_se_method():
-    with pytest.raises(ValueError, match="se_method"):
-        lr.Ratio(loss=lr.PooledLoss(), se_method="bogus")
-
-
-def test_invalid_rho():
-    with pytest.raises(ValueError, match="rho"):
-        lr.Ratio(loss=lr.PooledLoss(), rho=2.0)
 
 
 def test_loss_must_be_estimator():
@@ -191,64 +167,3 @@ def test_extend_amounts_off_has_no_amount_columns():
     ext = fit.extend(horizon=20)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     assert "loss" not in ext.columns and "premium" not in ext.columns
-
-
-# ---------------------------------------------------------------------------
-# rho="auto" -- estimate the loss-premium coupling from the data
-# ---------------------------------------------------------------------------
-
-
-def _exp_tri():
-    import lossratio as lr
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
-def test_rho_auto_rejects_bad_string():
-    import lossratio as lr
-    with pytest.raises(ValueError, match="auto"):
-        lr.Ratio(loss=lr.PooledLoss(), rho="nope")
-
-
-def test_rho_auto_estimates_per_group():
-    import lossratio as lr
-    from lossratio.ratio import _estimate_rho
-    tri = _exp_tri()
-    rho = _estimate_rho(tri, ["coverage"]).to_dicts()
-    assert {r["coverage"] for r in rho} == set(tri.to_polars()["coverage"].unique())
-    # synthetic premium co-moves weakly-positively with loss; finite, in range
-    for r in rho:
-        assert -1.0 <= r["_rho_auto"] <= 1.0
-
-
-def test_rho_auto_narrows_vs_independent():
-    # a positive coupling (loss built from premium) must give a band no wider
-    # than the rho=0 (independent) delta -- the coupling cancels variance.
-    import lossratio as lr
-    tri = _exp_tri()
-    base = dict(loss=lr.PooledLoss(), premium=lr.PooledPremium(), se_method="delta")
-    d0 = lr.Ratio(**base, rho=0.0).fit(tri).to_polars()
-    da = lr.Ratio(**base, rho="auto").fit(tri).to_polars()
-    key = ["coverage", "cohort", "duration"]
-    j = d0.select([*key, "ratio_se"]).rename({"ratio_se": "se0"}).join(
-        da.select([*key, "ratio_se"]).rename({"ratio_se": "sea"}), on=key
-    ).drop_nulls()
-    assert (j["sea"] <= j["se0"] + 1e-12).all()
-
-
-def test_rho_auto_ignored_by_fixed():
-    # se_method="fixed" never reads rho; "auto" must not change the fixed band.
-    import lossratio as lr
-    tri = _exp_tri()
-    a = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed", rho=0.0).fit(tri).to_polars()
-    b = lr.Ratio(loss=lr.PooledLoss(), se_method="fixed", rho="auto").fit(tri).to_polars()
-    assert a["ratio_se"].fill_null(-1.0).to_list() == b["ratio_se"].fill_null(-1.0).to_list()
-
-
-def test_delta_default_rho_is_auto():
-    # rho="auto" is now the delta default; an unspecified rho must match it.
-    import lossratio as lr
-    assert lr.Ratio(loss=lr.PooledLoss()).rho == "auto"
-    tri = _exp_tri()
-    a = lr.Ratio(loss=lr.PooledLoss(), se_method="delta").fit(tri).to_polars()
-    b = lr.Ratio(loss=lr.PooledLoss(), se_method="delta", rho="auto").fit(tri).to_polars()
-    assert a["ratio_se"].fill_null(-1.0).to_list() == b["ratio_se"].fill_null(-1.0).to_list()

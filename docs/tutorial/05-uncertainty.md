@@ -146,36 +146,30 @@ s.select(["cohort", "ratio_proj", "ratio_cv", "ratio_ci_lo", "ratio_ci_hi"])
 나갈 수도, 보험료를 넘길 수도 있다"는 뜻이라, 최근 코호트의 점추정 0.86은
 사실상 단독으로는 쓸 수 없는 값이다.
 
-## 5.4 손해율의 분산 — 분모도 흔들릴 때
+## 5.4 손해율의 분산 — 분모는 알려진 노출
 
-지금까지 본 `loss_proc_se`·`loss_param_se`는 **분자**(손해)의 분산이다. 그런데
-손해율은 손해를 위험보험료로 나눈 **비율**이고, 그 `ratio_se`를 만들려면
-**분모**(보험료)의 불확실성도 함께 따져야 한다. lossratio는 두 가지 방식을
-제공한다(`Ratio(se_method=...)`).
+지금까지 본 `loss_proc_se`·`loss_param_se`는 **분자**(손해)의 분산이다. 손해율은
+손해를 위험보험료로 나눈 **비율**이니, 그 `ratio_se`는 분자 SE를 분모로 나눠
+만든다:
 
-- `se_method="fixed"`(기본값) — 분모를 **확정값**으로 본다. 보험료는 이미
-  거의 다 들어와 흔들림이 작다는 가정 아래, 손해율의 표준오차를 분자 SE를
-  분모로 나눠 구한다.
+$$
+\text{ratio\_se} = \frac{\text{loss\_total\_se}}{\text{premium}}
+$$
 
-  $$
-  \text{ratio\_se} = \frac{\text{loss\_total\_se}}{\text{premium}}
-  $$
+즉 **분모(보험료)는 알려진 값으로 두고 분산을 얹지 않는다.** 왜 그런가:
 
-- `se_method="delta"` — 분자와 분모의 불확실성을 **델타 방법**(delta method,
-  1차 테일러 전개로 비율의 분산을 근사)으로 함께 전파하고, 둘의 상관계수
-  `rho`까지 반영한다.
+- **위험보험료는 확률 과정이 아니라 *할당된 노출*이다.** `위험률 x 가입금액`으로
+  계산되는 값이라, 손해처럼 매기마다 *뽑히는* 양이 아니다. 관측된 보험료는 장부
+  기록(known fact)이고, 미래 보험료의 유일한 불확실성은 유지 건수(해지·decrement)
+  뿐인데 — 그건 손해와 보험료를 *같이* 움직여 **비율에서 상쇄**되고, 남는 역선택은
+  손해강도 쪽에 귀속된다.
+- **그러니 분모에 분산을 매기면 *없는 위험을 만들어낸다*.** 보험료 발전계수의
+  코호트 간 산포는 forecast 불확실성이 아니라 구성·시점 noise라, 그걸 비율 밴드에
+  전파하면 — 상쇄되지 않는 자리에서 — 손해율 구간만 가짜로 부푼다.
 
-  $$
-  \operatorname{Var}\!\left(\tfrac{L}{P}\right) \approx
-  \left(\tfrac{\text{SE}_L}{P}\right)^{2}
-  + \left(\tfrac{L\,\text{SE}_P}{P^{2}}\right)^{2}
-  - 2\,\rho\,\frac{L\,\text{SE}_L\,\text{SE}_P}{P^{3}}
-  $$
-
-  마지막 항이 핵심이다. 손해와 보험료의 추정 오차는 보통 **같은 방향**으로
-  움직인다 — 물량이 많은 코호트는 손해도 보험료도 함께 크다(양의 `rho`).
-  분자와 분모가 같이 흔들리면 그 **비율은 오히려 덜 흔들린다**. 그래서
-  델타 방법의 손해율 SE는 분모를 고정으로 본 값보다 **작아질 수 있다**.
+따라서 손해율 밴드는 **손해 fit이 이미 갖고 있는 불확실성을, 알려진 분모로 나눈
+것**이다. 분모 모델(`PooledPremium` 등)은 *점추정*을 위해 고르고 들여다보되,
+분산은 분자에만 둔다.
 
 ```python
 import polars as pl
@@ -184,40 +178,22 @@ import lossratio as lr
 df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
-def recent_cv(se_method, rho=0.0):
-    fit = lr.Ratio(
-        loss=lr.ChainLadder(), premium=lr.PooledPremium(),
-        se_method=se_method, rho=rho,
-    ).fit(tri)
-    s = fit.summary().sort("cohort").with_columns(
-        (pl.col("ratio_se") / pl.col("ratio_proj") * 100).alias("ratio_cv")
-    )
-    return s.tail(1).select(["cohort", "ratio_proj", "ratio_cv"])
-
-# 분모 고정 (기본값)
-recent_cv("fixed")
+fit = lr.Ratio(loss=lr.ChainLadder(), premium=lr.PooledPremium()).fit(tri)
+s = fit.summary().sort("cohort").with_columns(
+    (pl.col("ratio_se") / pl.col("ratio_proj") * 100).alias("ratio_cv")
+)
+s.tail(1).select(["cohort", "ratio_proj", "ratio_cv"])
 #> 최근 코호트 (2025-4분기):  proj 0.86,  ratio_cv 22.7%
-
-# 분모도 전개 + 상관 반영
-recent_cv("delta", rho=0.9)
-#> 최근 코호트 (2025-4분기):  proj 0.86,  ratio_cv 14.2%
 ```
 
-같은 점추정(0.86)에 분산만 달라진다. `delta`는 보험료의 불확실성
-(`premium_total_se` 컬럼이 함께 붙는다)을 더하면서도, 양의 상관 덕분에
-손해율 CV가 22.7% -> 14.2%로 **줄었다**.
-
-```{admonition} 어느 쪽을 쓰나
+```{admonition} 보험료가 *진짜로* 불확실하면
 :class: tip
 
-보험료가 거의 다 들어와 분모가 사실상 확정이면 `fixed`로 충분하고 둘은
-거의 같다. 분모도 한참 전개해야 하거나(아주 최근 코호트), 손해·보험료의
-상관을 명시적으로 반영해 손해율 구간을 더 정확히 보고하고 싶을 때
-`se_method="delta"`를 쓴다. `rho`의 **기본값은 `"auto"`** — 명시하지 않으면
-데이터에서 그룹별로 추정한다(손해·보험료 상대 잔차의 상관). 위 `0.9`는 효과를
-보이려고 직접 넣은 예시값이고, 이 합성 데이터의 auto 추정치는 ~0.04로 작다 —
-실데이터에선 담보별 중앙값 ~0.2 안팎의 양수로 나온다(손해가 보험료로 지어져
-같이 움직이기 때문). 직접 숫자(예: `rho=0.0` 독립)를 넣어 덮어쓸 수도 있다.
+해지율이 빗나갈 수 있다는 *가정*에서 오는 forward-보험료 불확실성은 실재한다.
+다만 그건 데이터의 발전계수 산포에 없는(=부트스트랩·Mack이 못 잡는) 양이라
+요율·해지표 같은 외부 정보로 *주입*해야 하고, 게다가 비율에서 대부분 상쇄된다.
+그래서 기본 손해율 밴드는 분모를 known으로 두며, 그 주입 경로는 해당 데이터가
+있을 때 별도로 다룬다.
 ```
 
 ## 5.5 부트스트랩 — 분석적 밴드의 대안
