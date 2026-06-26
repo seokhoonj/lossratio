@@ -5,23 +5,29 @@ its own volume base, so it develops by its OWN multiplicative link ratio
 ``f^P_k = sum P_{k+1} / sum P_k`` (the link-ratio family) rather than the
 intensity ``g_k`` of the loss side. ``PooledPremium`` is the complete-pooling
 rung of that family -- the volume-weighted pooled link ratio on premium,
-reusing the kept ``_recursion`` kernel so the premium projection and its
-process / parameter variance match the premium column
-the loss fits already carry internally, now exposed as a first-class,
-swappable, separately-inspectable result.
+reusing the kept ``_recursion`` kernel for the projection, exposed as a
+first-class, swappable, separately-inspectable result.
+
+The whole premium ladder is **point-only**: the SE / CI columns exist on the
+frame but are null. The risk premium is a known allocated exposure (rate x
+in-force), not a stochastic claims-development process, so a development-factor
+SE on it is an artifact (compositional link-ratio scatter, not forecast
+uncertainty) -- it is not surfaced. The numerator carries the uncertainty; the
+loss ratio bands the loss fit's SE over this known denominator. Genuine
+forward-premium uncertainty (lapse) lives outside the triangle and, when
+supplied from external rate/lapse data, would get a purpose-built path.
 
 ``PremiumFit`` is the denominator analogue of
 :class:`~lossratio.loss.LossFit`: a long-format frame (one row per cohort x
-duration cell) with ``premium_proj`` + the analytical SE block + an analytical CI,
-plus the same machine-readable ``status`` / ``cell_counts`` diagnostics.
+duration cell) with ``premium_proj``, plus the same machine-readable
+``status`` / ``cell_counts`` diagnostics.
 
 The credibility / smooth premium rungs (``CrediblePremium`` / ``SmoothPremium``
 -- per-cohort credibility-shrunk or smoothed link ratios) complete the
-denominator ladder symmetric to the loss side. Like their loss counterparts
-they extend the projection horizon and are bootstrap-covered; on a single book
-premium usually develops smoothly enough that they track the pooled link ratio
-closely, so ``PooledPremium`` stays the default and the richer rungs earn their
-place per book.
+denominator ladder symmetric to the loss side. On a single book premium usually
+develops smoothly enough that they track the pooled link ratio closely, so
+``PooledPremium`` stays the default and the richer rungs earn their place per
+book.
 """
 
 from __future__ import annotations
@@ -58,7 +64,9 @@ if TYPE_CHECKING:
 
 
 # Columns of the assembled long premium frame. Mirrors the premium block of the
-# loss schema, with the full analytical SE decomposition + analytical CI.
+# loss schema for shape, but the SE / CI columns are always null: the premium
+# ladder is point-only (the development-factor SE on an allocated exposure is an
+# artifact, not surfaced).
 _PREMIUM_COLUMNS = [
     "cohort", "duration",
     "premium_obs", "premium_proj", "incr_premium_proj",
@@ -350,8 +358,16 @@ def _fit_premium(
         if mechanism == "pooled":
             mask = recent_link_mask(premium_obs, recent)
             mk = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
-            proc_se, param_se, total_se = mk.proc_se, mk.param_se, mk.total_se
             mk_proj = mk.value_proj
+            # Point-only, uniform with the credible / smooth rungs. The risk
+            # premium is a known allocated exposure (rate x in-force), so its
+            # Mack development SE is an artifact -- compositional link-ratio
+            # scatter, not forecast uncertainty -- which would inflate the ratio
+            # band only where it fails to cancel. Null it rather than surface it
+            # (the recursion's SE stays available for the loss side). Genuine
+            # forward-premium uncertainty (lapse) lives outside the triangle.
+            nan_se = np.full(premium_obs.shape, np.nan, dtype=np.float64)
+            proc_se = param_se = total_se = nan_se
         elif mechanism == "credible":
             res = _fit_segment_credible_premium(
                 premium_obs, sigma_method, psi=psi, recent=recent,

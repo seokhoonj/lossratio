@@ -48,13 +48,17 @@ def test_cumulative_premium_non_decreasing(tri):
     assert (d["delta"] >= -1e-6).all()
 
 
-def test_se_nonnegative_and_zero_at_anchor(tri):
+def test_point_only_se_null(tri):
+    # PooledPremium is point-only, uniform with the credible / smooth rungs:
+    # the risk premium is a known allocated exposure, so its Mack development
+    # SE is an artifact and is not surfaced (null SE / CI columns).
     df = lr.PooledPremium().fit(tri).to_polars()
-    se = df["premium_total_se"].drop_nulls()
-    assert (se >= 0.0).all()
-    # first duration of each cohort is observed -> SE 0 / null (no projection)
-    first = df.filter(pl.col("duration") == 1)["premium_total_se"]
-    assert first.fill_null(0.0).abs().max() == pytest.approx(0.0, abs=1e-9)
+    assert df["premium_proc_se"].is_null().all()
+    assert df["premium_param_se"].is_null().all()
+    assert df["premium_total_se"].is_null().all()
+    assert df["premium_total_cv"].is_null().all()
+    assert df["premium_ci_lo"].is_null().all()
+    assert df["premium_ci_hi"].is_null().all()
 
 
 def test_summary_columns(tri):

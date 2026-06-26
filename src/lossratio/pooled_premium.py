@@ -40,7 +40,9 @@ class PooledPremium(_PremiumEstimatorBase):
         ``N`` -- only the most-recent ``N`` diagonals feed link-ratio
         estimation; the projection stays seeded from the full triangle.
     confidence_level
-        Two-sided confidence level for the analytical CI columns.
+        Two-sided confidence level. Currently inert: the premium ladder is
+        point-only, so the SE / CI columns are null (the development-factor SE
+        on an allocated exposure is an artifact and is not surfaced).
     """
 
     def fit(self, triangle: "Triangle") -> PremiumFit:

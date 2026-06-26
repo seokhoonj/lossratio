@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Genuine forward-premium uncertainty (lapse) lives outside the premium
   triangle and, when supplied from external rate/lapse data, will get a
   purpose-built path rather than this denominator-variance propagation.
+- **The premium ladder is now uniformly point-only.** `PooledPremium` no longer
+  surfaces an analytical SE / CI: its `premium_proc_se` / `premium_param_se` /
+  `premium_total_se` / `premium_total_cv` / `premium_ci_lo` / `premium_ci_hi`
+  columns are now always null, matching `CrediblePremium` / `SmoothPremium`
+  (already point-only). The risk premium is a known allocated exposure, so a
+  development-factor SE on it is an artifact and is no longer reported; the
+  ratio band carries the numerator's uncertainty over the known denominator.
+  The columns remain on the frame (null) for schema stability.
 - **Regime treatment redesign (R parity).** The `treatment` enum is now
   `("segment_bridged", "segment_bridged_borrowed")` with default
   `"segment_bridged"`. The previous `"latest_only"`, `"segment_wise"`,
