@@ -151,7 +151,7 @@ lr.CredibleLoss(covariates=["channel"], lam_cov="auto").fit(tri)
 
 - 공변량 컬럼은 **반드시 삼각형 `groups` 의 부분집합** 이다 (group 이 아닌
   컬럼은 적합이 읽을 셀이 없어 에러).
-- 공변량은 `borrow=` · `balance=` 와 동시에 쓸 수 없다(서로 배타적).
+- 공변량은 `balance=` 와 동시에 쓸 수 없다(서로 배타적).
 - 진단·예측의 grain 도 공변량을 따라간다 — 백테스트는 공변량 적합의 보고
   단위(`groups - covariates`)에서 채점하고, 가려진(held-out) 셀은 삼각형
   마스킹을 통해 공변량 적합에도 그대로 가려져 새어 들지 않는다.
