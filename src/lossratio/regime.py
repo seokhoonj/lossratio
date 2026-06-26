@@ -2129,6 +2129,7 @@ class Regime:
         return Regime._manual(
             changes_df=acc,
             groups=self.groups,
+            treatment=self.treatment,
         )
 
     def borrow_screen(self, triangle, target: str = "loss"):

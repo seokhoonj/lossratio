@@ -27,10 +27,13 @@ def test_treatment_default_and_validation():
     )
     with pytest.raises(ValueError):
         lr.Regime.at(change=CHANGE, treatment="bogus")
-    # detect path carries it too
+    # detect path carries it too -- and survives .accepted() (the evidence-
+    # gated regime that actually drives a fit), for every treatment.
     tri = _tri()
     reg = tri.detect_regime(target="ratio", treatment="segment_wise")
     assert reg.treatment == "segment_wise"
+    for t in ("latest_only", "segment_wise", "covariate"):
+        assert tri.detect_regime(target="ratio", treatment=t).accepted().treatment == t
 
 
 def test_default_treatment_is_byte_identical_to_plain_latest_only():
