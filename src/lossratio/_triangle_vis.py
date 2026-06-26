@@ -59,8 +59,12 @@ _USAGE_COLORS: dict[str, str] = {
     "used":     "#1f77b4",
     "holdout":  "#d62728",
     "future":   "#ffffff",
+    # segment_wise borrow donor: an OBSERVED older-regime cell at duration
+    # >= the newest regime's depth -- data actually used (as the borrow donor),
+    # so it is coloured like the other data cells (never a projection cell).
+    "donor":    "#6b7075",
 }
-_USAGE_STATES: tuple[str, ...] = ("unused", "used", "holdout", "future")
+_USAGE_STATES: tuple[str, ...] = ("unused", "used", "holdout", "future", "donor")
 
 
 def plot_triangle(
@@ -428,18 +432,25 @@ def _compute_triangle_usage(
     recent: int | None = None,
     regime_cut: "date | dict | None" = None,
     holdout: int | None = None,
+    treatment: str = "latest_only",
 ) -> pl.DataFrame:
     """Build the per-cell status grid driving the usage heatmap.
 
     Returns a polars DataFrame with columns ``groups`` (when present),
     ``cohort``, ``duration``, ``status`` (one of ``"unused" | "used" |
-    "holdout" | "future"``).
+    "holdout" | "future" | "donor"``).
 
     ``regime_cut`` is the RESOLVED cohort cut -- ``None`` / a ``date`` / a
     ``dict[segment -> date]``, the form
-    :func:`lossratio.regime._resolve_regime` hands the fit. Cohorts before the
-    change drop from ``used`` to ``unused``, so the usage view mirrors the live
-    fit exactly: a plain per-segment cohort cut, no mini-triangle wall.
+    :func:`lossratio.regime._resolve_regime` hands the fit.
+
+    ``treatment`` selects how the regime is used, matching the live fit:
+    ``"latest_only"`` (default) drops the pre-change cohorts (``used`` ->
+    ``unused``); ``"segment_wise"`` and ``"covariate"`` KEEP every regime, so no
+    cohort is dropped. Under ``"segment_wise"`` the older regimes' observed cells
+    at a duration past the newest regime's own depth feed the borrowed tail, so
+    they are flagged ``"donor"`` -- data actually used as the borrow donor. Only
+    OBSERVED cells are ever coloured; projection cells stay ``"future"``.
     """
     if recent is not None and (
         isinstance(recent, bool)
@@ -548,36 +559,55 @@ def _compute_triangle_usage(
     cd_scalar, cd_df = _regime_cut_frames(regime_cut, grp_cols)
     has_recent = recent is not None
     has_change = cd_scalar is not None or cd_df is not None
+    # segment_wise / covariate KEEP every regime (no pre-change drop); only
+    # latest_only (and a plain date / None) drops the pre-change cohorts.
+    keeps_all = treatment in ("segment_wise", "covariate")
 
+    # normalise the cut into a single per-row column so both the scalar and the
+    # per-segment-dict forms share the donor / change logic below.
     if cd_df is not None:
-        # broadcast per-segment change date onto expanded rows
         expanded = expanded.join(cd_df, on=grp_cols, how="left")
-        change_pass_expr = pl.col("_cd_join").is_null() | (
-            pl.col("cohort") >= pl.col("_cd_join")
-        )
     elif cd_scalar is not None:
-        change_pass_expr = pl.col("cohort") >= cd_scalar
+        expanded = expanded.with_columns(pl.lit(cd_scalar).alias("_cd_join"))
     else:
-        change_pass_expr = pl.lit(True)
+        expanded = expanded.with_columns(pl.lit(None, dtype=pl.Date).alias("_cd_join"))
+    change_pass_expr = pl.col("_cd_join").is_null() | (
+        pl.col("cohort") >= pl.col("_cd_join")
+    )
 
-    # 7. pass_filter = recent calendar-diagonal window AND regime cohort cut.
-    if has_recent and has_change:
-        pass_filter = change_pass_expr & (
+    # 6b. segment_wise donor cells: the newest regime (cohort >= cut) reaches its
+    # own depth K_new; the OLDER cohorts' observed cells at duration >= K_new feed
+    # the borrowed tail, so they are DATA actually used (as the borrow donor).
+    donor_expr = pl.lit(False)
+    if treatment == "segment_wise" and has_change:
+        newest_obs = pl.col("is_observed") & change_pass_expr
+        k_new = pl.when(newest_obs).then(pl.col("duration")).otherwise(None).max()
+        expanded = expanded.with_columns(
+            (k_new.over(grp_cols) if grp_cols else k_new).alias("_K_new")
+        )
+        donor_expr = (
+            pl.col("is_observed")
+            & ~change_pass_expr
+            & pl.col("_K_new").is_not_null()
+            & (pl.col("duration") >= pl.col("_K_new"))
+        )
+
+    # 7. pass_filter = recent window AND (the regime cohort cut, unless the
+    # treatment keeps every regime).
+    drop_expr = pl.lit(True) if keeps_all else change_pass_expr
+    if has_recent:
+        pass_filter = drop_expr & (
             pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent)
         )
-    elif has_recent:
-        pass_filter = pl.col("_cal_idx") > (pl.col("_max_cal_fit") - recent)
-    elif has_change:
-        pass_filter = change_pass_expr
     else:
-        pass_filter = pl.lit(True)
+        pass_filter = drop_expr
 
-    expanded = expanded.with_columns(pass_filter.alias("_pass_filter"))
+    expanded = expanded.with_columns(
+        pass_filter.alias("_pass_filter"), donor_expr.alias("_is_donor")
+    )
 
-    if cd_df is not None:
-        expanded = expanded.drop("_cd_join")
-
-    # 8. is_fit_data, is_excluded, status.
+    # 8. is_fit_data, is_excluded, status. Donor cells are observed data used as
+    # the borrow donor -> their own status, taking precedence over plain "used".
     expanded = expanded.with_columns(
         (
             pl.col("is_observed")
@@ -596,6 +626,7 @@ def _compute_triangle_usage(
 
     expanded = expanded.with_columns(
         pl.when(pl.col("is_held_out")).then(pl.lit("holdout"))
+        .when(pl.col("_is_donor")).then(pl.lit("donor"))
         .when(pl.col("is_fit_data")).then(pl.lit("used"))
         .when(pl.col("is_excluded")).then(pl.lit("unused"))
         .otherwise(pl.lit("future"))
@@ -645,17 +676,22 @@ def _plot_triangle_usage(
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
-    from .regime import _resolve_regime
+    from .regime import Regime, _resolve_regime
 
     regime_cut = _resolve_regime(regime, triangle)
+    treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
 
     usage_df = _compute_triangle_usage(
         triangle,
         recent=recent,
         regime_cut=regime_cut,
         holdout=holdout,
+        treatment=treatment,
     )
-    legend_states = _USAGE_STATES
+    # legend shows only the statuses actually present (so "donor" appears only
+    # under segment_wise with a real donor tail).
+    present = set(usage_df["status"].unique().to_list())
+    legend_states = tuple(s for s in _USAGE_STATES if s in present)
 
     grp = triangle.groups
     coh = triangle.cohort

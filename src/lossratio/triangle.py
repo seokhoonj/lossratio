@@ -782,9 +782,10 @@ class Triangle:
         """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
 
         Returns one row per ``group x cohort x duration`` cell with a ``status``
-        of ``"used"`` / ``"unused"`` / ``"holdout"`` / ``"future"`` under
-        the given filters -- so a caller can render the usage view itself
-        instead of the bundled matplotlib plot.
+        of ``"used"`` / ``"unused"`` / ``"holdout"`` / ``"future"`` / ``"donor"``
+        under the given filters -- so a caller can render the usage view itself
+        instead of the bundled matplotlib plot. Only OBSERVED cells are ever
+        flagged used / donor; projection cells stay ``"future"``.
         :meth:`plot_triangle` with ``kind="usage"`` is exactly the chart over
         this frame, with the same input resolution; this is its data source
         of truth.
@@ -797,8 +798,11 @@ class Triangle:
             ``"unused"``. ``None`` applies no recent filter.
         regime
             ``None``, a :class:`Regime`, ``"auto"``, or a callable
-            ``triangle -> Regime`` -- resolved to the same cohort cut the fit
-            uses: cohorts before the change drop to ``"unused"``.
+            ``triangle -> Regime`` -- resolved to the same cohort treatment the
+            fit uses. ``latest_only`` (default) drops the pre-change cohorts to
+            ``"unused"``; ``segment_wise`` / ``covariate`` keep every regime, and
+            under ``segment_wise`` the older regimes' observed cells past the
+            newest regime's depth are flagged ``"donor"`` (the borrow donor).
         holdout
             Number of trailing calendar diagonals flagged ``"holdout"`` (the
             :class:`Backtest` hold-out pattern).
@@ -811,11 +815,13 @@ class Triangle:
             out).
         """
         from ._triangle_vis import _compute_triangle_usage
-        from .regime import _resolve_regime
+        from .regime import Regime, _resolve_regime
 
         regime_cut = _resolve_regime(regime, self)
+        treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
         usage_df = _compute_triangle_usage(
             self, recent=recent, regime_cut=regime_cut, holdout=holdout,
+            treatment=treatment,
         )
         return mirror_output(usage_df, self._output_type)
 

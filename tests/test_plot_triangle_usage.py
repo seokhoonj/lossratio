@@ -388,3 +388,53 @@ def test_usage_deterministic_order_multi_column_groups():
 def test_usage_rejects_bad_recent(tri_with_groups, bad):
     with pytest.raises(ValueError, match="recent"):
         tri_with_groups.usage(recent=bad)
+
+
+# --- segment_wise borrow donor provenance ----------------------------
+
+def _surgery_q():
+    return lr.Triangle(
+        lr.make_experience(seed=1).filter(pl.col("coverage") == "SURGERY"),
+        groups="coverage", grain="Q",
+    )
+
+
+def test_usage_segment_wise_marks_donor_observed_cells():
+    """segment_wise keeps every regime (no 'unused' drop) and flags the older
+    regimes' OBSERVED cells past the newest regime's depth as 'donor' -- the data
+    cells used as the borrow donor. Projection cells never become 'donor'."""
+    from datetime import date
+    tri = _surgery_q()
+    cut = date(2024, 7, 1)
+    u = tri.usage(regime=lr.Regime.at(change=cut, treatment="segment_wise"))
+    seen = set(u["status"].unique().to_list())
+    assert "donor" in seen
+    assert "unused" not in seen                      # segment_wise keeps all regimes
+
+    donor = u.filter(pl.col("status") == "donor")
+    assert bool((donor["cohort"] < cut).all())       # only older regimes donate
+    k_new = tri._df.filter(pl.col("cohort") >= cut)["duration"].max()
+    assert bool((donor["duration"] >= k_new).all())  # only past the newest depth
+    # every donor cell is a real observed cell (never a projection cell)
+    obs = set(zip(tri._df["cohort"].to_list(), tri._df["duration"].to_list()))
+    donor_cells = set(zip(donor["cohort"].to_list(), donor["duration"].to_list()))
+    assert donor_cells <= obs
+
+
+def test_usage_covariate_keeps_all_regimes_no_donor():
+    """covariate keeps every regime too, but there is no borrow donor."""
+    u = _surgery_q().usage(
+        regime=lr.Regime.at(change="2024-07-01", treatment="covariate")
+    )
+    seen = set(u["status"].unique().to_list())
+    assert "donor" not in seen and "unused" not in seen
+
+
+def test_plot_usage_segment_wise_renders():
+    fig = _surgery_q().plot_triangle(
+        kind="usage", regime=lr.Regime.at(change="2024-07-01", treatment="segment_wise")
+    )
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
