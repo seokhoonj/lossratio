@@ -159,15 +159,17 @@ $$
 즉 **분모(보험료)는 알려진 값으로 두고 분산을 얹지 않는다.** 왜 그런가:
 
 - **위험보험료는 확률 과정이 아니라 *할당된 노출*이다.** `위험률 x 가입금액`으로
-  계산되는 값이라, 손해처럼 매기마다 *뽑히는* 양이 아니다. 관측된 보험료는 장부
-  기록(known fact)이고, 미래 보험료의 유일한 불확실성은 유지 건수(해지·decrement)
-  뿐인데 — 그건 손해와 보험료를 *같이* 움직여 **비율에서 상쇄**되고, 남는 역선택은
-  손해강도 쪽에 귀속된다.
-- **그러니 분모에 분산을 매기면 *없는 위험을 만들어낸다*.** 보험료 발전계수의
-  코호트 간 산포는 forecast 불확실성이 아니라 구성·시점 noise라, 그걸 비율 밴드에
-  전파하면 — 상쇄되지 않는 자리에서 — 손해율 구간만 가짜로 부푼다.
+  계산되는 값이라, 손해처럼 매 기간 새로 *뽑히는* 양이 아니다. 이미 걷힌 보험료는
+  장부에 적힌 확정값이고, 미래 보험료의 유일한 불확실성은 유지 건수(해지·사망 등
+  줄어드는 사건)뿐이다 — 그런데 그건 손해와 보험료를 *같이* 움직여 **비율에서
+  상쇄**되고, 남는 역선택(나쁜 위험만 남는 효과)은 분모가 아니라 손해강도 쪽에
+  귀속된다.
+- **그러니 분모에 분산을 매기면 *없는 위험을 지어낸다*.** 보험료 link ratio의
+  코호트 간 산포는 예측 불확실성이 아니라 코호트 구성·시점 차이에서 오는 노이즈라,
+  그걸 비율 밴드에 전파하면 — 상쇄되지 않는 자리에서 — 손해율 구간만 가짜로
+  부푼다.
 
-따라서 손해율 밴드는 **손해 fit이 이미 갖고 있는 불확실성을, 알려진 분모로 나눈
+따라서 손해율 밴드는 **손해 적합이 이미 갖고 있는 불확실성을 알려진 분모로 나눈
 것**이다. 분모 모델(`PooledPremium` 등)은 *점추정*을 위해 고르고 들여다보되,
 분산은 분자에만 둔다.
 
@@ -179,20 +181,28 @@ df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
 fit = lr.Ratio(loss=lr.ChainLadder(), premium=lr.PooledPremium()).fit(tri)
-s = fit.summary().sort("cohort").with_columns(
-    (pl.col("ratio_se") / pl.col("ratio_proj") * 100).alias("ratio_cv")
+d = fit.to_polars().filter(pl.col("source") == "own")
+
+# 분모는 SE를 내지 않고(premium_total_se = null), 손해율 밴드는
+# 손해 SE를 분모로 나눈 것과 정확히 같다.
+d.select(
+    pl.col("premium_total_se").max().alias("premium_se"),
+    (pl.col("ratio_se") - pl.col("loss_total_se") / pl.col("premium_proj"))
+    .abs().max().alias("ratio_se_identity"),
 )
-s.tail(1).select(["cohort", "ratio_proj", "ratio_cv"])
-#> 최근 코호트 (2025-4분기):  proj 0.86,  ratio_cv 22.7%
+#> premium_se: null,   ratio_se_identity: 0.0
 ```
+
+분모 쪽 SE 컬럼은 비어 있고(`null`), 손해율 SE는 손해 SE를 분모로 나눈 값과
+한 치도 어긋나지 않는다. 불확실성은 온전히 분자에서 온다.
 
 ```{admonition} 보험료가 *진짜로* 불확실하면
 :class: tip
 
-해지율이 빗나갈 수 있다는 *가정*에서 오는 forward-보험료 불확실성은 실재한다.
-다만 그건 데이터의 발전계수 산포에 없는(=부트스트랩·Mack이 못 잡는) 양이라
+해지율이 빗나갈 수 있다는 *가정*에서 오는 장래 보험료 불확실성은 실재한다.
+다만 그건 데이터의 link ratio 산포에는 없는(=부트스트랩도 Mack도 못 잡는) 양이라
 요율·해지표 같은 외부 정보로 *주입*해야 하고, 게다가 비율에서 대부분 상쇄된다.
-그래서 기본 손해율 밴드는 분모를 known으로 두며, 그 주입 경로는 해당 데이터가
+그래서 기본 손해율 밴드는 분모를 알려진 값으로 두며, 그 주입 경로는 해당 데이터가
 있을 때 별도로 다룬다.
 ```
 
@@ -232,7 +242,7 @@ $$y^*_{ik} = \hat\mu_{ik} + r^*_{ik}\sqrt{\hat\phi_k\,\hat\mu_{ik}}$$
 **3) 전체를 다시 적합한다.** $y^*$ 삼각형에 **전체 파이프라인**($\hat g_k$, 그리고
 `CredibleLoss`면 $\psi\,$,$\,\hat u_i$까지)을 처음부터 재추정해 예측 $\hat R^{(b)}$를
 낸다 — 이게 *모수 불확실성*(추정 자체의 흔들림)을 푼다. 미래 셀엔 과대산포
-**과정 잡음**을 더한다: $\operatorname{Var}(\Delta C_k \mid C_{k-1}) = \hat\sigma^2_k\,C_{k-1}$.
+**프로세스 노이즈**를 더한다: $\operatorname{Var}(\Delta C_k \mid C_{k-1}) = \hat\sigma^2_k\,C_{k-1}$.
 
 **4) 분포를 읽는다.** $B$개 복제 $\{\hat R^{(b)}\}$에서 두 분산을 합치고(law of
 total variance) 신뢰구간은 경험 분위수로 잡는다:
