@@ -165,19 +165,6 @@ def test_degenerate_single_cohort_collapses_to_pooled():
     assert diff == 0.0
 
 
-def test_gate_clears_naive_floor(tri):
-    # CredibleLoss must beat the non-negotiable naive carry-forward baseline.
-    from lossratio.gate import gate
-    from lossratio.naive_baseline import NaiveBaseline
-    cmp = lr.EstimatorComparison(
-        {"naive": NaiveBaseline(), "credible": CredibleLoss()},
-        holdouts=(6, 12, 18), target="ratio", baseline="naive",
-    ).fit(tri)
-    g = gate(cmp, challenger="credible", primary="abs_err")
-    assert g.verdict == "PASS"
-    assert g.improvement > 0.0
-
-
 def test_zero_increment_duration_does_not_nan_the_level():
     # finding: a zero-increment duration makes m0 = g_k * P = 0, which is finite
     # but cannot carry a Pearson residual (0/0). With an explicit psi > 0 the

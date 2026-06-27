@@ -720,6 +720,185 @@ class EstimatorComparisonFit:
     def fits(self) -> "dict[str, BacktestFit]":
         return dict(self._fits)
 
+    # -- scorecard / selection -------------------------------------------------
+
+    # Default Borda panel: calibration (|bias|), accuracy (mae), interval
+    # honesty (|coverage_80 - 0.80|). mae and rmse both measure dispersion, so
+    # only one is in the default to avoid double-weighting spread.
+    _BEST_DEFAULT_METRICS = ("bias", "mae", "coverage_80")
+
+    @staticmethod
+    def _rank_key(metric: str) -> "pl.Expr":
+        """The ascending sort key for one metric: a lower-is-better expression
+        ``rank`` / ``best`` rank on, so every metric ranks in one direction.
+        ``mae`` / ``rmse`` / ``deviance`` are already lower-better; ``bias``
+        ranks by distance from 0; a ``coverage_<q>`` column ranks by distance
+        from its nominal ``q`` (an interval too wide is as wrong as one too
+        narrow)."""
+        if metric.startswith("coverage_"):
+            nominal = int(metric.split("_")[1]) / 100.0
+            return (pl.col(metric) - nominal).abs()
+        if metric == "bias":
+            return pl.col("bias").abs()
+        return pl.col(metric)
+
+    def _build_scorecard(
+        self, *, terminal: "int | None", coverage_levels: "tuple[float, ...]"
+    ) -> "pl.DataFrame":
+        from ._scorecard import score_cells
+
+        blocks = []
+        for label in self._labels:
+            block = score_cells(
+                self._fits[label]._ae_err,
+                groups=self._groups,
+                terminal=terminal,
+                coverage_levels=coverage_levels,
+            )
+            blocks.append(block.with_columns(pl.lit(label).alias("estimator")))
+        out = pl.concat(blocks, how="diagonal")
+        return out.select(["estimator", *[c for c in out.columns if c != "estimator"]])
+
+    def scorecard(
+        self,
+        *,
+        terminal: "int | None" = None,
+        coverage_levels: "tuple[float, ...]" = (0.80, 0.95),
+    ):
+        """Stack every estimator's validation scorecard into one frame.
+
+        Runs the per-estimator scorecard (bias / mae / rmse / deviance /
+        interval coverage) over each estimator's scored cells and concatenates
+        them with a leading ``estimator`` column -- the read-it-yourself
+        scorecard. Columns: ``[estimator, groups?, holdout?, population, lane,
+        n, bias, bias_wt, mae, rmse, deviance, coverage_*?]``. ``terminal=T``
+        adds the ``"terminal"`` population (latest ``T`` durations, the
+        go-forward decision region) beside ``"all"``.
+        """
+        return mirror_output(
+            self._build_scorecard(terminal=terminal, coverage_levels=coverage_levels),
+            self._output_type,
+        )
+
+    def _resolve_population(
+        self, population: str, terminal: "int | None"
+    ) -> "tuple[pl.DataFrame, list[str]]":
+        if population not in ("all", "terminal"):
+            raise ValueError(
+                f'population must be "all" or "terminal", got {population!r}'
+            )
+        if population == "terminal" and terminal is None:
+            raise ValueError(
+                'population="terminal" needs terminal=<int> (the number of '
+                "latest durations to score)"
+            )
+        sc = self._build_scorecard(
+            terminal=terminal if population == "terminal" else None,
+            coverage_levels=(0.80, 0.95),
+        )
+        return sc, normalize_groups(self._groups)
+
+    def rank(
+        self,
+        metric: str = "mae",
+        *,
+        population: str = "all",
+        lane: str = "cumulative",
+        terminal: "int | None" = None,
+    ):
+        """Estimators sorted best-first by a SINGLE metric (transparent view).
+
+        ``metric`` is a scorecard metric (``bias`` / ``mae`` / ``rmse`` /
+        ``deviance`` / ``coverage_80`` / ``coverage_95``); ranking is
+        lower-is-better with ``bias`` and ``coverage_*`` measured as distance
+        from 0 and from nominal. ``population`` is ``"all"`` or ``"terminal"``
+        (with ``terminal=T``); ``lane`` is ``"cumulative"`` / ``"incremental"``
+        / ``"anchored"``. Returns ``[groups?, estimator, n, <metric>, rank]``
+        sorted within each group, ``rank`` 1 = best. Read several ``metric=``
+        calls side by side -- a metric that reorders the table is a real
+        trade-off.
+        """
+        sc, gcols = self._resolve_population(population, terminal)
+        df = sc.filter((pl.col("population") == population) & (pl.col("lane") == lane))
+        if metric not in df.columns:
+            raise ValueError(
+                f"metric {metric!r} is not in the scorecard (point-only fits "
+                f"carry no coverage columns); available: "
+                f"{[c for c in df.columns if c not in ('estimator','population','lane')]}"
+            )
+        # a rolling comparison carries a `holdout` column -- rank WITHIN each
+        # (group, holdout) so depths are not mixed into one ordering.
+        gkeys = gcols + (["holdout"] if "holdout" in df.columns else [])
+        df = df.with_columns(self._rank_key(metric).alias("_key"))
+        rnk = pl.col("_key").rank(method="min")
+        rnk = rnk.over(gkeys) if gkeys else rnk
+        df = df.with_columns(rnk.cast(pl.Int64).alias("rank"))
+        out = df.select([*gkeys, "estimator", "n", metric, "rank"]).sort([*gkeys, "rank"])
+        return mirror_output(out, self._output_type)
+
+    def best(
+        self,
+        *,
+        population: str = "all",
+        lane: str = "cumulative",
+        terminal: "int | None" = None,
+        metrics: "tuple[str, ...] | None" = None,
+    ):
+        """Mechanical multi-metric pick: sum each estimator's per-metric rank,
+        lowest total wins (a Borda count).
+
+        For every metric in ``metrics`` (default ``("bias", "mae",
+        "coverage_80")`` -- calibration, accuracy, interval honesty) the
+        estimators are ranked 1..k (lower-is-better, ties share the average
+        rank); the ranks are summed into ``rank_sum`` and the table is sorted
+        within each group so the top row is the winner. Returns ``[groups?,
+        estimator, <metric>_rank..., rank_sum]`` -- the breakdown is kept so the
+        pick is auditable, not a black box. A requested metric absent from the
+        scorecard (e.g. coverage on a point-only fit) is dropped with a warning.
+        """
+        sc, gcols = self._resolve_population(population, terminal)
+        df = sc.filter((pl.col("population") == population) & (pl.col("lane") == lane))
+        want = list(metrics) if metrics is not None else list(self._BEST_DEFAULT_METRICS)
+        present = [m for m in want if m in df.columns]
+        no_col = [m for m in want if m not in df.columns]
+        # a metric only SOME estimators carry (e.g. coverage_* when only the
+        # analytical fit produced an SE -- the others are point-only and null)
+        # cannot fairly rank the rest: null badness would let `sum_horizontal`
+        # skip it as 0, silently penalising the estimator that DID carry it.
+        # Drop any partial-null metric from the Borda panel.
+        use = [m for m in present if df.get_column(m).null_count() == 0]
+        partial = [m for m in present if m not in use]
+        if no_col or partial:
+            warnings.warn(
+                f"dropped {no_col + partial} from the Borda panel "
+                f"(not a scorecard column, or null for some estimators -- e.g. "
+                f"coverage on point-only fits); ranking on {use}."
+            )
+        if not use:
+            raise ValueError(
+                "no requested metric is shared by every estimator; nothing to "
+                "rank on (give estimators a common uncertainty source, e.g. "
+                "uncertainty=ResidualBootstrap(...), or pass metrics= without "
+                "coverage)"
+            )
+        # rank WITHIN each (group, holdout) so a rolling comparison's depths are
+        # not mixed; the Borda sum then runs over metrics at each depth.
+        gkeys = gcols + (["holdout"] if "holdout" in df.columns else [])
+        rank_cols = []
+        for m in use:
+            rnk = self._rank_key(m).rank(method="average")
+            rnk = rnk.over(gkeys) if gkeys else rnk
+            col = f"{m}_rank"
+            df = df.with_columns(rnk.alias(col))
+            rank_cols.append(col)
+        df = df.with_columns(
+            pl.sum_horizontal([pl.col(c) for c in rank_cols]).alias("rank_sum")
+        )
+        out = df.select([*gkeys, "estimator", *rank_cols, "rank_sum"]).sort(
+            [*gkeys, "rank_sum"]
+        )
+        return mirror_output(out, self._output_type)
+
     # -- crossover reader ------------------------------------------------------
 
     @staticmethod

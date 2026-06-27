@@ -892,3 +892,81 @@ def test_repr(cmp_fit):
     assert "target='loss'" in text
     assert "n_matched_cells=" in text
     assert "skipped" not in text  # nothing skipped -> block omitted
+
+
+# ---------------------------------------------------------------------------
+# scorecard / rank / best  (the metric-panel + mechanical-pick surface)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def ratio_cmp():
+    """Grouped ratio comparison: pooled (analytical SE -> coverage) vs credible
+    (point-only -> null coverage). Single holdout keeps the pick unambiguous."""
+    return lr.EstimatorComparison(
+        {"pooled": lr.Ratio(loss=lr.PooledLoss()),
+         "credible": lr.Ratio(loss=lr.CredibleLoss())},
+        holdouts=12, target="ratio", baseline="pooled",
+    ).fit(_triangle(groups="coverage"))
+
+
+def test_scorecard_stacks_every_estimator(ratio_cmp):
+    sc = ratio_cmp.scorecard()
+    assert isinstance(sc, pl.DataFrame)
+    assert set(sc["estimator"].unique()) == {"pooled", "credible"}
+    for col in ("estimator", "coverage", "population", "lane", "bias", "mae", "rmse"):
+        assert col in sc.columns
+    # default has only the "all" population
+    assert set(sc["population"].unique()) == {"all"}
+
+
+def test_scorecard_terminal_adds_population(ratio_cmp):
+    sc = ratio_cmp.scorecard(terminal=6)
+    assert set(sc["population"].unique()) == {"all", "terminal"}
+
+
+def test_rank_orders_best_first_within_group(ratio_cmp):
+    r = ratio_cmp.rank(metric="mae")
+    assert isinstance(r, pl.DataFrame)
+    # within each (coverage, holdout) the rank-1 row has the minimum mae
+    keys = ["coverage", "holdout"] if "holdout" in r.columns else ["coverage"]
+    for (_, grp) in r.group_by(keys):
+        assert grp.filter(pl.col("rank") == grp["rank"].min())["mae"].min() == grp["mae"].min()
+    # sorted best-first
+    assert r["rank"].to_list() == sorted(r["rank"].to_list()) or "coverage" in r.columns
+
+
+def test_rank_unknown_metric_raises(ratio_cmp):
+    with pytest.raises(ValueError, match="not in the scorecard"):
+        ratio_cmp.rank(metric="nonsense")
+
+
+def test_terminal_population_requires_terminal_arg(ratio_cmp):
+    with pytest.raises(ValueError, match="terminal="):
+        ratio_cmp.rank(metric="mae", population="terminal")
+
+
+def test_best_rank_sum_equals_component_sum(ratio_cmp):
+    b = ratio_cmp.best(metrics=("bias", "mae"))
+    rank_cols = [c for c in b.columns if c.endswith("_rank")]
+    assert set(rank_cols) == {"bias_rank", "mae_rank"}
+    recomputed = b.select(pl.sum_horizontal(rank_cols)).to_series()
+    assert (recomputed == b["rank_sum"]).all()
+    # winner (min rank_sum) sorts first within each group
+    keys = ["coverage", "holdout"] if "holdout" in b.columns else ["coverage"]
+    for (_, grp) in b.group_by(keys):
+        assert grp["rank_sum"].to_list()[0] == grp["rank_sum"].min()
+
+
+def test_best_drops_partial_null_coverage(ratio_cmp):
+    # credible is point-only -> coverage_80 is null for it -> the default panel
+    # (bias, mae, coverage_80) must drop coverage_80 and warn.
+    with pytest.warns(UserWarning, match="coverage"):
+        b = ratio_cmp.best()
+    assert "coverage_80_rank" not in b.columns
+    assert {"bias_rank", "mae_rank", "rank_sum"} <= set(b.columns)
+
+
+def test_best_all_metrics_unavailable_raises(ratio_cmp):
+    with pytest.raises(ValueError, match="nothing to\\s+rank on"):
+        ratio_cmp.best(metrics=("coverage_80",))

@@ -12,7 +12,7 @@ import lossratio as lr
 from lossratio.backtest import Backtest
 from lossratio.credible_loss import CredibleLoss
 from lossratio.chain_ladder import ChainLadder
-from lossratio.metric_panel import metric_panel
+from lossratio._scorecard import score_cells
 from lossratio.pooled_loss import PooledLoss
 from lossratio._resample import ResidualBootstrap
 
@@ -254,9 +254,9 @@ def test_coverage_lane_flows_through_backtest(tri):
     est = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=50, seed=3))
     ae = _pl(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
     assert "expected_se" in ae.columns
-    panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
+    panel = _pl(score_cells(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
     assert {"coverage_80", "coverage_95"}.issubset(panel.columns)
-    cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))
+    cum = panel.filter((pl.col("lane") == "cumulative") & (pl.col("population") == "all"))
     cov = cum["coverage_95"].drop_nulls()
     assert cov.len() > 0
     assert ((cov >= 0.0) & (cov <= 1.0)).all()
@@ -289,8 +289,8 @@ def test_ratio_coverage_lane_flows_through_backtest(tri):
     est = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=50, seed=2))
     ae = _pl(Backtest(estimator=est, holdouts=6, target="ratio").fit(tri).ae_err)
     assert "expected_se" in ae.columns
-    panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.95,)))
-    cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))
+    panel = _pl(score_cells(ae, groups="coverage", coverage_levels=(0.95,)))
+    cum = panel.filter((pl.col("lane") == "cumulative") & (pl.col("population") == "all"))
     cov = cum["coverage_95"].drop_nulls()
     assert cov.len() > 0
     assert ((cov >= 0.0) & (cov <= 1.0)).all()

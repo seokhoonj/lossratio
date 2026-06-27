@@ -104,7 +104,7 @@ def test_point_only_when_no_uncertainty(tri):
 def test_bootstrap_populates_se_ci_and_coverage(tri):
     from lossratio._resample import ResidualBootstrap
     from lossratio.backtest import Backtest
-    from lossratio.metric_panel import metric_panel
+    from lossratio._scorecard import score_cells
     est = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=15, seed=7))
     d = est.fit(tri).to_polars()
     proj = d.filter(pl.col("source") == "own")
@@ -117,8 +117,8 @@ def test_bootstrap_populates_se_ci_and_coverage(tri):
     # coverage lane flows through a backtest
     ae = _pl(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
     assert "expected_se" in ae.columns
-    panel = _pl(metric_panel(ae, groups="coverage", coverage_levels=(0.95,)))
-    cum = panel.filter((pl.col("lane") == "cum") & (pl.col("population") == "all"))
+    panel = _pl(score_cells(ae, groups="coverage", coverage_levels=(0.95,)))
+    cum = panel.filter((pl.col("lane") == "cumulative") & (pl.col("population") == "all"))
     cov = cum["coverage_95"].drop_nulls()
     assert cov.len() > 0 and ((cov >= 0) & (cov <= 1)).all()
 

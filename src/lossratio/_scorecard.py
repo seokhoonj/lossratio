@@ -1,7 +1,7 @@
-"""Validation metric panel (charter Sec.7-4, decision #16).
+"""Validation scorecard (charter Sec.7-4, decision #16).
 
 A hold-out backtest's per-cell A/E table answers "how far off was each
-held-out cell"; the metric panel structures that answer into a decision-grade
+held-out cell"; the scorecard structures that answer into a decision-grade
 report -- **bias** (signed error), **dispersion** (absolute / squared error),
 and **Poisson deviance** -- on the **cumulative**, **incremental**, and
 **anchored** lanes, and split into the full population and the **terminal**
@@ -25,13 +25,13 @@ When the frame carries a ``holdout`` column (a rolling backtest scores a
 physical cell once per origin), the panel groups by it so depths are never
 pooled into a double-counted row.
 
-Charter-mandated but deferred to a follow-up (each needs a decision the panel
-cannot make on its own): the **machine verdict** (needs a pass /
-non-inferiority rule -- lives in :func:`~lossratio.gate.gate`). **Coverage**
-needs the held-out cells' projection SE, which the A/E frame does not carry yet.
+The **mechanical pick** across estimators (rank each by metric, lowest
+rank-sum wins) is a decision the panel cannot make on its own -- it lives in
+:meth:`~lossratio.comparison.EstimatorComparisonFit.best`, with the read-it-
+yourself table in :meth:`~lossratio.comparison.EstimatorComparisonFit.scorecard`.
 
-Internal-only during the additive build phase: not exported. The destructive
-sweep folds this into ``Backtest`` as a result method (charter file layout).
+Internal-only: not exported. It is the engine behind ``scorecard`` /
+``rank`` / ``best`` on :class:`~lossratio.comparison.EstimatorComparisonFit`.
 """
 
 from __future__ import annotations
@@ -49,11 +49,11 @@ if TYPE_CHECKING:
 # Lanes the panel scores, each as (label, err, aeg, expected, actual) columns
 # on the A/E frame. The cumulative lane is always present; the incremental lane
 # is emitted only when the backtest exposed an incremental projection.
-_CUM_LANE = ("cum", "ae_err", "aeg", "expected", "actual")
-_INCR_LANE = ("incr", "incr_ae_err", "incr_aeg", "incr_expected", "incr_actual")
+_CUM_LANE = ("cumulative", "ae_err", "aeg", "expected", "actual")
+_INCR_LANE = ("incremental", "incr_ae_err", "incr_aeg", "incr_expected", "incr_actual")
 # Lanes for which the Poisson deviance (a count / increment scale concept) is
 # defined; the cumulative lane reports deviance as null.
-_DEVIANCE_LANES = {"incr"}
+_DEVIANCE_LANES = {"incremental"}
 
 _REPORT_METRICS = ["n", "bias", "bias_wt", "mae", "rmse", "deviance"]
 
@@ -151,14 +151,14 @@ def _attach_coverage(
     return pl.concat([g, cov], how="horizontal")
 
 
-def metric_panel(
+def score_cells(
     ae_err: "FrameLike",
     *,
     groups: "str | list[str] | None" = None,
     terminal: int | None = None,
     coverage_levels: "tuple[float, ...]" = _DEFAULT_COVERAGE,
 ) -> "FrameLike":
-    """Structure a backtest's per-cell A/E into the validation metric panel.
+    """Structure a backtest's per-cell A/E into the validation scorecard.
 
     Parameters
     ----------
@@ -186,7 +186,7 @@ def metric_panel(
     Returns
     -------
     A tidy report ``[groups?, holdout?, population, lane, n, bias, bias_wt,
-    mae, rmse, deviance, coverage_*?]``. ``lane`` is ``"cum"`` / ``"incr"`` /
+    mae, rmse, deviance, coverage_*?]``. ``lane`` is ``"cumulative"`` / ``"incremental"`` /
     ``"anchored"`` (the last only when the frame carries ``anchor_value``).
     ``bias`` is the mean signed relative error (``A/E - 1``); ``bias_wt`` is
     the exposure-weighted pooled ``A/E - 1`` (``sum(actual - expected) /
@@ -258,7 +258,7 @@ def metric_panel(
             # usable-SE cells in a SEPARATE pass (not gated by _err) -- real on
             # the cum lane, null elsewhere.
             g = _attach_coverage(
-                g, sub, gk, cov_cols, cov_zs, real=(has_se and lane_label == "cum")
+                g, sub, gk, cov_cols, cov_zs, real=(has_se and lane_label == "cumulative")
             )
             g = g.with_columns(
                 population=pl.lit(pop_label), lane=pl.lit(lane_label)
