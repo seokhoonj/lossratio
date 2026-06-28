@@ -248,7 +248,7 @@ class RatioFit:
         the observed portion solid, the projected tail dashed. ``metric`` is
         ``"ratio"`` (default; the projected loss ratio), ``"loss"``, or
         ``"premium"``."""
-        from ._fit_vis import plot_fit, resolve_fit_metric
+        from ._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(
             metric, ("ratio", "loss", "premium")

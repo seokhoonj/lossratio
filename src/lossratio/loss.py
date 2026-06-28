@@ -2445,7 +2445,7 @@ class LossFit:
         the observed portion solid, the projected tail dashed. ``metric`` is
         ``"loss"`` (default; cumulative projected loss) or ``"ratio"`` (the
         projected loss ratio)."""
-        from ._fit_vis import plot_fit, resolve_fit_metric
+        from ._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(metric, ("loss", "ratio"))
         return plot_fit(

@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import (
+from .._io import (
     _iter_group_frames,
     format_group_value,
     normalize_groups,
 )
-from ._plot import (
+from .base import (
     _AMOUNT_METRICS,
     _PROP_METRICS,
     _RATIO_METRICS,
@@ -32,7 +32,7 @@ from ._plot import (
 )
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..triangle import Triangle
 
 
 # Value-view palette: threshold-flagged cells use "mistyrose", others
@@ -676,7 +676,7 @@ def _plot_triangle_usage(
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
-    from .regime import Regime, _resolve_regime
+    from ..regime import Regime, _resolve_regime
 
     regime_cut = _resolve_regime(regime, triangle)
     treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"

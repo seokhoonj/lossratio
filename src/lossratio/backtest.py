@@ -568,7 +568,7 @@ class _FoldFit:
         -------
         matplotlib.figure.Figure
         """
-        from ._backtest_vis import plot_backtest
+        from ._plot.backtest import plot_backtest
         return plot_backtest(
             self, kind=kind, cell_type=cell_type,
             nrow=nrow, ncol=ncol, figsize=figsize,
@@ -628,7 +628,7 @@ class _FoldFit:
                 f"`kind` must be 'value' or 'usage'; got {kind!r}."
             )
         if kind == "value":
-            from ._backtest_vis import plot_triangle_backtest
+            from ._plot.backtest import plot_triangle_backtest
             return plot_triangle_backtest(
                 self,
                 cell_type=cell_type,
@@ -641,7 +641,7 @@ class _FoldFit:
         # inherited from `self.estimator` (overridable via kwargs).
         # The Triangle renderer resolves `"auto"` for regime via an
         # inline `detect_regime` call.
-        from ._triangle_vis import _plot_triangle_usage
+        from ._plot.triangle import _plot_triangle_usage
         from .regime import _resolve_regime
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
@@ -1085,10 +1085,10 @@ class BacktestFit:
                 # the single-origin primary deliverable is the A/E heatmap
                 return self._single_fold_or_raise("plot").plot_triangle(**kwargs)
             else:
-                from ._rolling_backtest_vis import plot_rolling_backtest
+                from ._plot.rolling_backtest import plot_rolling_backtest
                 return plot_rolling_backtest(self, **kwargs)
         elif kind == "reliability":
-            from ._rolling_backtest_vis import plot_rolling_backtest
+            from ._plot.rolling_backtest import plot_rolling_backtest
             return plot_rolling_backtest(self, **kwargs)
         elif kind in FOLD_KINDS:
             if self.is_single_origin:

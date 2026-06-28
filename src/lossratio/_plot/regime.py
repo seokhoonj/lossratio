@@ -16,13 +16,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import (
+from .._io import (
     _iter_group_frames,
     format_group_value,
     group_eq,
     normalize_groups,
 )
-from ._plot import (
+from .base import (
     _cohort_label,
     _format_period_series,
     _get_period_type,
@@ -31,7 +31,7 @@ from ._plot import (
 )
 
 if TYPE_CHECKING:
-    from .regime import Regime
+    from ..regime import Regime
 
 
 def plot_regime(

@@ -185,7 +185,7 @@ def test_overlay_guards_nonpositive_y_max():
     # marker line + annotation.
     import matplotlib.pyplot as plt
 
-    from lossratio._link_vis import _apply_factor_stability_overlay
+    from lossratio._plot.link import _apply_factor_stability_overlay
 
     fs = pl.DataFrame(
         {"duration_from": [1], "duration_to": [2], "cv": [0.01], "rse": [0.01]}
@@ -206,7 +206,7 @@ def test_ata_intensity_plot_honor_recent():
     import polars as pl
 
     import lossratio as lr
-    from lossratio._link_vis import _ata_summary, _filter_cells_recent
+    from lossratio._plot.link import _ata_summary, _filter_cells_recent
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     link = tri.link(target="loss", exposure="premium")

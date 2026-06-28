@@ -1249,7 +1249,7 @@ class EstimatorComparisonFit:
         -------
         matplotlib.figure.Figure
         """
-        from ._comparison_vis import plot_estimator_comparison
+        from ._plot.comparison import plot_estimator_comparison
         return plot_estimator_comparison(
             self, by=by, metric=metric, lane=lane,
             nrow=nrow, ncol=ncol, figsize=figsize,

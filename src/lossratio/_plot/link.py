@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import (
+from .._io import (
     _iter_group_frames,
     format_group_value,
     group_eq,
@@ -27,7 +27,7 @@ from ._io import (
 )
 
 if TYPE_CHECKING:
-    from .link import Link
+    from ..link import Link
 
 
 _VALID_ATA_TYPES = ("cv", "rse", "summary", "box", "point")

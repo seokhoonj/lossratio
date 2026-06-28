@@ -545,7 +545,7 @@ class PremiumFit:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail dashed. ``metric`` is
         ``"premium"`` (the projected cumulative premium)."""
-        from ._fit_vis import plot_fit, resolve_fit_metric
+        from ._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(metric, ("premium",))
         return plot_fit(

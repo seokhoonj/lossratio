@@ -814,7 +814,7 @@ class Triangle:
             ``status``. Input mirroring is preserved (pandas in -> pandas
             out).
         """
-        from ._triangle_vis import _compute_triangle_usage
+        from ._plot.triangle import _compute_triangle_usage
         from .regime import Regime, _resolve_regime
 
         regime_cut = _resolve_regime(regime, self)
@@ -900,7 +900,7 @@ class Triangle:
         -------
         matplotlib.figure.Figure
         """
-        from ._triangle_vis import plot_triangle as _impl
+        from ._plot.triangle import plot_triangle as _impl
         return _impl(
             self,
             kind=kind,
@@ -944,7 +944,7 @@ class Triangle:
         -------
         matplotlib.figure.Figure
         """
-        from ._triangle_vis import plot as _impl
+        from ._plot.triangle import plot as _impl
         return _impl(
             self,
             metric=metric,
@@ -1221,7 +1221,7 @@ class TriangleValidation:
         -------
         matplotlib.figure.Figure
         """
-        from ._validation_vis import plot_validation
+        from ._plot.validation import plot_validation
         return plot_validation(self, nrow=nrow, ncol=ncol, figsize=figsize)
 
     def plot_triangle(
@@ -1254,7 +1254,7 @@ class TriangleValidation:
         -------
         matplotlib.figure.Figure
         """
-        from ._validation_vis import plot_triangle_validation
+        from ._plot.validation import plot_triangle_validation
         return plot_triangle_validation(
             self,
             x_axis=x_axis,

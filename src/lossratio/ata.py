@@ -323,7 +323,7 @@ class ATA:
         ``show_factor_stability``, ``max_cv``, ``max_rse``, ``min_run``,
         ``nrow``, ``ncol``, ``figsize``.
         """
-        from ._link_vis import plot_link
+        from ._plot.link import plot_link
         kwargs.setdefault("recent", self._recent)
         return plot_link(self._link, model="ata", **kwargs)
 

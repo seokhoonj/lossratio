@@ -2231,7 +2231,7 @@ class Regime:
         -------
         matplotlib.figure.Figure
         """
-        from ._regime_vis import plot_regime
+        from ._plot.regime import plot_regime
         return plot_regime(
             self, nrow=nrow, ncol=ncol, figsize=figsize, palette=palette
         )

@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import pytest
 
 import lossratio as lr
-from lossratio._plot import _auto_divisor, _format_period_series, _get_period_type
+from lossratio._plot.base import _auto_divisor, _format_period_series, _get_period_type
 
 
 @pytest.fixture

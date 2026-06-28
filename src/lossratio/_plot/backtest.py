@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _iter_group_frames, format_group_value
-from ._plot import (
+from .._io import _iter_group_frames, format_group_value
+from .base import (
     _cohort_label,
     _format_period_series,
     _get_period_type,
@@ -24,7 +24,7 @@ from ._plot import (
 )
 
 if TYPE_CHECKING:
-    from .backtest import BacktestFit
+    from ..backtest import BacktestFit
 
 
 _VALID_TYPES = ("col", "diag", "cell")

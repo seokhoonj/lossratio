@@ -19,7 +19,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio._triangle_vis import _compute_triangle_usage
+from lossratio._plot.triangle import _compute_triangle_usage
 from lossratio.regime import _resolve_regime
 
 
