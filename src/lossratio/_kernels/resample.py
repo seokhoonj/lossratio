@@ -53,7 +53,7 @@ from . import engine
 from . import engine_fast
 from .recursion import _fit_multiplicative
 from .recent import recent_link_mask
-from ..estimators.loss import (
+from .credible import (
     _credible_levels,
     _project_borrow,
     _project_credible,
@@ -563,7 +563,7 @@ def bootstrap_segment_covariate(
             g = _build_g_eff(cf, data)
             u, _z, _p = _credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
             return g, u, cf
-        from ..estimators.loss import _smooth_backfit_covariate
+        from .credible import _smooth_backfit_covariate
         bf = _smooth_backfit_covariate(
             loss_mat, premium_obs, replace(data, resp=resp_arr), covariates,
             sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam,

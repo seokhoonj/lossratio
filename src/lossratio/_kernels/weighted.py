@@ -264,7 +264,7 @@ def bootstrap_segment_weighted_additive(
             f"WeightedBootstrap supports 'pooled'/'credible', got {mechanism!r} "
             f"(use ResidualBootstrap)."
         )
-    from ..estimators.loss import _project_credible
+    from .credible import _project_credible
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -285,7 +285,7 @@ def bootstrap_segment_weighted_additive(
     # point fit -> centering projection + calendar-drift SE (scheme-independent)
     g_pt = engine_fast.saturated_intensity(resp, expo, dur0, n_links)
     if mechanism == "credible":
-        from ..estimators.loss import _credible_levels
+        from .credible import _credible_levels
         u_pt = _credible_levels(loss_obs, premium_obs, g_pt, sigma_method, psi,
                                 link_mask=loss_mask)[0]
     else:

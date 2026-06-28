@@ -49,11 +49,8 @@ from .._kernels.io import (
 )
 from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
 from .._kernels.recent import recent_link_mask
-from .loss import (
-    _credible_levels,
-    _segment_credibility_df,
-    _smooth_backfit,
-)
+from ._credibility import _segment_credibility_df
+from .._kernels.credible import _credible_levels, _smooth_backfit
 from ..core.model_frame import ModelFrame
 
 if TYPE_CHECKING:
