@@ -25,8 +25,8 @@ from scipy.spatial.distance import pdist
 from scipy.stats import f as _f_dist
 from scipy.stats import ttest_ind
 
-from ._e_divisive import e_divisive
-from ._io import (
+from ._kernels.e_divisive import e_divisive
+from ._kernels.io import (
     _iter_group_frames,
     collapse_groups,
     fill_group_columns,
@@ -1511,7 +1511,7 @@ class Regime:
         # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
             from .ata import _detect_stability_point
-            from ._recursion import _build_value_matrix
+            from ._kernels.recursion import _build_value_matrix
 
             # Map the regime target -> a valid cumulative metric for the
             # ATA factor diagnostic (cumulative metrics only). Derived
@@ -1926,7 +1926,7 @@ class Regime:
         is otherwise identical to :attr:`changes` (same columns, group keys,
         ``regime_id``); only ``change`` moves. Input mirroring is preserved.
         """
-        from ._period import floor_to_period
+        from ._kernels.period import floor_to_period
 
         if grain not in _GRAIN_MONTHS:
             raise ValueError(

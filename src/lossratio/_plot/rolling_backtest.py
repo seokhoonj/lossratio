@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .._io import _iter_group_frames, format_group_value
+from .._kernels.io import _iter_group_frames, format_group_value
 from .base import _hide_unused, _resolve_grid
 
 if TYPE_CHECKING:

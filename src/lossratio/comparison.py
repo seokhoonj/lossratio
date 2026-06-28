@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output, normalize_groups
+from ._kernels.io import mirror_output, normalize_groups
 from .backtest import Backtest, BacktestFit
 
 if TYPE_CHECKING:
@@ -745,7 +745,7 @@ class EstimatorComparisonFit:
     def _build_scorecard(
         self, *, terminal: "int | None", coverage_levels: "tuple[float, ...]"
     ) -> "pl.DataFrame":
-        from ._scorecard import score_cells
+        from ._kernels.scorecard import score_cells
 
         blocks = []
         for label in self._labels:

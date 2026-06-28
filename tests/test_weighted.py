@@ -6,8 +6,8 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio import _engine_fast as ef
-from lossratio._weighted import WeightedBootstrap, _weighted_refit_additive
+from lossratio._kernels import engine_fast as ef
+from lossratio._kernels.weighted import WeightedBootstrap, _weighted_refit_additive
 
 
 @pytest.fixture
@@ -78,8 +78,8 @@ def test_weighted_chain_ladder_fills_se(tri):
 
 
 def test_weighted_multiplicative_w1_is_point():
-    from lossratio._recursion import _fit_multiplicative
-    from lossratio._weighted import _weighted_refit_multiplicative
+    from lossratio._kernels.recursion import _fit_multiplicative
+    from lossratio._kernels.weighted import _weighted_refit_multiplicative
     rng = np.random.default_rng(0)
     nC = nD = 8
     L = np.full((nC, nD), np.nan)

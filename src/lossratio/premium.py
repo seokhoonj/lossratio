@@ -40,7 +40,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import (
+from ._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
     collapse_groups,
@@ -48,8 +48,8 @@ from ._io import (
     mirror_output,
     normalize_groups,
 )
-from ._recursion import _build_value_matrices, _fit_multiplicative
-from ._recent import recent_link_mask, validate_recent
+from ._kernels.recursion import _build_value_matrices, _fit_multiplicative
+from ._kernels.recent import recent_link_mask, validate_recent
 from .loss import (
     _credible_levels,
     _segment_credibility_df,
@@ -58,7 +58,7 @@ from .loss import (
 from .model_frame import ModelFrame
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from ._types import RegimeArg
     from .triangle import Triangle
 

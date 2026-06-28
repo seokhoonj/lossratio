@@ -16,7 +16,7 @@ shape with no penalty would in turn reduce the smooth shape to the saturated
 ``g_k`` -- the chain back to the golden anchor.
 
 The smooth-shape + credibility estimation variance breaks the analytical
-recursion, so SE / CI are null UNLESS a :class:`~lossratio._resample.ResidualBootstrap`
+recursion, so SE / CI are null UNLESS a :class:`~lossratio._kernels.resample.ResidualBootstrap`
 is attached -- the bootstrap re-runs the whole smooth pipeline (shape +
 ``lambda`` selection + level) per replicate, so the interval and the coverage
 lane are available for ``SmoothLoss`` like the credible rung. ``recent`` (the
@@ -60,7 +60,7 @@ class SmoothLoss(_LossEstimatorBase):
         ``uncertainty=ResidualBootstrap(...)`` is attached; SE / CI are null
         otherwise).
     uncertainty
-        ``None`` (point-only) or a :class:`~lossratio._resample.ResidualBootstrap`
+        ``None`` (point-only) or a :class:`~lossratio._kernels.resample.ResidualBootstrap`
         -- a full smooth-pipeline refit per replicate. Each replicate re-runs the
         shape + ``lambda`` selection + backfitting, so the selection uncertainty
         is captured (charter Sec.5.2). NOTE: this is materially heavier than the

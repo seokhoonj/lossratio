@@ -1,9 +1,9 @@
 """Vectorized fast-path siblings of the saturated-mode engine primitives.
 
-The dict-loop primitives in :mod:`lossratio._engine` are the oracle compile
+The dict-loop primitives in :mod:`lossratio._kernels.engine` are the oracle compile
 target (``tests/test_oracle.py`` freezes them as exact rationals) and must not
 change. This module is the numpy-array path the residual bootstrap
-(:mod:`lossratio._resample`) drives per replicate, where the dict / list
+(:mod:`lossratio._kernels.resample`) drives per replicate, where the dict / list
 round-trips dominate. It computes the SAME quantities, matching the engine to
 the floating-point rounding floor:
 

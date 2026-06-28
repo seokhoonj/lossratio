@@ -1,4 +1,4 @@
-"""Tests for the period/grain utilities in lossratio._period.
+"""Tests for the period/grain utilities in lossratio._kernels.period.
 
 These helpers (grain inference, validation, period flooring) are exercised
 indirectly through Triangle construction, but had no direct suite -- which
@@ -15,8 +15,8 @@ import typing
 import polars as pl
 import pytest
 
-from lossratio import _period
-from lossratio._period import (
+from lossratio._kernels import period as _period
+from lossratio._kernels.period import (
     GRAIN_ORDER,
     floor_to_period,
     infer_grain,

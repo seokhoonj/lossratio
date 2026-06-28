@@ -61,7 +61,7 @@ def test_calendar_diagonal_sum_matches_triangle():
     assert grain == "M"
 
     # Reconstruct expected via triangle + offset.
-    from lossratio._period import add_periods
+    from lossratio._kernels.period import add_periods
 
     tri_df = tri.to_polars().with_columns(
         add_periods(pl.col("cohort"), pl.col("duration"), grain).alias("calendar")

@@ -7,7 +7,7 @@ estimator (complete-pooling intensity) wired straight through ``ModelFrame``
 -> ``_engine`` -> projection.
 
 The intensity point estimate ``g_k`` comes from
-:func:`lossratio._engine.saturated_intensity` (the closed-form saturated
+:func:`lossratio._kernels.engine.saturated_intensity` (the closed-form saturated
 mode, frozen bit-for-bit by ``tests/test_oracle.py``); the projection seed,
 the premium link-ratio projection, and the analytical variance recursion
 reuse the kept ``_recursion`` kernel (charter Sec.3.5: ``_recursion.py`` stays). The
@@ -30,9 +30,9 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from . import _engine
-from . import _engine_fast
-from ._io import (
+from ._kernels import engine
+from ._kernels import engine_fast
+from ._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
     collapse_groups,
@@ -40,7 +40,7 @@ from ._io import (
     mirror_output,
     normalize_groups,
 )
-from ._recursion import (
+from ._kernels.recursion import (
     _build_value_matrices,
     _multiplicative_var,
     _wls_factor_var,
@@ -49,13 +49,13 @@ from ._recursion import (
     _step_additive,
     _fit_multiplicative,
 )
-from ._recent import recent_link_mask, validate_recent
-from ._sigma import extrapolate_tail_sigma2
-from ._smooth import smooth_intensity
+from ._kernels.recent import recent_link_mask, validate_recent
+from ._kernels.sigma import extrapolate_tail_sigma2
+from ._kernels.smooth import smooth_intensity
 from .model_frame import ModelFrame
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from ._types import RegimeArg
     from .triangle import Triangle
 
@@ -116,8 +116,8 @@ class _LossEstimatorBase:
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
         if self.uncertainty is not None:
-            from ._resample import ResidualBootstrap
-            from ._weighted import WeightedBootstrap
+            from ._kernels.resample import ResidualBootstrap
+            from ._kernels.weighted import WeightedBootstrap
             if not isinstance(self.uncertainty, (ResidualBootstrap, WeightedBootstrap)):
                 raise TypeError(
                     "uncertainty must be None, a ResidualBootstrap, or a "
@@ -161,7 +161,7 @@ def _segment_factor_links(
     link_mask: np.ndarray | None = None,
 ) -> tuple[list[float], list[float], list[int]]:
     """Flatten the observed loss links into ``(response, exposure, duration)``
-    arrays for :func:`_engine.saturated_intensity`.
+    arrays for :func:`lossratio._kernels.engine.saturated_intensity`.
 
     For the link from duration ``k`` to ``k+1`` (1-based), a cohort
     contributes ``response = dLoss`` (the increment arriving at ``k+1``) and
@@ -284,7 +284,7 @@ def _fit_segment_additive(
 
     # 1. engine intensity g_k (keyed by from-duration 1..n_links)
     resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
-    g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+    g_map = engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
 
     # 2. dispersion sigma2_g_k + parameter-variance denominator (shared kernel)
@@ -354,7 +354,7 @@ def _project_additive(
 
     The additive recursion ``loss_{k+1} = loss_k + g_k * P_k`` seeded from
     each cohort's last observed cell, with the process / parameter variance
-    accumulated by :func:`lossratio._recursion._step_additive`. SE is reported on
+    accumulated by :func:`lossratio._kernels.recursion._step_additive`. SE is reported on
     projected cells only (observed cells carry no projection uncertainty --
     left null). The complete-pooling intensity projection path, with no
     link-ratio branch to carry.
@@ -411,7 +411,7 @@ def _fit_segment_multiplicative(
 ) -> dict[str, np.ndarray]:
     """Link-ratio (``ChainLadder``) fit for one segment.
 
-    ``f_k`` is the engine's link ratio (``_engine.link_ratios``, fed the
+    ``f_k`` is the engine's link ratio (``engine.link_ratios``, fed the
     incremental loss it cumulates internally); the dispersion / parameter
     variance reuse the shared kernel and the projection is the
     multiplicative recursion. Premium is projected by the same link-ratio
@@ -452,7 +452,7 @@ def _fit_segment_multiplicative(
             include.append(True if loss_mask is None or k >= n_links
                            else bool(loss_mask[i, k]))
             prev = c
-    f_map = _engine.link_ratios(
+    f_map = engine.link_ratios(
         response=resp, cohort=coh, duration=dur,
         include=None if loss_mask is None else include,
     )
@@ -524,7 +524,7 @@ def _project_multiplicative(
 
     ``loss_{k+1} = f_k * loss_k`` seeded from each cohort's last observed
     cell, with process / parameter variance via
-    :func:`lossratio._recursion._step_multiplicative`. The ``ChainLadder`` projection path,
+    :func:`lossratio._kernels.recursion._step_multiplicative`. The ``ChainLadder`` projection path,
     isolated here.
     """
     n_cohorts, n_durations = loss_obs.shape
@@ -590,7 +590,7 @@ def _credible_levels(
 
     The single source of truth for the credibility level: the point fit
     (:func:`_fit_segment_credible`) and every ResidualBootstrap replicate
-    (:mod:`lossratio._resample`) call this so the bootstrap re-estimates the
+    (:mod:`lossratio._kernels.resample`) call this so the bootstrap re-estimates the
     full pipeline (g_k -> phi -> psi -> u) per replicate (charter Sec.5.2).
     """
     n_cohorts, n_durations = loss_obs.shape
@@ -599,7 +599,7 @@ def _credible_levels(
     # numpy feed (k-major / cohort-minor); the vectorized engine matches the
     # dict-loop primitives to the rounding floor, so this is the single source
     # of truth for the point fit AND every bootstrap replicate (charter Sec.5.2).
-    resp, expo, dur0, coh0 = _engine_fast.link_feed(loss_obs, premium_obs, link_mask)
+    resp, expo, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
     if g_k.ndim == 1:
         m0 = g_k[dur0] * expo
     else:
@@ -613,7 +613,7 @@ def _credible_levels(
     fin = np.isfinite(m0) & (m0 > 0)
     if fin.any():
         resp_f, m0_f, dur_f, coh_f = resp[fin], m0[fin], dur0[fin], coh0[fin]
-        phi = _engine_fast.pearson_dispersion(resp_f, m0_f, dur_f, n_links, sigma_method)
+        phi = engine_fast.pearson_dispersion(resp_f, m0_f, dur_f, n_links, sigma_method)
         # Degenerate cases (charter Sec.4.4) collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
@@ -624,7 +624,7 @@ def _credible_levels(
         if phi_ok:
             if psi == "auto":
                 psi_hat = (
-                    _engine_fast.buhlmann_straub_psi(
+                    engine_fast.buhlmann_straub_psi(
                         resp_f, m0_f, phi, coh_f, dur_f, n_cohorts
                     )
                     if n_coh >= 2
@@ -632,7 +632,7 @@ def _credible_levels(
                 )
             else:
                 psi_hat = float(psi)
-            u_arr, z_arr, present = _engine_fast.conjugate_levels(
+            u_arr, z_arr, present = engine_fast.conjugate_levels(
                 resp_f, m0_f, phi, psi_hat, coh_f, dur_f, n_cohorts
             )
             u_vec[present] = np.maximum(u_arr[present], 0.0)   # recovery floor (Sec.4.3)
@@ -690,7 +690,7 @@ def _fit_segment_credible(
         g_k = g_override
     else:
         resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
-        g_map = _engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+        g_map = engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
         g_k = np.array(
             [g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64
         )
@@ -807,7 +807,7 @@ def _smooth_backfit(
 
     The single source of truth for the smooth fit: the point fit
     (:func:`_fit_segment_smooth`) and every ResidualBootstrap replicate
-    (:mod:`lossratio._resample`) call this, so the bootstrap re-runs the full
+    (:mod:`lossratio._kernels.resample`) call this, so the bootstrap re-runs the full
     smooth pipeline (s-spline + lambda selection + conjugate level) per replicate
     (charter Sec.5.2). The s-step refits the smooth shape on the ``u``-adjusted
     exposure (``u_i * P``, decontaminating the late-duration wedge), the u-step
@@ -876,7 +876,7 @@ def _smooth_backfit(
             if not sm.representable:
                 # Sec.4.2 boundary -> fallback (saturated g_k on raw exposure)
                 representable = False
-                g_map = _engine.saturated_intensity(
+                g_map = engine.saturated_intensity(
                     response=resp_a.tolist(), exposure=expo_a.tolist(),
                     duration=dur_l,
                 )
@@ -960,7 +960,7 @@ def _smooth_backfit_covariate(
     convergence, mirroring the pooled smooth backfit. Returns ``g_eff`` / ``u`` /
     ``Z`` / ``psi`` / ``covfit`` / ``representable`` / ``converged``.
     """
-    from ._covariate import _build_g_eff, fit_covariate_intensity
+    from ._kernels.covariate import _build_g_eff, fit_covariate_intensity
 
     n_cohorts = loss_obs.shape[0]
     u_vec = np.ones(n_cohorts, dtype=np.float64)
@@ -1972,7 +1972,7 @@ def _fit_loss(
         else:
             extra = {}
         if cov_cells is not None:
-            from ._covariate import (
+            from ._kernels.covariate import (
                 _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
             )
             seg_cov = cov_cells
@@ -2033,7 +2033,7 @@ def _fit_loss(
         # reproducible stream, so the tasks fan out across processes below with
         # no change to any value (pass 1.5).
         if boot_spec is not None:
-            from ._weighted import WeightedBootstrap
+            from ._kernels.weighted import WeightedBootstrap
             if isinstance(boot_spec, WeightedBootstrap):
                 # FRW path -- batched weighted refit (additive pooled/credible
                 # via g_k, ChainLadder via the weighted link ratio f_k)
@@ -2082,7 +2082,7 @@ def _fit_loss(
     # pass 1.5: run the bootstraps (serial when n_jobs == 1, else across a
     # process pool). Order-preserving + bit-identical to the serial path.
     if boot_spec is not None:
-        from ._resample import map_segment_bootstraps
+        from ._kernels.resample import map_segment_bootstraps
         results = iter(
             map_segment_bootstraps([t for t in boot_tasks if t is not None],
                                    boot_spec.n_jobs)
@@ -2265,7 +2265,7 @@ class LossFit:
         errors are not summable cell-wise and are left to a bootstrap run at the
         target grain).
         """
-        from ._period import GRAIN_ORDER, count_periods, floor_to_period
+        from ._kernels.period import GRAIN_ORDER, count_periods, floor_to_period
         if grain not in GRAIN_ORDER:
             raise ValueError(
                 f"grain must be one of {sorted(GRAIN_ORDER)}, got {grain!r}"

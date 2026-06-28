@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from lossratio._io import (
+from lossratio._kernels.io import (
     _arrays_to_long_df,
     _iter_group_frames,
     collapse_groups,

@@ -34,11 +34,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-from ._recent import recent_link_mask
-from ._recent import validate_recent as _validate_recent
+from .recent import recent_link_mask
+from .recent import validate_recent as _validate_recent
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..triangle import Triangle
 
 
 def _wls_sigma2(
@@ -173,7 +173,7 @@ class _MultiplicativeResult:
 def _multiplicative_var(result: _MultiplicativeResult) -> np.ndarray:
     """WLS variance of the link-ratio factor f_k.
 
-    Thin wrapper over :func:`lossratio._recursion._wls_factor_var`: returns the
+    Thin wrapper over :func:`lossratio._kernels.recursion._wls_factor_var`: returns the
     per-link `sigma^2_k / sum_j C^L_{j,k}` estimator (alpha = 1).
     NaN where the denom is zero (unfittable link); caller decides how to
     handle.
@@ -260,7 +260,7 @@ def _fit_multiplicative(
     """Fit the link-ratio benchmark (alpha = 1) on an observed loss matrix.
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    of shape ``(n_cohorts, n_durations - 1)`` (see :mod:`lossratio._recent`).
+    of shape ``(n_cohorts, n_durations - 1)`` (see :mod:`lossratio._kernels.recent`).
     When supplied, ``f_k`` / ``sigma2_k`` / ``sum_value_k`` are estimated
     only from links inside the recent wedge, while the point projection
     and analytical SE recursion are seeded from the full, unmasked
@@ -312,7 +312,7 @@ def _fit_multiplicative(
     # contributing cohort (n_k = 1), sigma2 is unestimable directly.
     # Delegate to the shared helper so the choice is consistent
     # across the link-ratio / intensity / ratio paths.
-    from ._sigma import extrapolate_tail_sigma2
+    from .sigma import extrapolate_tail_sigma2
     sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
 
     # Point projection: fill missing cells via f_k. The duration recursion is

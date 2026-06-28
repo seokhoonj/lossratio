@@ -14,11 +14,11 @@ covariate, RIDGE-penalized by ``lam`` so sparse / separated high-cardinality
 levels shrink toward the reference instead of running to +/-inf).
 
 The estimation is the kept penalized quasi-Poisson IRLS
-(:func:`lossratio._smooth.penalized_irls`): the design is
+(:func:`lossratio._kernels.smooth.penalized_irls`): the design is
 ``B = [duration one-hot | covariate dummies]`` and the penalty is the identity
 on the covariate block, zero on the duration block. With NO covariates the
 design is the saturated duration one-hot and ``exp(s_k) = sum(dLoss_k) /
-sum(exposure_k)`` -- exactly :func:`lossratio._engine.saturated_intensity`, so
+sum(exposure_k)`` -- exactly :func:`lossratio._kernels.engine.saturated_intensity`, so
 the covariate path nests the current pooled intensity cell-for-cell.
 
 This module is the standalone, separately-tested numeric core; the
@@ -34,15 +34,15 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
-from ._io import normalize_groups
-from ._period import (
+from .io import normalize_groups
+from .period import (
     coerce_cols_to_date,
     count_periods,
     floor_cols_to_period,
     infer_grain,
     resolve_grain,
 )
-from ._smooth import bspline_design, penalized_irls
+from .smooth import bspline_design, penalized_irls
 
 # weak-prior cap on the EB covariate-effect variance (dimensionless, on the
 # log-relativity scale): bounds a level's typical |log-relativity| to ~sqrt(cap)

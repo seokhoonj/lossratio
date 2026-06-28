@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from ._period import derive_grain_columns
+from ._kernels.period import derive_grain_columns
 
 _DATA_PATH = Path(__file__).parent / "data" / "experience.parquet"
 

@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output, normalize_groups
-from ._period import add_periods
+from ._kernels.io import mirror_output, normalize_groups
+from ._kernels.period import add_periods
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from .triangle import Triangle
 
 

@@ -12,7 +12,7 @@ Two layers:
   embedded triangle by the charter formula and assert it equals the frozen
   literal. A second independent transcription check of the oracle (the dev
   script is the first); references no package implementation.
-* **engine parity (skips until `lossratio._engine` exists)** -- the new
+* **engine parity (skips until `lossratio._kernels.engine` exists)** -- the new
   engine primitives must reproduce the frozen literals. This module is the
   engine's first compile target (charter Sec.7-1); the skip keeps the suite
   green until Sec.7-3 lands the engine, per the Sec.7 landing rule.
@@ -207,13 +207,13 @@ def test_oracle_deviance_matches_literal():
 
 
 # ==========================================================================
-# Layer 2 -- engine parity (skips until lossratio._engine exists).
+# Layer 2 -- engine parity (skips until lossratio._kernels.engine exists).
 # This is the engine's first compile target (charter Sec.7-1). When Sec.7-3
 # lands `_engine.py`, drop the skip; the frozen contract is in
 # dev/redesign_oracle.md table 8 (subject to the contract-freeze review).
 # ==========================================================================
 try:
-    from lossratio import _engine
+    from lossratio._kernels import engine as _engine
     HAS_ENGINE = True
 except ImportError:
     _engine = None

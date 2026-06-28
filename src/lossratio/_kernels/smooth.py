@@ -1,7 +1,7 @@
 """Smooth-mode intensity engine -- penalized IRLS P-spline (charter Sec.4).
 
 The second of the charter's two intensity modes. Where the saturated mode
-(``_engine.saturated_intensity``) is the closed-form ``g_k = sum y / sum P``
+(``engine.saturated_intensity``) is the closed-form ``g_k = sum y / sum P``
 frozen bit-for-bit by the oracle, the smooth mode fits a penalized B-spline
 shape ``s(k)`` by log-link quasi-Poisson IRLS so the duration curve
 ``g_k = exp(s(k))`` is regularised instead of free-per-duration:

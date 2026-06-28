@@ -1,7 +1,7 @@
 """Fractional-random-weight (FRW) bootstrap for the intensity family.
 
 A SELECTABLE alternative to the England-Verrall residual bootstrap
-(:mod:`lossratio._resample`), passed as ``uncertainty=WeightedBootstrap(...)``.
+(:mod:`lossratio._kernels.resample`), passed as ``uncertainty=WeightedBootstrap(...)``.
 
 Instead of resampling Pearson residuals into a pseudo-triangle and re-fitting
 B times, every estimation cell gets a continuous mean-1 random weight
@@ -29,10 +29,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import _engine_fast
-from ._recursion import _fit_multiplicative
-from ._recent import recent_link_mask
-from ._resample import (
+from . import engine_fast
+from .recursion import _fit_multiplicative
+from .recent import recent_link_mask
+from .resample import (
     _calendar_drift_se,
     _ev_fitted_increments,
     _multiplicative_increments,
@@ -264,7 +264,7 @@ def bootstrap_segment_weighted_additive(
             f"WeightedBootstrap supports 'pooled'/'credible', got {mechanism!r} "
             f"(use ResidualBootstrap)."
         )
-    from .loss import _project_credible
+    from ..loss import _project_credible
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -274,7 +274,7 @@ def bootstrap_segment_weighted_additive(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
-    resp, expo, dur0, coh0 = _engine_fast.link_feed(loss_obs, premium_obs, loss_mask)
+    resp, expo, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, loss_mask)
     J = resp.size
     obs_mask = ~np.isnan(loss_obs)
     if J == 0:
@@ -283,9 +283,9 @@ def bootstrap_segment_weighted_additive(
                 "ci_lo": nan.copy(), "ci_hi": nan.copy()}
 
     # point fit -> centering projection + calendar-drift SE (scheme-independent)
-    g_pt = _engine_fast.saturated_intensity(resp, expo, dur0, n_links)
+    g_pt = engine_fast.saturated_intensity(resp, expo, dur0, n_links)
     if mechanism == "credible":
-        from .loss import _credible_levels
+        from ..loss import _credible_levels
         u_pt = _credible_levels(loss_obs, premium_obs, g_pt, sigma_method, psi,
                                 link_mask=loss_mask)[0]
     else:
@@ -293,7 +293,7 @@ def bootstrap_segment_weighted_additive(
     if donor is None:
         point_proj = _project_credible(loss_obs, premium_proj, g_pt, u_pt)
     else:
-        from ._resample import _project_borrow_cum
+        from .resample import _project_borrow_cum
         point_proj = _project_borrow_cum(
             loss_obs, premium_proj, "additive", g_pt, donor, own_u=u_pt
         )
@@ -332,7 +332,7 @@ def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
     usable = np.isfinite(mu) & (mu > 0.0)
     if loss_mask is not None:
         usable = usable & loss_mask[ii, kk]
-    phi = _engine_fast.pearson_dispersion(
+    phi = engine_fast.pearson_dispersion(
         y[usable], mu[usable], kk[usable], loss_obs.shape[1] - 1, sigma_method
     )
     phi_cell = np.where(np.isfinite(phi[kk]), phi[kk], np.nan)
@@ -459,7 +459,7 @@ def bootstrap_segment_weighted_multiplicative(
     if donor is None:
         point_proj = _project_multiplicative_cum(loss_obs, f_pt)
     else:
-        from ._resample import _project_borrow_cum
+        from .resample import _project_borrow_cum
         premium_proj_b = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
         point_proj = _project_borrow_cum(
             loss_obs, premium_proj_b, "multiplicative", f_pt, donor
@@ -475,7 +475,7 @@ def bootstrap_segment_weighted_multiplicative(
     if recent is not None:
         cal = ii + jj
         usable = usable & (cal > int(cal.max()) - recent)
-    phi = _engine_fast.pearson_dispersion(
+    phi = engine_fast.pearson_dispersion(
         y[usable], m[usable], jj[usable], n_durations, sigma_method
     )
     phi_link = phi[1:]                                   # dispersion at to-duration k+1
@@ -539,7 +539,7 @@ def _own_boundary(f_pt):
 def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
                   phi, drift_se, frontier, rng, process):
     """Batched borrow projection (param) + predictive draw (pred)."""
-    from ._resample import _project_borrow_cum
+    from .resample import _project_borrow_cum
 
     B = own.shape[0]
     n_cohorts, n_durations = loss_obs.shape

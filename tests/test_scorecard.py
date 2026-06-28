@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio._scorecard import score_cells
+from lossratio._kernels.scorecard import score_cells
 from lossratio.pooled_loss import PooledLoss
 
 

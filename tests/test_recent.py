@@ -1,4 +1,4 @@
-"""Tests for the recent calendar-diagonal link mask in lossratio._recent.
+"""Tests for the recent calendar-diagonal link mask in lossratio._kernels.recent.
 
 ``recent_link_mask`` is the link-level fit mask every estimator forwards
 its ``recent`` argument to, yet the factor layer only exercised it
@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from lossratio._recent import recent_link_mask, validate_recent
+from lossratio._kernels.recent import recent_link_mask, validate_recent
 
 
 def test_validate_recent_accepts_none_and_positive_int():

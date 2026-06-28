@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 
 import lossratio as lr
-from lossratio._covariate import CovariateFit, fit_covariate_intensity
-from lossratio._smooth import penalized_irls
+from lossratio._kernels.covariate import CovariateFit, fit_covariate_intensity
+from lossratio._kernels.smooth import penalized_irls
 
 
 def test_penalized_irls_empty_response_is_degenerate_not_crash():

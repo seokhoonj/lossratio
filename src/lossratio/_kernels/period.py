@@ -428,7 +428,7 @@ def derive_grain_columns(df: Any) -> Any:
     """
     # Late imports to avoid a circular dependency at module load time
     # (experience.py imports from _io, _io is loaded eagerly).
-    from ._io import detect_input_type, mirror_output, to_polars
+    from .io import detect_input_type, mirror_output, to_polars
 
     output_type = detect_input_type(df)
     df_pl = to_polars(df)

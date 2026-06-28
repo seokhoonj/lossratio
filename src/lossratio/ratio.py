@@ -28,12 +28,12 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._io import mirror_output, normalize_groups
+from ._kernels.io import mirror_output, normalize_groups
 from .loss import LossFit, _LossEstimatorBase
 from .premium import PremiumFit, _PremiumEstimatorBase
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from .triangle import Triangle
 
 

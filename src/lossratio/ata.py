@@ -19,13 +19,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
-from ._recent import recent_link_mask
-from ._recent import validate_recent as _validate_recent
-from ._recursion import _build_value_matrix, _fit_multiplicative
+from ._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
+from ._kernels.recent import recent_link_mask
+from ._kernels.recent import validate_recent as _validate_recent
+from ._kernels.recursion import _build_value_matrix, _fit_multiplicative
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from .link import Link
 
 
@@ -43,7 +43,7 @@ def _compute_cv_rse(
     """Compute CV (across cohort link factors) and RSE (of pooled f_k).
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._recent`). When supplied, both the cross-cohort
+    (see :mod:`lossratio._kernels.recent`). When supplied, both the cross-cohort
     CV and the pooled RSE are computed only from links inside the
     recent wedge. ``None`` (default) is the byte-identical no-filter
     path.
@@ -153,7 +153,7 @@ def _count_link_obs(
     """Count cohorts contributing to each link (both endpoints finite).
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._recent`): when supplied, only links inside the
+    (see :mod:`lossratio._kernels.recent`): when supplied, only links inside the
     recent wedge are counted.
     """
     n_durations = loss_obs.shape[1]
@@ -177,7 +177,7 @@ def _compute_ata_factor(
     """Compute per-link ATA factor diagnostic (no stability detection).
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._recent`). When supplied, every factor-level
+    (see :mod:`lossratio._kernels.recent`). When supplied, every factor-level
     statistic (``f_k``, ``sigma2_k``, cross-cohort CV, RSE, and the
     per-link cohort count) is computed only from links inside the
     recent wedge. ``None`` (default) is the byte-identical no-filter
@@ -232,7 +232,7 @@ class ATA:
     relative standard error, residual sigma^2, and the per-link cohort
     count. Parallel to :class:`Intensity` for the additive side;
     builds on the volume-weighted pooled factor
-    (:func:`lossratio._recursion._fit_multiplicative`).
+    (:func:`lossratio._kernels.recursion._fit_multiplicative`).
 
     The CV / RSE columns are what the
     ``link.plot(model="ata", show_factor_stability=...)`` overlay shades

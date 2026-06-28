@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from ._io import normalize_groups
+from ._kernels.io import normalize_groups
 
 if TYPE_CHECKING:
     from .triangle import Triangle

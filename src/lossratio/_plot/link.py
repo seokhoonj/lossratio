@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._io import (
+from .._kernels.io import (
     _iter_group_frames,
     format_group_value,
     group_eq,
@@ -91,7 +91,7 @@ def _filter_cells_recent(
 ) -> pl.DataFrame:
     """Restrict link cells to the recent calendar-diagonal wedge, per group.
 
-    Mirrors :func:`lossratio._recent.recent_link_mask` at the cell level so a
+    Mirrors :func:`lossratio._kernels.recent.recent_link_mask` at the cell level so a
     diagnostic built with ``recent=N`` plots the same recent window it
     summarised: ``cal_idx = (0-based per-group cohort rank) + duration_from``,
     keep ``cal_idx > max(cal_idx) - recent`` within each group.

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import collapse_groups, mirror_output, normalize_groups
+from ._kernels.io import collapse_groups, mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from ._types import RegimeArg

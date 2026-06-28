@@ -18,8 +18,8 @@ import numpy as np
 import polars as pl
 import pytest
 
-from lossratio import _engine
-from lossratio._covariate import fit_covariate_intensity
+from lossratio._kernels import engine as _engine
+from lossratio._kernels.covariate import fit_covariate_intensity
 
 
 def _synth(g_true, n_cohorts=12, cov=None, seed=0):

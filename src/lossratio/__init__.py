@@ -8,9 +8,9 @@ See also
 Sibling R package: https://github.com/seokhoonj/lossratio-r
 """
 
-from ._period import derive_grain_columns
-from ._resample import ResidualBootstrap
-from ._weighted import WeightedBootstrap
+from ._kernels.period import derive_grain_columns
+from ._kernels.resample import ResidualBootstrap
+from ._kernels.weighted import WeightedBootstrap
 from .ata import ATA
 from .backtest import Backtest, BacktestFit
 from .calendar import Calendar

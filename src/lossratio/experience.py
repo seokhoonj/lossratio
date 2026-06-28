@@ -12,7 +12,7 @@ This module exposes one module-level function:
 For deriving the M / Q / H / Y grain sibling columns
 (``uy`` / ``uy_h`` / ``uy_q``, ``cy`` / ``cy_h`` / ``cy_q``,
 ``duration_y`` / ``duration_h`` / ``duration_q``) from a monthly source frame, see
-:func:`lossratio.derive_grain_columns` (in :mod:`lossratio._period`).
+:func:`lossratio.derive_grain_columns` (in :mod:`lossratio._kernels.period`).
 
 There is intentionally no ``Experience`` *class*. Wrapping a polars
 DataFrame in a class blocks natural ``df.filter(...)`` workflows.
@@ -26,8 +26,8 @@ from typing import Any
 
 import polars as pl
 
-from ._io import detect_input_type, mirror_output, to_polars
-from ._period import coerce_cols_to_date
+from ._kernels.io import detect_input_type, mirror_output, to_polars
+from ._kernels.period import coerce_cols_to_date
 
 REQUIRED_COLS = ("uy_m", "cy_m", "incr_loss", "incr_premium")
 

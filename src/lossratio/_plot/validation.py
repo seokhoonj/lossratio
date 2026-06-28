@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._io import _iter_group_frames, format_group_value
-from .._period import add_periods, infer_grain, resolve_grain
+from .._kernels.io import _iter_group_frames, format_group_value
+from .._kernels.period import add_periods, infer_grain, resolve_grain
 from .base import (
     _format_period_series,
     _get_period_type,

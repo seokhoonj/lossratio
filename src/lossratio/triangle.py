@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import (
+from ._kernels.io import (
     collapse_groups,
     detect_input_type,
     mirror_output,
     normalize_groups,
     to_polars,
 )
-from ._period import (
+from ._kernels.period import (
     coerce_cols_to_date,
     count_periods,
     floor_cols_to_period,
@@ -23,7 +23,7 @@ from ._period import (
 )
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from ._types import RegimeArg
     from .calendar import Calendar
     from .link import Link

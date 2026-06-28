@@ -10,7 +10,7 @@ donor's loss-ratio level.
 It returns the same engine-backed :class:`~lossratio.loss.LossFit` as
 ``PooledLoss`` (one downstream contract); the only difference is the
 projection mechanism (multiplicative ``f_k`` carry vs the additive intensity).
-The link ratio is sourced from ``_engine.link_ratios`` (oracle-frozen); the
+The link ratio is sourced from ``engine.link_ratios`` (oracle-frozen); the
 variance recursion reuses the kept ``_recursion`` kernel and the process /
 parameter SE on every shared loss column.
 

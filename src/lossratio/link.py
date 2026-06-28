@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._io import mirror_output, normalize_groups
+from ._kernels.io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from .ata import ATA

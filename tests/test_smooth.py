@@ -11,8 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from lossratio import _engine
-from lossratio._smooth import (
+from lossratio._kernels import engine as _engine
+from lossratio._kernels.smooth import (
     bspline_design,
     onehot_design,
     penalized_irls,

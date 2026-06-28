@@ -102,9 +102,9 @@ def test_point_only_when_no_uncertainty(tri):
 
 
 def test_bootstrap_populates_se_ci_and_coverage(tri):
-    from lossratio._resample import ResidualBootstrap
+    from lossratio._kernels.resample import ResidualBootstrap
     from lossratio.backtest import Backtest
-    from lossratio._scorecard import score_cells
+    from lossratio._kernels.scorecard import score_cells
     est = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=15, seed=7))
     d = est.fit(tri).to_polars()
     proj = d.filter(pl.col("source") == "own")
@@ -124,7 +124,7 @@ def test_bootstrap_populates_se_ci_and_coverage(tri):
 
 
 def test_bootstrap_reproducible(tri):
-    from lossratio._resample import ResidualBootstrap
+    from lossratio._kernels.resample import ResidualBootstrap
     a = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=12, seed=4)).fit(tri).to_polars()
     b = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=12, seed=4)).fit(tri).to_polars()
     assert (a["loss_total_se"].fill_null(-1) - b["loss_total_se"].fill_null(-1)).abs().max() == 0.0

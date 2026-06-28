@@ -85,7 +85,7 @@ def test_recent_validates(exp):
 
 
 def test_odp_bootstrap_populates_se_ci(exp):
-    from lossratio._resample import ResidualBootstrap
+    from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
     d = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)).fit(tri))
     proj = d.filter(pl.col("source") == "own")
@@ -98,7 +98,7 @@ def test_odp_bootstrap_populates_se_ci(exp):
 
 
 def test_odp_bootstrap_reproducible(exp):
-    from lossratio._resample import ResidualBootstrap
+    from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
     a = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
     b = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
@@ -109,7 +109,7 @@ def test_odp_bootstrap_in_calibration_range(exp):
     # the ODP bootstrap and the analytical SE are different variance models
     # (ODP Var ~ mean vs link-ratio Var ~ C^alpha), so they need not match -- but the
     # bootstrap SE should stay in a sane band around the analytical one
-    from lossratio._resample import ResidualBootstrap
+    from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
     ana = _pl(ChainLadder().fit(tri))
     boot = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))

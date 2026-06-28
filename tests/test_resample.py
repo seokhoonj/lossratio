@@ -12,9 +12,9 @@ import lossratio as lr
 from lossratio.backtest import Backtest
 from lossratio.credible_loss import CredibleLoss
 from lossratio.chain_ladder import ChainLadder
-from lossratio._scorecard import score_cells
+from lossratio._kernels.scorecard import score_cells
 from lossratio.pooled_loss import PooledLoss
-from lossratio._resample import ResidualBootstrap
+from lossratio._kernels.resample import ResidualBootstrap
 
 
 def _pl(x) -> pl.DataFrame:

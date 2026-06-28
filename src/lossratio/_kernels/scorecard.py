@@ -41,10 +41,10 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from ._io import mirror_output, normalize_groups
+from .io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from .io import FrameLike
 
 # Lanes the panel scores, each as (label, err, aeg, expected, actual) columns
 # on the A/E frame. The cumulative lane is always present; the incremental lane

@@ -1,10 +1,10 @@
-"""Unit tests for the saturated-engine helpers in ``lossratio._engine``."""
+"""Unit tests for the saturated-engine helpers in ``lossratio._kernels.engine``."""
 
 from __future__ import annotations
 
 import pytest
 
-from lossratio._engine import buhlmann_straub_psi, pearson_dispersion
+from lossratio._kernels.engine import buhlmann_straub_psi, pearson_dispersion
 
 
 # A cell contributes ``(y - m0)^2 / m0`` to its duration's dispersion, divided by
@@ -75,7 +75,7 @@ def test_extrapolate_tail_preserves_interior_zero():
     # overwritten with a later link's sigma2. Only the trailing tail is filled.
     import numpy as np
 
-    from lossratio._sigma import extrapolate_tail_sigma2
+    from lossratio._kernels.sigma import extrapolate_tail_sigma2
 
     out = extrapolate_tail_sigma2(np.array([2.0, 0.0, 3.0, 0.0]), "locf")
     assert out.tolist() == [2.0, 0.0, 3.0, 3.0]   # interior 0 kept, tail filled

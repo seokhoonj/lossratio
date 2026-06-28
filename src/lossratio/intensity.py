@@ -19,14 +19,14 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
-from ._recursion import _wls_sigma2
-from ._recent import recent_link_mask
-from ._recent import validate_recent as _validate_recent
-from ._recursion import _build_value_matrices
+from ._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
+from ._kernels.recursion import _wls_sigma2
+from ._kernels.recent import recent_link_mask
+from ._kernels.recent import validate_recent as _validate_recent
+from ._kernels.recursion import _build_value_matrices
 
 if TYPE_CHECKING:
-    from ._io import FrameLike
+    from ._kernels.io import FrameLike
     from .link import Link
 
 
@@ -55,7 +55,7 @@ def _compute_intensity(
     """Per-link WLS intensity estimation.
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._recent`). When supplied, every factor-level
+    (see :mod:`lossratio._kernels.recent`). When supplied, every factor-level
     statistic (``g_k``, ``g_se_k``, ``sigma2_k``, the per-link cohort
     count) is computed only from links inside the recent wedge.
     ``None`` (default) is the byte-identical no-filter path.
@@ -134,7 +134,7 @@ def _compute_intensity(
             n_obs_k=n_obs_k,
             n_durations=n_durations,
         )
-    from ._sigma import extrapolate_tail_sigma2
+    from ._kernels.sigma import extrapolate_tail_sigma2
     old_sigma2 = sigma2_k.copy()
     sigma2_k = extrapolate_tail_sigma2(sigma2_k, sigma_method)
     # Recompute g_se for EVERY link whose sigma2 was just filled (was

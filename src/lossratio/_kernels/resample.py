@@ -49,11 +49,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import _engine
-from . import _engine_fast
-from ._recursion import _fit_multiplicative
-from ._recent import recent_link_mask
-from .loss import (
+from . import engine
+from . import engine_fast
+from .recursion import _fit_multiplicative
+from .recent import recent_link_mask
+from ..loss import (
     _credible_levels,
     _project_borrow,
     _project_credible,
@@ -250,8 +250,8 @@ def _estimate(
         )
         return bf["g_k"], bf["u"]
     n_links = loss_obs.shape[1] - 1
-    resp, expo, dur0, _coh = _engine_fast.link_feed(loss_obs, premium_obs, link_mask)
-    g_k = _engine_fast.saturated_intensity(resp, expo, dur0, n_links)
+    resp, expo, dur0, _coh = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
+    g_k = engine_fast.saturated_intensity(resp, expo, dur0, n_links)
     if mechanism == "credible":
         u_vec = _credible_levels(
             loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
@@ -371,7 +371,7 @@ def bootstrap_segment_additive(
         # recent window: phi and residuals key off the recent-diagonal cells
         # only -- estimate dispersion BEFORE the mask would leak non-recent cells.
         usable = usable & loss_mask[ii, kk]
-    phi_map = _engine.pearson_dispersion(
+    phi_map = engine.pearson_dispersion(
         response=y[usable].tolist(),
         fitted=mu[usable].tolist(),
         duration=[dur1[j] for j in np.flatnonzero(usable)],
@@ -546,7 +546,7 @@ def bootstrap_segment_covariate(
     """
     from dataclasses import replace
 
-    from ._covariate import _build_g_eff, fit_covariate_intensity
+    from .covariate import _build_g_eff, fit_covariate_intensity
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -563,7 +563,7 @@ def bootstrap_segment_covariate(
             g = _build_g_eff(cf, data)
             u, _z, _p = _credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
             return g, u, cf
-        from .loss import _smooth_backfit_covariate
+        from ..loss import _smooth_backfit_covariate
         bf = _smooth_backfit_covariate(
             loss_mat, premium_obs, replace(data, resp=resp_arr), covariates,
             sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam,
@@ -585,7 +585,7 @@ def bootstrap_segment_covariate(
     mu = u_vec[coh] * g_link * data.expo
     y = data.resp.astype(np.float64)
     usable = np.isfinite(mu) & (mu > 0.0)
-    phi_map = _engine.pearson_dispersion(
+    phi_map = engine.pearson_dispersion(
         response=y[usable].tolist(), fitted=mu[usable].tolist(),
         duration=dur[usable].tolist(), sigma_method=sigma_method,
     )
@@ -809,7 +809,7 @@ def bootstrap_segment_multiplicative(
         # would leak non-recent cells.
         cal = ii + jj
         usable = usable & (cal > int(cal.max()) - recent)
-    phi_map = _engine.pearson_dispersion(
+    phi_map = engine.pearson_dispersion(
         response=y[usable].tolist(), fitted=m[usable].tolist(),
         duration=[dur1[t] for t in np.flatnonzero(usable)], sigma_method=sigma_method,
     )
@@ -955,7 +955,7 @@ def _refit_phi(
         return np.full(n_links, np.nan, dtype=np.float64)
     # kk is k-major (from _valid_cells), so kk[ok] stays non-decreasing -- the
     # contiguous-run precondition the vectorized pearson needs.
-    return _engine_fast.pearson_dispersion(y[ok], mu[ok], kk[ok], n_links, sigma_method)
+    return engine_fast.pearson_dispersion(y[ok], mu[ok], kk[ok], n_links, sigma_method)
 
 
 def _process_draw(
@@ -1060,7 +1060,7 @@ def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(task["seedseq"])
     kind = task["kind"]
     if kind == "weighted_additive":
-        from ._weighted import bootstrap_segment_weighted_additive
+        from .weighted import bootstrap_segment_weighted_additive
         return bootstrap_segment_weighted_additive(
             task["loss_obs"], task["premium_obs"],
             mechanism=task["mechanism"], sigma_method=task["sigma_method"],
@@ -1069,7 +1069,7 @@ def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
             recent=task["recent"], donor=task["donor"],
         )
     if kind == "weighted_multiplicative":
-        from ._weighted import bootstrap_segment_weighted_multiplicative
+        from .weighted import bootstrap_segment_weighted_multiplicative
         return bootstrap_segment_weighted_multiplicative(
             task["loss_obs"], task["premium_obs"],
             sigma_method=task["sigma_method"], spec=task["spec"],
