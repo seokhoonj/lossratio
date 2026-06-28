@@ -14,7 +14,7 @@ from .._kernels.io import _iter_group_frames, format_group_value
 from .base import _hide_unused, _resolve_grid
 
 if TYPE_CHECKING:
-    from ..backtest import BacktestFit
+    from ..diagnostics.backtest import BacktestFit
 
 
 _VALID_BY = ("horizon", "anchor", "holdout")

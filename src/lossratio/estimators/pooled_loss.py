@@ -4,7 +4,7 @@
 closed-form saturated mode ``g_k = sum dLoss / sum P`` with no cohort
 credibility and no smooth shape -- the anchor rung of the structure ladder
 (``PooledLoss`` -> ``CredibleLoss`` -> ``SmoothLoss``). It returns the
-engine-backed :class:`~lossratio.loss.LossFit`.
+engine-backed :class:`~lossratio.estimators.loss.LossFit`.
 
 Thin config dataclass + ``.fit(triangle)`` (sklearn-style), the shared estimator
 contract: a pure-config object (free ``repr`` / ``eq``, keyword-only) whose
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)

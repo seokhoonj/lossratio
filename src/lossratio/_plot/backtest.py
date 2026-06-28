@@ -24,7 +24,7 @@ from .base import (
 )
 
 if TYPE_CHECKING:
-    from ..backtest import BacktestFit
+    from ..diagnostics.backtest import BacktestFit
 
 
 _VALID_TYPES = ("col", "diag", "cell")

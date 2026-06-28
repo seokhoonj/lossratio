@@ -41,7 +41,7 @@ def test_default_treatment_is_byte_identical_to_plain_latest_only():
     # (the latest_only path is untouched by the segment_wise wiring).
     tri = _tri()
     reg = lr.Regime.at(change=CHANGE)                 # default latest_only
-    from lossratio.regime import _resolve_regime
+    from lossratio.diagnostics.regime import _resolve_regime
     resolved = _resolve_regime(reg, tri)
     a = lr.PooledLoss(regime=reg).fit(tri).to_polars()
     b = lr.PooledLoss(regime=resolved).fit(tri).to_polars()

@@ -10,7 +10,7 @@ import pytest
 
 import lossratio as lr
 from lossratio._kernels.scorecard import score_cells
-from lossratio.pooled_loss import PooledLoss
+from lossratio.estimators.pooled_loss import PooledLoss
 
 
 def _pl(obj) -> pl.DataFrame:
@@ -276,7 +276,7 @@ def test_point_only_fit_emits_no_coverage_columns(exp):
     # the new LossFit schema always carries the SE column (null for a point-only
     # fit), so the coverage lane must gate on a USABLE SE, not column existence,
     # to keep the "no SE -> no coverage column" contract (charter Sec.5.1)
-    from lossratio.credible_loss import CredibleLoss
+    from lossratio.estimators.credible_loss import CredibleLoss
     tri = lr.Triangle(exp, groups="coverage")
     ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)
     panel = _pl(score_cells(ae, groups="coverage", coverage_levels=(0.80, 0.95)))

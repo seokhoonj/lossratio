@@ -13,7 +13,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.pooled_loss import PooledLoss
+from lossratio.estimators.pooled_loss import PooledLoss
 
 # Columns both the old EDFit/LossFit and the redesigned LossFit carry, where
 # byte parity is required (charter golden anchor).

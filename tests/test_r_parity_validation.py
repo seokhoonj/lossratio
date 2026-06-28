@@ -29,7 +29,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from lossratio.triangle import TriangleValidation
+from lossratio.core.triangle import TriangleValidation
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

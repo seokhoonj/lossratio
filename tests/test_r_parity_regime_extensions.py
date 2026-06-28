@@ -35,7 +35,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.regime import _derive_regime_target
+from lossratio.diagnostics.regime import _derive_regime_target
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ATOL = 1e-6

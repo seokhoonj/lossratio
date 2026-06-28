@@ -30,11 +30,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._kernels.io import collapse_groups, mirror_output, normalize_groups
+from .._kernels.io import collapse_groups, mirror_output, normalize_groups
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
-    from .triangle import Triangle
+    from .._kernels.io import FrameLike
+    from ..core.triangle import Triangle
 
 
 def _segment_matrices(sub: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

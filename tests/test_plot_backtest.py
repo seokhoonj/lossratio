@@ -179,7 +179,7 @@ def test_backtest_usage_resolves_regime_on_masked_fold(monkeypatch):
     # could derive from held-out cells. seed=7 is chosen so the spec detects a
     # cut on the full triangle but NONE on the masked fold (the two diverge).
     import lossratio._plot.triangle as tv
-    from lossratio.regime import _resolve_regime
+    from lossratio.diagnostics.regime import _resolve_regime
 
     tri = lr.Triangle(lr.make_experience(seed=7), groups="coverage")
     holdout = 6

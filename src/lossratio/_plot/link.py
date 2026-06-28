@@ -27,7 +27,7 @@ from .._kernels.io import (
 )
 
 if TYPE_CHECKING:
-    from ..link import Link
+    from ..core.link import Link
 
 
 _VALID_ATA_TYPES = ("cv", "rse", "summary", "box", "point")

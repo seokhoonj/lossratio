@@ -5,8 +5,8 @@ volume-weighted pooled link ratio ``f^P_k = sum P_{k+1} / sum P_k`` on
 cumulative premium. Premium has no external exposure -- it is its
 own volume base -- so it self-develops by a multiplicative link ratio, the
 denominator analogue of the loss-side ``PooledLoss``. It returns the
-engine-backed :class:`~lossratio.premium.PremiumFit` and feeds the
-:class:`~lossratio.ratio.Ratio` composition as the chosen denominator model.
+engine-backed :class:`~lossratio.estimators.premium.PremiumFit` and feeds the
+:class:`~lossratio.estimators.ratio.Ratio` composition as the chosen denominator model.
 
 Thin config dataclass + ``.fit(triangle)`` (sklearn-style), the shared
 estimator contract: a pure-config object (free ``repr`` / ``eq``,
@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)

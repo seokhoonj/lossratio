@@ -18,7 +18,7 @@ forward-premium uncertainty (lapse) lives outside the triangle and, when
 supplied from external rate/lapse data, would get a purpose-built path.
 
 ``PremiumFit`` is the denominator analogue of
-:class:`~lossratio.loss.LossFit`: a long-format frame (one row per cohort x
+:class:`~lossratio.estimators.loss.LossFit`: a long-format frame (one row per cohort x
 duration cell) with ``premium_proj``, plus the same machine-readable
 ``status`` / ``cell_counts`` diagnostics.
 
@@ -40,7 +40,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._kernels.io import (
+from .._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
     collapse_groups,
@@ -48,19 +48,19 @@ from ._kernels.io import (
     mirror_output,
     normalize_groups,
 )
-from ._kernels.recursion import _build_value_matrices, _fit_multiplicative
-from ._kernels.recent import recent_link_mask, validate_recent
+from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
+from .._kernels.recent import recent_link_mask, validate_recent
 from .loss import (
     _credible_levels,
     _segment_credibility_df,
     _smooth_backfit,
 )
-from .model_frame import ModelFrame
+from ..core.model_frame import ModelFrame
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
-    from ._types import RegimeArg
-    from .triangle import Triangle
+    from .._kernels.io import FrameLike
+    from .._types import RegimeArg
+    from ..core.triangle import Triangle
 
 
 # Columns of the assembled long premium frame. Mirrors the premium block of the
@@ -93,7 +93,7 @@ class _PremiumEstimatorBase:
     def __post_init__(self) -> None:
         validate_recent(self.recent)
         if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
-            from .regime import Regime
+            from ..diagnostics.regime import Regime
             if not isinstance(self.regime, Regime) and not callable(self.regime):
                 raise TypeError(
                     "regime must be None, a date, a dict[segment -> date], a "
@@ -545,7 +545,7 @@ class PremiumFit:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail dashed. ``metric`` is
         ``"premium"`` (the projected cumulative premium)."""
-        from ._plot.fit import plot_fit, resolve_fit_metric
+        from .._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(metric, ("premium",))
         return plot_fit(

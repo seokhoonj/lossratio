@@ -16,7 +16,7 @@ from .._kernels.io import _iter_group_frames, format_group_value
 from .base import _hide_unused, _resolve_grid
 
 if TYPE_CHECKING:
-    from ..comparison import EstimatorComparisonFit
+    from ..diagnostics.comparison import EstimatorComparisonFit
 
 
 _VALID_BY = ("horizon", "anchor", "holdout")

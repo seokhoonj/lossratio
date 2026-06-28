@@ -20,8 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Literal
 
-    from .regime import Regime
-    from .triangle import Triangle
+    from .diagnostics.regime import Regime
+    from .core.triangle import Triangle
 
     # Regime (cohort-axis) filter: a concrete Regime, a lazy recipe, the
     # "auto" sentinel, or None (no filter).

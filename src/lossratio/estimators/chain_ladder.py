@@ -7,7 +7,7 @@ link ratio is level-invariant (the loss-ratio level cancels), which is why it
 is the borrow donor for thin segments -- it lends development SHAPE, not the
 donor's loss-ratio level.
 
-It returns the same engine-backed :class:`~lossratio.loss.LossFit` as
+It returns the same engine-backed :class:`~lossratio.estimators.loss.LossFit` as
 ``PooledLoss`` (one downstream contract); the only difference is the
 projection mechanism (multiplicative ``f_k`` carry vs the additive intensity).
 The link ratio is sourced from ``engine.link_ratios`` (oracle-frozen); the
@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 from .loss import LossFit, _LossEstimatorBase, _fit_loss
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)

@@ -30,9 +30,9 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._kernels import engine
-from ._kernels import engine_fast
-from ._kernels.io import (
+from .._kernels import engine
+from .._kernels import engine_fast
+from .._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
     collapse_groups,
@@ -40,7 +40,7 @@ from ._kernels.io import (
     mirror_output,
     normalize_groups,
 )
-from ._kernels.recursion import (
+from .._kernels.recursion import (
     _build_value_matrices,
     _multiplicative_var,
     _wls_factor_var,
@@ -49,15 +49,15 @@ from ._kernels.recursion import (
     _step_additive,
     _fit_multiplicative,
 )
-from ._kernels.recent import recent_link_mask, validate_recent
-from ._kernels.sigma import extrapolate_tail_sigma2
-from ._kernels.smooth import smooth_intensity
-from .model_frame import ModelFrame
+from .._kernels.recent import recent_link_mask, validate_recent
+from .._kernels.sigma import extrapolate_tail_sigma2
+from .._kernels.smooth import smooth_intensity
+from ..core.model_frame import ModelFrame
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
-    from ._types import RegimeArg
-    from .triangle import Triangle
+    from .._kernels.io import FrameLike
+    from .._types import RegimeArg
+    from ..core.triangle import Triangle
 
 
 def _validate_lam_cov(lam_cov: "float | str | dict") -> None:
@@ -104,7 +104,7 @@ class _LossEstimatorBase:
     def __post_init__(self) -> None:
         validate_recent(self.recent)
         if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
-            from .regime import Regime
+            from ..diagnostics.regime import Regime
             if not isinstance(self.regime, Regime) and not callable(self.regime):
                 raise TypeError(
                     "regime must be None, a date, a dict[segment -> date], a "
@@ -116,8 +116,8 @@ class _LossEstimatorBase:
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
         if self.uncertainty is not None:
-            from ._kernels.resample import ResidualBootstrap
-            from ._kernels.weighted import WeightedBootstrap
+            from .._kernels.resample import ResidualBootstrap
+            from .._kernels.weighted import WeightedBootstrap
             if not isinstance(self.uncertainty, (ResidualBootstrap, WeightedBootstrap)):
                 raise TypeError(
                     "uncertainty must be None, a ResidualBootstrap, or a "
@@ -960,7 +960,7 @@ def _smooth_backfit_covariate(
     convergence, mirroring the pooled smooth backfit. Returns ``g_eff`` / ``u`` /
     ``Z`` / ``psi`` / ``covfit`` / ``representable`` / ``converged``.
     """
-    from ._kernels.covariate import _build_g_eff, fit_covariate_intensity
+    from .._kernels.covariate import _build_g_eff, fit_covariate_intensity
 
     n_cohorts = loss_obs.shape[0]
     u_vec = np.ones(n_cohorts, dtype=np.float64)
@@ -1755,7 +1755,7 @@ def _fit_loss(
     # segment_wise regime: keep ALL regimes (no cohort cut), fit each on its own
     # cohorts, borrow the deep tail from the older regimes (the cascade). The
     # default "latest_only" treatment leaves every path below byte-identical.
-    from .regime import Regime
+    from ..diagnostics.regime import Regime
     segment_wise = (
         isinstance(regime, Regime)
         and getattr(regime, "treatment", "latest_only") == "segment_wise"
@@ -1972,7 +1972,7 @@ def _fit_loss(
         else:
             extra = {}
         if cov_cells is not None:
-            from ._kernels.covariate import (
+            from .._kernels.covariate import (
                 _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
             )
             seg_cov = cov_cells
@@ -2033,7 +2033,7 @@ def _fit_loss(
         # reproducible stream, so the tasks fan out across processes below with
         # no change to any value (pass 1.5).
         if boot_spec is not None:
-            from ._kernels.weighted import WeightedBootstrap
+            from .._kernels.weighted import WeightedBootstrap
             if isinstance(boot_spec, WeightedBootstrap):
                 # FRW path -- batched weighted refit (additive pooled/credible
                 # via g_k, ChainLadder via the weighted link ratio f_k)
@@ -2082,7 +2082,7 @@ def _fit_loss(
     # pass 1.5: run the bootstraps (serial when n_jobs == 1, else across a
     # process pool). Order-preserving + bit-identical to the serial path.
     if boot_spec is not None:
-        from ._kernels.resample import map_segment_bootstraps
+        from .._kernels.resample import map_segment_bootstraps
         results = iter(
             map_segment_bootstraps([t for t in boot_tasks if t is not None],
                                    boot_spec.n_jobs)
@@ -2265,7 +2265,7 @@ class LossFit:
         errors are not summable cell-wise and are left to a bootstrap run at the
         target grain).
         """
-        from ._kernels.period import GRAIN_ORDER, count_periods, floor_to_period
+        from .._kernels.period import GRAIN_ORDER, count_periods, floor_to_period
         if grain not in GRAIN_ORDER:
             raise ValueError(
                 f"grain must be one of {sorted(GRAIN_ORDER)}, got {grain!r}"
@@ -2281,7 +2281,7 @@ class LossFit:
         if grain == self.grain:
             return mirror_output(self._df.select(out_cols), self._output_type)
 
-        from .model_frame import _GRAIN_MONTHS
+        from ..core.model_frame import _GRAIN_MONTHS
         months = _GRAIN_MONTHS[self.grain]
         # the cell's calendar period at the fit grain, then floor both axes.
         df = self._df.with_columns(
@@ -2445,7 +2445,7 @@ class LossFit:
         the observed portion solid, the projected tail dashed. ``metric`` is
         ``"loss"`` (default; cumulative projected loss) or ``"ratio"`` (the
         projected loss ratio)."""
-        from ._plot.fit import plot_fit, resolve_fit_metric
+        from .._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(metric, ("loss", "ratio"))
         return plot_fit(

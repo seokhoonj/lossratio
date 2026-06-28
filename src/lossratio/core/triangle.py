@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._kernels.io import (
+from .._kernels.io import (
     collapse_groups,
     detect_input_type,
     mirror_output,
     normalize_groups,
     to_polars,
 )
-from ._kernels.period import (
+from .._kernels.period import (
     coerce_cols_to_date,
     count_periods,
     floor_cols_to_period,
@@ -23,11 +23,11 @@ from ._kernels.period import (
 )
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
-    from ._types import RegimeArg
+    from .._kernels.io import FrameLike
+    from .._types import RegimeArg
     from .calendar import Calendar
     from .link import Link
-    from .regime import Regime
+    from ..diagnostics.regime import Regime
     from .total import Total
 
 
@@ -682,7 +682,7 @@ class Triangle:
             deep tail from the older regimes (see :class:`Regime`). Default
             ``"latest_only"``.
         """
-        from .regime import Regime
+        from ..diagnostics.regime import Regime
 
         return Regime._from_triangle(
             self,
@@ -814,8 +814,8 @@ class Triangle:
             ``status``. Input mirroring is preserved (pandas in -> pandas
             out).
         """
-        from ._plot.triangle import _compute_triangle_usage
-        from .regime import Regime, _resolve_regime
+        from .._plot.triangle import _compute_triangle_usage
+        from ..diagnostics.regime import Regime, _resolve_regime
 
         regime_cut = _resolve_regime(regime, self)
         treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
@@ -900,7 +900,7 @@ class Triangle:
         -------
         matplotlib.figure.Figure
         """
-        from ._plot.triangle import plot_triangle as _impl
+        from .._plot.triangle import plot_triangle as _impl
         return _impl(
             self,
             kind=kind,
@@ -944,7 +944,7 @@ class Triangle:
         -------
         matplotlib.figure.Figure
         """
-        from ._plot.triangle import plot as _impl
+        from .._plot.triangle import plot as _impl
         return _impl(
             self,
             metric=metric,
@@ -1221,7 +1221,7 @@ class TriangleValidation:
         -------
         matplotlib.figure.Figure
         """
-        from ._plot.validation import plot_validation
+        from .._plot.validation import plot_validation
         return plot_validation(self, nrow=nrow, ncol=ncol, figsize=figsize)
 
     def plot_triangle(
@@ -1254,7 +1254,7 @@ class TriangleValidation:
         -------
         matplotlib.figure.Figure
         """
-        from ._plot.validation import plot_triangle_validation
+        from .._plot.validation import plot_triangle_validation
         return plot_triangle_validation(
             self,
             x_axis=x_axis,

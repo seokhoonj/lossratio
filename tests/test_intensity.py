@@ -209,7 +209,7 @@ def test_recomputes_se_for_all_filled_tail_links():
     # extrapolator -- see test_engine.test_extrapolate_tail_preserves_interior_zero.)
     import numpy as np
 
-    from lossratio.intensity import _compute_intensity
+    from lossratio.core.intensity import _compute_intensity
 
     loss_obs = np.array(
         [

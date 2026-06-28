@@ -286,7 +286,7 @@ def test_backtest_refit_is_loss_fit():
 def test_weighted_ae_err_guards_zero_total_expected():
     # a reachable group whose total expected is 0 must yield a null weighted
     # A/E error, not a silent inf/NaN from dividing by zero.
-    from lossratio.backtest import _FoldFit
+    from lossratio.diagnostics.backtest import _FoldFit
 
     ae = pl.DataFrame(
         {

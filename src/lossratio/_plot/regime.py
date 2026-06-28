@@ -31,7 +31,7 @@ from .base import (
 )
 
 if TYPE_CHECKING:
-    from ..regime import Regime
+    from ..diagnostics.regime import Regime
 
 
 def plot_regime(

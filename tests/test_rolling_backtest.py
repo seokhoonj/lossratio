@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.backtest import BacktestFit as RollingBacktestFit
+from lossratio.diagnostics.backtest import BacktestFit as RollingBacktestFit
 
 
 # ---------------------------------------------------------------------------

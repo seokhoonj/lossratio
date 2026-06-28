@@ -4,7 +4,7 @@ def test_detect_regime_output_is_usable_in_a_fit():
     # the detect_regime() -> fit workflow: passing the Regime object (or 'auto')
     # to an estimator must resolve to the same cut as the manual dict.
     import lossratio as lr
-    from lossratio.regime import _resolve_regime
+    from lossratio.diagnostics.regime import _resolve_regime
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     reg = tri.detect_regime(target="ratio")
@@ -51,7 +51,7 @@ def test_regime_string_sentinel_must_be_auto():
     # both at the resolver and at estimator construction.
     import lossratio as lr
     import pytest
-    from lossratio.regime import _resolve_regime
+    from lossratio.diagnostics.regime import _resolve_regime
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     with pytest.raises(ValueError, match="must be 'auto'"):

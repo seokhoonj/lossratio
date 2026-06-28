@@ -32,7 +32,7 @@ from .base import (
 )
 
 if TYPE_CHECKING:
-    from ..triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 # Value-view palette: threshold-flagged cells use "mistyrose", others
@@ -399,7 +399,7 @@ def _regime_cut_frames(
 ) -> "tuple[Any, pl.DataFrame | None]":
     """Split a RESOLVED regime cut into ``(scalar_date, per_group_df)``.
 
-    ``regime_cut`` is what :func:`lossratio.regime._resolve_regime` returns --
+    ``regime_cut`` is what :func:`lossratio.diagnostics.regime._resolve_regime` returns --
     ``None`` (no cut), a ``date`` (one change for every segment), or a
     ``dict[segment -> date]`` (a change per segment). The per-group frame has
     columns ``[*group_cols, "_cd_join"]`` for a left-join onto the cell grid;
@@ -442,7 +442,7 @@ def _compute_triangle_usage(
 
     ``regime_cut`` is the RESOLVED cohort cut -- ``None`` / a ``date`` / a
     ``dict[segment -> date]``, the form
-    :func:`lossratio.regime._resolve_regime` hands the fit.
+    :func:`lossratio.diagnostics.regime._resolve_regime` hands the fit.
 
     ``treatment`` selects how the regime is used, matching the live fit:
     ``"latest_only"`` (default) drops the pre-change cohorts (``used`` ->
@@ -676,7 +676,7 @@ def _plot_triangle_usage(
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
-    from ..regime import Regime, _resolve_regime
+    from ..diagnostics.regime import Regime, _resolve_regime
 
     regime_cut = _resolve_regime(regime, triangle)
     treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"

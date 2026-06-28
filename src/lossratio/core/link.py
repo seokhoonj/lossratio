@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._kernels.io import mirror_output, normalize_groups
+from .._kernels.io import mirror_output, normalize_groups
 
 if TYPE_CHECKING:
     from .ata import ATA
@@ -354,7 +354,7 @@ class Link:
         -------
         matplotlib.figure.Figure
         """
-        from ._plot.link import plot_link
+        from .._plot.link import plot_link
         return plot_link(self, model=model, **kwargs)
 
     def to_polars(self) -> pl.DataFrame:

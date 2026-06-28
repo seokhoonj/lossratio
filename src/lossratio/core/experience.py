@@ -26,8 +26,8 @@ from typing import Any
 
 import polars as pl
 
-from ._kernels.io import detect_input_type, mirror_output, to_polars
-from ._kernels.period import coerce_cols_to_date
+from .._kernels.io import detect_input_type, mirror_output, to_polars
+from .._kernels.period import coerce_cols_to_date
 
 REQUIRED_COLS = ("uy_m", "cy_m", "incr_loss", "incr_premium")
 

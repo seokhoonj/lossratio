@@ -22,7 +22,7 @@ from .base import (
 )
 
 if TYPE_CHECKING:
-    from ..triangle import TriangleValidation
+    from ..core.triangle import TriangleValidation
 
 
 def plot_validation(

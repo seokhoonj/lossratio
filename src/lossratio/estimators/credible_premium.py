@@ -2,12 +2,12 @@
 
 ``CrediblePremium`` is the partial-pooling rung of the premium ladder
 (``PooledPremium`` -> ``CrediblePremium`` -> ``SmoothPremium``), the
-denominator mirror of :class:`~lossratio.credible_loss.CredibleLoss`. Premium
+denominator mirror of :class:`~lossratio.estimators.credible_loss.CredibleLoss`. Premium
 self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled link ratio
 minus one) and a per-cohort credibility LEVEL ``u_i`` (the
 dispersion-scaled Buhlmann-Straub conjugate, premium as its own exposure) scales
 it: the projected link factor is ``1 + u_i * (f^P_k - 1)``. It returns the
-engine-backed :class:`~lossratio.premium.PremiumFit`.
+engine-backed :class:`~lossratio.estimators.premium.PremiumFit`.
 
 Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 ``u = 1``, so ``CrediblePremium(psi=0)`` reproduces ``PooledPremium``
@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)
@@ -35,7 +35,7 @@ class CrediblePremium(_PremiumEstimatorBase):
     psi
         Between-cohort variance component: ``"auto"`` (default) estimates it by
         the Buhlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
-        degenerates to :class:`~lossratio.pooled_premium.PooledPremium`.
+        degenerates to :class:`~lossratio.estimators.pooled_premium.PooledPremium`.
     sigma_method
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).
     regime

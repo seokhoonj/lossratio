@@ -13,7 +13,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.chain_ladder import ChainLadder
+from lossratio.estimators.chain_ladder import ChainLadder
 
 _SHARED = [
     "loss_obs", "loss_proj", "incr_loss_proj",

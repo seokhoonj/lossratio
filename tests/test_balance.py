@@ -15,9 +15,9 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.credible_loss import CredibleLoss
-from lossratio.loss import _apply_balance
-from lossratio.pooled_loss import PooledLoss
+from lossratio.estimators.credible_loss import CredibleLoss
+from lossratio.estimators.loss import _apply_balance
+from lossratio.estimators.pooled_loss import PooledLoss
 
 
 @pytest.fixture(scope="module")

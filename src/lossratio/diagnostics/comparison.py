@@ -1,7 +1,7 @@
 """Out-of-sample estimator comparison on a shared rolling-origin backtest.
 
 :class:`EstimatorComparison` runs one
-:class:`~lossratio.backtest.Backtest` per labelled estimator
+:class:`~lossratio.diagnostics.backtest.Backtest` per labelled estimator
 on the SAME triangle and the same hold-out depths, then compares the
 estimators on the MATCHED cell population only -- the ``(group, holdout,
 cohort, duration)`` keys that EVERY estimator scored. The matching is what
@@ -38,11 +38,11 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._kernels.io import mirror_output, normalize_groups
+from .._kernels.io import mirror_output, normalize_groups
 from .backtest import Backtest, BacktestFit
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 class EstimatorComparison:
     """Out-of-sample comparison of several labelled estimators.
 
-    Runs a :class:`~lossratio.backtest.Backtest` per
+    Runs a :class:`~lossratio.diagnostics.backtest.Backtest` per
     labelled estimator on the same triangle / hold-out depths / target, and
     assembles the per-cell A/E errors into matched-population comparison
     frames (see the module docstring). The primary outputs are the
@@ -69,9 +69,9 @@ class EstimatorComparison:
         so no name can be derived automatically); insertion order is
         canonical -- it fixes the estimator order in every output frame and
         plot. At least two entries are required; for a single estimator use
-        :class:`~lossratio.backtest.Backtest` directly. Each
+        :class:`~lossratio.diagnostics.backtest.Backtest` directly. Each
         value must satisfy the same estimator / target compatibility rules
-        as :class:`~lossratio.backtest.Backtest` (enforced per label by the
+        as :class:`~lossratio.diagnostics.backtest.Backtest` (enforced per label by the
         inner ``Backtest``).
     holdouts
         The shared hold-out depths, forwarded to every inner
@@ -81,7 +81,7 @@ class EstimatorComparison:
     target
         Which projection to score: ``"ratio"`` (default), ``"loss"``, or
         ``"premium"``. Same semantics as
-        :class:`~lossratio.backtest.Backtest`.
+        :class:`~lossratio.diagnostics.backtest.Backtest`.
     baseline
         The label every other estimator (a "challenger") is compared
         against in the comparison frames and the crossover read. Defaults
@@ -193,7 +193,7 @@ class EstimatorComparisonFit:
         population (not the per-fit summaries): ``[groups?, estimator,
         <axis>, n, abs_err_mean, ae_err_mean, ae_err_med, ae_err_wt]`` plus
         the ``incr_*`` block when available -- the same statistics as
-        :class:`~lossratio.backtest.BacktestFit`.
+        :class:`~lossratio.diagnostics.backtest.BacktestFit`.
     horizon_comparison, anchor_comparison, holdout_comparison : DataFrame
         Baseline-relative comparison, one row per (group x challenger x
         axis value); the baseline never appears as a row -- its statistics
@@ -745,7 +745,7 @@ class EstimatorComparisonFit:
     def _build_scorecard(
         self, *, terminal: "int | None", coverage_levels: "tuple[float, ...]"
     ) -> "pl.DataFrame":
-        from ._kernels.scorecard import score_cells
+        from .._kernels.scorecard import score_cells
 
         blocks = []
         for label in self._labels:
@@ -1249,7 +1249,7 @@ class EstimatorComparisonFit:
         -------
         matplotlib.figure.Figure
         """
-        from ._plot.comparison import plot_estimator_comparison
+        from .._plot.comparison import plot_estimator_comparison
         return plot_estimator_comparison(
             self, by=by, metric=metric, lane=lane,
             nrow=nrow, ncol=ncol, figsize=figsize,

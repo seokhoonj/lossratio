@@ -78,7 +78,7 @@ def test_regime_and_recent_accepted(tri):
 
 
 def test_unknown_premium_mechanism_rejected():
-    from lossratio.premium import _fit_premium
+    from lossratio.estimators.premium import _fit_premium
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     with pytest.raises(NotImplementedError):

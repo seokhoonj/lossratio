@@ -14,7 +14,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from lossratio.regime import (
+from lossratio.diagnostics.regime import (
     _MIN_ASSESS_N,
     _STEP_SIG,
     _assess_change,

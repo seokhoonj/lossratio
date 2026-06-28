@@ -28,13 +28,13 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from ._kernels.io import mirror_output, normalize_groups
+from .._kernels.io import mirror_output, normalize_groups
 from .loss import LossFit, _LossEstimatorBase
 from .premium import PremiumFit, _PremiumEstimatorBase
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
-    from .triangle import Triangle
+    from .._kernels.io import FrameLike
+    from ..core.triangle import Triangle
 
 
 _RATIO_COLUMNS = [
@@ -156,7 +156,7 @@ def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:
     (no new premium coming in), > 1 if premium is still being paid in. Used to
     grow the frozen-ratio amount projection beyond the frontier.
     """
-    from .stability import _segment_matrices
+    from ..diagnostics.stability import _segment_matrices
 
     _, P, _ = _segment_matrices(sub.select(["cohort", "duration", "loss", "premium"]))
     fp: list[float] = []
@@ -248,7 +248,7 @@ class RatioFit:
         the observed portion solid, the projected tail dashed. ``metric`` is
         ``"ratio"`` (default; the projected loss ratio), ``"loss"``, or
         ``"premium"``."""
-        from ._plot.fit import plot_fit, resolve_fit_metric
+        from .._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(
             metric, ("ratio", "loss", "premium")
@@ -269,7 +269,7 @@ class RatioFit:
         the frontier loss ratio flat -- but only once the loss ratio has settled
         (real-data OOS: loss and premium co-develop and their tails cancel in the
         ratio, so a flat freeze beats extrapolating the components). This runs the
-        :class:`~lossratio.stability.Stability` gate (same ``window`` / ``tol``)
+        :class:`~lossratio.diagnostics.stability.Stability` gate (same ``window`` / ``tol``)
         and, per segment, extends each cohort's last projected ratio out to
         ``horizon``:
 
@@ -299,7 +299,7 @@ class RatioFit:
             )
         if not isinstance(horizon, int) or horizon < 1:
             raise ValueError(f"horizon must be a positive int, got {horizon!r}")
-        from .stability import Stability
+        from ..diagnostics.stability import Stability
 
         group_cols = normalize_groups(self.groups) or []
         base = self._df

@@ -38,7 +38,7 @@ from .recent import recent_link_mask
 from .recent import validate_recent as _validate_recent
 
 if TYPE_CHECKING:
-    from ..triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 def _wls_sigma2(

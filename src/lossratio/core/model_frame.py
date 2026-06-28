@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from ._kernels.io import normalize_groups
+from .._kernels.io import normalize_groups
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -121,7 +121,7 @@ class ModelFrame:
             )
         )
 
-        from .regime import _resolve_regime
+        from ..diagnostics.regime import _resolve_regime
         regime = _resolve_regime(regime, triangle)
         df = cls._apply_regime(df, regime, segments)
         df = df.select("_segment_id", *segments, *_FRAME_ORDER).sort(

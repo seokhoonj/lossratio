@@ -20,7 +20,7 @@ import pytest
 
 import lossratio as lr
 from lossratio._plot.triangle import _compute_triangle_usage
-from lossratio.regime import _resolve_regime
+from lossratio.diagnostics.regime import _resolve_regime
 
 
 @pytest.fixture
@@ -272,7 +272,7 @@ def test_usage_never_marks_absent_cells_used_in_gappy_groups():
     the dense per-group cohort rank, so a genuinely-future cell could fall inside
     the rank envelope. Every 'used'/'holdout' cell must be DATA-PRESENT, and the
     'used'/'holdout' set must equal the fit's ModelFrame cells exactly."""
-    from lossratio.model_frame import ModelFrame
+    from lossratio.core.model_frame import ModelFrame
 
     df = lr.make_experience(seed=1).with_columns(
         pl.when(pl.col("uy_m").dt.year() % 2 == 0)

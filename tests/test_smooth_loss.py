@@ -13,8 +13,8 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.credible_loss import CredibleLoss
-from lossratio.smooth_loss import SmoothLoss
+from lossratio.estimators.credible_loss import CredibleLoss
+from lossratio.estimators.smooth_loss import SmoothLoss
 
 
 def _pl(x) -> pl.DataFrame:
@@ -103,7 +103,7 @@ def test_point_only_when_no_uncertainty(tri):
 
 def test_bootstrap_populates_se_ci_and_coverage(tri):
     from lossratio._kernels.resample import ResidualBootstrap
-    from lossratio.backtest import Backtest
+    from lossratio.diagnostics.backtest import Backtest
     from lossratio._kernels.scorecard import score_cells
     est = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=15, seed=7))
     d = est.fit(tri).to_polars()

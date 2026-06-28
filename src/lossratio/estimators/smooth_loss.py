@@ -8,7 +8,7 @@ credibility level are fit jointly by backfitting (charter Sec.4.5): the s-step
 refits the shape on the ``u``-adjusted exposure to decontaminate the
 late-duration wedge, the u-step is the dispersion-scaled conjugate the credible
 rung already uses. It returns the engine-backed
-:class:`~lossratio.loss.LossFit`.
+:class:`~lossratio.estimators.loss.LossFit`.
 
 Exact ladder relation: with ``psi = 0`` the credibility level is ``u = 1``, so
 ``SmoothLoss`` is a single smooth pass (no contamination to remove); a one-hot
@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)

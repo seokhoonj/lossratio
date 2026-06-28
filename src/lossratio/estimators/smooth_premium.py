@@ -2,13 +2,13 @@
 
 ``SmoothPremium`` is the top rung of the premium ladder
 (``PooledPremium`` -> ``CrediblePremium`` -> ``SmoothPremium``), the
-denominator mirror of :class:`~lossratio.smooth_loss.SmoothLoss`. It is the
+denominator mirror of :class:`~lossratio.estimators.smooth_loss.SmoothLoss`. It is the
 credible premium rung with the saturated self-exposure intensity
 ``h_k = f^P_k - 1`` replaced by a smooth P-spline shape ``h_k = exp(s(k))``, fit
 by the shared backfitting core (smooth shape + GCV ``lambda`` + conjugate level)
 on premium as its own exposure. The projection is the self-exposure
 multiplicative recursion ``P_{k+1} = P_k * (1 + u_i * h_k)``. It returns the
-engine-backed :class:`~lossratio.premium.PremiumFit`.
+engine-backed :class:`~lossratio.estimators.premium.PremiumFit`.
 
 Point-only in v1 (SE / CI null, like the loss smooth rung); ``recent`` (the
 calendar-diagonal fit window) is supported.
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)

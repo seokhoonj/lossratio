@@ -172,7 +172,7 @@ def test_rse_requires_two_positive_denominators():
     # not a misleading 0 -- matching the CV guard right above it.
     import numpy as np
 
-    from lossratio.ata import _compute_cv_rse
+    from lossratio.core.ata import _compute_cv_rse
 
     loss_obs = np.array(
         [

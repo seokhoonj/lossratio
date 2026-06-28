@@ -6,7 +6,7 @@
 Buhlmann-Straub conjugate), so a cohort's projected increment is
 ``u_i * g_k * P_k`` -- its own loss-ratio level shrunk toward the pooled level
 by its credibility. It returns the engine-backed
-:class:`~lossratio.loss.LossFit`.
+:class:`~lossratio.estimators.loss.LossFit`.
 
 Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 ``u = 1``, i.e. ``CredibleLoss(psi=0)`` reproduces ``PooledLoss`` cell-for-cell
@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
 
 if TYPE_CHECKING:
-    from .triangle import Triangle
+    from ..core.triangle import Triangle
 
 
 @dataclass(kw_only=True)
@@ -41,7 +41,7 @@ class CredibleLoss(_LossEstimatorBase):
     psi
         Between-cohort variance component: ``"auto"`` (default) estimates it by
         the Buhlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
-        degenerates to :class:`~lossratio.pooled_loss.PooledLoss`.
+        degenerates to :class:`~lossratio.estimators.pooled_loss.PooledLoss`.
     sigma_method
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).
     regime

@@ -16,8 +16,8 @@ from fractions import Fraction as F
 import polars as pl
 import pytest
 
-from lossratio.model_frame import ModelFrame
-from lossratio.triangle import Triangle
+from lossratio.core.model_frame import ModelFrame
+from lossratio.core.triangle import Triangle
 
 # Oracle (tests/test_oracle.py): P = cumulative premium, Y = incremental loss.
 P_CUM = {1: [100, 200, 300, 400], 2: [50, 100, 150], 3: [80, 160]}

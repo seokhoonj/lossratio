@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.comparison import EstimatorComparisonFit
+from lossratio.diagnostics.comparison import EstimatorComparisonFit
 
 
 # ---------------------------------------------------------------------------

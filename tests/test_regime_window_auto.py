@@ -19,7 +19,7 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.regime import (
+from lossratio.diagnostics.regime import (
     Regime,
     _derive_regime_target,
     _detect_regime_optimal_window,
@@ -132,7 +132,7 @@ def test_window_auto_optimal_window_helper_returns_none_on_homogeneous():
 
 def test_window_auto_fallback_when_helper_returns_none():
     """When the elbow is undefined, the resolved window is the fallback (6)."""
-    from lossratio.regime import _WINDOW_AUTO_FALLBACK
+    from lossratio.diagnostics.regime import _WINDOW_AUTO_FALLBACK
 
     # Tiny dataset where every sweep value will fail (n_cohorts < 2*min_size).
     cohorts = pl.date_range(

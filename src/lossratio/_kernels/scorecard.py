@@ -19,7 +19,7 @@ gets a null and is dropped.
 
 It is a pure READER over a backtest's ``ae_err`` frame: no refitting, no
 estimator coupling, so it composes with both the single-origin
-(:class:`~lossratio.backtest.BacktestFit`) and rolling-origin
+(:class:`~lossratio.diagnostics.backtest.BacktestFit`) and rolling-origin
 (:class:`~lossratio.rolling_backtest.RollingBacktestFit`) hold-out backtests.
 When the frame carries a ``holdout`` column (a rolling backtest scores a
 physical cell once per origin), the panel groups by it so depths are never
@@ -27,11 +27,11 @@ pooled into a double-counted row.
 
 The **mechanical pick** across estimators (rank each by metric, lowest
 rank-sum wins) is a decision the panel cannot make on its own -- it lives in
-:meth:`~lossratio.comparison.EstimatorComparisonFit.best`, with the read-it-
-yourself table in :meth:`~lossratio.comparison.EstimatorComparisonFit.scorecard`.
+:meth:`~lossratio.diagnostics.comparison.EstimatorComparisonFit.best`, with the read-it-
+yourself table in :meth:`~lossratio.diagnostics.comparison.EstimatorComparisonFit.scorecard`.
 
 Internal-only: not exported. It is the engine behind ``scorecard`` /
-``rank`` / ``best`` on :class:`~lossratio.comparison.EstimatorComparisonFit`.
+``rank`` / ``best`` on :class:`~lossratio.diagnostics.comparison.EstimatorComparisonFit`.
 """
 
 from __future__ import annotations

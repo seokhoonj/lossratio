@@ -9,7 +9,7 @@ import lossratio as lr
 # but is not yet wired into ``lossratio.__init__`` (that happens in
 # Round 2 by a separate agent). Import directly from the submodule for
 # now so the new tests can run pre-export.
-from lossratio.triangle import TriangleValidation
+from lossratio.core.triangle import TriangleValidation
 
 
 def _exp_input() -> pl.DataFrame:

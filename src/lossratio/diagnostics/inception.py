@@ -29,10 +29,10 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from ._kernels.io import detect_input_type, mirror_output, normalize_groups, to_polars
+from .._kernels.io import detect_input_type, mirror_output, normalize_groups, to_polars
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
+    from .._kernels.io import FrameLike
 
 # 1082 = (z / k)**2 for 90% within +/-5% (z=1.645, k=0.05) -- the classical
 # full-credibility standard for frequency.

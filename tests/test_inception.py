@@ -16,7 +16,7 @@ import math
 import polars as pl
 import pytest
 
-from lossratio.inception import inception_credibility
+from lossratio.diagnostics.inception import inception_credibility
 
 COUNTS = pl.DataFrame({
     "coh": [1, 1, 1, 2],

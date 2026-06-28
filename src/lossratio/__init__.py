@@ -11,29 +11,29 @@ Sibling R package: https://github.com/seokhoonj/lossratio-r
 from ._kernels.period import derive_grain_columns
 from ._kernels.resample import ResidualBootstrap
 from ._kernels.weighted import WeightedBootstrap
-from .ata import ATA
-from .backtest import Backtest, BacktestFit
-from .calendar import Calendar
-from .chain_ladder import ChainLadder
-from .comparison import EstimatorComparison, EstimatorComparisonFit
-from .credible_loss import CredibleLoss
-from .credible_premium import CrediblePremium
+from .core.ata import ATA
+from .diagnostics.backtest import Backtest, BacktestFit
+from .core.calendar import Calendar
+from .estimators.chain_ladder import ChainLadder
+from .diagnostics.comparison import EstimatorComparison, EstimatorComparisonFit
+from .estimators.credible_loss import CredibleLoss
+from .estimators.credible_premium import CrediblePremium
 from .datasets import load_experience, make_experience
-from .experience import validate_experience
-from .inception import inception_credibility
-from .intensity import Intensity
-from .link import Link
-from .loss import LossFit
-from .pooled_loss import PooledLoss
-from .pooled_premium import PooledPremium
-from .premium import PremiumFit
-from .ratio import Ratio, RatioFit
-from .regime import Regime
-from .smooth_loss import SmoothLoss
-from .smooth_premium import SmoothPremium
-from .stability import Stability, StabilityReport
-from .total import Total
-from .triangle import Triangle, TriangleValidation
+from .core.experience import validate_experience
+from .diagnostics.inception import inception_credibility
+from .core.intensity import Intensity
+from .core.link import Link
+from .estimators.loss import LossFit
+from .estimators.pooled_loss import PooledLoss
+from .estimators.pooled_premium import PooledPremium
+from .estimators.premium import PremiumFit
+from .estimators.ratio import Ratio, RatioFit
+from .diagnostics.regime import Regime
+from .estimators.smooth_loss import SmoothLoss
+from .estimators.smooth_premium import SmoothPremium
+from .diagnostics.stability import Stability, StabilityReport
+from .core.total import Total
+from .core.triangle import Triangle, TriangleValidation
 
 __version__ = "0.0.1.dev10"
 

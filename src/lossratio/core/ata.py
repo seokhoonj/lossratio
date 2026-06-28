@@ -19,13 +19,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
-from ._kernels.recent import recent_link_mask
-from ._kernels.recent import validate_recent as _validate_recent
-from ._kernels.recursion import _build_value_matrix, _fit_multiplicative
+from .._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
+from .._kernels.recent import recent_link_mask
+from .._kernels.recent import validate_recent as _validate_recent
+from .._kernels.recursion import _build_value_matrix, _fit_multiplicative
 
 if TYPE_CHECKING:
-    from ._kernels.io import FrameLike
+    from .._kernels.io import FrameLike
     from .link import Link
 
 
@@ -323,7 +323,7 @@ class ATA:
         ``show_factor_stability``, ``max_cv``, ``max_rse``, ``min_run``,
         ``nrow``, ``ncol``, ``figsize``.
         """
-        from ._plot.link import plot_link
+        from .._plot.link import plot_link
         kwargs.setdefault("recent", self._recent)
         return plot_link(self._link, model="ata", **kwargs)
 

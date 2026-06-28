@@ -11,8 +11,8 @@ import polars as pl
 import pytest
 
 import lossratio as lr
-from lossratio.credible_loss import CredibleLoss
-from lossratio.pooled_loss import PooledLoss
+from lossratio.estimators.credible_loss import CredibleLoss
+from lossratio.estimators.pooled_loss import PooledLoss
 
 KEY = ["coverage", "cohort", "duration"]
 PROJ_COLS = ["loss_proj", "ratio_proj", "premium_proj"]
@@ -51,7 +51,7 @@ def test_credibility_psi_zero_is_pooled_collapse(tri):
 
 
 def test_pooled_and_link_have_no_credibility(tri):
-    from lossratio.chain_ladder import ChainLadder
+    from lossratio.estimators.chain_ladder import ChainLadder
     assert PooledLoss().fit(tri).credibility is None
     assert ChainLadder().fit(tri).credibility is None
 
