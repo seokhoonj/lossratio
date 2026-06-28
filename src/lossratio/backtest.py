@@ -30,10 +30,10 @@ def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.Dat
     cal_idx equals the number of cohorts (or, for square-ish triangles,
     the number of durations).
     """
-    gcols = normalize_groups(groups)
-    if gcols:
+    group_cols = normalize_groups(groups)
+    if group_cols:
         cohort_idx_expr = (
-            pl.col("cohort").rank(method="dense").over(gcols).cast(pl.Int64)
+            pl.col("cohort").rank(method="dense").over(group_cols).cast(pl.Int64)
         )
     else:
         cohort_idx_expr = pl.col("cohort").rank(method="dense").cast(pl.Int64)
@@ -63,12 +63,12 @@ def _build_masked_df(
     df = _add_cal_idx(tri_df, groups)
 
     # Determine the calendar-diagonal cutoff per group
-    gcols = normalize_groups(groups)
-    if gcols:
-        max_per_group = df.group_by(gcols).agg(
+    group_cols = normalize_groups(groups)
+    if group_cols:
+        max_per_group = df.group_by(group_cols).agg(
             pl.col("cal_idx").max().alias("_max_cal")
         )
-        df = df.join(max_per_group, on=gcols, how="left")
+        df = df.join(max_per_group, on=group_cols, how="left")
     else:
         max_cal = int(df["cal_idx"].max())
         df = df.with_columns(pl.lit(max_cal).alias("_max_cal"))
@@ -332,10 +332,10 @@ class _FoldFit:
         # half-observed -- which collapse would silently under-count. A plain fit
         # uses the reporting-grain masked triangle directly.
         if covs:
-            report_gcols = normalize_groups(report_tri._groups)
+            report_group_cols = normalize_groups(report_tri._groups)
             held = (
                 annotated_df.filter(pl.col("masked"))
-                .select([*report_gcols, "cohort", "duration"])
+                .select([*report_group_cols, "cohort", "duration"])
                 .unique()
                 .with_columns(pl.lit(True).alias("_held"))
             )
@@ -346,7 +346,7 @@ class _FoldFit:
             ]
             fine_masked_df = (
                 triangle._df
-                .join(held, on=[*report_gcols, "cohort", "duration"], how="left")
+                .join(held, on=[*report_group_cols, "cohort", "duration"], how="left")
                 .with_columns(
                     [pl.when(pl.col("_held")).then(None).otherwise(pl.col(c)).alias(c)
                      for c in null_cols]
@@ -443,15 +443,15 @@ class _FoldFit:
         # cohort per origin; a cohort wholly inside the held-out diagonals has
         # no non-masked cell and gets a null anchor (already dropped above as
         # unreachable).
-        gcols = normalize_groups(self._groups)
+        group_cols = normalize_groups(self._groups)
         anchor = (
             annotated_df.filter(~pl.col("masked"))
-            .group_by([*gcols, "cohort"])
+            .group_by([*group_cols, "cohort"])
             .agg(
                 pl.col(actual_col).sort_by("duration").last().alias("anchor_value")
             )
         )
-        ae_err = ae_err.join(anchor, on=[*gcols, "cohort"], how="left")
+        ae_err = ae_err.join(anchor, on=[*group_cols, "cohort"], how="left")
 
         # Fixed final column order for the per-cell table.
         col_order = keys + ["actual", "expected", "aeg", "ae_err"]
@@ -554,7 +554,7 @@ class _FoldFit:
         ----------
         kind
             The aggregation the error is viewed over: ``"col"`` (default;
-            by development period), ``"diag"`` (by calendar diagonal), or
+            by duration), ``"diag"`` (by calendar diagonal), or
             ``"cell"`` (per-cell scatter / line, one line per cohort).
         cell_type
             ``"cumulative"`` (default; uses ``ae_err_*`` columns) or
@@ -615,7 +615,7 @@ class _FoldFit:
             explicit value to override.
         x
             (``kind='value'`` only) horizontal axis: ``"duration"`` (default;
-            cohort x development period) or ``"calendar"`` (cohort x calendar
+            cohort x duration) or ``"calendar"`` (cohort x calendar
             period -- each cell at its actual calendar date, so the held-out
             diagonal reads as a block of recent calendar columns).
 
@@ -881,7 +881,7 @@ class BacktestFit:
         self.target = rbt.target
         self.holdouts = rbt.holdouts
 
-        gcols = normalize_groups(report_tri._groups)
+        group_cols = normalize_groups(report_tri._groups)
 
         # Per-group max calendar index over the FULL (unmasked) triangle.
         # A depth H masks cells with cal_idx > max_cal - H, so a held-out
@@ -892,8 +892,8 @@ class BacktestFit:
         full = _add_cal_idx(report_tri._df, report_tri._groups)
         max_cal_scalar = 0
         max_cal: pl.DataFrame | None = None
-        if gcols:
-            max_cal = full.group_by(gcols).agg(
+        if group_cols:
+            max_cal = full.group_by(group_cols).agg(
                 pl.col("cal_idx").max().alias("_max_cal")
             )
         else:
@@ -915,9 +915,9 @@ class BacktestFit:
                 continue
 
             # horizon = cal_idx - (max_cal - h); 1..h on held cells.
-            if gcols:
+            if group_cols:
                 assert max_cal is not None
-                ae = ae.join(max_cal, on=gcols, how="left")
+                ae = ae.join(max_cal, on=group_cols, how="left")
                 ae = ae.with_columns(
                     (pl.col("cal_idx") - (pl.col("_max_cal") - h)).alias(
                         "horizon"
@@ -956,27 +956,27 @@ class BacktestFit:
             # folds emits a stable column set, so a column mismatch here is a
             # real bug we want surfaced, not silently null-unioned.
             combined = pl.concat(per_holdout, how="vertical")
-            lead = [*gcols, "holdout", "horizon", "anchor_duration"]
+            lead = [*group_cols, "holdout", "horizon", "anchor_duration"]
             rest = [c for c in combined.columns if c not in lead]
             combined = combined.select(lead + rest).sort(
-                [*gcols, "holdout", "cohort", "duration"]
+                [*group_cols, "holdout", "cohort", "duration"]
             )
         else:
             # No depth produced cells -- emit an empty, well-typed frame so
             # downstream code (and input-mirroring) still works.
-            combined = cls._empty_ae_err(gcols, triangle)
+            combined = cls._empty_ae_err(group_cols, triangle)
 
         self._ae_err = combined
         self._has_incr = has_incr
 
         self._horizon_summary = self._aggregate(
-            combined, [*gcols, "horizon"], has_incr
+            combined, [*group_cols, "horizon"], has_incr
         )
         self._anchor_summary = self._aggregate(
-            combined, [*gcols, "anchor_duration"], has_incr
+            combined, [*group_cols, "anchor_duration"], has_incr
         )
         self._holdout_summary = self._aggregate(
-            combined, [*gcols, "holdout"], has_incr
+            combined, [*group_cols, "holdout"], has_incr
         )
 
         return self
@@ -1220,7 +1220,7 @@ class BacktestFit:
         return exprs
 
     @staticmethod
-    def _empty_ae_err(gcols: list[str], triangle: "Triangle") -> pl.DataFrame:
+    def _empty_ae_err(group_cols: list[str], triangle: "Triangle") -> pl.DataFrame:
         """A 0-row combined frame with the expected schema.
 
         ``cohort`` / ``duration`` dtypes are read from the source triangle
@@ -1231,7 +1231,7 @@ class BacktestFit:
         tri_schema = triangle._df.schema
         cohort_dt = tri_schema.get("cohort", pl.Date)
         duration_dt = tri_schema.get("duration", pl.Int64)
-        schema: dict[str, Any] = {c: tri_schema.get(c, pl.Utf8) for c in gcols}
+        schema: dict[str, Any] = {c: tri_schema.get(c, pl.Utf8) for c in group_cols}
         schema.update(
             {
                 "holdout": pl.Int64,
@@ -1299,7 +1299,7 @@ class BacktestFit:
     @staticmethod
     def _threshold_walk(
         summ: pl.DataFrame,
-        gcols: list[str],
+        group_cols: list[str],
         axis: str,
         bias: str,
         tol: float,
@@ -1322,13 +1322,13 @@ class BacktestFit:
         Python walk is preferred over a window-expression formulation.
         """
         axis_dt = summ.schema[axis]
-        schema: dict[str, Any] = {c: summ.schema[c] for c in gcols}
+        schema: dict[str, Any] = {c: summ.schema[c] for c in group_cols}
         schema[value_col] = axis_dt
         schema[max_col] = axis_dt
         if summ.height == 0:
             return pl.DataFrame(schema=schema)
         parts = (
-            summ.partition_by(gcols, maintain_order=True) if gcols else [summ]
+            summ.partition_by(group_cols, maintain_order=True) if group_cols else [summ]
         )
         rows: list[dict[str, Any]] = []
         for part in parts:
@@ -1354,12 +1354,12 @@ class BacktestFit:
                     if not ok:
                         break
                     result = v
-            row: dict[str, Any] = {c: part[c][0] for c in gcols}
+            row: dict[str, Any] = {c: part[c][0] for c in group_cols}
             row[value_col] = result
             row[max_col] = values[-1]
             rows.append(row)
         out = pl.DataFrame(rows, schema=schema)
-        return out.sort(gcols) if gcols else out
+        return out.sort(group_cols) if group_cols else out
 
     def convergence(
         self, tol: float = 0.03, lane: str = "cumulative", min_run: int = 6
@@ -1455,10 +1455,10 @@ class BacktestFit:
                 f"min_run must be an int >= 1, got {min_run!r}"
             )
         bias = self._resolve_bias_col(tol, lane)
-        gcols = normalize_groups(self._groups)
+        group_cols = normalize_groups(self._groups)
         out = self._threshold_walk(
             self._anchor_summary,
-            gcols,
+            group_cols,
             axis="anchor_duration",
             bias=bias,
             tol=tol,
@@ -1529,10 +1529,10 @@ class BacktestFit:
             largest observed horizon.
         """
         bias = self._resolve_bias_col(tol, lane)
-        gcols = normalize_groups(self._groups)
+        group_cols = normalize_groups(self._groups)
         out = self._threshold_walk(
             self._horizon_summary,
-            gcols,
+            group_cols,
             axis="horizon",
             bias=bias,
             tol=tol,

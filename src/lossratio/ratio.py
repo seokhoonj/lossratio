@@ -265,8 +265,8 @@ class RatioFit:
     ) -> "FrameLike":
         """Extend the projected loss ratio flat to a target ``horizon`` duration.
 
-        Beyond the observed development frontier the honest go-forward is to hold
-        the frontier loss ratio flat -- but only once the development has settled
+        Beyond the observed loss-ratio frontier the honest go-forward is to hold
+        the frontier loss ratio flat -- but only once the loss ratio has settled
         (real-data OOS: loss and premium co-develop and their tails cancel in the
         ratio, so a flat freeze beats extrapolating the components). This runs the
         :class:`~lossratio.stability.Stability` gate (same ``window`` / ``tol``)
@@ -301,17 +301,17 @@ class RatioFit:
             raise ValueError(f"horizon must be a positive int, got {horizon!r}")
         from .stability import Stability
 
-        seg_cols = normalize_groups(self.groups) or []
+        group_cols = normalize_groups(self.groups) or []
         base = self._df
 
-        base_cols = [*seg_cols, "cohort", "duration", pl.col("ratio_proj").alias("ratio")]
+        base_cols = [*group_cols, "cohort", "duration", pl.col("ratio_proj").alias("ratio")]
         if amounts:
             base_cols += [pl.col("loss_proj").alias("loss"),
                           pl.col("premium_proj").alias("premium")]
         base_out = base.select(base_cols).with_columns(status=pl.lit("projected"))
 
         # per (segment, cohort) freeze point = deepest non-null projected ratio
-        keys = seg_cols + ["cohort"]
+        keys = group_cols + ["cohort"]
         froze = (
             base.filter(pl.col("ratio_proj").is_not_null())
             .group_by(keys, maintain_order=True)
@@ -337,15 +337,15 @@ class RatioFit:
 
         # segment stability verdict + (for amounts) recent premium growth
         rep = Stability(window=window, tol=tol).assess(self._triangle).to_polars()
-        if seg_cols:
-            froze = froze.join(rep.select([*seg_cols, "stable"]), on=seg_cols, how="left")
+        if group_cols:
+            froze = froze.join(rep.select([*group_cols, "stable"]), on=group_cols, how="left")
         else:
             sv = rep.get_column("stable")[0]
             froze = froze.with_columns(stable=pl.lit(bool(sv) if sv is not None else False))
         if amounts:
-            froze = froze.join(self._premium_growth(seg_cols, window),
-                               on=seg_cols if seg_cols else None,
-                               how="cross" if not seg_cols else "left")
+            froze = froze.join(self._premium_growth(group_cols, window),
+                               on=group_cols if group_cols else None,
+                               how="cross" if not group_cols else "left")
 
         ext = (
             froze.with_columns(
@@ -369,33 +369,33 @@ class RatioFit:
                 .then(pl.col("ratio") * pl.col("premium"))
                 .otherwise(None),
             )
-        out_cols = [*seg_cols, "cohort", "duration", "ratio", "status"]
+        out_cols = [*group_cols, "cohort", "duration", "ratio", "status"]
         if amounts:
-            out_cols = [*seg_cols, "cohort", "duration", "loss", "premium", "ratio", "status"]
+            out_cols = [*group_cols, "cohort", "duration", "loss", "premium", "ratio", "status"]
         out = pl.concat(
             [base_out.select(out_cols), ext.select(out_cols)], how="vertical_relaxed"
-        ).sort([*seg_cols, "cohort", "duration"])
+        ).sort([*group_cols, "cohort", "duration"])
         return mirror_output(out, self._output_type)
 
-    def _premium_growth(self, seg_cols: list[str], window: int) -> pl.DataFrame:
+    def _premium_growth(self, group_cols: list[str], window: int) -> pl.DataFrame:
         """Per-segment recent premium growth factor (``_gP``) for amount
         extension."""
         df_tri = self._triangle.to_polars()
-        if seg_cols:
-            seg_keys = df_tri.select(seg_cols).unique(maintain_order=True).rows()
+        if group_cols:
+            seg_keys = df_tri.select(group_cols).unique(maintain_order=True).rows()
         else:
             seg_keys = [()]
         rows = []
         for key in seg_keys:
-            if seg_cols:
+            if group_cols:
                 m = pl.lit(True)
-                for col, val in zip(seg_cols, key):
+                for col, val in zip(group_cols, key):
                     m = m & (pl.col(col) == val)
                 sub = df_tri.filter(m)
             else:
                 sub = df_tri
             g = _segment_premium_growth(sub, window)
-            rows.append({**{c: v for c, v in zip(seg_cols, key)}, "_gP": g})
+            rows.append({**{c: v for c, v in zip(group_cols, key)}, "_gP": g})
         return pl.DataFrame(rows)
 
     def __repr__(self) -> str:

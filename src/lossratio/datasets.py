@@ -116,7 +116,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
     Layout:
 
     * 36 monthly cohorts: 2023-01 to 2025-12.
-    * Up to 36 development months per cohort, jagged triangle shape.
+    * Up to 36 duration months per cohort, jagged triangle shape.
     * Four coverages (``CI``, ``CANCER``, ``INPATIENT``, ``SURGERY``), each split
       across six ``age_band`` x four ``channel`` segments (96 segments).
     * ``SURGERY`` carries a planted regime shift at cohort 2024-07 (cohort
@@ -140,7 +140,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
         17 columns: the segment keys ``coverage`` / ``age_band`` /
         ``channel`` (str); the underwriting axis ``uy`` / ``uy_h`` /
         ``uy_q`` / ``uy_m`` (Date); the calendar axis ``cy`` / ``cy_h``
-        / ``cy_q`` / ``cy_m`` (Date); the development axis ``duration_y`` /
+        / ``cy_q`` / ``cy_m`` (Date); the duration axis ``duration_y`` /
         ``duration_h`` / ``duration_q`` / ``duration_m`` (int); and ``incr_loss`` /
         ``incr_premium``. Pass directly to :class:`Triangle` with
         ``groups="coverage"`` (or ``"age_band"`` / ``"channel"``).

@@ -350,7 +350,7 @@ def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
 # The volume-weighted link ratio is a ratio of cumulatives, and a cumulative is
 # a sum of increments, so weighting the increments makes f_k a ratio of WEIGHTED
 # sums of fixed cell values -- batched, exactly as the additive g_k. The process
-# / drift use the POINT per-development dispersion (England-Verrall ODP), which
+# / drift use the POINT per-duration dispersion (England-Verrall ODP), which
 # does not depend on the resampling scheme.
 
 
@@ -406,7 +406,7 @@ def _process_multiplicative_batched(
     loss_obs: np.ndarray, param_draws: np.ndarray, phi_link: np.ndarray,
     drift_se: float, frontier: int, rng: np.random.Generator, process: str,
 ) -> np.ndarray:
-    """Batched ODP gamma process draw + calendar drift (point per-dev phi)."""
+    """Batched ODP gamma process draw + calendar drift (point per-duration phi)."""
     B = param_draws.shape[0]
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -478,7 +478,7 @@ def bootstrap_segment_weighted_multiplicative(
     phi = _engine_fast.pearson_dispersion(
         y[usable], m[usable], jj[usable], n_durations, sigma_method
     )
-    phi_link = phi[1:]                                   # dispersion at to-dev k+1
+    phi_link = phi[1:]                                   # dispersion at to-duration k+1
 
     # point residuals -> calendar drift SE (scheme-independent)
     drift_se = 0.0

@@ -779,7 +779,7 @@ def bootstrap_segment_multiplicative(
     """England-Verrall ODP residual bootstrap for the ``ChainLadder`` benchmark.
 
     Pearson residuals of the observed incrementals against the link-ratio-fitted
-    incrementals are resampled (per development column) into a pseudo-triangle;
+    incrementals are resampled (per duration column) into a pseudo-triangle;
     each pseudo-triangle's link ratio ``f*_k`` projects the REAL observed latest
     diagonal forward (conditional prediction, charter Sec.5.2), with
     over-dispersed process noise + the calendar drift band on the future cells.
@@ -922,7 +922,7 @@ def bootstrap_segment_multiplicative(
 
 
 def _phi_at_dur(phi_cell: np.ndarray, jj: np.ndarray, dur0: int) -> float:
-    """Per-development-column dispersion at 0-based duration ``dur0`` (the
+    """Per-duration-column dispersion at 0-based duration ``dur0`` (the
     process-noise scale for the cumulative cell arriving at ``dur0``)."""
     sel = jj == dur0
     if not sel.any():

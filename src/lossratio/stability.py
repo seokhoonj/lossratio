@@ -1,19 +1,19 @@
 """Go-forward stability gate (charter Sec. go-forward / no-ultimate).
 
-The honest go-forward beyond the observed development frontier is NOT a fitted
+The honest go-forward beyond the observed loss-ratio frontier is NOT a fitted
 tail curve: real-data OOS shows that extrapolating the loss and premium
-development separately and dividing makes the loss RATIO *worse* and can blow
+separately and dividing makes the loss RATIO *worse* and can blow
 up, because loss and premium co-develop and their tails cancel in
 ``R = L / P``. The accurate go-forward is to hold the frontier loss ratio flat
--- BUT only once the observed development has SETTLED (the recent loss ratio
-has stopped moving). Early development swings; freezing a still-swinging ratio
+-- BUT only once the observed loss ratio has SETTLED (the recent loss ratio
+has stopped moving). The loss ratio swings early; freezing a still-swinging ratio
 is wrong.
 
 This module decides that gate. For each segment it measures the loss ratio's
 own per-step development ``rho_k = f^L_k / f^P_k`` (the cumulative loss ratio is
 flat exactly when loss and premium develop at the same rate, ``rho_k -> 1``).
 If the recent window of ``rho_k`` is flat within tolerance, the frozen
-go-forward is trustworthy (``stable``); otherwise the development is still
+go-forward is trustworthy (``stable``); otherwise the loss ratio is still
 emerging and the go-forward is flagged uncertain -- no fabricated tail.
 
 This is an EMPIRICAL settling check (has the observed series stopped moving),
@@ -83,15 +83,15 @@ def _ratio_step(L: np.ndarray, P: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 class Stability:
     """Go-forward stability gate for the loss ratio.
 
-    ``assess(triangle)`` reports, per segment, whether the observed loss-ratio
-    development has SETTLED at the frontier -- if so, freezing the frontier loss
+    ``assess(triangle)`` reports, per segment, whether the observed loss ratio
+    has SETTLED at the frontier -- if so, freezing the frontier loss
     ratio is a trustworthy go-forward; if not, the go-forward is flagged
     uncertain.
 
     Parameters
     ----------
     window
-        Number of most-recent development links whose loss-ratio step
+        Number of most-recent duration links whose loss-ratio step
         ``rho_k`` must be flat for a ``stable`` verdict (default 6).
     tol
         Maximum allowed loss-ratio fractional change per link (``|rho_k - 1|``)
@@ -109,7 +109,7 @@ class Stability:
         segments, which a trend average misses -- it was the better OOS
         predictor of freeze error at every threshold.
     min_links
-        Minimum number of usable development links a segment needs before a
+        Minimum number of usable duration links a segment needs before a
         verdict is issued; shallower segments report ``insufficient_depth``
         (default 8).
     min_cohorts
@@ -133,17 +133,17 @@ class Stability:
         """Assess go-forward stability per segment on ``triangle``."""
         df = triangle.to_polars() if hasattr(triangle, "to_polars") else triangle._df
         groups = triangle.groups
-        seg_cols = normalize_groups(groups)
+        group_cols = normalize_groups(groups)
         rows: list[dict[str, Any]] = []
 
-        if seg_cols:
-            seg_keys = df.select(seg_cols).unique(maintain_order=True).rows()
+        if group_cols:
+            seg_keys = df.select(group_cols).unique(maintain_order=True).rows()
         else:
             seg_keys = [()]
         for key in seg_keys:
-            if seg_cols:
+            if group_cols:
                 mask = pl.lit(True)
-                for col, val in zip(seg_cols, key):
+                for col, val in zip(group_cols, key):
                     mask = mask & (pl.col(col) == val)
                 sub = df.filter(mask)
             else:
@@ -153,7 +153,7 @@ class Stability:
             usable = np.isfinite(rho) & (nco >= self.min_cohorts)
             ks = np.where(usable)[0]
             row: dict[str, Any] = {}
-            for col, val in zip(seg_cols, key):
+            for col, val in zip(group_cols, key):
                 row[col] = val
             # frontier = deepest duration that carries a pooled ratio
             front_j = max((j for j in range(len(durs)) if np.nansum(P[:, j]) > 0

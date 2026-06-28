@@ -334,7 +334,7 @@ def _fit_premium(
             "ModelFrame has no cells to fit (an empty triangle, or a regime "
             "cut that removed every cohort)."
         )
-    seg_cols = normalize_groups(groups)
+    group_cols = normalize_groups(groups)
 
     long_parts: list[pl.DataFrame] = []
     cred_parts: list[pl.DataFrame] = []
@@ -343,9 +343,9 @@ def _fit_premium(
 
     for sid in frame.get_column("_segment_id").unique().sort().to_list():
         sub = frame.filter(pl.col("_segment_id") == sid).sort(["cohort", "duration"])
-        if seg_cols:
-            row = sub.select(seg_cols).row(0)
-            group_value = row[0] if len(seg_cols) == 1 else row
+        if group_cols:
+            row = sub.select(group_cols).row(0)
+            group_value = row[0] if len(group_cols) == 1 else row
         else:
             group_value = None
 

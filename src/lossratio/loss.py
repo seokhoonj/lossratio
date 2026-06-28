@@ -1494,7 +1494,7 @@ def _cohort_subset_donor(
 
 
 def _segment_change_dates(
-    regime: "Any", seg_cols: list[str], group_value: "Any",
+    regime: "Any", group_cols: list[str], group_value: "Any",
 ) -> list:
     """The sorted change dates that apply to one segment (for ``segment_wise``).
 
@@ -1507,11 +1507,11 @@ def _segment_change_dates(
     changes = getattr(regime, "_changes_df", None)
     if changes is None or changes.is_empty():
         return []
-    gcols = [c for c in changes.columns if c not in ("change", "regime_id")]
-    if gcols and seg_cols:
+    group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
+    if group_cols and group_cols:
         vals = group_value if isinstance(group_value, tuple) else (group_value,)
-        keymap = dict(zip(seg_cols, vals))
-        for g in gcols:
+        keymap = dict(zip(group_cols, vals))
+        for g in group_cols:
             if g in keymap:
                 changes = changes.filter(pl.col(g) == keymap[g])
     return sorted(changes.get_column("change").to_list())
@@ -1533,10 +1533,10 @@ def _regime_covariate_codes(
     changes = getattr(regime, "_changes_df", None)
     idx = pl.lit(0, dtype=pl.Int32)
     if changes is not None and not changes.is_empty():
-        gcols = [c for c in changes.columns if c not in ("change", "regime_id")]
+        group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
         for row in changes.iter_rows(named=True):
             cond = pl.col("cohort") >= pl.lit(row["change"])
-            for g in gcols:
+            for g in group_cols:
                 if g in group_cols:
                     cond = cond & (pl.col(g) == pl.lit(row[g]))
             idx = idx + cond.cast(pl.Int32)
@@ -1892,7 +1892,7 @@ def _fit_loss(
 
     mf = ModelFrame.from_triangle(fit_triangle, regime=mf_regime)
     frame = mf.df
-    seg_cols = normalize_groups(groups)
+    group_cols = normalize_groups(groups)
     if frame.is_empty():
         raise ValueError(
             "ModelFrame has no cells to fit (an empty triangle, or a regime "
@@ -1921,13 +1921,13 @@ def _fit_loss(
         seg_seeds = dict(zip(seg_ids, children))
     for sid in seg_ids:
         sub = frame.filter(pl.col("_segment_id") == sid)
-        if seg_cols:
+        if group_cols:
             # the segment's group VALUE: a scalar for a single group column, a
             # tuple aligned with the columns for several -- the shape
             # `fill_group_columns` expects (NOT `collapse_groups`, which is for
             # column NAMES and would reject int/date/duplicate values).
-            row = sub.select(seg_cols).row(0)
-            group_value = row[0] if len(seg_cols) == 1 else row
+            row = sub.select(group_cols).row(0)
+            group_value = row[0] if len(group_cols) == 1 else row
         else:
             group_value = None
 
@@ -1947,7 +1947,7 @@ def _fit_loss(
                 extra = {"psi": psi, "n_basis": n_basis, "lam": lam}
             else:
                 extra = {}
-            changes = _segment_change_dates(regime, seg_cols, group_value)
+            changes = _segment_change_dates(regime, group_cols, group_value)
             fit, cohorts = _fit_segment_cascade(
                 sub, fit_segment, mechanism, extra, sigma_method, recent, changes
             )
@@ -1976,9 +1976,9 @@ def _fit_loss(
                 _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
             )
             seg_cov = cov_cells
-            if seg_cols:
-                vals = (group_value,) if len(seg_cols) == 1 else group_value
-                for col, val in zip(seg_cols, vals):
+            if group_cols:
+                vals = (group_value,) if len(group_cols) == 1 else group_value
+                for col, val in zip(group_cols, vals):
                     seg_cov = seg_cov.filter(pl.col(col) == val)
             # restrict the source cells to this segment's (regime-cut) cohort
             # set -- otherwise the kernel would fit on cohorts the regime cut
@@ -2275,8 +2275,8 @@ class LossFit:
                 f"at_grain only views a COARSER grain: this fit is at "
                 f"{self.grain!r}, cannot view the finer {grain!r}."
             )
-        gcols = normalize_groups(self.groups)
-        out_cols = [*gcols, "cohort", "duration", "loss_proj", "incr_loss_proj",
+        group_cols = normalize_groups(self.groups)
+        out_cols = [*group_cols, "cohort", "duration", "loss_proj", "incr_loss_proj",
                     "premium_proj", "incr_premium_proj", "ratio_proj", "source"]
         if grain == self.grain:
             return mirror_output(self._df.select(out_cols), self._output_type)
@@ -2293,7 +2293,7 @@ class LossFit:
             floor_to_period(pl.col("_cal"), grain).alias("_cc"),
         )
         agg = (
-            df.group_by([*gcols, "_uc", "_cc"])
+            df.group_by([*group_cols, "_uc", "_cc"])
             .agg(
                 pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
                 pl.col("incr_premium_proj").sum().alias("incr_premium_proj"),
@@ -2305,11 +2305,11 @@ class LossFit:
             )
             .rename({"_uc": "cohort"})
             .drop("_cc")
-            .sort([*gcols, "cohort", "duration"])
+            .sort([*group_cols, "cohort", "duration"])
             .with_columns(
-                pl.col("incr_loss_proj").cum_sum().over([*gcols, "cohort"])
+                pl.col("incr_loss_proj").cum_sum().over([*group_cols, "cohort"])
                   .alias("loss_proj"),
-                pl.col("incr_premium_proj").cum_sum().over([*gcols, "cohort"])
+                pl.col("incr_premium_proj").cum_sum().over([*group_cols, "cohort"])
                   .alias("premium_proj"),
             )
             .with_columns(

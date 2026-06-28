@@ -72,7 +72,7 @@ def plot_backtest(
             x_col="duration",
             x_label=_pretty_var_label(fit._duration),
             stat_cols=stat_cols,
-            title=f"Backtest A/E Error by development period ({mode_word})",
+            title=f"Backtest A/E Error by duration ({mode_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
     if kind == "diag":
@@ -112,7 +112,7 @@ def plot_triangle_backtest(
     actual > expected), blue = negative (over-projected). White at 0.
 
     ``x`` selects the horizontal axis: ``"duration"`` (default; cohort x
-    development period) or ``"calendar"`` (cohort x calendar period). The
+    duration) or ``"calendar"`` (cohort x calendar period). The
     calendar view places each cell at its actual calendar date
     (``cohort`` advanced by ``duration - 1`` grain periods), so a cohort's
     cells align by calendar across rows and the held-out diagonal reads as a

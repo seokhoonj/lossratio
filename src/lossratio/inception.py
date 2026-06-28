@@ -1,6 +1,6 @@
 """Prospective inception-stability diagnostic (credibility from count x rate).
 
-At cohort inception -- before any development -- a planner asks "can this
+At cohort inception -- before any elapsed duration -- a planner asks "can this
 cohort's own experience be trusted yet, or must it pool?". This is the
 classical credibility question, answerable from the cohort's policy COUNT and
 a priced incidence RATE alone:

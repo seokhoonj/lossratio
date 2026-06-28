@@ -7,7 +7,7 @@ still covers the full ``cohort x duration`` grid; only the cells feeding the
 per-link factor estimate are masked.
 
 This is a calendar-diagonal filter, *not* a cohort cut: young
-development cells of older cohorts still leak into the wedge (that is
+early-duration cells of older cohorts still leak into the wedge (that is
 intentional — strict cohort-axis cuts are the separate ``regime``
 argument).
 

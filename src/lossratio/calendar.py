@@ -60,7 +60,7 @@ class Calendar:
         # to match the Backtest output's same-named column (rank of the
         # calendar date within its group). Intentionally NOT `duration` --
         # in a Calendar this integer is just the date rank, not a true
-        # development period.
+        # duration period.
         if grp is not None:
             ds = ds.with_columns(
                 pl.int_range(1, pl.len() + 1).over(normalize_groups(grp)).alias("cal_idx")

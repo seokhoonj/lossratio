@@ -98,13 +98,13 @@ def _filter_cells_recent(
     """
     if recent is None:
         return cells
-    gcols = normalize_groups(groups)
+    group_cols = normalize_groups(groups)
     rank = pl.col("cohort").rank("dense")
-    rank = rank.over(gcols) if gcols else rank
+    rank = rank.over(group_cols) if group_cols else rank
     cal = rank.cast(pl.Int64) - 1 + pl.col("duration_from")
     c = cells.with_columns(cal.alias("_cal"))
     mx = pl.col("_cal").max()
-    mx = mx.over(gcols) if gcols else mx
+    mx = mx.over(group_cols) if group_cols else mx
     return c.filter(pl.col("_cal") > mx - recent).drop("_cal")
 
 

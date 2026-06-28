@@ -17,11 +17,11 @@ def _tri(grain):
     return lr.Triangle(lr.load_experience(), groups="coverage", grain=grain)
 
 
-def _proj_total(frame, gcols=("coverage",)):
+def _proj_total(frame, group_cols=("coverage",)):
     """Portfolio projected ratio = sum of each cohort's deepest cumulative."""
     last = (
-        frame.sort([*gcols, "cohort", "duration"])
-        .group_by([*gcols, "cohort"])
+        frame.sort([*group_cols, "cohort", "duration"])
+        .group_by([*group_cols, "cohort"])
         .agg(pl.col("loss_proj").last(), pl.col("premium_proj").last())
     )
     return last["loss_proj"].sum() / last["premium_proj"].sum()

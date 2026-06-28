@@ -256,11 +256,11 @@ def _arrays_to_long_df(
     df = pl.DataFrame(cols)
     if groups is not None:
         if isinstance(groups, str):
-            gcols = [pl.lit(group_value).alias(groups)]
+            group_cols = [pl.lit(group_value).alias(groups)]
         else:
-            gcols = [
+            group_cols = [
                 pl.lit(val).alias(col)
                 for col, val in zip(groups, group_value)
             ]
-        df = df.select(*gcols, *[pl.col(c) for c in cols])
+        df = df.select(*group_cols, *[pl.col(c) for c in cols])
     return _nan_to_null(df)

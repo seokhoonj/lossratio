@@ -1,6 +1,6 @@
 """lossratio -- loss ratio analytics for long-term health insurance.
 
-Cohort development triangles, a loss-ratio projection ladder, uncertainty
+Cohort-duration triangles, a loss-ratio projection ladder, uncertainty
 quantification, regime detection, and backtesting.
 
 See also

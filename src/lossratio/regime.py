@@ -1,7 +1,7 @@
 """Regime: structural change-point detection across underwriting cohorts.
 
 Each cohort is treated as a feature vector (the chosen ``target`` over
-development periods 1, ..., K). The ordered sequence of cohort vectors
+durations 1, ..., K). The ordered sequence of cohort vectors
 is then tested for structural shifts using one of two methods:
 
 * ``"e_divisive"`` — E-Divisive (Matteson & James 2014). Multivariate
@@ -190,11 +190,11 @@ def _resolve_by(
     # `by` selects a coarser detection grain: it must be a subset of the
     # triangle's own group columns (else the group_by hits a missing column
     # and polars raises a bare ColumnNotFoundError far downstream).
-    gcols = normalize_groups(triangle.groups)
-    extra = [c for c in seq if c not in gcols]
+    group_cols = normalize_groups(triangle.groups)
+    extra = [c for c in seq if c not in group_cols]
     if extra:
         raise ValueError(
-            f"by={seq} must be a subset of the triangle's groups {gcols}; "
+            f"by={seq} must be a subset of the triangle's groups {group_cols}; "
             f"{extra} {'is' if len(extra) == 1 else 'are'} not a group column."
         )
     return seq[0] if len(seq) == 1 else seq
@@ -542,14 +542,14 @@ def _grain_sweep_candidates(
 
     allc = pl.concat(frames, how="vertical_relaxed")
     align_mpp = max(_GRAIN_MONTHS[g] for g in seen)
-    grp_cols = normalize_groups(triangle.groups)
+    group_cols = normalize_groups(triangle.groups)
     allc = allc.with_columns(
         pl.col("change").dt.truncate(f"{align_mpp}mo").alias("_key"),
         pl.col("grain").replace_strict(_GRAIN_MONTHS).alias("_gm"),
         # sort helper: most step-like first (NaN step_p -> last).
         pl.col("step_p").fill_nan(2.0).fill_null(2.0).alias("_sp"),
     )
-    keys = grp_cols + ["_key"]
+    keys = group_cols + ["_key"]
 
     # Representative row = the grain with the STRONGEST step evidence
     # (lowest step_p), tie-broken by finest grain then most window-stable.
@@ -593,7 +593,7 @@ def _grain_sweep_candidates(
     ).drop("_key")
 
     preferred = (
-        grp_cols
+        group_cols
         + ["change", "grain", "change_type", "grain_stability"]
         + kcols
         + [
@@ -750,7 +750,7 @@ def _build_feature_matrix(
 ) -> tuple[np.ndarray, list, list]:
     """Pivot the long-format Triangle into a (n_cohorts, K) feature matrix.
 
-    Cohorts with fewer than K observed development periods are dropped
+    Cohorts with fewer than K observed durations are dropped
     and returned in the ``dropped`` list. Cohorts are returned ordered
     by cohort value.
     """
@@ -784,7 +784,7 @@ def _build_feature_matrix(
 
     if not eligible:
         raise ValueError(
-            f"No cohorts have >= K={K} observed development periods. "
+            f"No cohorts have >= K={K} observed durations. "
             f"Reduce K."
         )
 
@@ -825,10 +825,10 @@ def _cohort_level_scalar(
     target
         Metric column to average (e.g. ``"ratio"``).
     window
-        Number of leading development periods that define the level. A cohort
+        Number of leading durations that define the level. A cohort
         is kept only if it has at least ``window`` DISTINCT non-null ``duration``
         cells in ``1..window`` -- so the early trajectory is fully observed
-        and the level is comparable across cohorts (no incomplete-development
+        and the level is comparable across cohorts (no incomplete-duration
         bias).
 
     Returns
@@ -1362,7 +1362,7 @@ class Regime:
     target : str
         Trajectory variable name used.
     window : int
-        Development-period window length (number of duration cells per cohort
+        Duration window length (number of duration cells per cohort
         used as the feature vector).
     cohort : str
         Original cohort variable name (e.g. ``"uy_m"``).
@@ -1373,7 +1373,7 @@ class Regime:
         Number of regimes detected.
     dropped : list
         Cohorts excluded because they had fewer than ``window`` observed
-        development periods.
+        durations.
     treatment : str
         How a fit consumes this regime. ``"latest_only"`` (default) keeps
         only the newest regime (drops every cohort before the latest change).
@@ -2113,10 +2113,10 @@ class Regime:
         """
         ev = self.evaluate(**evaluate_kwargs)
         ev_pl = ev if isinstance(ev, pl.DataFrame) else pl.from_pandas(ev)
-        grp_cols = normalize_groups(self.groups)
+        group_cols = normalize_groups(self.groups)
         if "action" in ev_pl.columns:
             acc = ev_pl.filter(pl.col("action") == "regime").select(
-                [*grp_cols, "change"]
+                [*group_cols, "change"]
             )
         else:
             # No candidates surfaced (empty evaluate frame) -> no accepted
@@ -2124,7 +2124,7 @@ class Regime:
             # resulting Regime simply applies no filter, rather than crashing
             # on the missing "action" column.
             acc = pl.DataFrame(
-                schema={**{c: pl.Utf8 for c in grp_cols}, "change": pl.Date}
+                schema={**{c: pl.Utf8 for c in group_cols}, "change": pl.Date}
             )
         return Regime._manual(
             changes_df=acc,
@@ -2156,12 +2156,12 @@ class Regime:
         tri_df = triangle.to_polars()
         if target not in tri_df.columns:
             raise ValueError(f"target {target!r} not in triangle columns")
-        gcols = normalize_groups(self.groups)
+        group_cols = normalize_groups(self.groups)
         changes = self._changes_df
 
-        if gcols:
+        if group_cols:
             group_items = list(
-                tri_df.partition_by(gcols, as_dict=True).items()
+                tri_df.partition_by(group_cols, as_dict=True).items()
             )
         else:
             group_items = [((), tri_df)]
@@ -2169,9 +2169,9 @@ class Regime:
         rows: list[dict] = []
         for key, gdf in group_items:
             keyvals = key if isinstance(key, tuple) else (key,)
-            if gcols:
+            if group_cols:
                 chg = changes
-                for c, v in zip(gcols, keyvals):
+                for c, v in zip(group_cols, keyvals):
                     chg = chg.filter(pl.col(c) == v)
             else:
                 chg = changes
@@ -2193,7 +2193,7 @@ class Regime:
             res = _borrow_screen_group(
                 loss_cum, np.arange(len(cohorts)), seg_ids
             )
-            row = {c: v for c, v in zip(gcols, keyvals)}
+            row = {c: v for c, v in zip(group_cols, keyvals)}
             row.update(res)
             rows.append(row)
 
@@ -2298,13 +2298,13 @@ def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
         return None
 
     changes = regime._changes_df
-    gcols = normalize_groups(regime.groups)
-    if not gcols or not all(g in changes.columns for g in gcols):
+    group_cols = normalize_groups(regime.groups)
+    if not group_cols or not all(g in changes.columns for g in group_cols):
         cutoff = max(regime.change_points)
         return pl.DataFrame({"_cutoff": [cutoff]}, schema={"_cutoff": pl.Date})
 
     return (
-        changes.group_by(gcols)
+        changes.group_by(group_cols)
         .agg(pl.col("change").max().alias("_cutoff"))
     )
 
@@ -2340,14 +2340,14 @@ def _resolve_regime(regime, triangle):
             f"regime must be None / date / dict / 'auto' / Regime / Callable, "
             f"got {type(regime).__name__}"
         )
-    cutoff = _regime_cutoff_map(regime)        # DataFrame [gcols?, _cutoff] | None
+    cutoff = _regime_cutoff_map(regime)        # DataFrame [group_cols?, _cutoff] | None
     if cutoff is None:
         return None
     if cutoff.columns == ["_cutoff"]:          # ungrouped -> a single date
         return cutoff["_cutoff"][0]
-    gcols = [c for c in cutoff.columns if c != "_cutoff"]
+    group_cols = [c for c in cutoff.columns if c != "_cutoff"]
     out = {}
     for row in cutoff.iter_rows(named=True):
-        key = row[gcols[0]] if len(gcols) == 1 else tuple(row[g] for g in gcols)
+        key = row[group_cols[0]] if len(group_cols) == 1 else tuple(row[g] for g in group_cols)
         out[key] = row["_cutoff"]
     return out

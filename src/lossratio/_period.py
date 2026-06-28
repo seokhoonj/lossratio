@@ -382,7 +382,7 @@ def derive_grain_columns(df: Any) -> Any:
 
     Given a long-format frame with monthly source columns (``uy_m``,
     ``cy_m``), derive the coarser-grain siblings (``uy_q`` / ``uy_h`` /
-    ``uy``, ``cy_q`` / ``cy_h`` / ``cy``) plus the development
+    ``uy``, ``cy_q`` / ``cy_h`` / ``cy``) plus the duration
     indices (``duration_m`` / ``duration_q`` / ``duration_h`` / ``duration_y``) so the
     same frame can be aggregated at any of the four grains.
 
@@ -401,13 +401,13 @@ def derive_grain_columns(df: Any) -> Any:
       ``uy``, ``uy_h``, ``uy_q``, ``uy_m``.
     * Calendar period (Date, from ``cy_m``):
       ``cy``, ``cy_h``, ``cy_q``, ``cy_m``.
-    * Development period (Int, derived from ``uy_m`` and ``cy_m``):
+    * Duration (Int, derived from ``uy_m`` and ``cy_m``):
       ``duration_y``, ``duration_h``, ``duration_q``, ``duration_m``.
 
     ``duration_h`` and ``duration_q`` are *not* simple groupings of ``duration_m`` —
     they are aligned to calendar H / Q boundaries so that underwriting
     cohorts in (say) Q1 vs Q2 are compared on a consistent cumulative
-    development basis.
+    duration basis.
 
     Parameters
     ----------
@@ -474,7 +474,7 @@ def derive_grain_columns(df: Any) -> Any:
         ).alias("cy_q"),
     )
 
-    # Development indices (Int): duration_m, duration_q, duration_h, duration_y.
+    # Duration indices (Int): duration_m, duration_q, duration_h, duration_y.
     # H / Q indices are 0-based grain indices within the calendar year:
     #   uy_h_idx ∈ {0, 1}    (0 = H1, 1 = H2)
     #   uy_q_idx ∈ {0, 1, 2, 3}  (0 = Q1, ..., 3 = Q4)

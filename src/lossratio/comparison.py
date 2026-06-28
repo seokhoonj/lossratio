@@ -269,7 +269,7 @@ class EstimatorComparisonFit:
         self.baseline = baseline
         self.target = first.target
 
-        gcols = normalize_groups(self._groups)
+        group_cols = normalize_groups(self._groups)
 
         # COMMON hold-out depths: the sorted intersection of every
         # estimator's surviving depths. A depth that survived for some
@@ -294,7 +294,7 @@ class EstimatorComparisonFit:
         # common depths, then keep only the keys present for ALL estimators
         # (iterative inner join of the distinct key frames, then a semi-join
         # of each estimator's frame onto the final key set).
-        key_cols = [*gcols, "holdout", "cohort", "duration"]
+        key_cols = [*group_cols, "holdout", "cohort", "duration"]
         matched: dict[str, pl.DataFrame] = {}
         keys: pl.DataFrame | None = None
         for label in labels:
@@ -327,7 +327,7 @@ class EstimatorComparisonFit:
         if has_incr:
             value_cols += list(cls._INCR_CELL_COLS)
         lead = [
-            *gcols, "holdout", "horizon", "anchor_duration",
+            *group_cols, "holdout", "horizon", "anchor_duration",
             "cohort", "duration",
         ]
         parts: list[pl.DataFrame] = []
@@ -342,9 +342,9 @@ class EstimatorComparisonFit:
             )
         cells = pl.concat(parts, how="vertical")
         cells = (
-            cells.sort([*gcols, "holdout", "cohort", "duration", "_est_order"])
+            cells.sort([*group_cols, "holdout", "cohort", "duration", "_est_order"])
             .drop("_est_order")
-            .select([*gcols, "estimator", *lead[len(gcols):], *value_cols])
+            .select([*group_cols, "estimator", *lead[len(group_cols):], *value_cols])
         )
         self._cells = cells
 
@@ -394,8 +394,8 @@ class EstimatorComparisonFit:
         estimator, axis]`` -- so each estimator's curve is computed on the
         same matched population, unlike the per-fit summaries.
         """
-        gcols = normalize_groups(self._groups)
-        by = [*gcols, "estimator", axis]
+        group_cols = normalize_groups(self._groups)
+        by = [*group_cols, "estimator", axis]
         cells = self._cells
         if cells.height == 0:
             schema: dict[str, Any] = {c: cells.schema[c] for c in by}
@@ -412,7 +412,7 @@ class EstimatorComparisonFit:
         out = cells.group_by(by).agg(
             BacktestFit._agg_exprs(self._has_incr)
         )
-        return self._sort_with_estimator(out, gcols, [axis])
+        return self._sort_with_estimator(out, group_cols, [axis])
 
     @staticmethod
     def _comparison_stat_names(has_incr: bool) -> list[str]:
@@ -499,8 +499,8 @@ class EstimatorComparisonFit:
         a loss). The ``_incr_win`` companion mirrors it on the incremental
         lane.
         """
-        gcols = normalize_groups(self._groups)
-        key = [*gcols, "holdout", "cohort", "duration"]
+        group_cols = normalize_groups(self._groups)
+        key = [*group_cols, "holdout", "cohort", "duration"]
         cells = self._cells
 
         def side(df: pl.DataFrame, tag: str, carry: list[str]) -> pl.DataFrame:
@@ -565,18 +565,18 @@ class EstimatorComparisonFit:
         win-rate columns are derived (see the class docstring for the
         definitions).
         """
-        gcols = normalize_groups(self._groups)
+        group_cols = normalize_groups(self._groups)
         cells = self._cells
         stat_names = self._comparison_stat_names(self._has_incr)
         if cells.height == 0:
-            schema: dict[str, Any] = {c: cells.schema[c] for c in gcols}
+            schema: dict[str, Any] = {c: cells.schema[c] for c in group_cols}
             schema["estimator"] = pl.Utf8
             schema[axis] = cells.schema[axis]
             schema["n"] = pl.UInt32
             schema.update({name: pl.Float64 for name in stat_names})
             return pl.DataFrame(schema=schema)
 
-        by = [*gcols, "estimator", axis]
+        by = [*group_cols, "estimator", axis]
         stats = cells.group_by(by).agg(
             self._comparison_agg_exprs(self._has_incr)
         )
@@ -590,7 +590,7 @@ class EstimatorComparisonFit:
             .rename({name: self._base_name(name) for name in own})
         )
         out = stats.filter(pl.col("estimator") != self.baseline).join(
-            base_stats, on=[*gcols, axis], how="left"
+            base_stats, on=[*group_cols, axis], how="left"
         )
 
         win_aggs = [pl.col("_win").mean().alias("win_rate")]
@@ -630,8 +630,8 @@ class EstimatorComparisonFit:
                 ),
             ]
         out = out.with_columns(rel_exprs)
-        out = out.select([*gcols, "estimator", axis, "n", *stat_names])
-        return self._sort_with_estimator(out, gcols, [axis])
+        out = out.select([*group_cols, "estimator", axis, "n", *stat_names])
+        return self._sort_with_estimator(out, group_cols, [axis])
 
     def _build_match_summary(self) -> pl.DataFrame:
         """Per-(estimator, depth) record of the matched-population loss.
@@ -640,8 +640,8 @@ class EstimatorComparisonFit:
         common ones), so a depth excluded by the intersection shows up with
         ``n_matched = 0`` rather than disappearing.
         """
-        gcols = normalize_groups(self._groups)
-        by = [*gcols, "holdout"]
+        group_cols = normalize_groups(self._groups)
+        by = [*group_cols, "holdout"]
         parts: list[pl.DataFrame] = []
         for label in self._labels:
             own = self._fits[label]._ae_err
@@ -664,13 +664,13 @@ class EstimatorComparisonFit:
                 )
                 .select(
                     [
-                        *gcols, "estimator", "holdout",
+                        *group_cols, "estimator", "holdout",
                         "n_cells", "n_matched", "n_dropped",
                     ]
                 )
             )
         out = pl.concat(parts, how="vertical")
-        return self._sort_with_estimator(out, gcols, ["holdout"])
+        return self._sort_with_estimator(out, group_cols, ["holdout"])
 
     # -- accessors -----------------------------------------------------------
 
@@ -818,7 +818,7 @@ class EstimatorComparisonFit:
         calls side by side -- a metric that reorders the table is a real
         trade-off.
         """
-        sc, gcols = self._resolve_population(population, terminal)
+        sc, group_cols = self._resolve_population(population, terminal)
         df = sc.filter((pl.col("population") == population) & (pl.col("lane") == lane))
         if metric not in df.columns:
             raise ValueError(
@@ -828,7 +828,7 @@ class EstimatorComparisonFit:
             )
         # a rolling comparison carries a `holdout` column -- rank WITHIN each
         # (group, holdout) so depths are not mixed into one ordering.
-        gkeys = gcols + (["holdout"] if "holdout" in df.columns else [])
+        gkeys = group_cols + (["holdout"] if "holdout" in df.columns else [])
         df = df.with_columns(self._rank_key(metric).alias("_key"))
         rnk = pl.col("_key").rank(method="min")
         rnk = rnk.over(gkeys) if gkeys else rnk
@@ -856,7 +856,7 @@ class EstimatorComparisonFit:
         pick is auditable, not a black box. A requested metric absent from the
         scorecard (e.g. coverage on a point-only fit) is dropped with a warning.
         """
-        sc, gcols = self._resolve_population(population, terminal)
+        sc, group_cols = self._resolve_population(population, terminal)
         df = sc.filter((pl.col("population") == population) & (pl.col("lane") == lane))
         want = list(metrics) if metrics is not None else list(self._BEST_DEFAULT_METRICS)
         present = [m for m in want if m in df.columns]
@@ -883,7 +883,7 @@ class EstimatorComparisonFit:
             )
         # rank WITHIN each (group, holdout) so a rolling comparison's depths are
         # not mixed; the Borda sum then runs over metrics at each depth.
-        gkeys = gcols + (["holdout"] if "holdout" in df.columns else [])
+        gkeys = group_cols + (["holdout"] if "holdout" in df.columns else [])
         rank_cols = []
         for m in use:
             rnk = self._rank_key(m).rank(method="average")
@@ -1136,9 +1136,9 @@ class EstimatorComparisonFit:
         if lane == "incremental":
             ch_col, base_col = "incr_" + ch_col, "incr_" + base_col
 
-        gcols = normalize_groups(self._groups)
+        group_cols = normalize_groups(self._groups)
         axis_dt = comp.schema[axis]
-        schema: dict[str, Any] = {c: comp.schema[c] for c in gcols}
+        schema: dict[str, Any] = {c: comp.schema[c] for c in group_cols}
         schema["estimator"] = pl.Utf8
         schema["crossover_at"] = axis_dt
         schema["early_winner"] = pl.Utf8
@@ -1153,7 +1153,7 @@ class EstimatorComparisonFit:
 
         rows: list[dict[str, Any]] = []
         for part in comp.partition_by(
-            [*gcols, "estimator"], maintain_order=True
+            [*group_cols, "estimator"], maintain_order=True
         ):
             part = part.sort(axis)
             label = part["estimator"][0]
@@ -1170,7 +1170,7 @@ class EstimatorComparisonFit:
             late = owner if run >= min_run else None
 
             sub = self._cells
-            for c in gcols:
+            for c in group_cols:
                 sub = sub.filter(pl.col(c) == part[c][0])
             ch_cells = sub.filter(pl.col("estimator") == label)
             base_cells = sub.filter(pl.col("estimator") == self.baseline)
@@ -1208,7 +1208,7 @@ class EstimatorComparisonFit:
                     return self.baseline
                 return None
 
-            row: dict[str, Any] = {c: part[c][0] for c in gcols}
+            row: dict[str, Any] = {c: part[c][0] for c in group_cols}
             row["estimator"] = label
             row["crossover_at"] = crossover_at
             row["early_winner"] = lab(early)

@@ -147,7 +147,7 @@ def plot_triangle(
 
     # Determine cell labels (cohort -> string, x -> string) once,
     # using consistent ordering across facets so the axes are stable.
-    # The x-axis is either the development index (default, aligned
+    # The x-axis is either the duration index (default, aligned
     # right-triangle layout) or the calendar period of each cell
     # (staircase layout: each cohort shifted to its own diagonal).
     coh_type = _get_period_type(coh, grain=grain)
@@ -395,14 +395,14 @@ def _threshold_color(v: float, threshold: float, when: str) -> str:
 
 
 def _regime_cut_frames(
-    regime_cut: "date | dict | None", grp_cols: list[str],
+    regime_cut: "date | dict | None", group_cols: list[str],
 ) -> "tuple[Any, pl.DataFrame | None]":
     """Split a RESOLVED regime cut into ``(scalar_date, per_group_df)``.
 
     ``regime_cut`` is what :func:`lossratio.regime._resolve_regime` returns --
     ``None`` (no cut), a ``date`` (one change for every segment), or a
     ``dict[segment -> date]`` (a change per segment). The per-group frame has
-    columns ``[*grp_cols, "_cd_join"]`` for a left-join onto the cell grid;
+    columns ``[*group_cols, "_cd_join"]`` for a left-join onto the cell grid;
     the scalar form needs no join. Mirrors ``ModelFrame._apply_regime`` so the
     usage view cuts exactly where the fit does.
     """
@@ -411,15 +411,15 @@ def _regime_cut_frames(
     if isinstance(regime_cut, date):
         return regime_cut, None
     if isinstance(regime_cut, dict):
-        if not grp_cols:
+        if not group_cols:
             raise ValueError(
                 "per-segment regime needs a grouped triangle; "
                 "pass a single date for an ungrouped one"
             )
         rows = []
         for seg_val, change in regime_cut.items():
-            keys = (seg_val,) if len(grp_cols) == 1 else tuple(seg_val)
-            rows.append({**dict(zip(grp_cols, keys)), "_cd_join": change})
+            keys = (seg_val,) if len(group_cols) == 1 else tuple(seg_val)
+            rows.append({**dict(zip(group_cols, keys)), "_cd_join": change})
         return None, pl.DataFrame(rows)
     raise ValueError(
         f"regime_cut must be None, a date, or a dict; got "
@@ -470,19 +470,19 @@ def _compute_triangle_usage(
     # the public Triangle.usage() mirrors the final result instead).
 
     grp = triangle.groups
-    grp_cols: list[str] = normalize_groups(grp)
+    group_cols: list[str] = normalize_groups(grp)
 
     # 1. Build the full (group x cohort x duration) grid.
-    if grp_cols:
-        full = obs.select(grp_cols + ["cohort", "duration"])
+    if group_cols:
+        full = obs.select(group_cols + ["cohort", "duration"])
         parts: list[pl.DataFrame] = []
-        for g_val, sub in full.group_by(grp_cols):
+        for g_val, sub in full.group_by(group_cols):
             cohorts = sub["cohort"].unique().sort()
             durations = sub["duration"].unique().sort()
             grid = cohorts.to_frame().join(durations.to_frame(), how="cross")
-            for col, v in zip(grp_cols, g_val):
+            for col, v in zip(group_cols, g_val):
                 grid = grid.with_columns(pl.lit(v).alias(col))
-            parts.append(grid.select(grp_cols + ["cohort", "duration"]))
+            parts.append(grid.select(group_cols + ["cohort", "duration"]))
         expanded = pl.concat(parts, how="vertical_relaxed")
     else:
         cohorts = obs["cohort"].unique().sort()
@@ -490,17 +490,17 @@ def _compute_triangle_usage(
         expanded = cohorts.to_frame().join(durations.to_frame(), how="cross")
 
     # 2. Tag rows actually present in input (vs filled-in by the grid).
-    obs_marker = obs.select(grp_cols + ["cohort", "duration"]).with_columns(
+    obs_marker = obs.select(group_cols + ["cohort", "duration"]).with_columns(
         pl.lit(True).alias("_data_present")
     )
     expanded = expanded.join(
-        obs_marker, on=grp_cols + ["cohort", "duration"], how="left"
+        obs_marker, on=group_cols + ["cohort", "duration"], how="left"
     ).with_columns(pl.col("_data_present").fill_null(False))
 
     # 3. Cohort rank + calendar index, optionally per group.
-    if grp_cols:
+    if group_cols:
         expanded = expanded.with_columns(
-            pl.col("cohort").rank(method="dense").over(grp_cols).cast(pl.Int64).alias("_coh_rank")
+            pl.col("cohort").rank(method="dense").over(group_cols).cast(pl.Int64).alias("_coh_rank")
         )
     else:
         expanded = expanded.with_columns(
@@ -511,13 +511,13 @@ def _compute_triangle_usage(
     )
 
     # max_cal among data-present cells (not the full grid).
-    if grp_cols:
+    if group_cols:
         expanded = expanded.with_columns(
             pl.when(pl.col("_data_present"))
             .then(pl.col("_cal_idx"))
             .otherwise(None)
             .max()
-            .over(grp_cols)
+            .over(group_cols)
             .alias("_max_cal")
         )
     else:
@@ -556,7 +556,7 @@ def _compute_triangle_usage(
         )
 
     # 6. Resolve the regime cohort cut into a per-row change-pass expression.
-    cd_scalar, cd_df = _regime_cut_frames(regime_cut, grp_cols)
+    cd_scalar, cd_df = _regime_cut_frames(regime_cut, group_cols)
     has_recent = recent is not None
     has_change = cd_scalar is not None or cd_df is not None
     # segment_wise / covariate KEEP every regime (no pre-change drop); only
@@ -566,7 +566,7 @@ def _compute_triangle_usage(
     # normalise the cut into a single per-row column so both the scalar and the
     # per-segment-dict forms share the donor / change logic below.
     if cd_df is not None:
-        expanded = expanded.join(cd_df, on=grp_cols, how="left")
+        expanded = expanded.join(cd_df, on=group_cols, how="left")
     elif cd_scalar is not None:
         expanded = expanded.with_columns(pl.lit(cd_scalar).alias("_cd_join"))
     else:
@@ -583,7 +583,7 @@ def _compute_triangle_usage(
         newest_obs = pl.col("is_observed") & change_pass_expr
         k_new = pl.when(newest_obs).then(pl.col("duration")).otherwise(None).max()
         expanded = expanded.with_columns(
-            (k_new.over(grp_cols) if grp_cols else k_new).alias("_K_new")
+            (k_new.over(group_cols) if group_cols else k_new).alias("_K_new")
         )
         donor_expr = (
             pl.col("is_observed")
@@ -633,11 +633,11 @@ def _compute_triangle_usage(
         .alias("status")
     )
 
-    keep = grp_cols + ["cohort", "duration", "status"]
+    keep = group_cols + ["cohort", "duration", "status"]
     # Deterministic order: the per-group grid is built via a `group_by`
     # fan-out (unordered in polars), so sort before returning -- the public
     # `Triangle.usage()` hands this frame straight to the caller.
-    return expanded.select(keep).sort(grp_cols + ["cohort", "duration"])
+    return expanded.select(keep).sort(group_cols + ["cohort", "duration"])
 
 
 def _first_post_change_idx(
@@ -715,7 +715,7 @@ def _plot_triangle_usage(
     cohort_values_desc = [c for c, _ in coh_pairs]
     y_levels = [lbl for _, lbl in coh_pairs]
 
-    # x-axis: development index (default, aligned right-triangle) or the
+    # x-axis: duration index (default, aligned right-triangle) or the
     # calendar period of each cell (staircase: each cohort on its own
     # diagonal). recent / holdout masks are calendar-diagonal, so on the
     # calendar axis they read as clean vertical bands.
@@ -914,7 +914,7 @@ def plot(
 ) -> Any:
     """Cohort-trajectory line plot.
 
-    One line per cohort (x = development index, y = ``metric``), faceted by
+    One line per cohort (x = duration index, y = ``metric``), faceted by
     ``groups``. ``summary=True`` (ratio metrics only) fades cohort lines to
     grey and overlays Mean / Median / Weighted lines, masked where fewer
     than ``summary_min_n`` cohorts contribute.

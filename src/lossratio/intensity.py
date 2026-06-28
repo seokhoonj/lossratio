@@ -6,7 +6,7 @@ intensity workflow: exposes the per-link intensity
 computed via weighted least squares on each cohort×link pair.
 
 Unlike the ATA factor, the intensity has no factor-stability point concept --
-:math:`g_k` decays toward zero at long development, which makes CV / RSE
+:math:`g_k` decays toward zero at long duration, which makes CV / RSE
 structurally ill-behaved. ``Intensity`` therefore reports diagnostic
 quantities only; there is no stability detection.
 """
@@ -190,7 +190,7 @@ class Intensity:
     ``g_k = E[ΔL / C^P]``, with standard errors and residual sigma.
     Parallel to :class:`ATA` for the multiplicative side, but *without*
     a factor-stability point: ``g_k`` decays toward zero at long
-    development, which makes CV / RSE diagnostics ill-behaved by
+    duration, which makes CV / RSE diagnostics ill-behaved by
     construction (not by instability).
 
     Properties
