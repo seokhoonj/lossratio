@@ -23,7 +23,6 @@ count, so a degraded fit reports WHY in a field rather than a printed warning.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -49,80 +48,14 @@ from .._kernels.recursion import (
     _step_additive,
     _fit_multiplicative,
 )
-from .._kernels.recent import recent_link_mask, validate_recent
+from .._kernels.recent import recent_link_mask
 from .._kernels.sigma import extrapolate_tail_sigma2
 from .._kernels.smooth import smooth_intensity
 from ..core.model_frame import ModelFrame
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
-    from .._types import RegimeArg
     from ..core.triangle import Triangle
-
-
-def _validate_lam_cov(lam_cov: "float | str | dict") -> None:
-    """Validate a covariate ridge spec: ``"auto"`` (data-estimated random-effect
-    shrinkage), a non-negative scalar (fixed ridge), or a ``{covariate: "auto"
-    or non-negative float}`` dict (per-covariate)."""
-    items = lam_cov.values() if isinstance(lam_cov, dict) else [lam_cov]
-    for v in items:
-        if v == "auto":
-            continue
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
-            raise ValueError(
-                'lam_cov must be "auto", a non-negative float, or a dict of '
-                f"those, got {v!r}"
-            )
-    if isinstance(lam_cov, dict):
-        vals = list(lam_cov.values())
-        if any(v == "auto" for v in vals) and not all(v == "auto" for v in vals):
-            raise ValueError(
-                "lam_cov dict cannot mix 'auto' with fixed values: if any "
-                "covariate is 'auto' the random-effect variances are estimated "
-                "jointly for the whole covariate block. Use all-'auto' or all-float."
-            )
-
-
-@dataclass(kw_only=True)
-class _LossEstimatorBase:
-    """Fields shared by every loss-side estimator (charter Sec.3.1).
-
-    ``recent`` (calendar-diagonal window) is the data-intact fit mask: only the
-    most-recent ``N`` calendar diagonals feed factor estimation (``g_k`` /
-    ``f_k``), while the point projection stays seeded from the full triangle
-    (charter Sec.7-4 -- the same diagonal mask, opposite polarity, as a
-    backtest holdout). ``regime`` is the cohort-axis cut.
-    Subclasses overriding ``__post_init__`` should call ``super().__post_init__()``.
-    """
-
-    recent: int | None = None
-    regime: "RegimeArg" = None
-    sigma_method: str = "locf"
-    confidence_level: float = 0.95
-    uncertainty: "Any" = None
-
-    def __post_init__(self) -> None:
-        validate_recent(self.recent)
-        if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
-            from ..diagnostics.regime import Regime
-            if not isinstance(self.regime, Regime) and not callable(self.regime):
-                raise TypeError(
-                    "regime must be None, a date, a dict[segment -> date], a "
-                    "Regime object, a callable (triangle -> Regime), or 'auto'; "
-                    f"got {type(self.regime).__name__}"
-                )
-        if isinstance(self.regime, str) and self.regime != "auto":
-            raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
-        if not (0.0 < self.confidence_level < 1.0):
-            raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
-        if self.uncertainty is not None:
-            from .._kernels.resample import ResidualBootstrap
-            from .._kernels.weighted import WeightedBootstrap
-            if not isinstance(self.uncertainty, (ResidualBootstrap, WeightedBootstrap)):
-                raise TypeError(
-                    "uncertainty must be None, a ResidualBootstrap, or a "
-                    f"WeightedBootstrap, got {type(self.uncertainty).__name__}"
-                )
 
 
 # Columns of the assembled long frame (charter loss schema). premium_* sit

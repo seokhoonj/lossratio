@@ -16,7 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .loss import LossFit, _LossEstimatorBase, _fit_loss, _validate_lam_cov
+from ._base import _LossEstimatorBase, _validate_lam_cov
+from .loss import LossFit, _fit_loss
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle

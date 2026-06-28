@@ -33,7 +33,6 @@ book.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -49,7 +48,7 @@ from .._kernels.io import (
     normalize_groups,
 )
 from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
-from .._kernels.recent import recent_link_mask, validate_recent
+from .._kernels.recent import recent_link_mask
 from .loss import (
     _credible_levels,
     _segment_credibility_df,
@@ -59,7 +58,6 @@ from ..core.model_frame import ModelFrame
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
-    from .._types import RegimeArg
     from ..core.triangle import Triangle
 
 
@@ -74,36 +72,6 @@ _PREMIUM_COLUMNS = [
     "premium_ci_lo", "premium_ci_hi",
     "source",
 ]
-
-
-@dataclass(kw_only=True)
-class _PremiumEstimatorBase:
-    """Fields shared by every premium-side estimator.
-
-    ``recent`` (calendar-diagonal window) and ``regime`` (cohort-axis cut)
-    mirror the loss-side estimator contract. No ``uncertainty`` in v1 (premium
-    is deterministic in the loss-ratio band).
-    """
-
-    recent: int | None = None
-    regime: "RegimeArg" = None
-    sigma_method: str = "locf"
-    confidence_level: float = 0.95
-
-    def __post_init__(self) -> None:
-        validate_recent(self.recent)
-        if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
-            from ..diagnostics.regime import Regime
-            if not isinstance(self.regime, Regime) and not callable(self.regime):
-                raise TypeError(
-                    "regime must be None, a date, a dict[segment -> date], a "
-                    "Regime object, a callable (triangle -> Regime), or 'auto'; "
-                    f"got {type(self.regime).__name__}"
-                )
-        if isinstance(self.regime, str) and self.regime != "auto":
-            raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
-        if not (0.0 < self.confidence_level < 1.0):
-            raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
 
 
 def _segment_premium_df(

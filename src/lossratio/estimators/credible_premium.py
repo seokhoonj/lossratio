@@ -20,7 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .premium import PremiumFit, _PremiumEstimatorBase, _fit_premium
+from ._base import _PremiumEstimatorBase
+from .premium import PremiumFit, _fit_premium
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
