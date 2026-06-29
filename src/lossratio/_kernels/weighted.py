@@ -539,7 +539,6 @@ def _own_boundary(f_pt):
 def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
                   phi, drift_se, frontier, rng, process):
     """Batched borrow projection (param) + predictive draw (pred)."""
-    from .resample import _project_borrow_cum
 
     B = own.shape[0]
     n_cohorts, n_durations = loss_obs.shape

@@ -332,7 +332,6 @@ def _smooth_backfit_covariate(
         return cf, _build_g_eff(cf, cov_data)
 
     if cov_data.resp.size == 0:
-        nan = np.full(loss_obs.shape[1] - 1, np.nan, dtype=np.float64)
         return {"g_eff": np.full((n_cohorts, loss_obs.shape[1] - 1), np.nan),
                 "u": u_vec, "Z": z_vec, "psi": 0.0, "covfit": None,
                 "representable": False, "converged": True}

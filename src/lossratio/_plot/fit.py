@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value, normalize_groups
+from .._kernels.io import _iter_group_frames, format_group_value
 from .base import _hide_unused, _resolve_grid
 
 if TYPE_CHECKING:

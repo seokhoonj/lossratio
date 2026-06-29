@@ -34,11 +34,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-from .recent import recent_link_mask
-from .recent import validate_recent as _validate_recent
 
 if TYPE_CHECKING:
-    from ..core.triangle import Triangle
+    pass
 
 
 def _wls_sigma2(

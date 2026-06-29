@@ -34,14 +34,6 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
-from .io import normalize_groups
-from .period import (
-    coerce_cols_to_date,
-    count_periods,
-    floor_cols_to_period,
-    infer_grain,
-    resolve_grain,
-)
 from .smooth import bspline_design, penalized_irls
 
 # weak-prior cap on the EB covariate-effect variance (dimensionless, on the

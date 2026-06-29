@@ -22,7 +22,6 @@ count, so a degraded fit reports WHY in a field rather than a printed warning.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -30,7 +29,6 @@ import polars as pl
 from scipy.stats import norm
 
 from .._kernels import engine
-from .._kernels import engine_fast
 from .._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
@@ -50,7 +48,6 @@ from .._kernels.recursion import (
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.sigma import extrapolate_tail_sigma2
-from .._kernels.smooth import smooth_intensity
 from .._kernels.credible import (
     _credible_levels,
     _project_borrow,

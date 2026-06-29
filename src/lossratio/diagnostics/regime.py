@@ -30,7 +30,6 @@ from .._kernels.io import (
     _iter_group_frames,
     collapse_groups,
     fill_group_columns,
-    group_eq,
     mirror_output,
     normalize_groups,
 )
