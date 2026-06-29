@@ -941,52 +941,48 @@ def _cohort_subset_donor(
     return (mk.f_k, mk.sigma2_k, _multiplicative_var(mk))
 
 
-def _segment_change_dates(
-    regime: "Any", group_cols: list[str], group_value: "Any",
-) -> list:
+def _segment_change_dates(regime: "Any", group_value: "Any") -> list:
     """The sorted change dates that apply to one segment (for ``segment_wise``).
 
     Reads the regime's own ``_changes_df`` and, when grouped, keeps only the
-    rows matching this segment's group value. Derives the regime partition from
-    the change DATES directly (not ``regime_id``), so it works the same for a
-    hand-built :meth:`Regime.at` and an auto-detected regime. A segment with no
-    change returns ``[]`` -- the cascade then degenerates to a single plain fit.
+    rows matching this segment's group value (the group columns are read off the
+    change frame itself). Derives the regime partition from the change DATES
+    directly (not ``regime_id``), so it works the same for a hand-built
+    :meth:`Regime.at` and an auto-detected regime. A segment with no change
+    returns ``[]`` -- the cascade then degenerates to a single plain fit.
     """
     changes = getattr(regime, "_changes_df", None)
     if changes is None or changes.is_empty():
         return []
-    group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
-    if group_cols and group_cols:
+    change_group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
+    if change_group_cols:
         vals = group_value if isinstance(group_value, tuple) else (group_value,)
-        keymap = dict(zip(group_cols, vals))
-        for g in group_cols:
+        keymap = dict(zip(change_group_cols, vals))
+        for g in change_group_cols:
             if g in keymap:
                 changes = changes.filter(pl.col(g) == keymap[g])
     return sorted(changes.get_column("change").to_list())
 
 
-def _regime_covariate_codes(
-    frame: pl.DataFrame, regime: "Any", group_cols: list[str],
-) -> pl.DataFrame:
+def _regime_covariate_codes(frame: pl.DataFrame, regime: "Any") -> pl.DataFrame:
     """Add a treatment-coded ``"regime"`` covariate column derived from the cohort.
 
     A regime is a property of the cohort (a cohort sits wholly in one regime),
     so the label is the count of the segment's change dates at or before the
     cohort: ``"R0"`` (oldest / deepest) is the treatment reference, ``"R1"`` the
     next, and so on. Matched per group when the :class:`Regime` carries group
-    columns; an ungrouped regime applies to every row. Used by
-    ``treatment="covariate"`` so the regime enters the covariate design without
-    a manual column or a regroup.
+    columns (read off the change frame); an ungrouped regime applies to every
+    row. Used by ``treatment="covariate"`` so the regime enters the covariate
+    design without a manual column or a regroup.
     """
     changes = getattr(regime, "_changes_df", None)
     idx = pl.lit(0, dtype=pl.Int32)
     if changes is not None and not changes.is_empty():
-        group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
+        change_group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
         for row in changes.iter_rows(named=True):
             cond = pl.col("cohort") >= pl.lit(row["change"])
-            for g in group_cols:
-                if g in group_cols:
-                    cond = cond & (pl.col(g) == pl.lit(row[g]))
+            for g in change_group_cols:
+                cond = cond & (pl.col(g) == pl.lit(row[g]))
             idx = idx + cond.cast(pl.Int32)
     return frame.with_columns(("R" + idx.cast(pl.Utf8)).alias("regime"))
 
@@ -1315,7 +1311,7 @@ def _fit_loss(
         if regime_covariate:
             # derive the per-cohort regime label (R0 = oldest/deepest, the
             # treatment reference) from the change dates -- a cohort property.
-            src = _regime_covariate_codes(src, regime, all_groups)
+            src = _regime_covariate_codes(src, regime)
         cov_cells = (
             src
             .filter(pl.col("incr_premium").is_not_null())
@@ -1395,7 +1391,7 @@ def _fit_loss(
                 extra = {"psi": psi, "n_basis": n_basis, "lam": lam}
             else:
                 extra = {}
-            changes = _segment_change_dates(regime, group_cols, group_value)
+            changes = _segment_change_dates(regime, group_value)
             fit, cohorts = _fit_segment_cascade(
                 sub, fit_segment, mechanism, extra, sigma_method, recent, changes
             )
