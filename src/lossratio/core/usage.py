@@ -156,7 +156,7 @@ def _compute_triangle_usage(
             pl.lit(max_cal_val).alias("_max_cal")
         )
 
-    # 4. is_observed -- a REAL (data-present) cell within the envelope. Gating on
+    # 4. _is_observed -- a REAL (data-present) cell within the envelope. Gating on
     # `_data_present` (not just `_cal_idx <= _max_cal`) matters for gappy cohorts:
     # in a multi-group split where a segment's cohorts skip periods, the dense
     # per-group cohort rank compresses the calendar, so a genuinely future cell
@@ -165,21 +165,21 @@ def _compute_triangle_usage(
     # this is a no-op there (and makes the usage<->fit cut parity exact).
     expanded = expanded.with_columns(
         (pl.col("_data_present") & (pl.col("_cal_idx") <= pl.col("_max_cal")))
-        .alias("is_observed")
+        .alias("_is_observed")
     )
 
     # 5. Holdout flag + adjusted max_cal_fit.
     if holdout is not None:
         expanded = expanded.with_columns(
             (
-                pl.col("is_observed")
+                pl.col("_is_observed")
                 & (pl.col("_cal_idx") > (pl.col("_max_cal") - holdout))
-            ).alias("is_held_out"),
+            ).alias("_is_held_out"),
             (pl.col("_max_cal") - holdout).alias("_max_cal_fit"),
         )
     else:
         expanded = expanded.with_columns(
-            pl.lit(False).alias("is_held_out"),
+            pl.lit(False).alias("_is_held_out"),
             pl.col("_max_cal").alias("_max_cal_fit"),
         )
 
@@ -208,13 +208,13 @@ def _compute_triangle_usage(
     # the borrowed tail, so they are DATA actually used (as the borrow donor).
     donor_expr = pl.lit(False)
     if treatment == "segment_wise" and has_change:
-        newest_obs = pl.col("is_observed") & change_pass_expr
+        newest_obs = pl.col("_is_observed") & change_pass_expr
         k_new = pl.when(newest_obs).then(pl.col("duration")).otherwise(None).max()
         expanded = expanded.with_columns(
             (k_new.over(group_cols) if group_cols else k_new).alias("_K_new")
         )
         donor_expr = (
-            pl.col("is_observed")
+            pl.col("_is_observed")
             & ~change_pass_expr
             & pl.col("_K_new").is_not_null()
             & (pl.col("duration") >= pl.col("_K_new"))
@@ -234,29 +234,29 @@ def _compute_triangle_usage(
         pass_filter.alias("_pass_filter"), donor_expr.alias("_is_donor")
     )
 
-    # 8. is_fit_data, is_excluded, status. Donor cells are observed data used as
+    # 8. _is_fit_data, _is_excluded, status. Donor cells are observed data used as
     # the borrow donor -> their own status, taking precedence over plain "used".
     expanded = expanded.with_columns(
         (
-            pl.col("is_observed")
-            & ~pl.col("is_held_out")
+            pl.col("_is_observed")
+            & ~pl.col("_is_held_out")
             & pl.col("_pass_filter")
-        ).alias("is_fit_data")
+        ).alias("_is_fit_data")
     )
 
     expanded = expanded.with_columns(
         (
-            pl.col("is_observed")
-            & ~pl.col("is_held_out")
-            & ~pl.col("is_fit_data")
-        ).alias("is_excluded")
+            pl.col("_is_observed")
+            & ~pl.col("_is_held_out")
+            & ~pl.col("_is_fit_data")
+        ).alias("_is_excluded")
     )
 
     expanded = expanded.with_columns(
-        pl.when(pl.col("is_held_out")).then(pl.lit("holdout"))
+        pl.when(pl.col("_is_held_out")).then(pl.lit("holdout"))
         .when(pl.col("_is_donor")).then(pl.lit("donor"))
-        .when(pl.col("is_fit_data")).then(pl.lit("used"))
-        .when(pl.col("is_excluded")).then(pl.lit("unused"))
+        .when(pl.col("_is_fit_data")).then(pl.lit("used"))
+        .when(pl.col("_is_excluded")).then(pl.lit("unused"))
         .otherwise(pl.lit("future"))
         .alias("status")
     )

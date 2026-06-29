@@ -20,7 +20,7 @@ from .base import (
     _hide_unused,
     _resolve_grid,
 )
-from .theme import faint_grid, finalize_figure
+from .theme import BLUE, RED, faint_grid, finalize_figure
 
 if TYPE_CHECKING:
     from ..core.triangle import TriangleValidation
@@ -76,7 +76,7 @@ def plot_validation(
         x = np.arange(len(lab))
         width = 0.4
         ax.bar(x - width / 2, n_duration, width=width,
-               color="#1f77b4", label="n_duration")
+               color=BLUE, label="n_duration")
         ax.bar(x + width / 2, n_exp, width=width,
                color="#bdbdbd", label="n_expected")
         ax.set_xticks(x)
@@ -164,8 +164,8 @@ def plot_triangle_validation(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 
-    obs_color = "#1f77b4"
-    miss_color = "#d62728"
+    obs_color = BLUE
+    miss_color = RED
 
     for idx, (group_value, sub) in enumerate(facets):
         r, c = divmod(idx, ncol)

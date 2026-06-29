@@ -23,7 +23,7 @@ from .base import (
     _resolve_grid,
     open_facets,
 )
-from .theme import STAT_COLORS, faint_grid, finalize_figure
+from .theme import BLUE, RED, STAT_COLORS, faint_grid, finalize_figure
 
 if TYPE_CHECKING:
     from ..diagnostics.backtest import BacktestFit
@@ -156,7 +156,7 @@ def plot_triangle_backtest(
     if x_axis == "calendar":
         if coh_type is None:
             raise ValueError(
-                "x='calendar' needs a Date cohort axis; this triangle's "
+                "x_axis='calendar' needs a Date cohort axis; this triangle's "
                 "cohort is not a date."
             )
         # calendar = cohort advanced by (duration - 1) grain periods.
@@ -196,7 +196,7 @@ def plot_triangle_backtest(
         lim = 1.0
     norm = TwoSlopeNorm(vmin=-lim, vcenter=0.0, vmax=lim)
     cmap = LinearSegmentedColormap.from_list(
-        "ae_err_div", ["#1f77b4", "white", "#d62728"]
+        "ae_err_div", [BLUE, "white", RED]
     )
 
     # Faceting

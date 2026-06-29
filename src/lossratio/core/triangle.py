@@ -224,14 +224,14 @@ class Triangle:
             .agg(
                 pl.col("_duration_temp").min().alias("duration_min"),
                 pl.col("_duration_temp").max().alias("duration_max"),
-                pl.col("_duration_temp").n_unique().alias("duration_observed"),
+                pl.col("_duration_temp").n_unique().alias("n_duration"),
             )
             .with_columns(
-                (pl.col("duration_max") - pl.col("duration_min") + 1).alias("duration_expected"),
+                (pl.col("duration_max") - pl.col("duration_min") + 1).alias("n_expected"),
             )
         )
         gaps = gap_summary.filter(
-            pl.col("duration_observed") != pl.col("duration_expected")
+            pl.col("n_duration") != pl.col("n_expected")
         )
         if gaps.height:
             if fill_gaps:

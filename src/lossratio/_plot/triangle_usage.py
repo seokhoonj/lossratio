@@ -23,7 +23,7 @@ from .base import (
     _pretty_var_label,
     _resolve_grid,
 )
-from .theme import finalize_figure
+from .theme import BLUE, RED, finalize_figure
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 # Usage-view categorical palette.
 _USAGE_COLORS: dict[str, str] = {
     "unused":   "#dcdcdc",
-    "used":     "#1f77b4",
-    "holdout":  "#d62728",
+    "used":     BLUE,
+    "holdout":  RED,
     "future":   "#ffffff",
     # segment_wise borrow donor: an OBSERVED older-regime cell at duration
     # >= the newest regime's depth -- data actually used (as the borrow donor),
