@@ -78,7 +78,9 @@ def inception_credibility(
     cv_sev
         Column name of the severity CV in ``severity``.
     full_credibility
-        Expected claims for full credibility (default 1082: 90% / +/-5%).
+        Expected claims for full credibility. Default 1082 = (1.645 / 0.05)**2
+        = (z / k)**2, the classical frequency standard for the observed rate to
+        land within +/-5% of expected 90% of the time (z=1.645, k=0.05).
     horizon
         Exposure horizon in the rate's time unit (default 1 = one year).
     usable, thin
