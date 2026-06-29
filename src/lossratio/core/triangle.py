@@ -814,8 +814,8 @@ class Triangle:
             ``status``. Input mirroring is preserved (pandas in -> pandas
             out).
         """
-        from .._plot.triangle import _compute_triangle_usage
         from ..diagnostics.regime import Regime, _resolve_regime
+        from .usage import _compute_triangle_usage
 
         regime_cut = _resolve_regime(regime, self)
         treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
