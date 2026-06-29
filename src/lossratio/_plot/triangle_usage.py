@@ -104,7 +104,7 @@ def _plot_triangle_usage(
 
     cohort_labels = _format_axis(usage_df["cohort"], coh_type)
     usage_df = usage_df.with_columns(
-        pl.Series(name="_y_lbl", values=cohort_labels)
+        pl.Series(name="_y_lab", values=cohort_labels)
     )
 
     # Cohort levels newest-first; the axis is not inverted, so index 0 (newest)
@@ -127,10 +127,10 @@ def _plot_triangle_usage(
         usage_df = usage_df.with_columns(
             pl.col("cohort")
             .dt.offset_by(((pl.col("duration") - 1) * step).cast(pl.Utf8) + "mo")
-            .alias("_xcal")
+            .alias("_x_cal")
         )
-        xkey = "_xcal"
-        x_levels = sorted(set(usage_df["_xcal"].to_list()))
+        xkey = "_x_cal"
+        x_levels = sorted(set(usage_df["_x_cal"].to_list()))
         x_labels = _format_axis(
             pl.Series(name="_x", values=x_levels), coh_type
         )
@@ -173,7 +173,7 @@ def _plot_triangle_usage(
 
         for row in sub.iter_rows(named=True):
             xi = x_idx[row[xkey]]
-            yi = y_idx[row["_y_lbl"]]
+            yi = y_idx[row["_y_lab"]]
             color = _USAGE_COLORS[row["status"]]
             ax.add_patch(
                 Rectangle(

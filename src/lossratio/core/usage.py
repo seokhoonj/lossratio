@@ -30,7 +30,7 @@ def _regime_cut_frames(
     ``regime_cut`` is what :func:`lossratio.diagnostics.regime._resolve_regime` returns --
     ``None`` (no cut), a ``date`` (one change for every segment), or a
     ``dict[segment -> date]`` (a change per segment). The per-group frame has
-    columns ``[*group_cols, "_cd_join"]`` for a left-join onto the cell grid;
+    columns ``[*group_cols, "_change"]`` for a left-join onto the cell grid;
     the scalar form needs no join. Mirrors ``ModelFrame._apply_regime`` so the
     usage view cuts exactly where the fit does.
     """
@@ -47,7 +47,7 @@ def _regime_cut_frames(
         rows = []
         for seg_val, change in regime_cut.items():
             keys = (seg_val,) if len(group_cols) == 1 else tuple(seg_val)
-            rows.append({**dict(zip(group_cols, keys)), "_cd_join": change})
+            rows.append({**dict(zip(group_cols, keys)), "_change": change})
         return None, pl.DataFrame(rows)
     raise ValueError(
         f"regime_cut must be None, a date, or a dict; got "
@@ -196,11 +196,11 @@ def _compute_triangle_usage(
     if cd_df is not None:
         expanded = expanded.join(cd_df, on=group_cols, how="left")
     elif cd_scalar is not None:
-        expanded = expanded.with_columns(pl.lit(cd_scalar).alias("_cd_join"))
+        expanded = expanded.with_columns(pl.lit(cd_scalar).alias("_change"))
     else:
-        expanded = expanded.with_columns(pl.lit(None, dtype=pl.Date).alias("_cd_join"))
-    change_pass_expr = pl.col("_cd_join").is_null() | (
-        pl.col("cohort") >= pl.col("_cd_join")
+        expanded = expanded.with_columns(pl.lit(None, dtype=pl.Date).alias("_change"))
+    change_pass_expr = pl.col("_change").is_null() | (
+        pl.col("cohort") >= pl.col("_change")
     )
 
     # 6b. segment_wise donor cells: the newest regime (cohort >= cut) reaches its

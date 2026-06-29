@@ -149,8 +149,8 @@ def plot_triangle(
         cal_series = df.select(
             pl.col("cohort")
             .dt.offset_by(((pl.col("duration") - 1) * step).cast(pl.Utf8) + "mo")
-            .alias("_cal")
-        )["_cal"]
+            .alias("_x_cal")
+        )["_x_cal"]
         x_values = cal_series.to_list()
         x_labels = _format_axis(cal_series, coh_type)
         x_axis_label = (
@@ -169,8 +169,8 @@ def plot_triangle(
     x_levels = [lbl for _, lbl in x_pairs]   # smallest -> largest
 
     df = df.with_columns(
-        pl.Series(name="_y_lbl", values=cohort_labels),
-        pl.Series(name="_x_lbl", values=x_labels),
+        pl.Series(name="_y_lab", values=cohort_labels),
+        pl.Series(name="_x_lab", values=x_labels),
         pl.Series(name="_label", values=_cell_labels(df, metric, label_style, amount_divisor)),
     )
 
@@ -271,8 +271,8 @@ def _draw_cell_grid(
     y_idx = {lbl: i for i, lbl in enumerate(y_levels)}
 
     metric_vals = sub[metric].to_numpy()
-    x_pos = [x_idx[lbl] for lbl in sub["_x_lbl"].to_list()]
-    y_pos = [y_idx[lbl] for lbl in sub["_y_lbl"].to_list()]
+    x_pos = [x_idx[lbl] for lbl in sub["_x_lab"].to_list()]
+    y_pos = [y_idx[lbl] for lbl in sub["_y_lab"].to_list()]
     labels = sub["_label"].to_list()
 
     for xi, yi, v, lab in zip(x_pos, y_pos, metric_vals, labels):

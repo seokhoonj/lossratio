@@ -166,12 +166,12 @@ def plot_triangle_backtest(
             .dt.offset_by(
                 (((pl.col("duration") - 1) * months_per).cast(pl.Utf8) + "mo")
             )
-            .alias("_xval")
+            .alias("_x_cal")
         )
-        x_field = "_xval"
-        x_levels = sorted(work["_xval"].unique().to_list())
+        x_field = "_x_cal"
+        x_levels = sorted(work["_x_cal"].unique().to_list())
         x_tick_labels = _format_period_series(
-            pl.Series("_xval", x_levels), coh_type
+            pl.Series("_x_cal", x_levels), coh_type
         )
         x_axis_label = "calendar"
         x_rotation = 90
