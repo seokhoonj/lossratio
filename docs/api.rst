@@ -79,7 +79,10 @@ link ratio ``f_k``, 자기손해로 self-develop) -- 벤치마크 ``ChainLadder`
 --------------------------------
 
 보험료는 외부 익스포저가 없어 자기 링크비로 self-develop 하며, 손해 사다리의
-분모 대칭형입니다. :class:`~lossratio.PremiumFit` 을 반환합니다.
+분모 대칭형입니다. :class:`~lossratio.PremiumFit` 을 반환합니다. 보험료 사다리는
+**point-only** 입니다 -- 위험보험료는 할당된 노출(요율 x 보유)이라 발전계수 SE가
+artifact라서 surface하지 않습니다(``premium_*_se`` / ``premium_*_ci_*`` 컬럼은
+항상 null). 손해율 밴드는 분자(손해) 측 SE에서만 나옵니다.
 
 .. autoclass:: lossratio.PooledPremium
    :members:
@@ -105,8 +108,9 @@ link ratio ``f_k``, 자기손해로 self-develop) -- 벤치마크 ``ChainLadder`
 Go-forward 안정성
 -----------------
 
-관측 경과 너머의 손해율은, 진전이 정착한 경우에만 마지막 값을 평탄 연장하는
-것이 정직합니다. :class:`~lossratio.Stability` 게이트가 그 판정을 합니다.
+관측 경과 너머의 손해율은, 경과별 진전이 충분히 안정된 경우에만 마지막 값을
+평탄 연장하는 것이 정직합니다. :class:`~lossratio.Stability` 게이트가 그 판정을
+합니다.
 
 .. autoclass:: lossratio.Stability
    :members:
@@ -117,7 +121,17 @@ Go-forward 안정성
 불확실성
 --------
 
+손해율 밴드는 손해 측에서만 흘러나옵니다 -- 보험료 사다리는 point-only(보험료
+SE/CI 컬럼은 항상 null)라 ``uncertainty=`` 는 손해 estimator의 인자입니다.
+``ResidualBootstrap`` 은 잔차를 재표집하고, ``WeightedBootstrap`` 은 추정 셀에
+연속 가중치를 곱하는 FRW(fractional-random-weight) 부트스트랩입니다(배치 연산이라
+더 빠르나, 기본 권장은 ``ResidualBootstrap``). 둘 다 ``n_jobs`` 로 세그먼트를
+병렬 처리합니다.
+
 .. autoclass:: lossratio.ResidualBootstrap
+   :members:
+
+.. autoclass:: lossratio.WeightedBootstrap
    :members:
 
 검증

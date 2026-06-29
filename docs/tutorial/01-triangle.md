@@ -87,8 +87,8 @@ $$
 장기 건강보험에서 손해율을 다룰 때 가장 먼저 마주치는 함정은,
 **시간이 경과하는 것만으로도 — 실제 위험이 나빠지지 않았는데도 — 누적
 손해율 숫자가 변한다**는 점입니다. 한 코호트의 누적 손해율이 시간이
-경과함에 따라 어떻게 움직이는지 직접 보겠습니다 (수치는 뒤에서 데이터를
-불러와 확인합니다).
+경과함에 따라 어떻게 움직이는지 직접 보겠습니다 (아래 표는 손으로 옮긴
+것이 아니라, 곧바로 실제 데이터에서 같은 궤적을 끌어와 맞춰 봅니다).
 
 | 경과월 | 누적 손해 | 누적 보험료 | 누적 손해율 |
 |---|---|---|---|
@@ -97,6 +97,43 @@ $$
 | 3 | 1.14억 | 0.93억 | 1.21 |
 | 5 | 1.98억 | 1.55억 | 1.28 |
 | 6 | 2.51억 | 1.86억 | 1.35 |
+
+위 표의 숫자가 실제 데이터에서 그대로 나오는지 바로 확인합니다. 내장
+데이터의 2023년 1월 수술담보 코호트를 같은 경과월에서 끊어 봅니다
+(데이터 구조는 1.3절, `Triangle`은 1.4절에서 자세히 다룹니다).
+
+```python
+import polars as pl
+import lossratio as lr
+
+df = lr.load_experience()
+tri = lr.Triangle(df.filter(pl.col("coverage") == "SURGERY"), groups="coverage")
+
+(tri.df
+    .filter(pl.col("cohort") == pl.date(2023, 1, 1))
+    .filter(pl.col("duration").is_in([1, 2, 3, 5, 6]))
+    .select(
+        "duration",
+        (pl.col("loss") / 1e8).round(2).alias("누적손해_억"),
+        (pl.col("premium") / 1e8).round(2).alias("누적보험료_억"),
+        pl.col("ratio").round(2).alias("누적손해율"),
+    ))
+#> shape: (5, 4)
+#> ┌──────────┬─────────────┬───────────────┬────────────┐
+#> │ duration ┆ 누적손해_억 ┆ 누적보험료_억 ┆ 누적손해율 │
+#> │ ---      ┆ ---         ┆ ---           ┆ ---        │
+#> │ i64      ┆ f64         ┆ f64           ┆ f64        │
+#> ╞══════════╪═════════════╪═══════════════╪════════════╡
+#> │ 1        ┆ 0.11        ┆ 0.31          ┆ 0.34       │
+#> │ 2        ┆ 0.61        ┆ 0.63          ┆ 0.96       │
+#> │ 3        ┆ 1.14        ┆ 0.93          ┆ 1.21       │
+#> │ 5        ┆ 1.98        ┆ 1.55          ┆ 1.28       │
+#> │ 6        ┆ 2.51        ┆ 1.86          ┆ 1.35       │
+#> └──────────┴─────────────┴───────────────┴────────────┘
+```
+
+위 손으로 옮긴 표와 한 칸씩 그대로 맞습니다 — 손해율이 0.34에서 1.35로
+오른 것은 꾸며 낸 예시가 아니라 데이터에 실재하는 궤적입니다.
 
 같은 코호트인데도 누적 손해율이 0.34에서 1.35로 계속 올라갑니다. 이는
 실제로 위험이 나빠져서가 아니라, **분자(손해)와 분모(보험료)가 서로
@@ -317,10 +354,125 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]
 관측된 칸이 적기 때문입니다. 이 **비어 있는 오른쪽 아래를 채우는 일** — 미관측
 구간의 손해율을 예측하는 것이 앞으로 이 튜토리얼이 다룰 과제입니다.
 
-## 1.7 함께 보기
+## 1.7 내 데이터로 시작하기
+
+지금까지는 내장 데이터를 썼습니다. 직접 가진 데이터를 넣을 때는 열
+이름이 다를 수 있는데, `Triangle` 생성자에 어느 열이 무엇인지 명시하면
+됩니다. `cohort`(코호트 축)·`calendar`(달력 축)·`loss`·`premium`에 실제
+열 이름을 넘기는 방식입니다.
+
+```python
+import polars as pl
+import lossratio as lr
+
+# 열 이름이 패키지 기본과 다른, 증분 입력 데이터
+mydata = pl.DataFrame({
+    "sign_ym":   ["2024-01-01", "2024-01-01", "2024-02-01"],
+    "event_ym":  ["2024-01-01", "2024-02-01", "2024-02-01"],
+    "paid":      [30, 22, 41],
+    "risk_prem": [120, 110, 130],
+}).with_columns(pl.col(["sign_ym", "event_ym"]).str.to_date())
+
+tri = lr.Triangle(mydata, cohort="sign_ym", calendar="event_ym",
+                  loss="paid", premium="risk_prem",
+                  grain="M", cell_type="incremental")
+
+tri.df.select(["cohort", "duration", "incr_loss", "loss", "incr_premium", "premium"]).sort(["cohort", "duration"])
+#> shape: (3, 6)
+#> ┌────────────┬──────────┬───────────┬──────┬──────────────┬─────────┐
+#> │ cohort     ┆ duration ┆ incr_loss ┆ loss ┆ incr_premium ┆ premium │
+#> │ ---        ┆ ---      ┆ ---       ┆ ---  ┆ ---          ┆ ---     │
+#> │ date       ┆ i64      ┆ f64       ┆ f64  ┆ f64          ┆ f64     │
+#> ╞════════════╪══════════╪═══════════╪══════╪══════════════╪═════════╡
+#> │ 2024-01-01 ┆ 1        ┆ 30.0      ┆ 30.0 ┆ 120.0        ┆ 120.0   │
+#> │ 2024-01-01 ┆ 2        ┆ 22.0      ┆ 52.0 ┆ 110.0        ┆ 230.0   │
+#> │ 2024-02-01 ┆ 1        ┆ 41.0      ┆ 41.0 ┆ 130.0        ┆ 130.0   │
+#> └────────────┴──────────┴───────────┴──────┴──────────────┴─────────┘
+```
+
+두 개의 인자가 입력 형식을 좌우합니다.
+
+- `grain` — 집계 주기. `"M"`/`"Q"`/`"H"`/`"Y"`(월/분기/반기/연) 중
+  하나이며, 기본값 `"auto"`는 코호트·달력 열의 간격을 보고 자동으로
+  고릅니다.
+- `cell_type` — 입력 셀이 증분인가 누적인가. 기본값 `"incremental"`은
+  한 행이 *그 기간만의* 손해·보험료라는 뜻이고, 코호트별로 누적합을 더해
+  `loss`/`premium`을 만듭니다. 이미 누적값이라면 `cell_type="cumulative"`로
+  넣습니다(이 경우 코호트별 차분으로 `incr_` 열을 자동 산출). 2장·3장의
+  손계산 예제가 바로 `cell_type="cumulative"`로 누적 입력을 받는 경우입니다.
+
+월 단위 표만 있고 분기·반기·연 열이 없다면 `derive_grain_columns()`로
+나머지 주기 열을 만들 수 있고, 손에 데이터가 없다면 `make_experience()`로
+이 튜토리얼이 쓰는 합성 데이터를 직접 생성할 수 있습니다(`load_experience()`가
+미리 만들어 둔 것을 불러옵니다).
+
+## 1.8 데이터 검증
+
+삼각형으로 넘어가기 전에, 원자료가 말이 되는지 먼저 봅니다.
+`validate_experience()`는 필수 열(`uy_m`·`cy_m`·`incr_loss`·`incr_premium`)이
+있고 형 변환이 되는지 확인한 뒤 같은 데이터를 돌려줍니다(없으면 오류).
+구조적 흠 — 달력이 코호트보다 앞선 행, 경과 시퀀스에 빠진 칸 — 까지
+들여다보려면 `TriangleValidation`을 씁니다(인자는 `Triangle`과 동일).
+
+```python
+import polars as pl
+import lossratio as lr
+
+df_sur = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
+
+v = lr.TriangleValidation(df_sur, groups="coverage")
+print(v.is_clean)
+#> True
+
+v.summary()
+#> shape: (2, 2)
+#> ┌─────────────────────────────────┬─────┐
+#> │ check                           ┆ n   │
+#> │ ---                             ┆ --- │
+#> │ str                             ┆ i64 │
+#> ╞═════════════════════════════════╪═════╡
+#> │ calendar < cohort (rows)        ┆ 0   │
+#> │ non-consecutive duration (coho… ┆ 0   │
+#> └─────────────────────────────────┴─────┘
+```
+
+- `is_clean` — 두 검사를 모두 통과하면 `True`.
+- `gaps` — 경과 시퀀스에 구멍이 있는 `(그룹, 코호트)`를 빠진 경과 목록과
+  함께 돌려줍니다(깨끗하면 빈 프레임).
+- `invalid_rows` — 달력이 코호트보다 앞선, 논리적으로 불가능한 행.
+
+## 1.9 다른 단면으로 보기
+
+`Triangle`은 코호트 x 경과 격자이지만, 같은 데이터를 다른 축으로 묶어
+보는 입구도 있습니다.
+
+- `tri.total_agg()` -> `Total` — 시간 축을 모두 접어 그룹별 누적 손해·보험료·
+  손해율 한 줄로 요약합니다.
+- `tri.calendar_agg()` -> `Calendar` — 코호트 대신 *달력 시점*으로 묶어,
+  한 달에 (여러 코호트에 걸쳐) 손해가 얼마였는지를 봅니다. 순차 인덱스
+  열은 `cal_idx`입니다.
+- `tri.mask(holdout=N)` -> `Triangle` — 가장 최근 `N`개의 달력 대각선을
+  가린 삼각형을 돌려줍니다. 가린 칸을 예측해 실제와 견주는 백테스트(7장)의
+  토대입니다.
+
+```python
+import polars as pl
+import lossratio as lr
+
+tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "SURGERY"),
+                  groups="coverage")
+
+tri.total_agg()
+#> <Total: 1 rows, 1 groups>
+tri.mask(holdout=6)
+#> <Triangle: 465 rows, 1 groups, 30 cohorts x 30 durations (M)>
+```
+
+## 1.10 함께 보기
 
 - {doc}`2장 — 손해의 진전 <02-ata>`: 이웃한 경과를 이어
   손해의 진전(ATA 인자)를 손으로 구하고, 경과별로 읽으며, ATA 인자가
   코호트 간에 안정되는 구간을 진단합니다.
-- {doc}`API 레퍼런스 <../api>`의 `Triangle`, `load_experience`,
-  `derive_grain_columns`
+- {doc}`API 레퍼런스 <../api>`의 `Triangle`, `TriangleValidation`,
+  `load_experience`, `make_experience`, `validate_experience`,
+  `derive_grain_columns`, `Total`, `Calendar`

@@ -2,7 +2,7 @@
 orphan: true
 ---
 
-# 불확실성을 어떻게 계산하나 — 해석적 밴드 vs ResidualBootstrap
+# 불확실성을 어떻게 계산하나 — 해석적 밴드 vs 부트스트랩 두 갈래
 
 5장은 불확실성의 두 축(과정오차·모수오차)과 그 출력을 *읽는* 법을
 다뤘습니다. 이 레시피는 그 한 단계 아래 — lossratio가 그 불확실성을
@@ -18,13 +18,13 @@ orphan: true
 - **과정오차**(process error) — 미래 셀 자체가 *확률적*이라 평균 주위로
   흩어진다.
 
-## 2. 두 갈래 — 해석적(기본) vs ResidualBootstrap
+## 2. 세 갈래 — 해석적(기본) vs ResidualBootstrap vs WeightedBootstrap
 
-lossratio는 두 가지로 이 둘을 계산합니다.
+lossratio는 세 가지로 이 둘을 계산합니다.
 
 ```{list-table}
 :header-rows: 1
-:widths: 26 18 56
+:widths: 24 16 60
 
 * - 방법
   - 재적합?
@@ -38,12 +38,28 @@ lossratio는 두 가지로 이 둘을 계산합니다.
   - 적합 잔차를 재표집해 pseudo-삼각형을 만들고 **전체 파이프라인을 재적합** —
     복제본의 퍼짐이 곧 밴드. 같은 SE/CI 컬럼을 재표집 스프레드로 덮어쓰고,
     경험적 분위수 예측밴드를 함께 냄.
+* - `WeightedBootstrap`
+  - 예 (배치)
+  - 잔차를 재표집하는 대신 추정 셀에 평균 1의 연속 감마 가중치(Gamma(1,1))를
+    곱해 흔드는 FRW(fractional-random-weight) 부트스트랩. 모든 복제본이 배치
+    행렬 연산이라 빠름. 같은 SE/CI 컬럼·예측밴드를 채움.
 ```
 
-`PooledLoss`(완전 풀링)·`ChainLadder`(링크비)는 둘 다 됩니다 — 기본이
-해석적, `uncertainty=lr.ResidualBootstrap(...)`로 재표집 대안. 반면
+`PooledLoss`(완전 풀링)·`ChainLadder`(링크비)는 셋 다 됩니다 — 기본이
+해석적, `uncertainty=lr.ResidualBootstrap(...)` 또는
+`uncertainty=lr.WeightedBootstrap(...)` 로 재표집 대안. 반면
 `CredibleLoss`·`SmoothLoss`는 **해석적 SE가 없습니다**(신뢰도 레벨·평활 형상의
-추정 분산이 해석적 재귀를 깨므로) — 그 둘은 ResidualBootstrap이 *유일한* 밴드입니다.
+추정 분산이 해석적 재귀를 깨므로) — 그 둘은 부트스트랩이 *유일한* 밴드입니다
+(`WeightedBootstrap`은 가법 `pooled`·`credible` 메커니즘과 `ChainLadder`까지
+지원하고, `smooth`·공변량 적합은 `ResidualBootstrap`으로 자동 폴백).
+
+```{note}
+**손해율 밴드는 손해 측에서만 흘러나옵니다.** 보험료 사다리는 point-only —
+위험보험료는 할당된 노출(요율 x 보유)이라 발전계수 SE가 artifact라서 surface
+하지 않습니다(`premium_*_se` 컬럼은 항상 null). 따라서 `uncertainty=` 는 손해
+estimator의 인자이며, `ratio_se` 는 `loss_total_se / premium_proj` 한 경로로만
+나옵니다.
+```
 
 ## 3. 손계산 예제 — 3x3 삼각형
 
@@ -115,6 +131,14 @@ fit = lr.Ratio(
     premium=lr.PooledPremium(),
 ).fit(tri)
 
+# FRW 대안 — 배치 행렬 연산이라 빠름. 시그니처: n_replicates / seed / process /
+# drift / n_jobs (두 부트스트랩 모두 n_jobs로 세그먼트 병렬)
+fit = lr.Ratio(
+    loss=lr.CredibleLoss(
+        uncertainty=lr.WeightedBootstrap(n_replicates=999, seed=1, n_jobs=4)),
+    premium=lr.PooledPremium(),
+).fit(tri)
+
 fit.to_polars().select(["cohort", "duration", "ratio_proj", "ratio_se",
                         "ratio_ci_lo", "ratio_ci_hi"])
 ```
@@ -125,7 +149,16 @@ fit.to_polars().select(["cohort", "duration", "ratio_proj", "ratio_se",
   가장 싸고 안정적이며 점추정과 정합.
 - **`CredibleLoss`/`SmoothLoss`를 쓰거나, 예측분포 밴드가 필요** ->
   `uncertainty=lr.ResidualBootstrap(...)`. 신뢰도 레벨·평활 형상의 추정 분산은
-  닫힌형이 성립하지 않아 부트스트랩이 유일한 밴드입니다.
+  닫힌형이 성립하지 않아 부트스트랩이 유일한 밴드입니다. 이것이 기본
+  부트스트랩입니다.
+- **`ResidualBootstrap` vs `WeightedBootstrap`** -> 둘 다 같은 SE/CI 컬럼과
+  분위수 밴드를 채우되, `ResidualBootstrap`은 실제 잔차를 복원추출(분포
+  무가정)하고 `WeightedBootstrap`은 추정 셀에 연속 가중치를 곱해 배치로
+  계산합니다(더 빠름). 다만 FRW 가중은 작은 삼각형에서 모수 퍼짐을 *체계적으로
+  더 넓게* 잡는 경향이 있고, borrow 채움 셀에서는 그 폭이 곱셈 재귀로 증폭되어
+  더 넓게 나옵니다 — 그래서 **기본 권장은 `ResidualBootstrap`**, `WeightedBootstrap`은
+  복제본 수가 크고 속도가 관건일 때 고르는 실험적 옵션입니다. 두 부트스트랩
+  모두 `n_jobs`로 세그먼트(book의 그룹)를 병렬 처리합니다.
 
 ```{important}
 부트스트랩의 밴드는 손해 측 estimator를 그대로 따라갑니다 — `PooledLoss`면

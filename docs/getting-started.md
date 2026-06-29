@@ -75,10 +75,16 @@ tri = lr.Triangle(df_sur, groups="coverage")
 - `ChainLadder` — 손해 자체의 곱셈 link ratio(자기손해 링크비)를 쓰는
   고전적 참조 비교군입니다.
 
-손해율 밴드는 분모(위험보험료)를 **알려진 노출**로 두고 손해쪽 밴드를 그
-분모로 나눠 만듭니다(`ratio_se = loss_total_se / premium`). 보험료는 확률
-과정이 아니라 할당된 노출이라 분산을 얹지 않으며, 장래 보험료의 실제
-불확실성(해지)은 비율에서 대부분 상쇄됩니다.
+분모쪽 보험료는 위험보험료(요율 x 보유계약)로 이미 **알려진 노출**입니다 —
+손해처럼 추정해야 할 확률 과정이 아니라 장부에 할당된 값이라, 보험료 사다리
+(`PooledPremium` / `CrediblePremium` / `SmoothPremium`)는 모두 점추정만
+산출하고 표준오차·신뢰구간 컬럼은 항상 `null`입니다. 셋 다 쓸 수 있지만
+기본은 `PooledPremium`이며, 보험료에 별도 모델이 굳이 필요하지 않은 보통의
+경우에 적합합니다.
+
+손해율 밴드는 이렇게 분모를 알려진 노출로 두고 손해쪽 밴드를 그 분모로 나눠
+만듭니다(`ratio_se = loss_total_se / premium`). 분모에 분산을 얹지 않으며,
+장래 보험료의 실제 불확실성(해지)은 비율에서 대부분 상쇄됩니다.
 
 ```python
 fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
@@ -96,6 +102,47 @@ fit.summary().head(3)
 ```
 
 완전히 관측된 첫 코호트는 예측할 미래 셀이 없어 `ratio_se`가 `null`입니다.
+
+`ratio_se`가 정말 손해쪽 표준오차를 알려진 분모로 나눈 값인지는 셀 단위로
+직접 확인됩니다. 셀별 산출 컬럼을 펼쳐 `loss_total_se`와 `premium_proj`를
+읽으면, 그 둘의 비가 곧 `ratio_se`입니다.
+
+```python
+full = fit.to_polars()
+chk = full.filter(pl.col("loss_total_se").is_not_null()).select(
+    ["cohort", "duration", "loss_total_se", "premium_proj", "ratio_se"]
+).head(2)
+chk.with_columns((pl.col("loss_total_se") / pl.col("premium_proj")).alias("se_check"))
+#> shape: (2, 6)
+#> ┌────────────┬──────────┬───────────────┬──────────────┬──────────┬──────────┐
+#> │ cohort     ┆ duration ┆ loss_total_se ┆ premium_proj ┆ ratio_se ┆ se_check │
+#> │ ---        ┆ ---      ┆ ---           ┆ ---          ┆ ---      ┆ ---      │
+#> │ date       ┆ i64      ┆ f64           ┆ f64          ┆ f64      ┆ f64      │
+#> ╞════════════╪══════════╪═══════════════╪══════════════╪══════════╪══════════╡
+#> │ 2023-02-01 ┆ 36       ┆ 1.1485e7      ┆ 2.7300e9     ┆ 0.004207 ┆ 0.004207 │
+#> │ 2023-03-01 ┆ 35       ┆ 3.0104e6      ┆ 5.6439e8     ┆ 0.005334 ┆ 0.005334 │
+#> └────────────┴──────────┴───────────────┴──────────────┴──────────┴──────────┘
+```
+
+첫 행은 `11,484,605 / 2,730,023,494 = 0.004207`로 `ratio_se`와 정확히
+일치합니다 — 분모는 고정된 채 손해쪽 불확실성만 비율로 환산됩니다.
+
+사다리의 위 칸도 같은 방식으로 묶습니다. 손해쪽만 `SmoothLoss`나
+`ChainLadder`로 바꾸면 나머지 흐름은 그대로입니다.
+
+```python
+cl = lr.Ratio(loss=lr.ChainLadder(), premium=lr.PooledPremium()).fit(tri)
+cl.summary().head(2)
+#> shape: (2, 6)
+#> ┌──────────┬────────────┬───────────┬──────────────┬────────────┬──────────┐
+#> │ coverage ┆ cohort     ┆ loss_proj ┆ premium_proj ┆ ratio_proj ┆ ratio_se │
+#> │ ---      ┆ ---        ┆ ---       ┆ ---          ┆ ---        ┆ ---      │
+#> │ str      ┆ date       ┆ f64       ┆ f64          ┆ f64        ┆ f64      │
+#> ╞══════════╪════════════╪═══════════╪══════════════╪════════════╪══════════╡
+#> │ SURGERY  ┆ 2023-01-01 ┆ 1.6746e9  ┆ 1.1093e9     ┆ 1.509562   ┆ null     │
+#> │ SURGERY  ┆ 2023-02-01 ┆ 4.1195e9  ┆ 2.7300e9     ┆ 1.508976   ┆ 0.004335 │
+#> └──────────┴────────────┴───────────┴──────────────┴────────────┴──────────┘
+```
 
 ## 코호트 수준 반영과 불확실성
 
@@ -130,8 +177,11 @@ fit.to_polars().filter(pl.col("source") == "own").select(
 #> └────────────┴──────────┴────────────┴──────────┴─────────────┴─────────────┘
 ```
 
-손해쪽 적합의 코호트별 신뢰도는 `.credibility`로 직접 볼 수 있습니다
-(`u` = 코호트 수준, `Z` = 신뢰도 가중치, `psi` = 코호트 간 분산).
+손해쪽 적합의 코호트별 신뢰도(credibility)는 `.credibility`로 직접 볼 수
+있습니다. `u`는 코호트의 자기 수준, `Z`는 그 수준을 얼마나 믿을지 정하는
+신뢰도 가중치, `psi`는 코호트 간 분산입니다. `Z`가 1에 가까우면 코호트의
+자기 경험을 거의 그대로 쓰고, 0에 가까우면 포트폴리오 평균 쪽으로 끌어당겨
+수축(shrinkage)합니다 — 최종 수준은 `Z*u + (1-Z)*평균` 꼴로 섞입니다.
 
 ```python
 cred = lr.CredibleLoss(uncertainty=lr.ResidualBootstrap(n_replicates=500, seed=42)).fit(tri)
@@ -147,6 +197,11 @@ cred.credibility.head(3)
 #> │ SURGERY  ┆ 2023-03-01 ┆ 1.037056 ┆ 0.965518 ┆ 0.014626 │
 #> └──────────┴────────────┴──────────┴──────────┴──────────┘
 ```
+
+여기서는 `Z`가 0.98 안팎으로 1에 매우 가깝습니다 — 수술담보의 각 코호트는
+관측이 충분히 쌓여 자기 경험을 거의 그대로 신뢰하고, 포트폴리오 평균으로의
+수축이 거의 일어나지 않는다는 뜻입니다. 관측이 얇은 갓 인수 코호트일수록
+`Z`는 더 작아지고 평균 쪽으로 더 강하게 끌려갑니다.
 
 신뢰도 보정이 셀 단위 정확도까지 항상 개선하는 것은 아닙니다 — 어느
 모델이 맞는지는 데이터로 가립니다({doc}`튜토리얼 4장
@@ -188,8 +243,61 @@ bt.reliable_horizon()
 #> └──────────┴──────────────────┴─────────────┘
 ```
 
-여러 추정기를 한 기준선과 맞대어 비교하려면 `EstimatorComparison`을
-씁니다.
+## 추정기 비교하기
+
+여러 추정기를 한 기준선과 맞대어 비교하려면 `EstimatorComparison`을 씁니다.
+추정기들을 이름과 함께 넘기고 `baseline`으로 비교 기준을 정한 뒤, 각 hold-out
+시점에서 백테스트한 성적을 한 표로 모읍니다. `scorecard()`는 추정기별 오차
+지표(`bias`·`mae`·`rmse` 등)를 펼쳐 주고, `best()`는 그 지표들을 Borda 방식으로
+합산해 시점별 우승 추정기를 골라 줍니다.
+
+```python
+ec = lr.EstimatorComparison(
+    estimators={
+        "pooled":   lr.Ratio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
+        "credible": lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
+        "chain":    lr.Ratio(loss=lr.ChainLadder(),  premium=lr.PooledPremium()),
+    },
+    holdouts=(6, 12),
+    target="ratio",
+    baseline="pooled",
+).fit(tri)
+
+ec.scorecard().filter(
+    (pl.col("holdout") == 6) & (pl.col("lane") == "cumulative")
+).select(["estimator", "holdout", "n", "bias", "mae", "rmse"])
+#> shape: (3, 6)
+#> ┌───────────┬─────────┬─────┬───────────┬──────────┬──────────┐
+#> │ estimator ┆ holdout ┆ n   ┆ bias      ┆ mae      ┆ rmse     │
+#> │ ---       ┆ ---     ┆ --- ┆ ---       ┆ ---      ┆ ---      │
+#> │ str       ┆ i64     ┆ u32 ┆ f64       ┆ f64      ┆ f64      │
+#> ╞═══════════╪═════════╪═════╪═══════════╪══════════╪══════════╡
+#> │ pooled    ┆ 6       ┆ 159 ┆ -0.082077 ┆ 0.084646 ┆ 0.131572 │
+#> │ credible  ┆ 6       ┆ 159 ┆ -0.061056 ┆ 0.062737 ┆ 0.105374 │
+#> │ chain     ┆ 6       ┆ 159 ┆ -0.000747 ┆ 0.01795  ┆ 0.032529 │
+#> └───────────┴─────────┴─────┴───────────┴──────────┴──────────┘
+```
+
+```python
+ec.best()
+#> shape: (6, 6)
+#> ┌──────────┬─────────┬───────────┬───────────┬──────────┬──────────┐
+#> │ coverage ┆ holdout ┆ estimator ┆ bias_rank ┆ mae_rank ┆ rank_sum │
+#> │ ---      ┆ ---     ┆ ---       ┆ ---       ┆ ---      ┆ ---      │
+#> │ str      ┆ i64     ┆ str       ┆ f64       ┆ f64      ┆ f64      │
+#> ╞══════════╪═════════╪═══════════╪═══════════╪══════════╪══════════╡
+#> │ SURGERY  ┆ 6       ┆ chain     ┆ 1.0       ┆ 1.0      ┆ 2.0      │
+#> │ SURGERY  ┆ 6       ┆ credible  ┆ 2.0       ┆ 2.0      ┆ 4.0      │
+#> │ SURGERY  ┆ 6       ┆ pooled    ┆ 3.0       ┆ 3.0      ┆ 6.0      │
+#> │ SURGERY  ┆ 12      ┆ chain     ┆ 1.0       ┆ 1.0      ┆ 2.0      │
+#> │ SURGERY  ┆ 12      ┆ credible  ┆ 2.0       ┆ 2.0      ┆ 4.0      │
+#> │ SURGERY  ┆ 12      ┆ pooled    ┆ 3.0       ┆ 3.0      ┆ 6.0      │
+#> └──────────┴─────────┴───────────┴───────────┴──────────┴──────────┘
+```
+
+이 hold-out 구간에서는 `ChainLadder`가 두 시점 모두 가장 낮은 오차로
+앞섭니다. 다만 이 우열은 백테스트가 닿는 셀에 한정된 결과이므로, 결정은
+데이터·맥락과 함께 읽어야 합니다.
 
 ## 다음 단계
 

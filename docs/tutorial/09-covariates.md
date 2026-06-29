@@ -74,9 +74,20 @@ fit.coefficients
 #> CANCER    age_band   70+   -1.61    0.20
 ```
 
-`exp_beta` 는 손해율의 곱셈 상대도다. 위(합성 데이터)에서는 20s 대비 30s 가
-0.75 배, 70+ 는 0.20 배로 달린다. **이것이 공변량의 1차 가치 — 계리적
-해석이다.**
+`beta` 는 로그 척도라 그대로는 읽기 어렵다. `exp_beta` 가 그것을 손해율의
+곱셈 상대도로 되돌린 값이다 — 한 줄씩 지수를 취하면 된다:
+
+```text
+exp(-0.29) = 0.75      30s 손해율은 20s 의 0.75 배
+exp(-0.68) = 0.51      40s 는 0.51 배
+exp(-0.98) = 0.37      50s 는 0.37 배
+exp(-1.32) = 0.27      60s 는 0.27 배
+exp(-1.61) = 0.20      70+ 는 0.20 배
+```
+
+(`beta` = 0 인 기준 레벨 20s 는 `exp(0)` = 1.00.) 위(합성 데이터)에서는
+나이가 높을수록 암 담보 손해율이 단조롭게 낮아진다. **이것이 공변량의 1차
+가치 — 계리적 해석이다.**
 
 ## 9.4 속성별 손해율 — predict(by=)
 
@@ -100,6 +111,32 @@ fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 예측 손해율을 따로 본다(위에서 `ratio_proj` 가 9.3 의 상대도 순서를 그대로
 따른다). 이 표를 다시 연령대에 대해 합치면 **전체 예측과 정확히 같아진다**:
 나눠 본 것일 뿐 다른 모델이 아니다(한 판을 조각냈다 다시 합치면 같은 한 판).
+
+"조각냈다 합치면 같다"를 위 셀에서 직접 확인할 수 있다. 6개 연령대
+`loss_proj` 를 더하면 전체 예측의 한 셀 값과 셀 단위로 정확히 일치한다:
+
+```text
+248097.05 + 231168.33 + 160962.81 + 83324.38 + 49269.00 + 18843.43
+  = 791665.00     # = predict() 의 CANCER 2023-01-01 경과 1 loss_proj
+```
+
+```python
+import polars as pl
+from datetime import date
+
+full = fit.predict()
+by   = fit.predict(by="age_band")
+cell = dict(coverage="CANCER", cohort=date(2023, 1, 1), duration=1)
+# CANCER 2023-01-01, 경과 1 한 셀
+full.filter(**{k: pl.lit(v) for k, v in cell.items()})["loss_proj"][0]
+#> 791665.0
+round(by.filter(**{k: pl.lit(v) for k, v in cell.items()})["loss_proj"].sum(), 2)
+#> 791665.0     # 부동소수점 잔차(~1e-9)만 빼면 셀 단위로 일치
+```
+
+같은 항등식이 좌측 절단 코호트·미관측 셀·경과에 따라 변하는 보험료 믹스가
+있어도 셀마다 성립한다. 한 단계 아래의 배분 산식은 {doc}`공변량 레시피
+<../cookbook/covariates>` 에서 손계산으로 따라간다.
 
 ## 9.5 수축 — lam_cov
 
@@ -125,16 +162,75 @@ fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 
 `lam_cov` 은 ridge(L2) 페널티의 강도다. 세 모드는 다른 메커니즘이 아니라
 *같은 ridge* 에서 강도를 고르는 세 방법일 뿐이다 — `0` 은 페널티 없음(MLE),
-`"auto"` 는 그 강도를 데이터에서 신뢰도식으로 추정, 숫자는 사용자가 직접
-고정. `lam_cov="auto"` 가 중요한 까닭: 레벨이 많고 데이터가 드문 공변량을
-수축 없이 적합하면, 데이터가 거의 없는 레벨에서 상대도가 분리(separation --
-그 레벨만 손해/무손해로 갈려 추정이 무한대로 튐)로 폭발한다. `"auto"` 는 그
+`"auto"` 는 그 강도를 **신뢰도(credibility)** 로 데이터에서 추정, 숫자는
+사용자가 직접 고정. `"auto"` 의 수축은 Bühlmann 신뢰도와 같은 발상이다 —
+레벨별 데이터가 두꺼우면(신뢰도 높음) 거의 안 당기고, 얇으면(신뢰도 낮음)
+기준 쪽으로 강하게 당긴다. 구현은 Schall(1991)의 분산성분 추정을 차용한다
+(empirical Bayes 계열).
+
+`lam_cov="auto"` 가 중요한 까닭: 레벨이 많고 데이터가 드문 공변량을 수축
+없이 적합하면, 데이터가 거의 없는 레벨에서 상대도가 분리(separation -- 그
+레벨만 손해/무손해로 갈려 추정이 폭발)로 부풀어 오른다. `"auto"` 는 그
 공변량의 효과 분산을 데이터에서 추정해(레벨 간 변동이 작으면 강하게 수축)
-폭발을 막으면서도 진짜 신호는 살린다.
+부풀음을 막으면서도 진짜 신호는 살린다.
+
+레벨이 4개인 채널(channel)을 *데이터가 얇은 조각*(CI 담보, 최근 코호트
+4개)에 넣어 두 모드를 비교하면 차이가 드러난다:
 
 ```python
-tri = lr.Triangle(df, groups=["coverage", "channel"])
-lr.CredibleLoss(covariates=["channel"], lam_cov="auto").fit(tri)
+df = lr.load_experience()
+cohs = sorted(df["uy_m"].unique().to_list())
+thin = df.filter((pl.col("coverage") == "CI") & pl.col("uy_m").is_in(cohs[-4:]))
+tri = lr.Triangle(thin, groups=["coverage", "channel"])
+
+lr.CredibleLoss(covariates=["channel"], lam_cov=0.0).fit(tri).coefficients
+#> coverage  level  beta     exp_beta
+#> CI        FC     0.000    1.00     <- 기준
+#> CI        GA     0.067    1.07
+#> CI        ON     0.714    2.04     <- 얇은 데이터에서 부풀어 오름
+#> CI        TM    -0.180    0.84
+
+lr.CredibleLoss(covariates=["channel"], lam_cov="auto").fit(tri).coefficients
+#> coverage  level  beta     exp_beta
+#> CI        FC     0.000    1.00
+#> CI        GA    -0.003    1.00
+#> CI        ON     0.359    1.43     <- 기준 쪽으로 당겨짐
+#> CI        TM    -0.141    0.87
+```
+
+`lam_cov=0` 에서는 ON 채널이 손해율 2.04 배로 솟지만(얇은 셀의 잡음을 그대로
+믿음), `"auto"` 는 그 효과를 1.43 배로 끌어내린다 — 신뢰도가 낮은 레벨일수록
+기준으로 더 많이 수축한다. 차이가 진짜 신호면 덜 당기고, 잡음이면 강하게
+당기는 것이 신뢰도 수축이다.
+
+`lam_cov` 은 공변량별로 따로 줄 수도 있다(dict 형). 단 한 dict 안에서
+`"auto"` 와 고정 숫자를 섞을 수는 없다 — `"auto"` 면 그 공변량 블록의 효과
+분산을 함께 추정하므로 전부 `"auto"` 이거나 전부 숫자여야 한다.
+
+```python
+tri = lr.Triangle(df, groups=["coverage", "age_band", "channel"])
+# 연령대는 고정효과, 채널은 신뢰도 수축
+lr.CredibleLoss(covariates=["age_band", "channel"],
+                lam_cov={"age_band": "auto", "channel": "auto"}).fit(tri)
+# 또는 공변량별 고정 ridge
+lr.CredibleLoss(covariates=["age_band", "channel"],
+                lam_cov={"age_band": 0.0, "channel": 5.0}).fit(tri)
+```
+
+공변량을 둘 이상 넣었으면 `predict(by=[...])` 로 한꺼번에 쪼갠다 — 각
+(코호트, 경과) 셀이 연령대 x 채널 격자로 갈리고, 합치면 여전히 전체 예측과
+정확히 일치한다:
+
+```python
+fit = lr.CredibleLoss(covariates=["age_band", "channel"]).fit(tri)
+fit.predict(by=["age_band", "channel"])
+#> coverage cohort     duration age_band channel loss_proj    ratio_proj
+#> CANCER   2023-01-01 1        20s      FC      92366.41     0.252
+#> CANCER   2023-01-01 1        20s      GA      77926.11     0.316
+#> CANCER   2023-01-01 1        20s      ON      22355.79     0.257
+#> CANCER   2023-01-01 1        20s      TM      54678.98     0.317
+#> ...                                                          (24행 = 6 x 4)
+# 한 셀의 24행을 더하면 -> 791665.0 (= predict() 의 같은 셀)
 ```
 
 ## 9.6 전체 예측은 (거의) 안 바뀐다
@@ -147,16 +243,48 @@ lr.CredibleLoss(covariates=["channel"], lam_cov="auto").fit(tri)
 (해석, 9.3)와 `predict(by=)`(속성별 예측, 9.4)** 에 있다. 전체 손해율만 필요하면
 공변량은 넣지 않아도 된다.
 
-## 9.7 제약
+## 9.7 합계 보정 — balance
+
+`balance=True` 는 별개의 보정 스위치다(공변량과 무관하게 모든 손해 추정기에
+있다). 적합한 인자로 다시 깐 *관측 구간* 증분 합이 실제 관측 증분 합과
+어긋날 때, 세그먼트마다 비례 상수 `alpha` 하나로 미래 예측을 다시 맞춘다
+(Ohlsson 2008 의 balance property). 보정 상수는 `fit.balance_factor` 로 본다.
+
+```python
+df  = lr.load_experience()
+tri = lr.Triangle(df, groups="coverage")
+
+lr.PooledLoss(balance=True).fit(tri).balance_factor
+#> coverage   alpha
+#> CANCER     1.000     <- 완전 풀링은 경과 단계마다 이미 합이 맞음(구조적 1.0)
+#> CI         1.000
+#> INPATIENT  1.000
+#> SURGERY    1.000
+
+lr.CredibleLoss(balance=True).fit(tri).balance_factor
+#> coverage   alpha
+#> CANCER     1.0028    <- 신뢰도 재가중이 합계를 약간 흔들어 보정 발생
+#> CI         1.000
+#> INPATIENT  1.000
+#> SURGERY    1.0265
+```
+
+`PooledLoss` 의 완전 풀링 강도는 경과 단계마다 이미 합이 맞아 `alpha` 가 모두
+1.0(구조적 무동작)이고, 신뢰도·평활은 코호트별 재가중이 합계를 흔들어 `alpha`
+가 1에서 벗어난다.
+
+## 9.8 제약
 
 - 공변량 컬럼은 **반드시 삼각형 `groups` 의 부분집합** 이다 (group 이 아닌
   컬럼은 적합이 읽을 셀이 없어 에러).
-- 공변량은 `balance=` 와 동시에 쓸 수 없다(서로 배타적).
+- 공변량은 `balance=` 와 동시에 쓸 수 없다(서로 배타적) — 함께 주면
+  `NotImplementedError` 로 멈춘다. 둘 다 미래 예측의 수준을 옮기는 보정이라
+  적용 순서가 모호해 아직 결합 경로를 두지 않았다.
 - 진단·예측의 grain 도 공변량을 따라간다 — 백테스트는 공변량 적합의 보고
   단위(`groups - covariates`)에서 채점하고, 가려진(held-out) 셀은 삼각형
   마스킹을 통해 공변량 적합에도 그대로 가려져 새어 들지 않는다.
 
-## 9.8 함께 보기
+## 9.9 함께 보기
 
 - {doc}`4장 — 손해율 예측 <04-projection>`: 공변량이 다듬는 그 예측.
 - {doc}`공변량 레시피 <../cookbook/covariates>`: 속성별 예측이 전체 예측과
