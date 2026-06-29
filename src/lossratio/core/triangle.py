@@ -209,10 +209,10 @@ class Triangle:
         # n_cohorts: distinct cohorts observed per (group, duration). Computed
         # on the pre-fill aggregate so zero-filled gap cells do not
         # inflate the count (the count is built before gap-filling).
-        ndev_keys: list[str] = normalize_groups(groups)
-        ndev_keys.append("_duration_temp")
+        ncoh_keys: list[str] = normalize_groups(groups)
+        ncoh_keys.append("_duration_temp")
         ncoh = (
-            agg.group_by(ndev_keys)
+            agg.group_by(ncoh_keys)
             .agg(pl.col(cohort).n_unique().alias("n_cohorts"))
         )
 
@@ -265,7 +265,7 @@ class Triangle:
         # Join n_cohorts, then rename cohort / duration to standard names so
         # subsequent `over` / `sum().over` expressions read the canonical
         # columns.
-        agg = agg.join(ncoh, on=ndev_keys, how="left")
+        agg = agg.join(ncoh, on=ncoh_keys, how="left")
         agg = agg.rename({cohort: "cohort", "_duration_temp": "duration"})
 
         cum_keys: list[str] = normalize_groups(groups)

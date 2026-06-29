@@ -857,14 +857,14 @@ class BacktestFit:
 
     @classmethod
     def _from_triangle(
-        cls, triangle: "Triangle", rbt: "Backtest"
+        cls, triangle: "Triangle", bt: "Backtest"
     ) -> "BacktestFit":
         self = cls.__new__(cls)
         # Scoring happens at the estimator's REPORTING grain (triangle.groups -
         # covariates); the per-fold refit keeps the finer triangle. Mirror the
         # _FoldFit collapse so the cross-fold aggregation keys match the folds'
         # reporting-grain A/E frames.
-        covs = getattr(rbt.estimator, "covariates", None)
+        covs = getattr(bt.estimator, "covariates", None)
         if covs:
             report_cols = [
                 g for g in normalize_groups(triangle._groups)
@@ -877,9 +877,9 @@ class BacktestFit:
             report_tri = triangle
         self._output_type = report_tri._output_type
         self._groups = report_tri._groups
-        self.estimator = rbt.estimator
-        self.target = rbt.target
-        self.holdouts = rbt.holdouts
+        self.estimator = bt.estimator
+        self.target = bt.target
+        self.holdouts = bt.holdouts
 
         group_cols = normalize_groups(report_tri._groups)
 
@@ -903,8 +903,8 @@ class BacktestFit:
         fits: dict[int, Any] = {}
         skipped: list[int] = []
 
-        for h in rbt.holdouts:
-            bt_fit = cls._run_holdout(rbt, triangle, h)
+        for h in bt.holdouts:
+            bt_fit = cls._run_holdout(bt, triangle, h)
             if bt_fit is None:
                 skipped.append(h)
                 continue
@@ -1110,7 +1110,7 @@ class BacktestFit:
 
     @staticmethod
     def _run_holdout(
-        rbt: "Backtest", triangle: "Triangle", holdout: int
+        bt: "Backtest", triangle: "Triangle", holdout: int
     ) -> Any | None:
         """Run one depth's inner Backtest, returning ``None`` if unrunnable.
 
@@ -1132,9 +1132,9 @@ class BacktestFit:
         """
         try:
             return _FoldBacktest(
-                estimator=rbt.estimator,
+                estimator=bt.estimator,
                 holdout=holdout,
-                target=rbt.target,
+                target=bt.target,
             ).fit(triangle)
         except ValueError:
             return None

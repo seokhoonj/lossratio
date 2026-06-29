@@ -10,10 +10,10 @@ import pytest
 import lossratio as lr
 
 
-def _make_triangle(n_cohorts: int, max_dur: int, loss_at, prem_at, group="A"):
+def _make_triangle(n_cohorts: int, max_dur: int, loss_at, premium_at, group="A"):
     """Build a clean upper-triangle experience frame.
 
-    ``loss_at(dur)`` / ``prem_at(dur)`` give the per-period (incremental) loss /
+    ``loss_at(dur)`` / ``premium_at(dur)`` give the per-period (incremental) loss /
     premium at development duration ``dur`` (1-indexed). Cohort i (0-based,
     monthly) is observed for durations 1..(max_dur - i).
     """
@@ -26,7 +26,7 @@ def _make_triangle(n_cohorts: int, max_dur: int, loss_at, prem_at, group="A"):
             cy = month(i + d - 1)
             rows.append({
                 "grp": group, "uy_m": uy, "cy_m": cy,
-                "incr_loss": float(loss_at(d)), "incr_premium": float(prem_at(d)),
+                "incr_loss": float(loss_at(d)), "incr_premium": float(premium_at(d)),
             })
     return lr.Triangle(pl.DataFrame(rows), groups="grp")
 
@@ -34,7 +34,7 @@ def _make_triangle(n_cohorts: int, max_dur: int, loss_at, prem_at, group="A"):
 def test_flat_ratio_is_stable():
     # loss = 0.5 * premium every period -> cumulative ratio == 0.5 at all
     # durations -> rho_k == 1 -> stable.
-    tri = _make_triangle(11, 16, loss_at=lambda d: 50.0, prem_at=lambda d: 100.0)
+    tri = _make_triangle(11, 16, loss_at=lambda d: 50.0, premium_at=lambda d: 100.0)
     rep = lr.Stability().assess(tri)
     row = rep.to_polars().row(0, named=True)
     assert row["status"] == "stable"
@@ -47,7 +47,7 @@ def test_rising_ratio_is_developing():
     # incremental loss ratio climbs every period -> cumulative ratio keeps
     # rising -> rho_k > 1 throughout -> developing (never settles).
     tri = _make_triangle(11, 16, loss_at=lambda d: 30.0 + 8.0 * d,
-                         prem_at=lambda d: 100.0)
+                         premium_at=lambda d: 100.0)
     rep = lr.Stability().assess(tri)
     row = rep.to_polars().row(0, named=True)
     assert row["status"] == "developing"
@@ -62,7 +62,7 @@ def test_settles_after_early_swings():
     def loss_at(d):
         early = {1: 90.0, 2: 30.0, 3: 80.0, 4: 45.0}
         return early.get(d, 60.0)               # flat at 0.6 from duration 5
-    tri = _make_triangle(13, 18, loss_at=loss_at, prem_at=lambda d: 100.0)
+    tri = _make_triangle(13, 18, loss_at=loss_at, premium_at=lambda d: 100.0)
     rep = lr.Stability().assess(tri)
     row = rep.to_polars().row(0, named=True)
     assert row["status"] == "stable"
@@ -71,7 +71,7 @@ def test_settles_after_early_swings():
 
 
 def test_shallow_triangle_insufficient_depth():
-    tri = _make_triangle(5, 6, loss_at=lambda d: 50.0, prem_at=lambda d: 100.0)
+    tri = _make_triangle(5, 6, loss_at=lambda d: 50.0, premium_at=lambda d: 100.0)
     rep = lr.Stability().assess(tri)
     assert rep.to_polars().row(0, named=True)["status"] == "insufficient_depth"
 
@@ -80,9 +80,9 @@ def test_truncation_flips_stable_to_developing():
     # a flat-ratio triangle is stable; truncating it to a SHALLOW frontier
     # (fewer links than min_links) flips it to insufficient/developing -- the
     # freeze is only earned once enough settled depth is observed.
-    full = _make_triangle(13, 18, loss_at=lambda d: 50.0, prem_at=lambda d: 100.0)
+    full = _make_triangle(13, 18, loss_at=lambda d: 50.0, premium_at=lambda d: 100.0)
     assert lr.Stability().assess(full).to_polars().row(0, named=True)["stable"] is True
-    short = _make_triangle(13, 9, loss_at=lambda d: 50.0, prem_at=lambda d: 100.0)
+    short = _make_triangle(13, 9, loss_at=lambda d: 50.0, premium_at=lambda d: 100.0)
     assert lr.Stability().assess(short).to_polars().row(0, named=True)["status"] in (
         "insufficient_depth", "developing"
     )
@@ -90,7 +90,7 @@ def test_truncation_flips_stable_to_developing():
 
 def test_frozen_ratio_masks_developing():
     tri = _make_triangle(11, 16, loss_at=lambda d: 30.0 + 8.0 * d,
-                         prem_at=lambda d: 100.0)
+                         premium_at=lambda d: 100.0)
     fr = lr.Stability().assess(tri).frozen_ratio()
     row = pl.DataFrame(fr).row(0, named=True) if not isinstance(fr, pl.DataFrame) else fr.row(0, named=True)
     assert row["go_forward_ratio"] is None        # developing -> no freeze
@@ -100,7 +100,7 @@ def test_frozen_ratio_masks_developing():
 def test_tol_controls_strictness():
     # a slowly drifting ratio: stable under a loose tol, developing under strict.
     tri = _make_triangle(13, 18, loss_at=lambda d: 50.0 + 0.3 * d,
-                         prem_at=lambda d: 100.0)
+                         premium_at=lambda d: 100.0)
     strict = lr.Stability(tol=0.001).assess(tri).to_polars().row(0, named=True)
     loose = lr.Stability(tol=0.05).assess(tri).to_polars().row(0, named=True)
     assert strict["status"] == "developing"

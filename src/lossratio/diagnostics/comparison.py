@@ -142,7 +142,7 @@ class EstimatorComparison:
         # (holdout normalization, target enum, .fit presence, and the probe
         # Backtest's estimator / target / bootstrap-leakage compatibility
         # checks) with identical error messages -- no duplicated logic.
-        rbts = {
+        backtests = {
             label: Backtest(
                 estimator=est, holdouts=holdouts, target=target
             )
@@ -159,16 +159,16 @@ class EstimatorComparison:
             )
 
         self.estimators = dict(estimators)
-        self.holdouts = next(iter(rbts.values())).holdouts
+        self.holdouts = next(iter(backtests.values())).holdouts
         self.target = target
         self.baseline = baseline
-        self._rbts = rbts
+        self._backtests = backtests
 
     def fit(self, triangle: "Triangle") -> "EstimatorComparisonFit":
         # Every inner Backtest runs on the SAME triangle object --
         # the by-construction comparability guarantee.
         fits = {
-            label: rbt.fit(triangle) for label, rbt in self._rbts.items()
+            label: bt.fit(triangle) for label, bt in self._backtests.items()
         }
         return EstimatorComparisonFit._from_fits(fits, baseline=self.baseline)
 

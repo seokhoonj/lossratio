@@ -363,9 +363,9 @@ class RatioFit:
         )
         if amounts:
             steps = (pl.col("duration") - pl.col("freeze_dur")).cast(pl.Float64)
-            prem = pl.col("freeze_premium") * pl.col("_gP").pow(steps)
+            premium = pl.col("freeze_premium") * pl.col("_gP").pow(steps)
             ext = ext.with_columns(
-                premium=pl.when(pl.col("is_stable")).then(prem).otherwise(None),
+                premium=pl.when(pl.col("is_stable")).then(premium).otherwise(None),
             ).with_columns(
                 loss=pl.when(pl.col("is_stable"))
                 .then(pl.col("ratio") * pl.col("premium"))
