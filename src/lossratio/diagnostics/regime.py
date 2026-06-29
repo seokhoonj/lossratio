@@ -222,15 +222,15 @@ def _detect_regime_single(
     caller decides whether to skip or propagate.
 
     When ``edge_scan`` is set (E-Divisive only), a 1-vs-rest effect-size
-    scan (:func:`_edge_scan_change_points`) augments the permutation breaks
-    with any boundary regime E-Divisive structurally cannot reach. Edge
-    breaks carry a ``NaN`` p-value (they are effect-size gated, not
+    scan (:func:`_edge_scan_change_points`) augments the permutation change
+    points with any boundary regime E-Divisive structurally cannot reach. Edge
+    change points carry a ``NaN`` p-value (they are effect-size gated, not
     permutation tested) so a downstream FDR pass leaves them untouched.
     """
     mat, cohorts, dropped = _build_feature_matrix(sub, target, window)
     n = len(cohorts)
     if method == "e_divisive":
-        breaks_idx, p_vals = _e_divisive_change_points(
+        change_idxs, p_vals = _e_divisive_change_points(
             mat,
             sig_level=sig_level,
             n_permutations=n_permutations,
@@ -239,20 +239,20 @@ def _detect_regime_single(
         )
         if edge_scan:
             for e in _edge_scan_change_points(mat, threshold=edge_threshold, min_size=min_size):
-                if e not in breaks_idx:
-                    breaks_idx.append(e)
+                if e not in change_idxs:
+                    change_idxs.append(e)
                     p_vals.append(float("nan"))
-            if breaks_idx:
-                paired = sorted(zip(breaks_idx, p_vals), key=lambda t: t[0])
-                breaks_idx = [b for b, _ in paired]
+            if change_idxs:
+                paired = sorted(zip(change_idxs, p_vals), key=lambda t: t[0])
+                change_idxs = [b for b, _ in paired]
                 p_vals = [p for _, p in paired]
     else:  # hclust
         n_reg = 2 if n_regimes is None else int(n_regimes)
-        breaks_idx = _hclust_change_points(mat, n_regimes=n_reg)
-        p_vals = [float("nan")] * len(breaks_idx)
+        change_idxs = _hclust_change_points(mat, n_regimes=n_reg)
+        p_vals = [float("nan")] * len(change_idxs)
 
-    regime_ids = _regime_ids_from_breaks(n, breaks_idx)
-    change_points = [cohorts[i] for i in breaks_idx]
+    regime_ids = _regime_ids_from_changes(n, change_idxs)
+    change_points = [cohorts[i] for i in change_idxs]
     result: dict[str, Any] = {
         "cohorts": cohorts,
         "regime_ids": regime_ids,
@@ -262,10 +262,10 @@ def _detect_regime_single(
         "n_regimes": int(regime_ids.max()) if n > 0 else 0,
     }
     if with_assess:
-        # Quantify each break on the cohort-level scalar (mean over the
+        # Quantify each change point on the cohort-level scalar (mean over the
         # window) via the shared kernel. Aligned with ``change_points``.
         scalar = mat.mean(axis=1)
-        result["assess"] = [_assess_change(scalar, i) for i in breaks_idx]
+        result["assess"] = [_assess_change(scalar, i) for i in change_idxs]
     return result
 
 
@@ -287,17 +287,17 @@ def _build_candidates_df(
     ``kind``, ``n_pre``, ``n_post``). This is the transparent table the
     evaluation layer scores; it is a *superset* of the accepted
     ``changes`` (which the FDR / evaluation filter narrows). Empty frame
-    when no combo produced an assessed break.
+    when no combo produced an assessed change point.
     """
     frames: list[pl.DataFrame] = []
     for combo, res in per_combo_results:
         assess = res.get("assess")
-        bps = res["change_points"]
-        if not assess or not bps:
+        change_points = res["change_points"]
+        if not assess or not change_points:
             continue
         data: dict[str, Any] = {}
-        fill_group_columns(data, grp, combo, len(bps))
-        data["change"] = bps
+        fill_group_columns(data, grp, combo, len(change_points))
+        data["change"] = change_points
         for key in _ASSESS_KEYS:
             data[key] = [a[key] for a in assess]
         frames.append(pl.DataFrame(data))
@@ -352,18 +352,18 @@ def _sweep_window_candidates(
             continue
         n_win += 1
         n_coh = len(res["cohorts"])
-        for bp, a in zip(res["change_points"], res["assess"]):
-            rec = by_date.setdefault(bp, {"count": 0, "best_n": -1, "assess": None})
+        for change_point, a in zip(res["change_points"], res["assess"]):
+            rec = by_date.setdefault(change_point, {"count": 0, "best_n": -1, "assess": None})
             rec["count"] += 1
             if n_coh > rec["best_n"]:
                 rec["best_n"] = n_coh
                 rec["assess"] = a
 
     rows: list[dict[str, Any]] = []
-    for bp in sorted(by_date):
-        rec = by_date[bp]
+    for change_point in sorted(by_date):
+        rec = by_date[change_point]
         rows.append({
-            "change": bp,
+            "change": change_point,
             "window_stability": (rec["count"] / n_win) if n_win else float("nan"),
             "n_windows": int(rec["count"]),
             **rec["assess"],
@@ -911,7 +911,7 @@ def _assess_change(scalar: np.ndarray, change_idx: int) -> dict:
     - ``curved_drift_suspect`` (bool): the F-test is calibrated against a
       *linear* null, so smooth curvature (e.g. exponential decay, no step)
       can read as a step. Set when a step located at a cohort extreme fits
-      about as well as the detected break. Report-only -- does not flip
+      about as well as the detected change point. Report-only -- does not flip
       ``kind``; the trend basis stays linear.
     - ``kind`` (str): ``"edge"`` (a side < 2, or n < `_MIN_ASSESS_N`) /
       ``"step"`` (``step_p < _STEP_SIG``) / ``"drift"``.
@@ -987,7 +987,7 @@ def _assess_change(scalar: np.ndarray, change_idx: int) -> dict:
         out["kind"] = "step" if out["step_p"] < _STEP_SIG else "drift"
 
     # Curvature guard (report-only): a step placed at a cohort extreme that
-    # fits about as well as the detected break signals absorbed curvature
+    # fits about as well as the detected change point signals absorbed curvature
     # rather than a genuine discontinuity.
     if out["kind"] == "step" and sse_step > tol:
         for c in (2, n - 2):
@@ -1220,14 +1220,14 @@ def _bh_adjust(p_values: np.ndarray, n_tests: int | None = None) -> np.ndarray:
     Standard step-up procedure: sort ascending, scale the k-th smallest by
     ``m / rank``, then enforce monotonicity from the largest down. Returns
     adjusted p-values aligned with the *input* order. ``NaN`` inputs (e.g.
-    edge-scan breaks, which carry no permutation p-value) are passed through
-    untouched and excluded.
+    edge-scan change points, which carry no permutation p-value) are passed
+    through untouched and excluded.
 
     ``n_tests`` overrides the multiplicity denominator ``m``. The relevant
-    multiplicity is the number of *coverages tested* (one first-break test
-    each), not the number of breaks that happened to fire -- a coverage that
-    detected nothing still consumed a test. Pass the combo count so a lone
-    borderline break across many coverages is correctly deflated. Defaults
+    multiplicity is the number of *coverages tested* (one first-change test
+    each), not the number of change points that happened to fire -- a coverage
+    that detected nothing still consumed a test. Pass the combo count so a lone
+    borderline change point across many coverages is correctly deflated. Defaults
     to the number of finite p-values when not given.
     """
     p = np.asarray(p_values, dtype=np.float64)
@@ -1273,7 +1273,7 @@ def _edge_scan_change_points(
     within-rest scatter inflates the denominator) keeps every block below it,
     so the test is robust to volatility by construction.
 
-    Returns edge break indices (right-side starts): ``[k]`` for a left-edge
+    Returns edge change indices (right-side starts): ``[k]`` for a left-edge
     regime of size ``k``, ``[n - k]`` for a right-edge regime of size ``k``.
     """
     n = mat.shape[0]
@@ -1293,7 +1293,7 @@ def _edge_scan_change_points(
         zmat = (mat - med) / scale
         z = np.sqrt(np.nanmean(zmat**2, axis=1))
 
-    breaks: list[int] = []
+    change_idxs: list[int] = []
     # left edge: leading run of individually-outlier cohorts (contiguity --
     # an isolated interior spike is not an edge regime), capped at the
     # e-divisive blind zone (< min_size).
@@ -1301,14 +1301,14 @@ def _edge_scan_change_points(
     while k < max_edge and np.isfinite(z[k]) and z[k] >= threshold:
         k += 1
     if k >= 1:
-        breaks.append(k)
+        change_idxs.append(k)
     # right edge: trailing run
     j = 0
     while j < max_edge and np.isfinite(z[n - 1 - j]) and z[n - 1 - j] >= threshold:
         j += 1
     if j >= 1:
-        breaks.append(n - j)
-    return sorted(set(breaks))
+        change_idxs.append(n - j)
+    return sorted(set(change_idxs))
 
 
 def _hclust_change_points(
@@ -1337,13 +1337,13 @@ def _hclust_change_points(
     return changes.tolist()
 
 
-def _regime_ids_from_breaks(n: int, breaks: list[int]) -> np.ndarray:
+def _regime_ids_from_changes(n: int, change_idxs: list[int]) -> np.ndarray:
     """Assign 1-based regime ids in cohort order.
 
-    Cohort ``i`` gets ``1 + (number of break indices <= i)`` -- a
-    right-side searchsorted over the sorted unique breaks.
+    Cohort ``i`` gets ``1 + (number of change indices <= i)`` -- a
+    right-side searchsorted over the sorted unique change indices.
     """
-    bk = np.array(sorted(set(breaks)), dtype=np.int64)
+    bk = np.array(sorted(set(change_idxs)), dtype=np.int64)
     return (1 + np.searchsorted(bk, np.arange(n), side="right")).astype(
         np.int64
     )
@@ -1608,7 +1608,7 @@ class Regime:
                 "Check `window`, `min_size`, and input coverage."
             )
 
-        # Candidate table (all detected breaks + assess metrics) -- built
+        # Candidate table (all detected change points + assess metrics) -- built
         # BEFORE the FDR filter, so it is a superset of the accepted
         # `changes`. The evaluation layer scores this transparent table.
         # With `window_sweep`, candidates come from a window sweep carrying
@@ -1654,10 +1654,10 @@ class Regime:
                 window_sweep=window_sweep,
             )
 
-        # FDR: Benjamini-Hochberg across EVERY permutation break in the whole
-        # multi-combo call. With ~60 coverages each tested at sig_level, ~3
-        # spurious first breaks are expected by chance; FDR controls that
-        # family-wise. Edge-scan breaks carry NaN (effect-size gated, not
+        # FDR: Benjamini-Hochberg across EVERY permutation change point in the
+        # whole multi-combo call. With ~60 coverages each tested at sig_level,
+        # ~3 spurious first change points are expected by chance; FDR controls
+        # that family-wise. Edge-scan change points carry NaN (effect-size gated, not
         # permutation tested) and are exempt. E-Divisive only.
         if fdr and method == "e_divisive":
             flat_p: list[float] = []
@@ -1684,13 +1684,13 @@ class Regime:
                     continue
                 cohorts = res["cohorts"]
                 n = len(cohorts)
-                bps = [res["change_points"][bi] for bi in kept]
+                change_points = [res["change_points"][bi] for bi in kept]
                 pvs = [res["p_values"][bi] for bi in kept]
-                idx = [cohorts.index(v) for v in bps]
-                regime_ids = _regime_ids_from_breaks(n, idx)
+                idx = [cohorts.index(v) for v in change_points]
+                regime_ids = _regime_ids_from_changes(n, idx)
                 rebuilt.append((combo, {
                     **res,
-                    "change_points": bps,
+                    "change_points": change_points,
                     "p_values": pvs,
                     "regime_ids": regime_ids,
                     "n_regimes": int(regime_ids.max()) if n > 0 else 0,
@@ -1945,7 +1945,7 @@ class Regime:
     def candidates(self):
         """All detected candidate changes with their assessment metrics.
 
-        One row per detected break (before the FDR / evaluation filter --
+        One row per detected change point (before the FDR / evaluation filter --
         a *superset* of :attr:`changes`), carrying the change cohort value,
         any group column(s), and the :func:`_assess_change` columns:
         ``level_shift`` (magnitude), ``t_stat`` / ``p_value`` (Welch,
