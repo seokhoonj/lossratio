@@ -527,7 +527,7 @@ def test_validation_duration_mode():
     df = pl.DataFrame(
         {
             "uy_m":         ["2024-01-01", "2024-01-01", "2024-01-01"],
-            "duration_m":        [1, 2, 4],
+            "duration_m":   [1, 2, 4],
             "incr_loss":    [10.0, 20.0, 40.0],
             "incr_premium": [100.0, 100.0, 100.0],
         }

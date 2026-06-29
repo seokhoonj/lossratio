@@ -9,7 +9,6 @@ degraded status) instead of raising ``ValueError: zero-size array to reduction``
 """
 
 import numpy as np
-import pytest
 
 import lossratio as lr
 from lossratio._kernels.covariate import CovariateFit, fit_covariate_intensity

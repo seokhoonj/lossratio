@@ -239,8 +239,6 @@ def test_x_axis_calendar_multigroup_facets(tri_with_groups):
             _close(fig)
 
 
-
-
 def test_returns_matplotlib_figure(tri_with_groups):
     from matplotlib.figure import Figure
     fig = tri_with_groups.plot_triangle()

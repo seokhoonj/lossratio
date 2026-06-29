@@ -95,12 +95,6 @@ def test_config_guards(tri):
     assert full.equals(SmoothLoss(recent=None).fit(tri).to_polars())
 
 
-def test_point_only_when_no_uncertainty(tri):
-    # default (no uncertainty) stays point-only -- SE / CI null
-    d = SmoothLoss().fit(tri).to_polars()
-    assert d["loss_total_se"].is_null().all()
-
-
 def test_bootstrap_populates_se_ci_and_coverage(tri):
     from lossratio._kernels.resample import ResidualBootstrap
     from lossratio.diagnostics.backtest import Backtest

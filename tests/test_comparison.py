@@ -686,22 +686,9 @@ def test_crossover_flicker_below_min_run(self_cmp):
     assert unguarded["late_winner"][0] == "ch"
 
 
-def test_crossover_null_winner_breaks_run(self_cmp):
-    # A null metric value at the deepest entry yields a zero-length run:
-    # late_winner / crossover_at null regardless of min_run.
-    horizons = [1, 2, 3]
-    p = _patched_crossover_fit(
-        self_cmp, horizons,
-        ch_vals=[0.5, 0.5, None], base_vals=[1.0, 1.0, 1.0],
-        cells=_cells_frame(horizons, [1.0] * 3, [0.5] * 3),
-    )
-    out = p.crossover(metric="abs_err", min_run=1)
-    assert out["late_winner"][0] is None
-    assert out["crossover_at"][0] is None
-
-
 def test_crossover_zero_length_run_nulls_early_winner(self_cmp):
-    # A null winner at the DEEPEST entry leaves a zero-length terminal run:
+    # A null winner at the DEEPEST entry yields a zero-length terminal run:
+    # late_winner / crossover_at are null regardless of min_run, and
     # early_winner must be null too -- pooling over "the entries before the
     # run" would mislabel ALL entries as pre-run.
     horizons = [1, 2, 3]

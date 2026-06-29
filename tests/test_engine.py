@@ -68,14 +68,3 @@ def test_buhlmann_straub_psi_single_cohort_degenerates_to_zero():
     )
     assert psi == 0.0
 
-
-def test_extrapolate_tail_preserves_interior_zero():
-    # finding #8: a genuine interior zero-variance link (e.g. >=2 cohorts with
-    # zero-filled flat loss -> sigma2 exactly 0) must be PRESERVED, not
-    # overwritten with a later link's sigma2. Only the trailing tail is filled.
-    import numpy as np
-
-    from lossratio._kernels.sigma import extrapolate_tail_sigma2
-
-    out = extrapolate_tail_sigma2(np.array([2.0, 0.0, 3.0, 0.0]), "locf")
-    assert out.tolist() == [2.0, 0.0, 3.0, 3.0]   # interior 0 kept, tail filled

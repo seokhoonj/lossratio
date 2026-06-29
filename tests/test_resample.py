@@ -221,8 +221,7 @@ def test_chain_ladder_uses_odp_bootstrap(tri):
     assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()
 
 
-
-def test_recent_plus_bootstrap_supported(tri):
+def test_recent_plus_bootstrap_produces_valid_se(tri):
     # recent and the residual bootstrap compose: the bootstrap re-estimates the
     # factors on the recent-diagonal wedge per replicate and resamples only the
     # recent-cell residuals, while the projection stays seeded from the full
@@ -232,6 +231,9 @@ def test_recent_plus_bootstrap_supported(tri):
     ).fit(tri)
     se = fit.to_polars()["loss_total_se"].drop_nulls()
     assert se.len() > 0 and bool((se >= 0).all())
+
+
+def test_recent_none_bootstrap_equals_default(tri):
     # recent=None bootstrap is the unchanged full-triangle path
     a = PooledLoss(
         uncertainty=ResidualBootstrap(n_replicates=20, seed=3)

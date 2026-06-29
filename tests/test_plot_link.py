@@ -203,7 +203,6 @@ def test_ata_intensity_plot_honor_recent():
     # diagnostic's `recent`. The plot now filters cells to the same recent wedge,
     # so the summarised cv matches the matrix-based ATA(recent=N) diagnostic
     # exactly, and differs from the unfiltered plot.
-    import polars as pl
 
     import lossratio as lr
     from lossratio._plot.link import _ata_summary, _filter_cells_recent

@@ -52,7 +52,7 @@ def test_columns_and_segment_id():
         "_segment_id", "grp", "cohort", "duration", "calendar",
         "incr_loss", "premium", "incr_premium",
     ]
-    assert mf.df["_segment_id"].unique().to_list() == [0]   # single segment
+    assert mf.df["_segment_id"].unique().to_list() == [0]    # single segment
     assert mf.segments == ["grp"]
     assert len(mf) == 9                                      # 4+3+2 observed cells
 

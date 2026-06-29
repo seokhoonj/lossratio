@@ -134,6 +134,6 @@ def test_balance_noop_when_net_increment_nonpositive():
           np.array([[np.nan, np.nan, np.nan, 3.5]]))
     out, out_ci, alpha = _apply_balance(fit, None, ci)
     assert alpha == 1.0
-    assert out["loss_proj"][0, 3] == 2.0                 # projection untouched
-    assert out["total_se"][0, 3] == 1.0                  # SE not negated
+    assert out["loss_proj"][0, 3] == 2.0                      # projection untouched
+    assert out["total_se"][0, 3] == 1.0                       # SE not negated
     assert out_ci[0][0, 3] == 0.5 and out_ci[1][0, 3] == 3.5  # CI not inverted

@@ -402,7 +402,7 @@ def test_pooled_covariate_equals_credible_psi0():
                        rtol=1e-9)
 
 
-def test_pooled_covariate_bootstrap_and_validation():
+def test_pooled_covariate_bootstrap_produces_intervals():
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
     fit = lr.PooledLoss(
@@ -411,6 +411,11 @@ def test_pooled_covariate_bootstrap_and_validation():
     ).fit(_tri(df))
     proj = fit.to_polars().filter(pl.col("source") == "own")
     assert np.isfinite(proj["loss_total_se"].to_numpy()).any()
+
+
+def test_pooled_covariate_requires_group():
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
     with pytest.raises(ValueError, match="not in groups"):
         lr.PooledLoss(covariates=["sex"]).fit(lr.Triangle(df))
 
@@ -584,7 +589,6 @@ def test_predict_by_requires_covariate_fit():
 def _ragged_source(seed=0):
     """Two covariate levels with UNEQUAL cohort spans (A enters earlier than B),
     so the per-level dense cohort rank differs from the coverage-level rank."""
-    rng = np.random.default_rng(seed)
     maxcal = date(2024, 12, 1)
     spans = {"A": [_add_months(date(2023, 1, 1), i) for i in range(6)],
              "B": [_add_months(date(2023, 4, 1), i) for i in range(6)]}

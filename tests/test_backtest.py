@@ -36,8 +36,11 @@ def _toy_triangle_input() -> pl.DataFrame:
     )
 
 
-def _date(s: str) -> pl.Expr:
-    return pl.lit(s).cast(pl.Date)
+def _cl_backtest(holdouts: int = 2):
+    """ChainLadder loss backtest on the toy triangle."""
+    return lr.Backtest(
+        estimator=lr.ChainLadder(), holdouts=holdouts, target="loss"
+    ).fit(lr.Triangle(_toy_triangle_input()))
 
 
 # ---------------------------------------------------------------------------
@@ -59,9 +62,7 @@ def test_backtest_estimator_must_have_fit():
 
 
 def test_backtest_repr():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     text = repr(bt)
     assert "BacktestFit" in text
     assert "ChainLadder" in text
@@ -74,9 +75,7 @@ def test_backtest_repr():
 
 
 def test_backtest_ae_err_columns():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     assert set(bt.ae_err.columns) >= {
         "cohort", "duration", "cal_idx", "actual", "expected", "ae_err",
         "anchor_value", "expected_se",
@@ -155,18 +154,14 @@ def test_backtest_ae_err_actual_matches_original_loss():
 
 
 def test_backtest_predicted_is_finite_for_all_held_cells():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     for v in bt.ae_err["expected"].to_list():
         assert v is not None
 
 
 def test_backtest_ae_err_equals_relative_error():
     """ae_err = actual / expected - 1 (signed relative error)."""
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     df = bt.ae_err
     for actual, pred, err in zip(
         df["actual"].to_list(),
@@ -185,27 +180,21 @@ def test_backtest_ae_err_equals_relative_error():
 
 
 def test_backtest_col_summary_columns():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     assert set(bt.col_summary.columns) >= {
         "duration", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 
 def test_backtest_diag_summary_columns():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     assert set(bt.diag_summary.columns) >= {
         "cal_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 
 def test_backtest_summary_n_matches_ae_err_total():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=2, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=2)
     ae_err_n = bt.ae_err.shape[0]
     col_n = bt.col_summary["n"].sum()
     diag_n = bt.diag_summary["n"].sum()
@@ -275,12 +264,8 @@ def test_backtest_pandas_input_mirror():
 
 
 def test_backtest_refit_is_loss_fit():
-    bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=1, target="loss").fit(
-        lr.Triangle(_toy_triangle_input())
-    )
+    bt = _cl_backtest(holdouts=1)
     assert isinstance(bt.fit, lr.LossFit)
-
-
 
 
 def test_weighted_ae_err_guards_zero_total_expected():
