@@ -75,7 +75,7 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
         yv = np.asarray(agg[col].to_list(), dtype=float).copy()
         yv[mask] = np.nan
         ax.plot(xd, yv, color=STAT_COLORS[col], linewidth=1.7, label=lbl,
-                zorder=3)
+                marker="o", markersize=3, zorder=3)
     if masked:
         le = n <= summary_min_n
         if le.any():

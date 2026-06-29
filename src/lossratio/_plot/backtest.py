@@ -325,7 +325,7 @@ def _plot_aggregated_lines(
                 ax.plot(
                     x[m], y[m],
                     color=STAT_COLORS.get(stat_label.lower(), "C0"),
-                    linewidth=0.8, marker="o", label=stat_label,
+                    linewidth=0.8, marker="o", markersize=3, label=stat_label,
                 )
 
         ax.yaxis.set_major_formatter(_percent_formatter())
