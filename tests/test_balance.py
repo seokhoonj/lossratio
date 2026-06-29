@@ -12,17 +12,10 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
-import pytest
 
-import lossratio as lr
 from lossratio.estimators.credible_loss import CredibleLoss
 from lossratio.estimators.loss import _apply_balance
 from lossratio.estimators.pooled_loss import PooledLoss
-
-
-@pytest.fixture(scope="module")
-def tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
 
 
 def _pl(obj) -> pl.DataFrame:

@@ -29,11 +29,6 @@ def _pl(obj) -> pl.DataFrame:
     return d if isinstance(d, pl.DataFrame) else d.to_polars()
 
 
-@pytest.fixture(scope="module")
-def exp() -> pl.DataFrame:
-    return lr.load_experience()
-
-
 def test_ratio_proj_is_loss_over_premium(exp):
     got = _pl(PooledLoss().fit(lr.Triangle(exp, groups="coverage")))
     lp = got["loss_proj"].to_numpy().astype(float)

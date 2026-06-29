@@ -8,42 +8,12 @@ import pytest
 import lossratio as lr
 
 
-def _toy_input() -> pl.DataFrame:
-    """5-cohort, 5-duration experience data with finite premium."""
-    return pl.DataFrame(
-        {
-            "cy_m": [
-                "2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
-                "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01",
-                "2024-03-01", "2024-04-01", "2024-05-01",
-                "2024-04-01", "2024-05-01",
-                "2024-05-01",
-            ],
-            "uy_m": [
-                "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01",
-                "2024-02-01", "2024-02-01", "2024-02-01", "2024-02-01",
-                "2024-03-01", "2024-03-01", "2024-03-01",
-                "2024-04-01", "2024-04-01",
-                "2024-05-01",
-            ],
-            "incr_loss": [
-                100.0, 100.0, 120.0, 100.0, 80.0,
-                150.0, 130.0, 160.0, 130.0,
-                120.0, 130.0, 130.0,
-                180.0, 190.0,
-                200.0,
-            ],
-            "incr_premium": [100.0] * 15,
-        }
-    )
+def _tri(toy_input):
+    return lr.Triangle(toy_input)
 
 
-def _tri():
-    return lr.Triangle(_toy_input())
-
-
-def _tri_grouped():
-    df = _toy_input().with_columns(pl.lit("SURGERY").alias("coverage"))
+def _tri_grouped(toy_input):
+    df = toy_input.with_columns(pl.lit("SURGERY").alias("coverage"))
     return lr.Triangle(df, groups="coverage")
 
 
@@ -52,21 +22,21 @@ def _tri_grouped():
 # ---------------------------------------------------------------------------
 
 
-def test_intensity_returns_intensity_result():
-    tri = _tri()
+def test_intensity_returns_intensity_result(toy_input):
+    tri = _tri(toy_input)
     intensity = tri.link().intensity()
     assert isinstance(intensity, lr.Intensity)
 
 
-def test_intensity_repr_no_group():
-    intensity = _tri().link().intensity()
+def test_intensity_repr_no_group(toy_input):
+    intensity = _tri(toy_input).link().intensity()
     text = repr(intensity)
     assert "Intensity" in text
     assert "links" in text
 
 
-def test_intensity_repr_grouped():
-    intensity = _tri_grouped().link().intensity()
+def test_intensity_repr_grouped(toy_input):
+    intensity = _tri_grouped(toy_input).link().intensity()
     text = repr(intensity)
     assert "Intensity" in text
     assert "groups" in text
@@ -77,20 +47,20 @@ def test_intensity_repr_grouped():
 # ---------------------------------------------------------------------------
 
 
-def test_intensity_df_columns_no_group():
-    intensity = _tri().link().intensity()
+def test_intensity_df_columns_no_group(toy_input):
+    intensity = _tri(toy_input).link().intensity()
     assert set(intensity.df.columns) >= {"duration", "g", "g_se", "sigma2", "n_cohorts"}
 
 
-def test_intensity_df_columns_with_group():
-    intensity = _tri_grouped().link().intensity()
+def test_intensity_df_columns_with_group(toy_input):
+    intensity = _tri_grouped(toy_input).link().intensity()
     assert set(intensity.df.columns) >= {
         "coverage", "duration", "g", "g_se", "sigma2", "n_cohorts",
     }
 
 
-def test_intensity_df_n_links_equals_n_durations_minus_one():
-    intensity = _tri().link().intensity()
+def test_intensity_df_n_links_equals_n_durations_minus_one(toy_input):
+    intensity = _tri(toy_input).link().intensity()
     df = intensity.df
     # toy input has 5 duration periods → 4 links
     assert df.shape[0] == 4
@@ -102,8 +72,8 @@ def test_intensity_df_n_links_equals_n_durations_minus_one():
 # ---------------------------------------------------------------------------
 
 
-def test_intensity_g_is_finite_for_nontrivial_links():
-    intensity = _tri().link().intensity()
+def test_intensity_g_is_finite_for_nontrivial_links(toy_input):
+    intensity = _tri(toy_input).link().intensity()
     df = intensity.df
     # links 1..3 have at least 2 cohorts contributing → g should be finite
     for k, g in zip(df["duration"].to_list(), df["g"].to_list()):
@@ -111,21 +81,21 @@ def test_intensity_g_is_finite_for_nontrivial_links():
             assert g is not None
 
 
-def test_intensity_g_se_nonneg_when_present():
-    intensity = _tri().link().intensity()
+def test_intensity_g_se_nonneg_when_present(toy_input):
+    intensity = _tri(toy_input).link().intensity()
     for v in intensity.df["g_se"].to_list():
         assert v is None or v >= 0.0
 
 
-def test_intensity_sigma2_nonneg_when_present():
-    intensity = _tri().link().intensity()
+def test_intensity_sigma2_nonneg_when_present(toy_input):
+    intensity = _tri(toy_input).link().intensity()
     for v in intensity.df["sigma2"].to_list():
         assert v is None or v >= 0.0
 
 
-def test_intensity_n_obs_decreasing_with_duration():
+def test_intensity_n_obs_decreasing_with_duration(toy_input):
     """As duration grows, fewer cohorts contribute (triangular structure)."""
-    intensity = _tri().link().intensity()
+    intensity = _tri(toy_input).link().intensity()
     df = intensity.df.sort("duration")
     counts = df["n_cohorts"].to_list()
     # toy: duration=1 has 4 links, duration=2 has 3, duration=3 has 2, duration=4 has 1
@@ -137,9 +107,9 @@ def test_intensity_n_obs_decreasing_with_duration():
 # ---------------------------------------------------------------------------
 
 
-def test_intensity_pandas_input_mirror():
+def test_intensity_pandas_input_mirror(toy_input):
     pd = pytest.importorskip("pandas")
-    df = pd.DataFrame(_toy_input().to_pandas())
+    df = pd.DataFrame(toy_input.to_pandas())
     intensity = lr.Triangle(df).link().intensity()
     assert isinstance(intensity.df, pd.DataFrame)
     assert isinstance(intensity.summary(), pd.DataFrame)
@@ -150,8 +120,8 @@ def test_intensity_pandas_input_mirror():
 # ---------------------------------------------------------------------------
 
 
-def test_intensity_per_group_independent():
-    base = _toy_input()
+def test_intensity_per_group_independent(toy_input):
+    base = toy_input
     df_grouped = pl.concat(
         [
             base.with_columns(pl.lit("A").alias("coverage")),
@@ -188,10 +158,10 @@ def test_intensity_single_duration_no_links():
     assert intensity.df.height == 0
 
 
-def test_intensity_single_duration_group_alongside_normal():
+def test_intensity_single_duration_group_alongside_normal(toy_input):
     df_grouped = pl.concat(
         [
-            _toy_input().with_columns(pl.lit("A").alias("coverage")),
+            toy_input.with_columns(pl.lit("A").alias("coverage")),
             _single_duration_input().with_columns(pl.lit("B").alias("coverage")),
         ]
     )

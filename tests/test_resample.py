@@ -8,7 +8,6 @@ import numpy as np
 import polars as pl
 import pytest
 
-import lossratio as lr
 from lossratio.diagnostics.backtest import Backtest
 from lossratio.estimators.credible_loss import CredibleLoss
 from lossratio.estimators.chain_ladder import ChainLadder
@@ -19,11 +18,6 @@ from lossratio._kernels.resample import ResidualBootstrap
 
 def _pl(x) -> pl.DataFrame:
     return x if isinstance(x, pl.DataFrame) else pl.from_pandas(x)
-
-
-@pytest.fixture(scope="module")
-def tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
 
 
 # --- spec validation -------------------------------------------------------

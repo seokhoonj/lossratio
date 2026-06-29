@@ -8,21 +8,14 @@ import pytest
 import lossratio as lr
 
 
-def _sample_triangle(group: bool = True) -> lr.Triangle:
-    exp = lr.load_experience().filter(pl.col("coverage").is_in(["SURGERY", "CI"]))
-    if group:
-        return lr.Triangle(exp, groups="coverage")
-    return lr.Triangle(exp.filter(pl.col("coverage") == "SURGERY"))
-
-
-def test_calendar_agg_returns_calendar():
-    tri = _sample_triangle()
+def test_calendar_agg_returns_calendar(sample_triangle):
+    tri = sample_triangle()
     cal = tri.calendar_agg()
     assert isinstance(cal, lr.Calendar)
 
 
-def test_calendar_schema_grouped():
-    tri = _sample_triangle()
+def test_calendar_schema_grouped(sample_triangle):
+    tri = sample_triangle()
     cal = tri.calendar_agg().to_polars()
     expected = {
         "coverage", "calendar", "cal_idx", "n_cohorts",
@@ -35,8 +28,8 @@ def test_calendar_schema_grouped():
     assert set(cal.columns) == expected
 
 
-def test_calendar_schema_no_group():
-    tri = _sample_triangle(group=False)
+def test_calendar_schema_no_group(sample_triangle):
+    tri = sample_triangle(group=False)
     cal = tri.calendar_agg().to_polars()
     # No group var, no group column in output.
     assert "coverage" not in cal.columns
@@ -44,18 +37,18 @@ def test_calendar_schema_no_group():
         assert col in cal.columns
 
 
-def test_calendar_cal_idx_is_sequential_per_group():
-    tri = _sample_triangle()
+def test_calendar_cal_idx_is_sequential_per_group(sample_triangle):
+    tri = sample_triangle()
     cal = tri.calendar_agg().to_polars().sort(["coverage", "calendar"])
     for grp, sub in cal.group_by("coverage"):
         n = sub.height
         assert sub["cal_idx"].to_list() == list(range(1, n + 1))
 
 
-def test_calendar_diagonal_sum_matches_triangle():
+def test_calendar_diagonal_sum_matches_triangle(sample_triangle):
     """Each (group, calendar) cell of Calendar = sum of Triangle cells on
     the same calendar diagonal (cohort + duration - 1)."""
-    tri = _sample_triangle()
+    tri = sample_triangle()
     cal = tri.calendar_agg().to_polars()
     grain = tri.grain
     assert grain == "M"
@@ -82,9 +75,9 @@ def test_calendar_diagonal_sum_matches_triangle():
             assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
 
 
-def test_calendar_cumulative_consistency():
+def test_calendar_cumulative_consistency(sample_triangle):
     """loss = cumsum(incr_loss) within each group, sorted by calendar."""
-    tri = _sample_triangle()
+    tri = sample_triangle()
     cal = tri.calendar_agg().to_polars().sort(["coverage", "calendar"])
     for grp, sub in cal.group_by("coverage", maintain_order=True):
         incr = sub["incr_loss"].to_list()
@@ -95,9 +88,9 @@ def test_calendar_cumulative_consistency():
             assert v_cum == pytest.approx(running, rel=1e-12, abs=1e-6)
 
 
-def test_calendar_share_sums_to_one():
+def test_calendar_share_sums_to_one(sample_triangle):
     """loss_share within each calendar cell sums to 1 across groups."""
-    tri = _sample_triangle()
+    tri = sample_triangle()
     cal = tri.calendar_agg().to_polars()
     sums = cal.group_by("calendar").agg(pl.col("loss_share").sum())["loss_share"].to_list()
     for s in sums:

@@ -15,13 +15,9 @@ import lossratio as lr
 CHANGE = "2024-07-01"
 
 
-def _tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
-def test_covariate_treatment_validates():
+def test_covariate_treatment_validates(tri):
     assert lr.Regime.at(change=CHANGE, treatment="covariate").treatment == "covariate"
-    reg = _tri().detect_regime(target="ratio", treatment="covariate")
+    reg = tri.detect_regime(target="ratio", treatment="covariate")
     assert reg.treatment == "covariate"
 
 
@@ -54,8 +50,7 @@ def test_covariate_treatment_equals_manual_label_route():
 
 
 @pytest.mark.parametrize("Est", [lr.PooledLoss, lr.CredibleLoss, lr.SmoothLoss])
-def test_covariate_treatment_keeps_all_cohorts(Est):
-    tri = _tri()
+def test_covariate_treatment_keeps_all_cohorts(Est, tri):
     cov = Est(regime=lr.Regime.at(change=CHANGE, treatment="covariate")).fit(tri)
     lo = Est(regime=lr.Regime.at(change=CHANGE)).fit(tri)  # latest_only drops pre-change
     n_cov = cov.to_polars().select(pl.col("cohort").n_unique()).item()
@@ -63,9 +58,8 @@ def test_covariate_treatment_keeps_all_cohorts(Est):
     assert n_cov > n_lo
 
 
-def test_three_treatments_share_the_regime_slot():
+def test_three_treatments_share_the_regime_slot(tri):
     # latest_only / segment_wise / covariate all flow through regime= + fit(tri)
-    tri = _tri()
     out = {}
     for t in ("latest_only", "segment_wise", "covariate"):
         reg = lr.Regime.at(change=CHANGE, treatment=t)
@@ -76,8 +70,7 @@ def test_three_treatments_share_the_regime_slot():
     assert n["covariate"] == n["segment_wise"]
 
 
-def test_covariate_treatment_reports_per_regime_levels():
-    tri = _tri()
+def test_covariate_treatment_reports_per_regime_levels(tri):
     reg = lr.Regime.at(change=CHANGE, treatment="covariate")
     fit = lr.CredibleLoss(regime=reg).fit(tri)
     coef = fit.coefficients.filter(pl.col("covariate") == "regime")
@@ -110,15 +103,13 @@ def test_covariate_treatment_rejects_regime_group_name_clash():
         lr.CredibleLoss(regime=reg).fit(tri)
 
 
-def test_covariate_treatment_rejects_chain_ladder():
-    tri = _tri()
+def test_covariate_treatment_rejects_chain_ladder(tri):
     reg = lr.Regime.at(change=CHANGE, treatment="covariate")
     with pytest.raises(NotImplementedError, match="treatment='covariate'"):
         lr.ChainLadder(regime=reg).fit(tri)
 
 
-def test_covariate_treatment_detect_path_runs():
-    tri = _tri()
+def test_covariate_treatment_detect_path_runs(tri):
     reg = tri.detect_regime(target="ratio", treatment="covariate")
     fit = lr.CredibleLoss(regime=reg).fit(tri)
     assert fit.status in ("valid", "degraded")

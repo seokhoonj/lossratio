@@ -8,11 +8,6 @@ import pytest
 import lossratio as lr
 
 
-@pytest.fixture
-def tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
 def test_fit_returns_premium_fit(tri):
     pf = lr.SmoothPremium().fit(tri)
     assert isinstance(pf, lr.PremiumFit)

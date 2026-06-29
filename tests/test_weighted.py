@@ -10,11 +10,6 @@ from lossratio._kernels import engine_fast as ef
 from lossratio._kernels.weighted import WeightedBootstrap, _weighted_refit_additive
 
 
-@pytest.fixture
-def tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
 def test_weighted_fills_se_band(tri):
     d = lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=120, seed=7)).fit(tri).to_polars()
     own = d.filter(pl.col("source") == "own")
@@ -39,8 +34,6 @@ def test_weighted_n_jobs_bit_identical(tri):
 
 def test_weighted_refit_w1_is_point():
     # all-ones weights reproduce the point g_k exactly (the refit is exact)
-    loss = lr.load_experience()
-    tri = lr.Triangle(loss, groups="coverage")
     # one segment's matrices via the engine feed on a small synthetic triangle
     rng = np.random.default_rng(0)
     nC, nD = 8, 8

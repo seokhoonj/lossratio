@@ -176,17 +176,12 @@ def test_window_auto_fallback_when_helper_returns_none():
 # ---------------------------------------------------------------------------
 
 
-def _multi_group_triangle() -> "lr.Triangle":
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
-def test_by_default_runs_per_group_when_triangle_grouped():
+def test_by_default_runs_per_group_when_triangle_grouped(tri):
     """``by=None`` on a grouped triangle -> per-group detection.
 
     ``$changes`` must carry the group column. ``$labels`` likewise.
     Surviving regime IDs are local to each group (each starts at 1).
     """
-    tri = _multi_group_triangle()
     reg = Regime._from_triangle(
         tri,
         target="ratio",
@@ -203,9 +198,8 @@ def test_by_default_runs_per_group_when_triangle_grouped():
     assert grp_label_counts.height == 4  # 4 coverages in synthetic data
 
 
-def test_by_empty_string_forces_pooled_on_grouped_triangle():
+def test_by_empty_string_forces_pooled_on_grouped_triangle(tri):
     """``by=''`` -> pooled detection. Group column absent from outputs."""
-    tri = _multi_group_triangle()
     reg = Regime._from_triangle(
         tri,
         target="ratio",
@@ -220,9 +214,8 @@ def test_by_empty_string_forces_pooled_on_grouped_triangle():
     assert "coverage" not in reg._labels_df.columns
 
 
-def test_by_explicit_str_matches_default_on_grouped_triangle():
+def test_by_explicit_str_matches_default_on_grouped_triangle(tri):
     """``by='coverage'`` should reproduce ``by=None`` on grouped input."""
-    tri = _multi_group_triangle()
     a = Regime._from_triangle(
         tri, target="ratio", window=12, by="coverage", n_permutations=99, seed=20260524
     )
@@ -279,10 +272,9 @@ def test_derived_target_multi_column_per_combination():
     assert reg._labels_df.select(["coverage", "block"]).unique().height == 8
 
 
-def test_resolve_by_helper():
+def test_resolve_by_helper(tri):
     """Direct unit test of the ``by`` resolver semantics: ``by`` must be a
     subset of the triangle's own group columns."""
-    tri = _multi_group_triangle()                    # groups="coverage"
     assert _resolve_by(None, tri) == "coverage"      # defer to the triangle
     assert _resolve_by("", tri) is None
     assert _resolve_by([], tri) is None

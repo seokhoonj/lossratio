@@ -10,11 +10,6 @@ import pytest
 import lossratio as lr
 
 
-@pytest.fixture
-def tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
 def test_fit_returns_ratio_fit(tri):
     rf = lr.Ratio(loss=lr.PooledLoss()).fit(tri)
     assert isinstance(rf, lr.RatioFit)

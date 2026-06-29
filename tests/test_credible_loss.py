@@ -18,11 +18,6 @@ KEY = ["coverage", "cohort", "duration"]
 PROJ_COLS = ["loss_proj", "ratio_proj", "premium_proj"]
 
 
-@pytest.fixture(scope="module")
-def tri():
-    return lr.Triangle(lr.load_experience(), groups="coverage")
-
-
 def _pl(obj) -> pl.DataFrame:
     return obj if isinstance(obj, pl.DataFrame) else pl.from_pandas(obj)
 
