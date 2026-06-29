@@ -402,7 +402,7 @@ def _fit_premium(
         status_reasons=reasons,
         cell_counts={
             "observed": n_observed,
-            "projected": n_projected,
+            "own": n_projected,
             "borrowed": n_borrowed,
             "unfittable": n_unfittable,
         },

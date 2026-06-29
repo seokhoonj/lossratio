@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 
 # Columns of the assembled long frame. premium_* sit
 # between the loss point columns and the SE block; ratio_proj closes the row.
-_LONG_COLUMNS = [
+_LOSS_COLUMNS = [
     "cohort", "duration",
     "loss_obs", "loss_proj", "incr_loss_proj",
     "premium_obs", "premium_proj", "incr_premium_proj",
@@ -607,7 +607,7 @@ def _fit_segment_smooth(
     lam: "float | str" = "auto",
     cov_data: "Any" = None,
     covariates: "list[str] | None" = None,
-    lam_cov: float = 1.0,
+    lam_cov: float = 0.0,
 ) -> dict[str, np.ndarray]:
     """Smooth (GLMM) fit for one segment -- the top ladder rung.
 
@@ -762,7 +762,7 @@ def _segment_long_df(
     data["source"] = source.flatten().tolist()
 
     df = _nan_to_null(pl.DataFrame(data))
-    order = _LONG_COLUMNS if groups is None else [*normalize_groups(groups), *_LONG_COLUMNS]
+    order = _LOSS_COLUMNS if groups is None else [*normalize_groups(groups), *_LOSS_COLUMNS]
     return df.select(order)
 
 
@@ -1181,7 +1181,7 @@ def _fit_loss(
     balance: bool = False,
     uncertainty: "Any" = None,
     covariates: "list[str] | None" = None,
-    lam_cov: float = 1.0,
+    lam_cov: float = 0.0,
 ) -> "LossFit":
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
