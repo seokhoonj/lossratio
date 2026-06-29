@@ -1,24 +1,20 @@
-"""Micro-oracle: hand-computed ground truth for the redesigned engine.
+"""Micro-oracle: hand-computed ground truth for the engine.
 
 A 3-cohort x 4-duration mini triangle whose intensity-family (g_k, phi_k,
 psi, conjugate u_i, credibility Z_i, deviance) and link-ratio-family (f_k)
 quantities are pinned as EXACT rationals. This file is the canonical,
-in-repo oracle (the dev/ derivation `dev/compute_oracle.py` is gitignored);
-full prose + arithmetic in `dev/redesign_oracle.md`.
+in-repo oracle.
 
 Two layers:
 
 * **self-consistency (runs now)** -- recompute every quantity from the
-  embedded triangle by the charter formula and assert it equals the frozen
+  embedded triangle by the formula and assert it equals the frozen
   literal. A second independent transcription check of the oracle (the dev
   script is the first); references no package implementation.
 * **engine parity (skips until `lossratio._kernels.engine` exists)** -- the new
   engine primitives must reproduce the frozen literals. This module is the
-  engine's first compile target (charter Sec.7-1); the skip keeps the suite
-  green until Sec.7-3 lands the engine, per the Sec.7 landing rule.
-
-Charter refs: g_k Sec.4.2, f_k Sec.2, phi_k Sec.4.1, psi Sec.4.4,
-conjugate Sec.4.3, deviance Sec.6.6, tail-sigma locf `_sigma.py`.
+  engine's first compile target; the skip keeps the suite
+  green until the engine lands.
 """
 
 from __future__ import annotations
@@ -30,8 +26,7 @@ import pytest
 
 # --------------------------------------------------------------------------
 # The mini triangle (wedge). P = lagged cumulative risk premium (exposure,
-# anchor="from"); y = incremental loss (response). See dev/redesign_oracle.md
-# table 0.
+# anchor="from"); y = incremental loss (response).
 # --------------------------------------------------------------------------
 P = {
     1: {1: F(100), 2: F(200), 3: F(300), 4: F(400)},
@@ -49,7 +44,7 @@ OBS = [(i, k) for i in COHORTS for k in sorted(P[i])]
 COHORTS_AT = {k: [i for i in COHORTS if k in P[i]] for k in DURATIONS}
 
 # --------------------------------------------------------------------------
-# Frozen oracle literals (from dev/redesign_oracle.md, doubly cross-checked:
+# Frozen oracle literals (doubly cross-checked:
 # g_k == generic Poisson GLM at 2e-16; u_hat == numerical argmax of the
 # h gamma-block at 2e-8). EXACT rationals where rational; decimals (logs)
 # for deviance and (for brevity) the 20-digit conjugate values.
@@ -173,7 +168,7 @@ def test_oracle_credibility_matches_literal():
 
 def test_oracle_balance_property_saturated():
     """Per-duration Sum fitted == Sum observed, EXACTLY, for the saturated
-    fit. The sharpest single invariant (charter Sec.6.6-4): canonical-link
+    fit. The sharpest single invariant: canonical-link
     departure or a normalisation bug breaks it immediately."""
     m0 = _m0()
     for k in DURATIONS:
@@ -208,9 +203,8 @@ def test_oracle_deviance_matches_literal():
 
 # ==========================================================================
 # Layer 2 -- engine parity (skips until lossratio._kernels.engine exists).
-# This is the engine's first compile target (charter Sec.7-1). When Sec.7-3
-# lands `_engine.py`, drop the skip; the frozen contract is in
-# dev/redesign_oracle.md table 8 (subject to the contract-freeze review).
+# This is the engine's first compile target; the skip lifts once
+# `lossratio._kernels.engine` is importable.
 # ==========================================================================
 try:
     from lossratio._kernels import engine as _engine
@@ -221,8 +215,7 @@ except ImportError:
 
 requires_engine = pytest.mark.skipif(
     not HAS_ENGINE,
-    reason="redesigned engine not built yet (charter Sec.7-3); "
-           "oracle is its first compile target (Sec.7-1).",
+    reason="engine not built yet; oracle is its first compile target.",
 )
 
 

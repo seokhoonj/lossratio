@@ -115,7 +115,7 @@ def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
     bootstrap = getattr(estimator, "bootstrap", None)
     if bootstrap is None:
         return
-    # The redesign estimators carry uncertainty via `uncertainty=` (rebuilt per
+    # The estimators carry uncertainty via `uncertainty=` (rebuilt per
     # fold on the masked triangle, leakage-safe); a pre-built `.bootstrap` object
     # fitted on the full triangle would leak the held-out cells, so reject it.
     raise ValueError(
@@ -167,8 +167,8 @@ def _resolve_se_column(target: str, fit_df_columns: list[str]) -> str | None:
 
     The loss / premium projections carry ``{role}_total_se`` (process +
     parameter); the ratio composition carries ``ratio_se``. Returns ``None``
-    when the refit emitted no SE for the target -- a point-only fit (charter
-    Sec.5.1: no uncertainty columns), which leaves the coverage lane absent
+    when the refit emitted no SE for the target -- a point-only fit (no
+    uncertainty columns), which leaves the coverage lane absent
     rather than fabricated.
     """
     direct = {
@@ -245,7 +245,7 @@ class _FoldBacktest:
             raise ValueError(
                 f"target must be one of {_VALID_TARGETS}, got {target!r}"
             )
-        # Every redesign estimator carries loss_proj / premium_proj / ratio_proj,
+        # Every estimator carries loss_proj / premium_proj / ratio_proj,
         # so all three targets are resolvable from the refit frame -- no
         # ratio-only estimator to special-case.
         self.estimator = estimator
@@ -436,7 +436,7 @@ class _FoldFit:
                 .alias("incr_ae_err"),
             )
 
-        # Anchored-lane support (charter Sec.6.3): the cohort's observed
+        # Anchored-lane support: the cohort's observed
         # cumulative target at the as-of boundary (its last non-masked
         # duration) -- the origin baseline the anchored metric lane rebases
         # against (`anchored_actual = actual - anchor_value`). Constant per

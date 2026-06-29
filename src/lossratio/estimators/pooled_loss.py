@@ -1,4 +1,4 @@
-"""Pooled-loss estimator (charter Sec.3.1, redesigned naming v2).
+"""Pooled-loss estimator.
 
 ``PooledLoss`` is the complete-pooling intensity estimator: the engine's
 closed-form saturated mode ``g_k = sum dLoss / sum P`` with no cohort

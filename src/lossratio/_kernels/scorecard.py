@@ -1,4 +1,4 @@
-"""Validation scorecard (charter Sec.7-4, decision #16).
+"""Validation scorecard.
 
 A hold-out backtest's per-cell A/E table answers "how far off was each
 held-out cell"; the scorecard structures that answer into a decision-grade
@@ -7,7 +7,7 @@ and **Poisson deviance** -- on the **cumulative**, **incremental**, and
 **anchored** lanes, and split into the full population and the **terminal**
 (decision-region) durations the go-forward projection actually rides on.
 
-The **anchored lane** (charter Sec.6.3) rebases each held cell against the
+The **anchored lane** rebases each held cell against the
 cohort's observed cumulative at the as-of origin: ``anchored_actual = actual -
 anchor_value`` and ``anchored_expected = expected - anchor_value``. The signed
 gap is unchanged (the anchor cancels), but the relative error and the
@@ -209,7 +209,7 @@ def score_cells(
     # coverage is emitted only when the backtest carries a USABLE SE -- the new
     # LossFit schema always has the `expected_se` column (it is null for a
     # point-only fit), so gate on a finite positive value, not column existence,
-    # to keep the "no SE -> no coverage column" contract (charter Sec.5.1).
+    # to keep the "no SE -> no coverage column" contract.
     has_se = "expected_se" in df.columns and bool(
         (df.get_column("expected_se").is_finite()
          & (df.get_column("expected_se") > 0)).any()

@@ -1,4 +1,4 @@
-"""Numerical credibility / backfit projection kernels (charter Sec.3.x).
+"""Numerical credibility / backfit projection kernels.
 
 Pure-numeric per-segment projection helpers shared by the loss estimators and
 the bootstrap kernels: the Buhlmann-Straub credible levels, the credible /
@@ -44,7 +44,7 @@ def _credible_levels(
     ``dLoss``, the ``u = 1`` fitted mean ``m0 = g_k * P_from``, keyed by
     ``(cohort, from-duration)``. ``psi = "auto"`` estimates the between-cohort
     variance by the Buhlmann-Straub moment; ``psi = 0`` (or any degenerate
-    case, charter Sec.4.4) leaves ``u = 1`` / ``Z = 0`` = exactly PooledLoss.
+    case) leaves ``u = 1`` / ``Z = 0`` = exactly PooledLoss.
 
     Returns ``(u_vec, z_vec, psi_hat)``: ``u_vec`` / ``z_vec`` are per-cohort-row
     (default ``u = 1`` / ``Z = 0`` for a cohort with no estimable level), and
@@ -53,14 +53,14 @@ def _credible_levels(
     The single source of truth for the credibility level: the point fit
     (:func:`_fit_segment_credible`) and every ResidualBootstrap replicate
     (:mod:`lossratio._kernels.resample`) call this so the bootstrap re-estimates the
-    full pipeline (g_k -> phi -> psi -> u) per replicate (charter Sec.5.2).
+    full pipeline (g_k -> phi -> psi -> u) per replicate.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
     # numpy feed (k-major / cohort-minor); the vectorized engine matches the
     # dict-loop primitives to the rounding floor, so this is the single source
-    # of truth for the point fit AND every bootstrap replicate (charter Sec.5.2).
+    # of truth for the point fit AND every bootstrap replicate.
     resp, expo, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
     if g_k.ndim == 1:
         m0 = g_k[dur0] * expo
@@ -76,7 +76,7 @@ def _credible_levels(
     if fin.any():
         resp_f, m0_f, dur_f, coh_f = resp[fin], m0[fin], dur0[fin], coh0[fin]
         phi = engine_fast.pearson_dispersion(resp_f, m0_f, dur_f, n_links, sigma_method)
-        # Degenerate cases (charter Sec.4.4) collapse to pooled (u = 1) instead
+        # Degenerate cases collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
         # to carry), and the Buhlmann-Straub psi moment is undefined (0/0) with
@@ -97,7 +97,7 @@ def _credible_levels(
             u_arr, z_arr, present = engine_fast.conjugate_levels(
                 resp_f, m0_f, phi, psi_hat, coh_f, dur_f, n_cohorts
             )
-            u_vec[present] = np.maximum(u_arr[present], 0.0)   # recovery floor (Sec.4.3)
+            u_vec[present] = np.maximum(u_arr[present], 0.0)   # recovery floor
             z_vec[present] = z_arr[present]
     return u_vec, z_vec, psi_hat
 
@@ -160,17 +160,17 @@ def _smooth_backfit(
     tol: float = 1e-4,
     link_mask: np.ndarray | None = None,
 ) -> dict:
-    """Smooth shape + credibility backfitting (charter Sec.4.5) for one segment.
+    """Smooth shape + credibility backfitting for one segment.
 
     The single source of truth for the smooth fit: the point fit
     (:func:`_fit_segment_smooth`) and every ResidualBootstrap replicate
     (:mod:`lossratio._kernels.resample`) call this, so the bootstrap re-runs the full
-    smooth pipeline (s-spline + lambda selection + conjugate level) per replicate
-    (charter Sec.5.2). The s-step refits the smooth shape on the ``u``-adjusted
+    smooth pipeline (s-spline + lambda selection + conjugate level) per replicate.
+    The s-step refits the smooth shape on the ``u``-adjusted
     exposure (``u_i * P``, decontaminating the late-duration wedge), the u-step
     is the dispersion-scaled conjugate; the two alternate (damped) to
     convergence in ``max |du|``. ``psi = 0`` keeps ``u = 1`` (a single smooth
-    pass). Non-representable (Sec.4.2): a segment whose pooled total is ``<= 0``
+    pass). Non-representable: a segment whose pooled total is ``<= 0``
     falls back to the saturated ``g_k`` (complete-pooling intensity) and is
     flagged.
 
@@ -231,7 +231,7 @@ def _smooth_backfit(
             # s-step: smooth shape on the u-adjusted exposure
             sm, g_k = _smooth_g(u_vec, cur_lam)
             if not sm.representable:
-                # Sec.4.2 boundary -> fallback (saturated g_k on raw exposure)
+                # boundary -> fallback (saturated g_k on raw exposure)
                 representable = False
                 g_map = engine.saturated_intensity(
                     response=resp_a.tolist(), exposure=expo_a.tolist(),

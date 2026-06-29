@@ -1,10 +1,10 @@
-"""Smooth-loss estimator (charter Sec.3.1 / Sec.4, redesigned naming v2).
+"""Smooth-loss estimator.
 
 ``SmoothLoss`` is the top rung of the structure ladder
 (``PooledLoss`` -> ``CredibleLoss`` -> ``SmoothLoss``): the credible rung with
 the free saturated per-duration intensity replaced by a smooth penalized
 B-spline shape ``g_k = exp(s(k))``. The smooth shape and the per-cohort
-credibility level are fit jointly by backfitting (charter Sec.4.5): the s-step
+credibility level are fit jointly by backfitting: the s-step
 refits the shape on the ``u``-adjusted exposure to decontaminate the
 late-duration wedge, the u-step is the dispersion-scaled conjugate the credible
 rung already uses. It returns the engine-backed
@@ -64,7 +64,7 @@ class SmoothLoss(_LossEstimatorBase):
         ``None`` (point-only) or a :class:`~lossratio._kernels.resample.ResidualBootstrap`
         -- a full smooth-pipeline refit per replicate. Each replicate re-runs the
         shape + ``lambda`` selection + backfitting, so the selection uncertainty
-        is captured (charter Sec.5.2). NOTE: this is materially heavier than the
+        is captured. NOTE: this is materially heavier than the
         pooled / credible bootstrap (a backfitting per replicate).
     covariates
         Cell-level fixed-effect covariates (e.g. ``["sex"]``) fit jointly with

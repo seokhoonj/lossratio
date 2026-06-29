@@ -1,12 +1,12 @@
-"""Full-refit residual bootstrap for the intensity family (charter Sec.5.2).
+"""Full-refit residual bootstrap for the intensity family.
 
 The engine-path uncertainty machine. Where the kept ``_recursion`` analytical SE
 plugs in point estimates of ``sigma^2`` / ``Var(f)`` and propagates the
 recursion, this module re-estimates the WHOLE pipeline on each pseudo-triangle
 -- ``g_k`` (and, for the credible rung, ``phi``, ``psi``, ``u_i``) is refit per
 replicate, so the between-cohort estimation error the analytical recursion
-cannot carry shows up in the spread. That is the charter's primary correction
-to the 86%-overconfident analytical band (Sec.5.2 item 1: "u fixed + residuals
+cannot carry shows up in the spread. That is the primary correction
+to the 86%-overconfident analytical band ("u fixed + residuals
 only" reintroduces the overconfidence; the selection stays inside the loop).
 
 Scope: the additive intensity mechanisms ``"pooled"``, ``"credible"``, and
@@ -29,15 +29,15 @@ premium-anchored intensity model):
 2. Per replicate: resample residuals within the duration cluster (global pool
    fallback for thin durations) -> pseudo increments -> pseudo cumulative
    triangle -> REFIT ``g_k`` / ``u_i`` -> project from each cohort's OWN
-   observed last cell (existing-cohort prediction is ``u_hat``-conditional,
-   Sec.5.2 item 3) -> add over-dispersed process noise on the future
+   observed last cell (existing-cohort prediction is ``u_hat``-conditional) -> add
+   over-dispersed process noise on the future
    increments for the predictive draw.
 3. Across replicates: ``param_se`` = spread of the no-process projection,
    ``total_se`` = spread of the predictive draw, ``proc_se`` =
    ``sqrt(total^2 - param^2)`` (law of total variance), and empirical quantile
    CI from the predictive draws.
 
-New-cohort prediction is unsupported in v1 (Sec.5.2 item 3 -- it needs a prior
+New-cohort prediction is unsupported in v1 (it needs a prior
 draw); only cells a real cohort projects into get an interval.
 """
 
@@ -138,7 +138,7 @@ def _donor_process_draw(
 
 @dataclass(kw_only=True)
 class ResidualBootstrap:
-    """Full-refit residual bootstrap uncertainty (charter Sec.5.2, 1st grade).
+    """Full-refit residual bootstrap uncertainty (1st grade).
 
     Passed on an intensity estimator's ``uncertainty=`` argument, it fills the
     ``loss_proc_se`` / ``loss_param_se`` / ``loss_total_se`` / ``loss_total_cv``
@@ -164,7 +164,7 @@ class ResidualBootstrap:
         ``"gamma"`` (default, over-dispersed-Poisson sibling) or ``"none"``
         (parameter spread only -- a CI, not a predictive interval).
     drift
-        Add the calendar RW-with-drift band term (charter Sec.5.3, default
+        Add the calendar RW-with-drift band term (default
         ``True``). A random-walk-with-drift is fit to the calendar-diagonal
         mean-residual series; its drift-parameter uncertainty ``SE(mu_hat)`` is
         injected into the predictive draws, centred at zero so the mean path
@@ -237,11 +237,11 @@ def _estimate(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Refit the intensity pipeline on one (pseudo)triangle: ``(g_k, u_vec)``.
 
-    The full pipeline the charter requires re-estimated per replicate. ``pooled``
+    The full pipeline re-estimated per replicate. ``pooled``
     -- saturated ``g_k``, ``u = 1``. ``credible`` -- saturated ``g_k`` + the
     credibility level (which itself re-runs ``phi`` / ``psi``). ``smooth`` -- the
     full smooth backfitting (shape ``s(k)`` + ``lambda`` selection + level), so
-    the lambda / shape selection rides inside the bootstrap loop (Sec.5.2).
+    the lambda / shape selection rides inside the bootstrap loop.
     """
     if mechanism == "smooth":
         bf = _smooth_backfit(
@@ -297,7 +297,7 @@ def _calendar_drift_se(
     (0-based). The per-diagonal mean Pearson residual ``d_a`` is the calendar
     trend series; the drift is ``mu_hat = mean(diff(d))`` and its parameter SE
     is ``sigma / sqrt(n - 1)`` (``sigma`` = sd of the first differences, ``n`` =
-    diagonals) -- the charter Sec.5.3 closed form. Returns ``0.0`` when there
+    diagonals) -- the closed form. Returns ``0.0`` when there
     are too few diagonals to estimate a drift (< 3)."""
     ok = res_ok & np.isfinite(resid)
     if not ok.any():
@@ -417,14 +417,14 @@ def bootstrap_segment_additive(
         pool = resid[(kk == k) & np.isfinite(resid)]
         dur_pools[k] = pool if pool.size >= spec.min_pool else global_pool
 
-    # projection seed = each cohort's own observed last cell (Sec.5.2 item 3)
+    # projection seed = each cohort's own observed last cell
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
     )
 
-    # calendar RW-with-drift band (Sec.5.3): SE of the drift on the
+    # calendar RW-with-drift band: SE of the drift on the
     # calendar-diagonal mean-residual series, and the observed calendar
     # frontier (last antidiagonal). A projected cell at antidiagonal `a` is
     # `a - frontier` calendar steps into the future.
@@ -781,7 +781,7 @@ def bootstrap_segment_multiplicative(
     Pearson residuals of the observed incrementals against the link-ratio-fitted
     incrementals are resampled (per duration column) into a pseudo-triangle;
     each pseudo-triangle's link ratio ``f*_k`` projects the REAL observed latest
-    diagonal forward (conditional prediction, charter Sec.5.2), with
+    diagonal forward (conditional prediction), with
     over-dispersed process noise + the calendar drift band on the future cells.
     Returns the same SE / CI matrices as the intensity bootstrap."""
     n_cohorts, n_durations = loss_obs.shape

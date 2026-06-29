@@ -1,8 +1,7 @@
-"""Redesigned loss fit core (charter Sec.3.1 / Sec.3.2 / Sec.7-3).
+"""Loss fit core.
 
 ``LossFit`` is the engine-backed result of the saturated-mode intensity fit
-(``PooledLoss``). It is the clean successor to the ``loss.py`` dispatcher's
-result object: no method-dispatch, no tail / bootstrap machinery -- one
+(``PooledLoss``). It carries no method-dispatch and no tail / bootstrap machinery -- one
 estimator (complete-pooling intensity) wired straight through ``ModelFrame``
 -> ``_engine`` -> projection.
 
@@ -10,12 +9,11 @@ The intensity point estimate ``g_k`` comes from
 :func:`lossratio._kernels.engine.saturated_intensity` (the closed-form saturated
 mode, frozen bit-for-bit by ``tests/test_oracle.py``); the projection seed,
 the premium link-ratio projection, and the analytical variance recursion
-reuse the kept ``_recursion`` kernel (charter Sec.3.5: ``_recursion.py`` stays). The
+reuse the kept ``_recursion`` kernel. The
 whole path reproduces the complete-pooling baseline (``PooledLoss``) fit on
-the shared loss columns to floating-point tolerance -- the golden self-anchor
-of charter Sec.7-3.
+the shared loss columns to floating-point tolerance -- the golden self-anchor.
 
-Status (charter Sec.3.2): every fit carries a machine-readable
+Status: every fit carries a machine-readable
 ``status`` / ``status_reasons`` / ``converged`` plus a cell-classification
 count, so a degraded fit reports WHY in a field rather than a printed warning.
 """
@@ -63,7 +61,7 @@ if TYPE_CHECKING:
     from ..core.triangle import Triangle
 
 
-# Columns of the assembled long frame (charter loss schema). premium_* sit
+# Columns of the assembled long frame. premium_* sit
 # between the loss point columns and the SE block; ratio_proj closes the row.
 _LONG_COLUMNS = [
     "cohort", "duration",
@@ -509,7 +507,7 @@ def _fit_segment_credible(
 
     Pooled intensity ``g_k`` (the same closed-form saturated mode as
     ``PooledLoss``) plus a per-cohort credibility LEVEL ``u_i`` -- the
-    dispersion-scaled Buhlmann-Straub conjugate (charter Sec.4.3-4.4) computed
+    dispersion-scaled Buhlmann-Straub conjugate computed
     by the oracle-verified engine primitives. The cohort's projected increment
     is ``u_i * g_k * P_k`` (additive, premium-anchored): own loss-ratio level
     shrunk toward the pooled level by its credibility.
@@ -520,14 +518,14 @@ def _fit_segment_credible(
     non-negative float.
 
     SE is left null in v1: the credibility level's estimation variance makes
-    the analytical recursion invalid here (charter Sec.5.1/5.2 -- coverage
+    the analytical recursion invalid here (coverage
     rides the ResidualBootstrap, wired in a later step). ``recent``
     (calendar-diagonal window) masks the links feeding both the pooled ``g_k``
     and the per-cohort credibility estimation, while the projection stays seeded
     from the full matrices. A ``donor`` (borrow) fills each cohort's tail beyond
     its own-data boundary with the level-invariant donor link ratio: the own
     body keeps the credibility level (``u_i * g_k`` additive), the borrowed tail
-    lends only development shape (charter borrow design). The credibility level
+    lends only development shape. The credibility level
     handles a level-shift regime, the borrow extends the data-thin tail horizon
     -- complementary.
     """
@@ -1041,7 +1039,7 @@ def _fit_segment_cascade(
     no older donor and projects with its own factors to its own (deepest)
     horizon. Returns ``(fit, cohorts)`` row-stacked across regimes.
 
-    ``recent`` follows the same rule as a ``borrow`` donor (charter Sec.7-4): it
+    ``recent`` follows the same rule as a ``borrow`` donor: it
     windows each regime's OWN factor estimation (passed into ``fit_segment``),
     while the older-regime donor stays full-history -- the donor exists
     precisely to lend the data-rich older shape, so a recency window must not
@@ -1198,7 +1196,7 @@ def _fit_loss(
     cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
     :class:`ModelFrame`. ``recent`` (calendar-diagonal window) is the data-intact
     fit mask -- only the most-recent ``N`` diagonals feed each segment's factor
-    estimation, the projection seed stays full (charter Sec.7-4).
+    estimation, the projection seed stays full.
     """
     fit_segment, method, model = _MECHANISMS[mechanism]
 
@@ -1273,7 +1271,7 @@ def _fit_loss(
     if eff_covariates:
         # covariate design: one shared duration shape per reporting unit plus a
         # treatment-coded level effect per covariate, read from the triangle's
-        # own (reporting x covariate) sub-cells (charter Sec.4.3).
+        # own (reporting x covariate) sub-cells.
         if mechanism not in ("pooled", "credible", "smooth"):
             raise NotImplementedError(
                 f"covariates= is not wired for {model!r}."
@@ -1547,7 +1545,7 @@ def _fit_loss(
         ci = None
         if boot is not None:
             # replace the analytical / null SE with the bootstrap spread and
-            # carry the empirical quantile band (Sec.5.2 -- predictive interval)
+            # carry the empirical quantile band (predictive interval)
             fit["proc_se"] = boot["proc_se"]
             fit["param_se"] = boot["param_se"]
             fit["total_se"] = boot["total_se"]
@@ -1600,7 +1598,7 @@ def _fit_loss(
     if n_unfittable:
         reasons.append("projection_gap")
     if n_smooth_fallback:
-        reasons.append("smooth_fallback_pooled")    # boundary -> pooled baseline (Sec.4.2)
+        reasons.append("smooth_fallback_pooled")    # boundary -> pooled baseline
     if n_smooth_nonconv:
         reasons.append("smooth_not_converged")
     status = "degraded" if reasons else "valid"
@@ -1638,7 +1636,7 @@ def _fit_loss(
 
 
 class LossFit:
-    """Saturated-mode loss projection result (charter Sec.3.1 / Sec.3.2).
+    """Saturated-mode loss projection result.
 
     The long-format frame (one row per cohort x duration cell) is the primary
     output; ``status`` / ``status_reasons`` / ``converged`` / ``cell_counts``

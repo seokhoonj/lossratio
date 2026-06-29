@@ -1,5 +1,5 @@
-"""ChainLadder self-anchor — the redesigned engine-backed link-ratio fit must
-reproduce the golden projection bit-for-bit (charter Sec.7-3).
+"""ChainLadder self-anchor — the engine-backed link-ratio fit must
+reproduce the golden projection bit-for-bit.
 
 The link ratio ``f_k`` is driven by ``_engine.link_ratios`` and the variance /
 premium machinery reuses the kept ``_recursion`` kernel; this pins that the new

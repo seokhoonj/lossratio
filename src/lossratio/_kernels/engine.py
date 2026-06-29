@@ -1,7 +1,7 @@
-"""Saturated-mode intensity engine primitives (charter Sec.4 / Sec.7-3).
+"""Saturated-mode intensity engine primitives.
 
 The closed-form (no IRLS) path for the saturated model: one-hot duration
-shape, ``psi`` carried by the conjugate level step. This is the redesigned
+shape, ``psi`` carried by the conjugate level step. This is the
 engine's first surface; the micro-oracle (``tests/test_oracle.py``) freezes
 every primitive's output as exact rationals, and this module is its compile
 target.
@@ -13,7 +13,7 @@ Long-format contract -- each primitive takes parallel per-cell sequences
 the input order. Durations are the 1-based index (1, 2, 3, ...) regardless of
 grain; the next link of ``k`` is ``k + 1``.
 
-The two exposure aggregates the charter overloads as "m_i" are named apart
+The two exposure aggregates often both written "m_i" are named apart
 here (the oracle flagged the clash): ``A_i = sum(m0/phi)`` is the SHRINKAGE
 exposure (drives Z and the conjugate level); ``m_i = (sum m0)^2 / sum(phi*m0)``
 is the PSI-MOMENT exposure (drives the Buhlmann-Straub psi estimate). They
@@ -36,7 +36,7 @@ def _sum_by(values: Sequence[float], keys: Sequence) -> dict:
 
 def saturated_intensity(*, response, exposure, duration) -> dict:
     """Pooled (u=1) intensity ``g_k = sum response / sum exposure`` per
-    duration. ``sum exposure <= 0`` -> ``g_k = 0.0`` (charter degeneracy
+    duration. ``sum exposure <= 0`` -> ``g_k = 0.0`` (degeneracy
     policy); response sign is unconstrained (recoveries allowed)."""
     num = _sum_by(response, duration)
     den = _sum_by(exposure, duration)
@@ -132,8 +132,8 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
     """Buhlmann-Straub moment estimate of the between-cohort variance ``psi``.
 
     Uses the PSI-MOMENT exposure ``m_i = (sum m0)^2 / sum(phi_k m0)`` and the
-    raw per-cohort A/E ``r_i = sum y / sum m0``; floored at 0 (charter Sec.4.4
-    degeneracy = exact complete-pooling intensity, ``PooledLoss``)."""
+    raw per-cohort A/E ``r_i = sum y / sum m0``; floored at 0 (degeneracy = exact
+    complete-pooling intensity, ``PooledLoss``)."""
     sm = _sum_by(fitted, cohort)
     sy = _sum_by(response, cohort)
     sphim: dict = {}

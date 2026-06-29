@@ -1,4 +1,4 @@
-"""Shared estimator base classes (charter Sec.3.1).
+"""Shared estimator base classes.
 
 The loss- and premium-side estimator config dataclasses share their fit-window
 (``recent``), cohort-cut (``regime``), and confidence-level contract. Holding
@@ -46,12 +46,12 @@ def _validate_lam_cov(lam_cov: "float | str | dict") -> None:
 
 @dataclass(kw_only=True)
 class _LossEstimatorBase:
-    """Fields shared by every loss-side estimator (charter Sec.3.1).
+    """Fields shared by every loss-side estimator.
 
     ``recent`` (calendar-diagonal window) is the data-intact fit mask: only the
     most-recent ``N`` calendar diagonals feed factor estimation (``g_k`` /
     ``f_k``), while the point projection stays seeded from the full triangle
-    (charter Sec.7-4 -- the same diagonal mask, opposite polarity, as a
+    (the same diagonal mask, opposite polarity, as a
     backtest holdout). ``regime`` is the cohort-axis cut.
     Subclasses overriding ``__post_init__`` should call ``super().__post_init__()``.
     """

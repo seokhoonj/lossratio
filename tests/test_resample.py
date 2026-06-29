@@ -1,4 +1,4 @@
-"""Full-refit residual bootstrap (charter Sec.5.2): CredibleLoss SE/CI, pooled
+"""Full-refit residual bootstrap: CredibleLoss SE/CI, pooled
 calibration vs the analytical SE, reproducibility, and the coverage lane
 flowing through a backtest."""
 
@@ -173,7 +173,7 @@ def test_pooled_bootstrap_tracks_analytical(tri):
     assert 0.7 < float(ratio) < 1.5
 
 
-# --- calendar drift band (Sec.5.3) -----------------------------------------
+# --- calendar drift band -----------------------------------------
 
 
 def test_drift_widens_band_but_keeps_mean(tri):

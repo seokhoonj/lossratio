@@ -1,4 +1,4 @@
-"""Loss-ratio composition (charter Sec.5.3 -- numerator / denominator).
+"""Loss-ratio composition (numerator / denominator).
 
 ``Ratio`` pairs a loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
 ``SmoothLoss`` / ``ChainLadder``) with a premium-side estimator

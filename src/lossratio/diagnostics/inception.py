@@ -17,9 +17,8 @@ on uncertainty, not a realised-stability guarantee.
 
 This is a standalone, engine-independent reader: the caller supplies an
 already-segmented count frame and a matching rate frame (the coverage->cause/
-rider crosswalk and rate-table loading live with the caller, not here). It is
-a charter-extension diagnostic -- public-surface wiring follows the redesign
-diagnostics phase.
+rider crosswalk and rate-table loading live with the caller, not here). Its
+public-surface wiring is still pending.
 """
 
 from __future__ import annotations

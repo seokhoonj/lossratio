@@ -1,4 +1,4 @@
-"""Go-forward stability gate (charter Sec. go-forward / no-ultimate).
+"""Go-forward stability gate.
 
 The honest go-forward beyond the observed loss-ratio frontier is NOT a fitted
 tail curve: real-data OOS shows that extrapolating the loss and premium

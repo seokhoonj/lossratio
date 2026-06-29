@@ -1,4 +1,4 @@
-"""Internal design-matrix frame for the intensity engine (charter Sec.3.3).
+"""Internal design-matrix frame for the intensity engine.
 
 ``ModelFrame`` is the tidy long-format cell table closest to the design
 matrix: one row per (segment, cohort, duration) cell. Built ONLY via
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 # Cells carry both anchors; the engine picks via anchor="cum"|"incr".
 _SOURCE_COLUMNS = ["cohort", "duration", "incr_loss", "premium", "incr_premium"]
-# Final column order (charter Sec.3.3): calendar sits between the axes and the
+# Final column order: calendar sits between the axes and the
 # response/exposure block.
 _FRAME_ORDER = ["cohort", "duration", "calendar",
                 "incr_loss", "premium", "incr_premium"]
@@ -80,7 +80,7 @@ class ModelFrame:
         FIT-level link-mask (factors estimated from the recent diagonals, the
         full data kept for the projection seed) -- the same data-intact
         diagonal mask as a backtest ``holdout``. That shared mask lands in the
-        validation layer (charter Sec.7-4); ModelFrame never drops cells for it
+        validation layer; ModelFrame never drops cells for it
         (a cell-drop would corrupt the per-cohort cumulative reconstruction).
 
         Parameters
@@ -92,7 +92,7 @@ class ModelFrame:
             segment column, tuple for several) to its change ``date`` (segments
             absent from the dict are uncut). ModelFrame stays a pure shaper --
             resolving a ``Regime`` / ``"auto"`` / callable to date(s) is the
-            caller's job (charter Sec.6.1).
+            caller's job.
         """
         segments = normalize_groups(triangle.groups)
         src = triangle.to_polars()

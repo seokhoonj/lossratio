@@ -1,4 +1,4 @@
-"""Chain-ladder loss estimator (redesigned naming v2).
+"""Chain-ladder loss estimator.
 
 ``ChainLadder`` is the chain-ladder benchmark loss model OUTSIDE the intensity
 ladder: it develops cumulative loss with its own age-to-age link ratio

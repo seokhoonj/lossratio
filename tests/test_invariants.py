@@ -1,19 +1,19 @@
-"""Structural invariants the projection must satisfy (charter Sec.6.6-4).
+"""Structural invariants the projection must satisfy.
 
-These lock behaviour the redesigned engine must PRESERVE -- regression
+These lock behaviour the engine must PRESERVE -- regression
 guards on the current golden implementation, written against the public
 API only.
 
 Covered here:
-* **unit invariance** (Sec.4.3 raison d'etre): scaling loss AND premium by
+* **unit invariance** (raison d'etre): scaling loss AND premium by
   a common currency factor scales every loss/premium projection by that
   factor while leaving the dimensionless loss ratio and CV unchanged.
 * **loss equivariance** (link-ratio): scaling loss alone scales the loss
   projection by the same factor and leaves the CV unchanged (f_k is a
   ratio of losses, scale-free).
 
-Not yet covered (need fit/backtest-internal contracts -- to add with the
-Sec.7-2/7-3 build): the balance property on the real fit (per-duration
+Not yet covered (need fit/backtest-internal contracts): the balance property on
+the real fit (per-duration
 Sum fitted == Sum observed) and the leakage sentinel (mask a held-out cell
 with an extreme value, refit, assert byte-identical).
 """

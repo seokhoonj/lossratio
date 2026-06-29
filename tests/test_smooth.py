@@ -1,4 +1,4 @@
-"""Smooth-mode intensity engine (charter Sec.4): penalized IRLS P-spline.
+"""Smooth-mode intensity engine: penalized IRLS P-spline.
 
 The anchor invariant is the reduction to the frozen saturated surface -- a
 one-hot basis with no penalty reproduces ``g_k = sum y / sum P`` bit-for-bit

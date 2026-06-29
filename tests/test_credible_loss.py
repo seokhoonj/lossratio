@@ -1,4 +1,4 @@
-"""CredibleLoss -- partial-pooling credibility estimator (charter Sec.4.3-4.4).
+"""CredibleLoss -- partial-pooling credibility estimator.
 
 Pooled intensity g_k + per-cohort credibility level u_i (Buhlmann-Straub
 conjugate), projecting u_i * g_k * P. Tests pin the exact ladder collapse to
@@ -144,7 +144,7 @@ def test_recent_window_changes_the_fit():
 def _single_cohort_input() -> pl.DataFrame:
     # one underwriting cohort observed over four months -> every from-duration
     # has a single cell (df-deficient dispersion) and there is only one cohort:
-    # the charter Sec.4.4 degenerate cases that must collapse to pooled, not crash.
+    # the degenerate cases that must collapse to pooled, not crash.
     return pl.DataFrame({
         "uy_m": ["2024-01-01"] * 4,
         "cy_m": ["2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01"],

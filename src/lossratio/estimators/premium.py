@@ -1,4 +1,4 @@
-"""Premium fit core (charter Sec.3.x -- denominator-side projection).
+"""Premium fit core (denominator-side projection).
 
 The premium side has no external exposure: cumulative premium ``P_{i,k}`` is
 its own volume base, so it develops by its OWN multiplicative link ratio

@@ -1,4 +1,4 @@
-"""Scorecard reader (charter Sec.7-4) -- structures a hold-out backtest's
+"""Scorecard reader -- structures a hold-out backtest's
 per-cell A/E into bias / dispersion / Poisson-deviance lanes with a terminal
 (decision-region) split. Pure reader: composes with the single-origin and
 rolling-origin backtests and double-counts nothing on a rolling frame.
@@ -275,7 +275,7 @@ def test_ungrouped_frame():
 def test_point_only_fit_emits_no_coverage_columns(exp):
     # the new LossFit schema always carries the SE column (null for a point-only
     # fit), so the coverage lane must gate on a USABLE SE, not column existence,
-    # to keep the "no SE -> no coverage column" contract (charter Sec.5.1)
+    # to keep the "no SE -> no coverage column" contract
     from lossratio.estimators.credible_loss import CredibleLoss
     tri = lr.Triangle(exp, groups="coverage")
     ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)

@@ -1,10 +1,10 @@
-"""PooledLoss self-anchor — the redesigned engine-backed pooled-intensity fit
-must reproduce the golden projection bit-for-bit (charter Sec.7-3).
+"""PooledLoss self-anchor — the engine-backed pooled-intensity fit
+must reproduce the golden projection bit-for-bit.
 
 The intensity ``g_k`` is driven by ``_engine.saturated_intensity`` and the
 variance / premium machinery reuses the kept ``_recursion`` kernel; this pins that
-the new public surface (PooledLoss -> LossFit) is numerically identical to the
-old path on every shared loss column, for single- and multi-column groups.
+the public surface (PooledLoss -> LossFit) reproduces the golden projection
+on every shared loss column, for single- and multi-column groups.
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ import pytest
 import lossratio as lr
 from lossratio.estimators.pooled_loss import PooledLoss
 
-# Columns both the old EDFit/LossFit and the redesigned LossFit carry, where
-# byte parity is required (charter golden anchor).
+# Columns the LossFit carries, where byte parity against the golden
+# anchor is required.
 _SHARED = [
     "loss_obs", "loss_proj", "incr_loss_proj",
     "premium_obs", "premium_proj", "incr_premium_proj",

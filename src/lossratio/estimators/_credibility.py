@@ -1,4 +1,4 @@
-"""Per-segment credibility reporting assembler (charter Sec.3.x).
+"""Per-segment credibility reporting assembler.
 
 ``_segment_credibility_df`` assembles the per-cohort credibility weights of a
 fitted segment into the long reporting frame. It is a Polars assembly helper

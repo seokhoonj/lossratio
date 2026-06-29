@@ -1,4 +1,4 @@
-"""Credible-loss estimator (charter Sec.3.1 / Sec.4.3-4.4, redesigned naming v2).
+"""Credible-loss estimator.
 
 ``CredibleLoss`` is the partial-pooling rung of the structure ladder
 (``PooledLoss`` -> ``CredibleLoss`` -> ``SmoothLoss``): the pooled intensity
@@ -13,7 +13,7 @@ Exact ladder nesting: ``psi = 0`` (no between-cohort variance) degenerates to
 -- the ladder's automatic collapse when credibility earns nothing.
 
 v1 is point-only: the credibility level's estimation variance makes the
-analytical recursion invalid (charter Sec.5.1/5.2), so the SE / CI columns are
+analytical recursion invalid, so the SE / CI columns are
 null -- interval coverage rides the ResidualBootstrap, wired in a later step.
 ``recent`` (the calendar-diagonal fit window) is supported; the credibility
 level corrects a level-shift regime, and the ``segment_wise`` regime treatment

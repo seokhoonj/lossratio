@@ -1,7 +1,7 @@
-"""SmoothLoss -- top ladder rung (charter Sec.4): smooth shape + credibility.
+"""SmoothLoss -- top ladder rung: smooth shape + credibility.
 
 The credible rung with the saturated per-duration intensity replaced by a
-penalized smooth shape, fit by the Sec.4.5 backfitting. Tests pin the result
+penalized smooth shape, fit by backfitting. Tests pin the result
 schema, the point-only SE, the credibility diagnostics, the ladder relations
 (psi=0 -> single smooth pass; smooth tracks credible modestly), and the config
 guards.

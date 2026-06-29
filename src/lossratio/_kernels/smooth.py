@@ -1,6 +1,6 @@
-"""Smooth-mode intensity engine -- penalized IRLS P-spline (charter Sec.4).
+"""Smooth-mode intensity engine -- penalized IRLS P-spline.
 
-The second of the charter's two intensity modes. Where the saturated mode
+The second of the two intensity modes. Where the saturated mode
 (``engine.saturated_intensity``) is the closed-form ``g_k = sum y / sum P``
 frozen bit-for-bit by the oracle, the smooth mode fits a penalized B-spline
 shape ``s(k)`` by log-link quasi-Poisson IRLS so the duration curve
@@ -9,20 +9,20 @@ shape ``s(k)`` by log-link quasi-Poisson IRLS so the duration curve
     eta_cell = s(duration) + log(P_cell),   mu = exp(eta),   Var = phi * mu
     s(k)     = B(k) . beta,    penalty  lambda * ||D2 beta||^2   (2nd diff)
 
-This module is the SHAPE BLOCK of the GLMM (charter Sec.4.5): it takes the
+This module is the SHAPE BLOCK of the GLMM: it takes the
 pooled increments (``u = 1``) and returns the smooth ``g_k``; the per-cohort
 credibility level ``u_i`` rides the same dispersion-scaled conjugate the
 saturated rung already uses (``loss_fit._credible_levels``). Segment random
-levels and exogenous covariates are out of v1 scope (naming v2: groups split,
-covariates deferred), so the only thing distinguishing the smooth rung from
+levels and exogenous covariates are out of v1 scope, so the only thing
+distinguishing the smooth rung from
 the credible rung is this shape.
 
-Golden-anchor tie (charter Sec.4.2): a one-hot basis with no penalty reduces
+Golden-anchor tie: a one-hot basis with no penalty reduces
 this penalized GLM to the saturated per-duration fit ``g_k = sum y / sum P``,
 i.e. the same number the frozen ``saturated_intensity`` returns -- the smooth
 mode's reduction to the only golden surface.
 
-Non-representable policy (charter Sec.4.2): log-link cannot express a
+Non-representable policy: log-link cannot express a
 non-positive mean, so a group whose total response is ``<= 0`` is a boundary
 fit (``representable = False``, no IRLS); a duration whose pooled increment is
 non-positive is clamped at the ``eta`` floor and reported, not silently fit.
@@ -123,7 +123,7 @@ def penalized_irls(
     Solves ``(B'WB + lam P) beta = B'W (B beta + (y - mu)/mu)`` to convergence
     in ``max |d eta|``, with step-halving when a step does not reduce the
     penalized Pearson objective and an ``eta`` clamp guarding ``exp`` overflow /
-    a singular zero-weight (charter Sec.4.5 IRLS guardrails). ``y`` may be
+    a singular zero-weight (IRLS guardrails). ``y`` may be
     negative (recoveries are legal -- the quasi-score needs only the first two
     moments); only a non-positive *mean* region is inexpressible and is held at
     the floor."""
@@ -151,8 +151,8 @@ def penalized_irls(
     eta = np.clip(B @ beta + offset, _ETA_FLOOR, _ETA_CEIL)
 
     def _neg_obj(bx: np.ndarray, ex: np.ndarray) -> float:
-        # negative penalized quasi-Poisson log-likelihood (charter Sec.4.5
-        # h-likelihood shape block): minimize -Sum[y*eta - exp(eta)] +
+        # negative penalized quasi-Poisson log-likelihood (h-likelihood
+        # shape block): minimize -Sum[y*eta - exp(eta)] +
         # (lam/2) beta'P beta. Concave loglik -> IRLS is monotone Newton; the
         # penalty gradient lam*P*beta matches the `lam * penalty` in the solve.
         return (-float(np.sum(y * ex - np.exp(ex)))
@@ -260,7 +260,7 @@ def smooth_intensity(
     # filter to fittable cells FIRST (positive, finite exposure + finite
     # response), so every downstream quantity -- the duration key set, the
     # basis sizing, the boundary gate, the prediction range -- is derived from
-    # the data actually fit (charter Sec.4.2 boundary policy on the real total).
+    # the data actually fit (boundary policy on the real total).
     ok = np.isfinite(P) & (P > 0.0) & np.isfinite(y)
     y, P, dur = y[ok], P[ok], dur[ok]
     durs = sorted(set(int(x) for x in dur))
