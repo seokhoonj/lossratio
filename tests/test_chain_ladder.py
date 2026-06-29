@@ -22,7 +22,7 @@ _SHARED = [
 ]
 
 
-def _pl(obj) -> pl.DataFrame:
+def _to_polars(obj) -> pl.DataFrame:
     d = obj.df if hasattr(obj, "df") else obj
     return d if isinstance(d, pl.DataFrame) else d.to_polars()
 
@@ -58,16 +58,16 @@ def test_recent_self_consistent(exp, groups, recent):
     # byte-for-byte parity to the old link-ratio fit was the build-time anchor, now
     # retired with the old surface (the golden master pins the absolute numbers).
     tri = lr.Triangle(exp, groups=groups)
-    a = _pl(ChainLadder(recent=recent).fit(tri))
-    b = _pl(ChainLadder(recent=recent).fit(tri))
+    a = _to_polars(ChainLadder(recent=recent).fit(tri))
+    b = _to_polars(ChainLadder(recent=recent).fit(tri))
     keys = (groups if isinstance(groups, list) else [groups]) + ["cohort", "duration"]
     _assert_shared_parity(a, b, keys)
 
 
 def test_recent_none_matches_no_arg(exp):
     tri = lr.Triangle(exp, groups="coverage")
-    a = _pl(ChainLadder().fit(tri))
-    b = _pl(ChainLadder(recent=None).fit(tri))
+    a = _to_polars(ChainLadder().fit(tri))
+    b = _to_polars(ChainLadder(recent=None).fit(tri))
     _assert_shared_parity(a, b, ["coverage", "cohort", "duration"])
 
 
@@ -82,7 +82,7 @@ def test_recent_validates(exp):
 def test_odp_bootstrap_populates_se_ci(exp):
     from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
-    d = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)).fit(tri))
+    d = _to_polars(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)).fit(tri))
     proj = d.filter(pl.col("source") == "own")
     assert proj["loss_total_se"].is_not_null().all()
     assert (proj["loss_total_se"] > 0).all()
@@ -95,8 +95,8 @@ def test_odp_bootstrap_populates_se_ci(exp):
 def test_odp_bootstrap_reproducible(exp):
     from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
-    a = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
-    b = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
+    a = _to_polars(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
+    b = _to_polars(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=60, seed=5)).fit(tri))
     assert (a["loss_total_se"].fill_null(-1) - b["loss_total_se"].fill_null(-1)).abs().max() == 0.0
 
 
@@ -106,8 +106,8 @@ def test_odp_bootstrap_in_calibration_range(exp):
     # bootstrap SE should stay in a sane band around the analytical one
     from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
-    ana = _pl(ChainLadder().fit(tri))
-    boot = _pl(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))
+    ana = _to_polars(ChainLadder().fit(tri))
+    boot = _to_polars(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))
     j = ana.join(boot, on=["coverage", "cohort", "duration"], suffix="_b").filter(
         pl.col("source") == "own"
     )
@@ -118,5 +118,5 @@ def test_odp_bootstrap_in_calibration_range(exp):
 def test_analytical_default_unchanged_by_bootstrap_wiring(exp):
     # ChainLadder() with no uncertainty must still carry its analytical SE
     tri = lr.Triangle(exp, groups="coverage")
-    d = _pl(ChainLadder().fit(tri))
+    d = _to_polars(ChainLadder().fit(tri))
     assert d.filter(pl.col("source") == "own")["loss_total_se"].is_not_null().all()

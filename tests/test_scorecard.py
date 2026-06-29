@@ -13,7 +13,7 @@ from lossratio._kernels.scorecard import score_cells
 from lossratio.estimators.pooled_loss import PooledLoss
 
 
-def _pl(obj) -> pl.DataFrame:
+def _to_polars(obj) -> pl.DataFrame:
     return obj if isinstance(obj, pl.DataFrame) else pl.from_pandas(obj)
 
 
@@ -25,11 +25,11 @@ def exp() -> pl.DataFrame:
 @pytest.fixture(scope="module")
 def single_ae(exp) -> pl.DataFrame:
     tri = lr.Triangle(exp, groups="coverage")
-    return _pl(lr.Backtest(estimator=PooledLoss(), holdouts=6, target="loss").fit(tri).ae_err)
+    return _to_polars(lr.Backtest(estimator=PooledLoss(), holdouts=6, target="loss").fit(tri).ae_err)
 
 
 def test_panel_structure(single_ae):
-    panel = _pl(score_cells(single_ae, groups="coverage"))
+    panel = _to_polars(score_cells(single_ae, groups="coverage"))
     assert panel.columns == [
         "coverage", "population", "lane",
         "n", "bias", "bias_wt", "mae", "rmse", "deviance",
@@ -47,7 +47,7 @@ def test_coverage_lane_cum_only(single_ae):
     # coverage is a cumulative-projection property: real on the cum lane (in
     # [0, 1]), null on the incremental and anchored lanes.
     assert "expected_se" in single_ae.columns
-    panel = _pl(score_cells(single_ae, groups="coverage"))
+    panel = _to_polars(score_cells(single_ae, groups="coverage"))
     cum = panel.filter(pl.col("lane") == "cumulative")
     for col in ("coverage_80", "coverage_95"):
         assert cum[col].is_not_null().all()
@@ -61,7 +61,7 @@ def test_coverage_lane_cum_only(single_ae):
 def test_coverage_matches_manual(single_ae):
     from statistics import NormalDist
     z = NormalDist().inv_cdf(0.975)                       # 95% two-sided
-    panel = _pl(score_cells(single_ae, groups="coverage"))
+    panel = _to_polars(score_cells(single_ae, groups="coverage"))
     cov = single_ae["coverage"][0]
     # coverage's valid set is the usable-SE cells, NOT gated by ae_err being
     # defined (a cell with expected==0 still has a measurable interval).
@@ -96,14 +96,14 @@ def test_coverage_counts_zero_expected_cell():
         "ae_err": [None, 0.1],
         "expected_se": [1.0, 5.0],          # cell 1 far outside; cell 2 inside
     })
-    panel = _pl(score_cells(df))
+    panel = _to_polars(score_cells(df))
     cum = panel.filter(pl.col("lane") == "cumulative")
     assert cum["n"][0] == 1                  # relative metrics: only the defined cell
     assert cum["coverage_95"][0] == pytest.approx(0.5)   # coverage: both SE-valid cells
 
 
 def test_coverage_levels_param(single_ae):
-    panel = _pl(score_cells(single_ae, groups="coverage", coverage_levels=(0.5, 0.9)))
+    panel = _to_polars(score_cells(single_ae, groups="coverage", coverage_levels=(0.5, 0.9)))
     assert "coverage_50" in panel.columns and "coverage_90" in panel.columns
     assert "coverage_95" not in panel.columns
     for bad in ((0.0,), (1.0,), (1.5,), (True,)):
@@ -118,7 +118,7 @@ def test_coverage_absent_without_se():
         "actual": [10.0, 22.0], "expected": [10.0, 20.0],
         "aeg": [0.0, 2.0], "ae_err": [0.0, 0.1],
     })
-    panel = _pl(score_cells(df))
+    panel = _to_polars(score_cells(df))
     assert not [c for c in panel.columns if c.startswith("coverage_")]
 
 
@@ -127,7 +127,7 @@ def test_anchored_lane_rebases_against_origin(single_ae):
     # cumulative at the as-of origin: bias_wt = sum(actual - expected) /
     # sum(expected - anchor_value) over the scored cells.
     assert "anchor_value" in single_ae.columns
-    panel = _pl(score_cells(single_ae, groups="coverage"))
+    panel = _to_polars(score_cells(single_ae, groups="coverage"))
     cov = single_ae["coverage"][0]
     sub = (
         single_ae.filter(pl.col("coverage") == cov)
@@ -161,7 +161,7 @@ def test_anchored_bias_wt_null_on_denominator_cancellation():
         "ae_err": [0.0, 0.0],
         "anchor_value": [10.0, 10.0],   # _exp = [+5, -5] -> sum 0
     })
-    panel = _pl(score_cells(df))
+    panel = _to_polars(score_cells(df))
     anch = panel.filter(pl.col("lane") == "anchored")
     assert anch.height == 1
     assert anch["n"][0] == 2                       # both cells scored
@@ -178,13 +178,13 @@ def test_anchored_lane_absent_without_anchor():
         "aeg": [0.0, 2.0, 0.0, -1.0],
         "ae_err": [0.0, 0.1, 0.0, -0.04],
     })
-    panel = _pl(score_cells(df))
+    panel = _to_polars(score_cells(df))
     assert "anchored" not in set(panel["lane"].unique())
 
 
 def test_bias_wt_matches_manual(single_ae):
     # bias_wt is the exposure-weighted pooled A/E - 1 on the cumulative lane.
-    panel = _pl(score_cells(single_ae, groups="coverage"))
+    panel = _to_polars(score_cells(single_ae, groups="coverage"))
     cov = single_ae["coverage"][0]
     sub = single_ae.filter(pl.col("coverage") == cov).drop_nulls("ae_err")
     manual = sub["aeg"].sum() / sub["expected"].sum()
@@ -197,7 +197,7 @@ def test_bias_wt_matches_manual(single_ae):
 
 
 def test_deviance_non_negative_incr_only(single_ae):
-    panel = _pl(score_cells(single_ae, groups="coverage"))
+    panel = _to_polars(score_cells(single_ae, groups="coverage"))
     incr = panel.filter(pl.col("lane") == "incremental")
     cum = panel.filter(pl.col("lane") == "cumulative")
     # Poisson deviance is a non-negative Bregman divergence on the incr lane;
@@ -207,7 +207,7 @@ def test_deviance_non_negative_incr_only(single_ae):
 
 
 def test_terminal_population_split(single_ae):
-    panel = _pl(score_cells(single_ae, groups="coverage", terminal=3))
+    panel = _to_polars(score_cells(single_ae, groups="coverage", terminal=3))
     assert set(panel["population"].unique()) == {"all", "terminal"}
     # the terminal (decision-region) cell count never exceeds the full one
     for cov in single_ae["coverage"].unique():
@@ -234,11 +234,11 @@ def test_rolling_groups_by_holdout_no_double_count(exp):
     # A rolling frame scores a physical cell once per origin; the panel must
     # group by `holdout` so depths are not pooled into a double-counted row.
     tri = lr.Triangle(exp, groups="coverage")
-    rae = _pl(
+    rae = _to_polars(
         lr.Backtest(estimator=PooledLoss(), holdouts=(6, 12), target="loss")
         .fit(tri).ae_err
     )
-    panel = _pl(score_cells(rae, groups="coverage"))
+    panel = _to_polars(score_cells(rae, groups="coverage"))
     assert "holdout" in panel.columns
     # per-(coverage, holdout, cum) n equals the raw scored-cell count
     for cov in rae["coverage"].unique():
@@ -264,7 +264,7 @@ def test_ungrouped_frame():
         "aeg": [0.0, 2.0, 0.0, -1.0],
         "ae_err": [0.0, 0.1, 0.0, -0.04],
     })
-    panel = _pl(score_cells(df))
+    panel = _to_polars(score_cells(df))
     assert panel.columns[:2] == ["population", "lane"]
     assert set(panel["lane"].unique()) == {"cumulative"}      # no incr cols -> cum only
     row = panel.filter(pl.col("lane") == "cumulative")
@@ -278,8 +278,8 @@ def test_point_only_fit_emits_no_coverage_columns(exp):
     # to keep the "no SE -> no coverage column" contract
     from lossratio.estimators.credible_loss import CredibleLoss
     tri = lr.Triangle(exp, groups="coverage")
-    ae = _pl(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)
-    panel = _pl(score_cells(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
+    ae = _to_polars(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)
+    panel = _to_polars(score_cells(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
     assert not [c for c in panel.columns if c.startswith("coverage_")]
 
 
@@ -295,7 +295,7 @@ def test_coverage_only_group_is_retained(single_ae):
         pl.lit(10.0).alias("actual"),
     )
     inj = pl.concat([single_ae, donor], how="vertical_relaxed")
-    panel = _pl(score_cells(inj, groups="coverage"))
+    panel = _to_polars(score_cells(inj, groups="coverage"))
     cum_zzz = panel.filter(
         (pl.col("coverage") == "ZZZ") & (pl.col("lane") == "cumulative")
     )

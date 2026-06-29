@@ -18,13 +18,13 @@ KEY = ["coverage", "cohort", "duration"]
 PROJ_COLS = ["loss_proj", "ratio_proj", "premium_proj"]
 
 
-def _pl(obj) -> pl.DataFrame:
+def _to_polars(obj) -> pl.DataFrame:
     return obj if isinstance(obj, pl.DataFrame) else pl.from_pandas(obj)
 
 
 def test_credibility_diagnostics_exposed(tri):
     cred = CredibleLoss().fit(tri)
-    c = _pl(cred.credibility)
+    c = _to_polars(cred.credibility)
     assert c.columns == ["coverage", "cohort", "u", "Z", "psi"]
     # one row per cohort x segment
     n = cred.to_polars().select(["coverage", "cohort"]).unique().height
@@ -39,7 +39,7 @@ def test_credibility_diagnostics_exposed(tri):
 
 
 def test_credibility_psi_zero_is_pooled_collapse(tri):
-    c = _pl(CredibleLoss(psi=0).fit(tri).credibility)
+    c = _to_polars(CredibleLoss(psi=0).fit(tri).credibility)
     assert (c["u"] == 1.0).all()
     assert (c["Z"] == 0.0).all()
     assert (c["psi"] == 0.0).all()
@@ -98,7 +98,7 @@ def test_credible_scales_pooled_increment_by_cohort_level(tri):
 def test_point_only_se_is_null(tri):
     # The credibility level's estimation variance breaks the analytical
     # recursion, so v1 leaves SE / CI null (bootstrap comes later).
-    cred = _pl(CredibleLoss().fit(tri).df)
+    cred = _to_polars(CredibleLoss().fit(tri).df)
     for c in ("loss_proc_se", "loss_param_se", "loss_total_se",
               "loss_ci_lo", "loss_ci_hi"):
         assert cred[c].is_null().all()

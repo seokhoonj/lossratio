@@ -18,7 +18,7 @@ from lossratio.estimators.loss import _apply_balance
 from lossratio.estimators.pooled_loss import PooledLoss
 
 
-def _pl(obj) -> pl.DataFrame:
+def _to_polars(obj) -> pl.DataFrame:
     return obj if isinstance(obj, pl.DataFrame) else pl.from_pandas(obj)
 
 
@@ -32,35 +32,35 @@ def test_pooled_balance_is_noop(tri):
     byte-identical to the unbalanced fit."""
     base = PooledLoss().fit(tri).df
     bal = PooledLoss(balance=True).fit(tri)
-    bf = _pl(bal.balance_factor)
+    bf = _to_polars(bal.balance_factor)
     assert bf.columns == ["coverage", "alpha"]
     assert (bf["alpha"] == 1.0).all()
-    assert _pl(base).equals(_pl(bal.df))
+    assert _to_polars(base).equals(_to_polars(bal.df))
 
 
 def test_balance_is_noop_at_psi_zero(tri):
     """psi=0 -> u=1 -> alpha=1, so balance is a no-op: the balanced fit is
     byte-identical to the unbalanced one (the ladder nesting survives balance)."""
-    c0 = _pl(CredibleLoss(psi=0).fit(tri).df)
+    c0 = _to_polars(CredibleLoss(psi=0).fit(tri).df)
     fit_b = CredibleLoss(psi=0, balance=True).fit(tri)
-    assert c0.equals(_pl(fit_b.df))
-    assert (_pl(fit_b.balance_factor)["alpha"] == 1.0).all()
+    assert c0.equals(_to_polars(fit_b.df))
+    assert (_to_polars(fit_b.balance_factor)["alpha"] == 1.0).all()
 
 
 def test_credible_psi_zero_point_matches_pooled(tri):
     """At psi=0 the credibility point projection collapses to pooled cell-for-cell
     (the SE block differs: pooled is analytical, credible is point-only null)."""
     pt = ["loss_proj", "incr_loss_proj", "ratio_proj", "premium_proj"]
-    pooled = _pl(PooledLoss().fit(tri).df).select(pt)
-    cred0 = _pl(CredibleLoss(psi=0).fit(tri).df).select(pt)
+    pooled = _to_polars(PooledLoss().fit(tri).df).select(pt)
+    cred0 = _to_polars(CredibleLoss(psi=0).fit(tri).df).select(pt)
     assert pooled.equals(cred0)
 
 
 def test_balance_factor_shape_and_range(tri):
-    bf = _pl(CredibleLoss(balance=True).fit(tri).balance_factor)
+    bf = _to_polars(CredibleLoss(balance=True).fit(tri).balance_factor)
     assert bf.columns == ["coverage", "alpha"]
     # one row per segment
-    n_seg = _pl(tri.df).select("coverage").unique().height
+    n_seg = _to_polars(tri.df).select("coverage").unique().height
     assert bf.height == n_seg
     assert bf["alpha"].is_finite().all()
     assert (bf["alpha"] > 0).all()
@@ -69,8 +69,8 @@ def test_balance_factor_shape_and_range(tri):
 def test_observed_cells_untouched_by_balance(tri):
     """Balance rescales only the projected portion -- observed cells (and the
     premium projection) are identical with and without balance."""
-    base = _pl(CredibleLoss().fit(tri).df)
-    bal = _pl(CredibleLoss(balance=True).fit(tri).df)
+    base = _to_polars(CredibleLoss().fit(tri).df)
+    bal = _to_polars(CredibleLoss(balance=True).fit(tri).df)
     obs = base.filter(pl.col("loss_obs").is_not_null())
     obs_b = bal.filter(pl.col("loss_obs").is_not_null())
     assert obs.select("loss_obs").equals(obs_b.select("loss_obs"))
@@ -82,10 +82,10 @@ def test_balance_scales_projected_increment_by_alpha(tri):
     """Defining semantics: on projected (future) cells the incremental loss
     scales by the segment's alpha (premium is untouched, so ratio scales too).
     Holds for any alpha, including the alpha==1 no-op."""
-    base = _pl(CredibleLoss().fit(tri).df)
+    base = _to_polars(CredibleLoss().fit(tri).df)
     fit = CredibleLoss(balance=True).fit(tri)
-    bal = _pl(fit.df)
-    bf = _pl(fit.balance_factor)
+    bal = _to_polars(fit.df)
+    bf = _to_polars(fit.balance_factor)
 
     key = ["coverage", "cohort", "duration"]
     j = (

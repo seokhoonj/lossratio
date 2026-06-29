@@ -16,7 +16,7 @@ from lossratio.estimators.credible_loss import CredibleLoss
 from lossratio.estimators.smooth_loss import SmoothLoss
 
 
-def _pl(x) -> pl.DataFrame:
+def _to_polars(x) -> pl.DataFrame:
     return x if isinstance(x, pl.DataFrame) else pl.from_pandas(x)
 
 
@@ -38,7 +38,7 @@ def test_point_only_se_is_null(tri):
 
 
 def test_credibility_diagnostics_exposed(tri):
-    c = _pl(SmoothLoss().fit(tri).credibility)
+    c = _to_polars(SmoothLoss().fit(tri).credibility)
     assert c.columns == ["coverage", "cohort", "u", "Z", "psi"]
     assert (c["u"] >= 0).all()
     assert ((c["Z"] >= 0) & (c["Z"] <= 1)).all()
@@ -46,7 +46,7 @@ def test_credibility_diagnostics_exposed(tri):
 
 def test_psi_zero_is_single_smooth_pass(tri):
     # psi = 0 -> no credibility -> u = 1 for every cohort (one smooth pass)
-    c = _pl(SmoothLoss(psi=0).fit(tri).credibility)
+    c = _to_polars(SmoothLoss(psi=0).fit(tri).credibility)
     assert (c["u"] == 1.0).all()
     assert (c["Z"] == 0.0).all()
 
@@ -74,7 +74,7 @@ def test_fixed_lambda_and_basis(tri):
 
 def test_multi_group(tri):
     # already grouped by coverage; a credibility row per cohort x coverage
-    c = _pl(SmoothLoss().fit(tri).credibility)
+    c = _to_polars(SmoothLoss().fit(tri).credibility)
     n = SmoothLoss().fit(tri).to_polars().select(
         ["coverage", "cohort"]
     ).unique().height
@@ -103,9 +103,9 @@ def test_bootstrap_populates_se_ci_and_coverage(tri):
     assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-9).all()
     assert proj["ratio_se"].is_not_null().all()
     # coverage lane flows through a backtest
-    ae = _pl(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
+    ae = _to_polars(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
     assert "expected_se" in ae.columns
-    panel = _pl(score_cells(ae, groups="coverage", coverage_levels=(0.95,)))
+    panel = _to_polars(score_cells(ae, groups="coverage", coverage_levels=(0.95,)))
     cum = panel.filter((pl.col("lane") == "cumulative") & (pl.col("population") == "all"))
     cov = cum["coverage_95"].drop_nulls()
     assert cov.len() > 0 and ((cov >= 0) & (cov <= 1)).all()

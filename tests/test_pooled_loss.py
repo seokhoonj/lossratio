@@ -24,13 +24,13 @@ _SHARED = [
 ]
 
 
-def _pl(obj) -> pl.DataFrame:
+def _to_polars(obj) -> pl.DataFrame:
     d = obj.df if hasattr(obj, "df") else obj
     return d if isinstance(d, pl.DataFrame) else d.to_polars()
 
 
 def test_ratio_proj_is_loss_over_premium(exp):
-    got = _pl(PooledLoss().fit(lr.Triangle(exp, groups="coverage")))
+    got = _to_polars(PooledLoss().fit(lr.Triangle(exp, groups="coverage")))
     lp = got["loss_proj"].to_numpy().astype(float)
     pp = got["premium_proj"].to_numpy().astype(float)
     rp = got["ratio_proj"].to_numpy().astype(float)
@@ -58,7 +58,7 @@ def test_regime_cohort_cut(exp):
     df = fit.to_polars()
     assert df["cohort"].min() == date(2024, 1, 1)
     # fewer rows than the unfiltered fit (pre-2024 cohorts dropped)
-    assert df.height < _pl(PooledLoss().fit(tri)).height
+    assert df.height < _to_polars(PooledLoss().fit(tri)).height
 
 
 def _assert_shared_parity(ref: pl.DataFrame, got: pl.DataFrame, keys: list[str]):
@@ -85,8 +85,8 @@ def test_recent_self_consistent(exp, groups, recent):
     # pooled-intensity fit was the build-time anchor, now retired with the old surface;
     # the golden master pins the absolute numbers).
     tri = lr.Triangle(exp, groups=groups)
-    a = _pl(PooledLoss(recent=recent).fit(tri))
-    b = _pl(PooledLoss(recent=recent).fit(tri))
+    a = _to_polars(PooledLoss(recent=recent).fit(tri))
+    b = _to_polars(PooledLoss(recent=recent).fit(tri))
     keys = (groups if isinstance(groups, list) else [groups]) + ["cohort", "duration"]
     _assert_shared_parity(a, b, keys)
 
@@ -94,8 +94,8 @@ def test_recent_self_consistent(exp, groups, recent):
 def test_recent_none_matches_no_arg(exp):
     # recent=None is the no-filter path -- byte-identical to omitting it.
     tri = lr.Triangle(exp, groups="coverage")
-    a = _pl(PooledLoss().fit(tri))
-    b = _pl(PooledLoss(recent=None).fit(tri))
+    a = _to_polars(PooledLoss().fit(tri))
+    b = _to_polars(PooledLoss(recent=None).fit(tri))
     _assert_shared_parity(a, b, ["coverage", "cohort", "duration"])
 
 
