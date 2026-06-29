@@ -75,7 +75,7 @@ def test_plot_invalid_metric(rbt_single):
 
 def test_per_holdout_calendar_view_accessible(rbt_single):
     # Per-as-of-depth calendar heatmaps come from the inner BacktestFit.
-    fig = rbt_single.fits[12].plot_triangle(x="calendar")
+    fig = rbt_single.fits[12].plot_triangle(x_axis="calendar")
     try:
         assert isinstance(fig, plt.Figure)
         assert fig._supxlabel.get_text() == "calendar"

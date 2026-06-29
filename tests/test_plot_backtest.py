@@ -108,7 +108,7 @@ def test_backtest_plot_triangle_invalid_cell_type(bt_single):
         bt_single.plot_triangle(cell_type="bogus")
 
 def test_backtest_plot_triangle_duration_axis_default(bt_single):
-    # default x="duration" keeps the duration-period axis label.
+    # default x_axis="duration" keeps the duration-period axis label.
     fig = bt_single.plot_triangle()
     try:
         assert "duration" in fig._supxlabel.get_text()
@@ -116,8 +116,8 @@ def test_backtest_plot_triangle_duration_axis_default(bt_single):
         _close(fig)
 
 def test_backtest_plot_triangle_calendar_axis(bt_single):
-    # x="calendar" repositions each cell at its actual calendar date.
-    fig = bt_single.plot_triangle(x="calendar")
+    # x_axis="calendar" repositions each cell at its actual calendar date.
+    fig = bt_single.plot_triangle(x_axis="calendar")
     try:
         assert isinstance(fig, plt.Figure)
         assert fig._supxlabel.get_text() == "calendar"
@@ -129,7 +129,7 @@ def test_backtest_plot_triangle_calendar_axis(bt_single):
         _close(fig)
 
 def test_backtest_plot_triangle_calendar_multi(bt_multi):
-    fig = bt_multi.plot_triangle(x="calendar")
+    fig = bt_multi.plot_triangle(x_axis="calendar")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -137,7 +137,7 @@ def test_backtest_plot_triangle_calendar_multi(bt_multi):
 
 def test_backtest_plot_triangle_invalid_x(bt_single):
     with pytest.raises(ValueError, match="'duration' or 'calendar'"):
-        bt_single.plot_triangle(x="bogus")
+        bt_single.plot_triangle(x_axis="bogus")
 
 # --- kind='usage' ---------------------------------------------------------
 

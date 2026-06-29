@@ -585,7 +585,7 @@ class _FoldFit:
         *,
         recent: int | None = None,
         regime: "RegimeArg" = None,
-        x: str = "duration",
+        x_axis: str = "duration",
     ) -> Any:
         """A/E error heatmap (``kind='value'``) or cell-status
         heatmap (``kind='usage'``), backed by matplotlib.
@@ -613,7 +613,7 @@ class _FoldFit:
             overlays. By default the usage view reads ``recent`` and
             ``regime`` from the estimator that drove the backtest; pass an
             explicit value to override.
-        x
+        x_axis
             (``kind='value'`` only) horizontal axis: ``"duration"`` (default;
             cohort x duration) or ``"calendar"`` (cohort x calendar
             period -- each cell at its actual calendar date, so the held-out
@@ -634,7 +634,7 @@ class _FoldFit:
                 cell_type=cell_type,
                 label_size=label_size,
                 nrow=nrow, ncol=ncol, figsize=figsize,
-                x=x,
+                x_axis=x_axis,
             )
         # kind == "usage": forward to the Triangle-side usage
         # renderer with `holdout=self.holdout` and filter args

@@ -101,14 +101,14 @@ def plot_triangle_backtest(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
     *,
-    x: str = "duration",
+    x_axis: str = "duration",
 ) -> Any:
     """A/E error heatmap on the held-out wedge.
 
     Diverging palette: red = positive error (under-projected,
     actual > expected), blue = negative (over-projected). White at 0.
 
-    ``x`` selects the horizontal axis: ``"duration"`` (default; cohort x
+    ``x_axis`` selects the horizontal axis: ``"duration"`` (default; cohort x
     duration) or ``"calendar"`` (cohort x calendar period). The
     calendar view places each cell at its actual calendar date
     (``cohort`` advanced by ``duration - 1`` grain periods), so a cohort's
@@ -120,9 +120,9 @@ def plot_triangle_backtest(
             f"`cell_type` must be one of {_VALID_CELL_TYPES!r}; "
             f"got {cell_type!r}."
         )
-    if x not in ("duration", "calendar"):
+    if x_axis not in ("duration", "calendar"):
         raise ValueError(
-            f"`x` must be 'duration' or 'calendar'; got {x!r}."
+            f"`x_axis` must be 'duration' or 'calendar'; got {x_axis!r}."
         )
     is_incr = cell_type == "incremental"
     ae_err_col = "incr_ae_err" if is_incr else "ae_err"
@@ -150,10 +150,10 @@ def plot_triangle_backtest(
 
     work = dt.with_columns(pl.Series(name="_y_lab", values=coh_labels))
     # Coherent axes:
-    # x = duration (numeric) or calendar date, see `x`.
+    # x axis: duration (numeric) or calendar date, see `x_axis`.
     # y = cohort labels, oldest at top / newest at the bottom -- the same
     #     orientation as the triangle value heatmap.
-    if x == "calendar":
+    if x_axis == "calendar":
         if coh_type is None:
             raise ValueError(
                 "x='calendar' needs a Date cohort axis; this triangle's "
