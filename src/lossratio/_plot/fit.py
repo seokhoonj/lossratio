@@ -16,6 +16,7 @@ import polars as pl
 
 from .._kernels.io import _iter_group_frames, format_group_value
 from .base import _hide_unused, _resolve_grid
+from .theme import add_cohort_colorbar, cohort_gradient
 
 if TYPE_CHECKING:
     pass
@@ -83,10 +84,7 @@ def plot_fit(
     ``df`` carries ``cohort`` / ``duration`` / ``source`` / ``value_col`` (plus
     the group column(s) when grouped) -- the result class's polars frame.
     """
-    import matplotlib as mpl
     import matplotlib.pyplot as plt
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import ListedColormap, Normalize
 
     facets: list[tuple[Any, pl.DataFrame]] = list(_iter_group_frames(df, groups))
     n_facets = len(facets)
@@ -103,13 +101,7 @@ def plot_fit(
     # the same cohort keeps its colour across facets.
     cohorts = sorted({c for c in df["cohort"].to_list()})
     n_coh = len(cohorts)
-    cmap = mpl.colormaps["YlGnBu"]
-    lo, hi = 0.15, 0.92
-    cpos = {c: lo + (hi - lo) * (i / max(n_coh - 1, 1))
-            for i, c in enumerate(cohorts)}
-
-    def _coh_color(c):
-        return cmap(cpos[c])
+    _coh_color = cohort_gradient(cohorts)
 
     for idx, (group_value, sub) in enumerate(facets):
         r, c = divmod(idx, ncol)
@@ -129,14 +121,7 @@ def plot_fit(
     vis_axes = [axes[divmod(i, ncol)[0]][divmod(i, ncol)[1]]
                 for i in range(n_facets)]
     if n_coh > 1:
-        lc = ListedColormap([_coh_color(c) for c in cohorts])
-        sm = ScalarMappable(norm=Normalize(vmin=0, vmax=n_coh), cmap=lc)
-        cbar = fig.colorbar(sm, ax=vis_axes, fraction=0.025, pad=0.01)
-        ticks = list(range(0, n_coh, max(1, n_coh // 6)))
-        cbar.set_ticks([t + 0.5 for t in ticks])
-        cbar.set_ticklabels([str(cohorts[t]) for t in ticks])
-        cbar.ax.tick_params(labelsize=7)
-        cbar.ax.set_title("cohort", fontsize=8)
+        add_cohort_colorbar(fig, vis_axes, cohorts, _coh_color)
 
     return fig
 

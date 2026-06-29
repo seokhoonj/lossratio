@@ -22,6 +22,7 @@ from .base import (
     _pretty_var_label,
     _resolve_grid,
 )
+from .theme import STAT_COLORS
 
 if TYPE_CHECKING:
     from ..diagnostics.backtest import BacktestFit
@@ -29,11 +30,6 @@ if TYPE_CHECKING:
 
 _VALID_TYPES = ("col", "diag", "cell")
 _VALID_CELL_TYPES = ("cumulative", "incremental")
-_STAT_COLORS = {
-    "Mean":     "black",
-    "Median":   "#1f77b4",
-    "Weighted": "#d62728",
-}
 _STAT_COLUMNS = (
     ("Mean",     "ae_err_mean", "incr_ae_err_mean"),
     ("Median",   "ae_err_med",  "incr_ae_err_med"),
@@ -332,7 +328,7 @@ def _plot_aggregated_lines(
             if m.any():
                 ax.plot(
                     x[m], y[m],
-                    color=_STAT_COLORS.get(stat_label, "C0"),
+                    color=STAT_COLORS.get(stat_label.lower(), "C0"),
                     linewidth=0.8, marker="o", label=stat_label,
                 )
 

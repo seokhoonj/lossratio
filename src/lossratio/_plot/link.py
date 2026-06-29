@@ -25,6 +25,7 @@ from .._kernels.io import (
     normalize_groups,
     set_group_values,
 )
+from .theme import STAT_COLORS_HUE
 
 if TYPE_CHECKING:
     from ..core.link import Link
@@ -33,11 +34,6 @@ if TYPE_CHECKING:
 _VALID_ATA_TYPES = ("cv", "rse", "summary", "box", "point")
 _VALID_ED_TYPES = ("summary", "box", "point")
 _SUMMARY_STATS = ("mean", "median", "weighted")
-_STAT_COLORS = {
-    "mean":     "#F8766D",  # ggplot hue palette (salmon / green / blue)
-    "median":   "#00BA38",
-    "weighted": "#619CFF",
-}
 
 
 def _style_ggplot(ax: Any) -> None:
@@ -454,7 +450,7 @@ def _plot_summary_lines(
             if m.any():
                 ax.plot(
                     x[m], y[m],
-                    color=_STAT_COLORS.get(stat, "C0"),
+                    color=STAT_COLORS_HUE.get(stat, "C0"),
                     linewidth=1.0,
                     marker="o", markersize=3.2, markeredgewidth=0,
                     label=stat,

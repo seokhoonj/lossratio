@@ -25,6 +25,14 @@ from .base import (
     _pretty_var_label,
     _resolve_grid,
 )
+from .theme import (
+    CAPTION_COLOR,
+    STAT_COLORS,
+    add_cohort_colorbar,
+    cohort_gradient,
+    draw_facet_strip,
+    period_label_fn,
+)
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -139,15 +147,10 @@ _NA_COLOR = "white"
 _BORDER_COLOR = "black"
 _BORDER_WIDTH = 0.3
 # theme_grey-style chrome for the cell grid: thin interior cell
-# gridlines + a heavier black panel border, grey85 facet strips,
-# left-aligned plain title, grey30 right caption.
+# gridlines + a heavier black panel border. (Facet-strip / caption chrome
+# is shared from `theme`.)
 _GRID_WIDTH = 0.5            # interior cell separators (thin)
 _PANEL_BORDER_WIDTH = 1.0    # outer panel frame (heavier)
-_STRIP_FILL = "#d9d9d9"      # grey85 facet-strip background
-_STRIP_EDGE = "black"        # strip outline
-_STRIP_TEXT = "#1a1a1a"      # grey10 strip label
-_CAPTION_COLOR = "#4d4d4d"   # grey30 caption
-_STRIP_HEIGHT_IN = 0.20      # facet-strip height (inches, constant per panel)
 
 # Usage-view categorical palette.
 _USAGE_COLORS: dict[str, str] = {
@@ -298,8 +301,6 @@ def plot_triangle(
         fig_h = max(3.0, cell_h * len(y_levels) * nrow + 1.5)
         figsize = (fig_w, fig_h)
 
-    from matplotlib.patches import Rectangle
-
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
@@ -319,25 +320,8 @@ def plot_triangle(
         )
         title = format_group_value(group_value)
         if title:
-            # ggplot2 facet strip: grey85 rectangle with a black outline and
-            # a centered label, sitting in the reserved gap above the panel.
-            # Panels share fixed scales (equal size), so a constant-height
-            # strip in axes fraction renders uniformly across facets.
             panel_h_in = max(cell_h * len(y_levels), 0.5)
-            strip_h = _STRIP_HEIGHT_IN / panel_h_in
-            ax.set_title(" ", pad=_STRIP_HEIGHT_IN * 72.0)
-            ax.add_patch(
-                Rectangle(
-                    (0.0, 1.0), 1.0, strip_h, transform=ax.transAxes,
-                    facecolor=_STRIP_FILL, edgecolor=_STRIP_EDGE,
-                    linewidth=0.5, clip_on=False, zorder=3,
-                )
-            )
-            ax.text(
-                0.5, 1.0 + strip_h / 2.0, title, transform=ax.transAxes,
-                ha="center", va="center", fontsize=8.5, color=_STRIP_TEXT,
-                clip_on=False, zorder=4,
-            )
+            draw_facet_strip(ax, title, panel_h_in)
 
     # Hide unused axes.
     _hide_unused(axes, n_facets, nrow, ncol)
@@ -350,7 +334,7 @@ def plot_triangle(
     if meta.caption:
         # ggplot2 `plot.caption`: right-aligned, grey30.
         fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
-                 fontsize=8.5, color=_CAPTION_COLOR)
+                 fontsize=8.5, color=CAPTION_COLOR)
 
     return fig
 
@@ -985,12 +969,12 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
     n = np.asarray(agg["n"].to_list())
     masked = summary_min_n is not None and np.isfinite(summary_min_n)
     mask = n < summary_min_n if masked else np.zeros(len(n), dtype=bool)
-    for col, color, lbl in (("mean", "black", "Mean"),
-                            ("median", "#1f77b4", "Median"),
-                            ("weighted", "#d62728", "Weighted")):
+    for col, lbl in (("mean", "Mean"), ("median", "Median"),
+                     ("weighted", "Weighted")):
         yv = np.asarray(agg[col].to_list(), dtype=float).copy()
         yv[mask] = np.nan
-        ax.plot(xd, yv, color=color, linewidth=1.7, label=lbl, zorder=3)
+        ax.plot(xd, yv, color=STAT_COLORS[col], linewidth=1.7, label=lbl,
+                zorder=3)
     if masked:
         le = n <= summary_min_n
         if le.any():
@@ -1017,11 +1001,7 @@ def plot(
     """
     import warnings
 
-    import matplotlib as mpl
     import matplotlib.pyplot as plt
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import ListedColormap, Normalize
-    from matplotlib.patches import Rectangle
     from matplotlib.ticker import FuncFormatter
 
     if metric not in _VALID_METRICS:
@@ -1076,13 +1056,7 @@ def plot(
     # the same cohort keeps its colour across facets (a date gradient).
     cohorts = sorted({c for c in df["cohort"].to_list()})
     n_coh = len(cohorts)
-    cmap = mpl.colormaps["YlGnBu"]
-    lo, hi = 0.15, 0.92
-    cpos = {c: lo + (hi - lo) * (i / max(n_coh - 1, 1))
-            for i, c in enumerate(cohorts)}
-
-    def _coh_color(c):
-        return cmap(cpos[c])
+    _coh_color = cohort_gradient(cohorts)
 
     if is_ratio:
         hline: float | None = 1.0
@@ -1101,15 +1075,7 @@ def plot(
                            summary_min_n, hline)
         ax.yaxis.set_major_formatter(fmt)
         if group_value is not None:
-            strip_h = _STRIP_HEIGHT_IN / panel_h_in
-            ax.set_title(" ", pad=_STRIP_HEIGHT_IN * 72.0)
-            ax.add_patch(Rectangle(
-                (0.0, 1.0), 1.0, strip_h, transform=ax.transAxes,
-                facecolor=_STRIP_FILL, edgecolor=_STRIP_EDGE, linewidth=0.5,
-                clip_on=False, zorder=3))
-            ax.text(0.5, 1.0 + strip_h / 2.0, format_group_value(group_value),
-                    transform=ax.transAxes, ha="center", va="center",
-                    fontsize=8.5, color=_STRIP_TEXT, clip_on=False, zorder=4)
+            draw_facet_strip(ax, format_group_value(group_value), panel_h_in)
 
     _hide_unused(axes, n_facets, nrow, ncol)
 
@@ -1119,34 +1085,23 @@ def plot(
     fig.supylabel(metric, fontsize=11)
     if meta.caption:
         fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
-                 fontsize=8.5, color=_CAPTION_COLOR)
+                 fontsize=8.5, color=CAPTION_COLOR)
 
     vis_axes = [axes[divmod(i, ncol)[0]][divmod(i, ncol)[1]]
                 for i in range(n_facets)]
     if summary:
         handles = [
-            plt.Line2D([], [], color="black", label="Mean"),
-            plt.Line2D([], [], color="#1f77b4", label="Median"),
-            plt.Line2D([], [], color="#d62728", label="Weighted"),
+            plt.Line2D([], [], color=STAT_COLORS["mean"], label="Mean"),
+            plt.Line2D([], [], color=STAT_COLORS["median"], label="Median"),
+            plt.Line2D([], [], color=STAT_COLORS["weighted"], label="Weighted"),
         ]
         fig.legend(handles=handles, loc="upper right", fontsize=8,
                    frameon=False)
     elif n_coh > 1:
         # Raw-mode cohort colour bar.
-        lc = ListedColormap([_coh_color(c) for c in cohorts])
-        sm = ScalarMappable(norm=Normalize(vmin=0, vmax=n_coh), cmap=lc)
-        cbar = fig.colorbar(sm, ax=vis_axes, fraction=0.025, pad=0.01)
         coh_type = _get_period_type(coh, grain=grain)
-        ticks = list(range(0, n_coh, max(1, n_coh // 6)))
-        cbar.set_ticks([t + 0.5 for t in ticks])
-        if coh_type:
-            lbls = _format_period_series(
-                pl.Series([cohorts[t] for t in ticks]), coh_type)
-        else:
-            lbls = [str(cohorts[t]) for t in ticks]
-        cbar.set_ticklabels(lbls)
-        cbar.ax.tick_params(labelsize=7)
-        cbar.ax.set_title("cohort", fontsize=8)
+        add_cohort_colorbar(fig, vis_axes, cohorts, _coh_color,
+                            label_fn=period_label_fn(coh_type))
 
     return fig
 
