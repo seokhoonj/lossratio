@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .._kernels.io import _iter_group_frames, format_group_value
-from .base import _hide_unused, _resolve_grid
+from .._kernels.io import _iter_group_frames
+from .base import open_facets
+from .theme import BLUE, RED
 
 if TYPE_CHECKING:
     from ..diagnostics.backtest import BacktestFit
@@ -57,8 +58,6 @@ def plot_backtest_reliability(
             f"`metric` must be one of {_VALID_METRIC!r}; got {metric!r}."
         )
 
-    import matplotlib.pyplot as plt
-
     summary = {
         "horizon": fit._horizon_summary,
         "anchor": fit._anchor_summary,
@@ -69,50 +68,40 @@ def plot_backtest_reliability(
     inc_col = "incr_" + cum_col
     has_inc = inc_col in summary.columns
 
-    groups = fit._groups
-    facets = list(_iter_group_frames(summary, groups))
-    n = max(len(facets), 1)
-    nrow, ncol = _resolve_grid(n, nrow, ncol)
-
-    if figsize is None:
-        figsize = (max(5.0, 3.2 * ncol), max(3.5, 2.6 * nrow))
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    grid = open_facets(
+        _iter_group_frames(summary, fit._groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
     )
-
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
+    for idx, group_value, sub, ax in grid:
         sub = sub.sort(xcol)
         xs = sub[xcol].to_list()
         ax.plot(
             xs, sub[cum_col].to_list(),
             marker="o", markersize=3, linewidth=1.2,
-            color="#1f77b4", label="cumulative",
+            color=BLUE, label="cumulative",
         )
         if has_inc:
             ax.plot(
                 xs, sub[inc_col].to_list(),
                 marker="s", markersize=3, linewidth=1.2,
-                color="#d62728", label="incremental",
+                color=RED, label="incremental",
             )
         if metric == "ae_err":
             ax.axhline(0.0, color="grey", linewidth=0.6, linestyle="--")
         ax.grid(True, alpha=0.3, linewidth=0.4)
         ax.tick_params(labelsize=8)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         if idx == 0:
             ax.legend(fontsize=8, frameon=False)
 
-    _hide_unused(axes, len(facets), nrow, ncol)
+    grid.hide_unused()
 
     metric_word = "relative A/E error" if metric == "ae_err" else "absolute A/E error"
-    fig.suptitle(
+    grid.fig.suptitle(
         f"Backtest reliability -- {metric_word} vs {by}",
         fontsize=12, fontweight="bold",
     )
-    fig.supxlabel(_BY_XLABEL[by], fontsize=10)
-    fig.supylabel(metric_word, fontsize=10)
-    return fig
+    grid.fig.supxlabel(_BY_XLABEL[by], fontsize=10)
+    grid.fig.supylabel(metric_word, fontsize=10)
+    return grid.fig

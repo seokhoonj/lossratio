@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
-from .base import _hide_unused, _resolve_grid
+from .._kernels.io import _iter_group_frames
+from .base import open_facets
 from .theme import add_cohort_colorbar, cohort_gradient
 
 if TYPE_CHECKING:
@@ -84,17 +84,11 @@ def plot_fit(
     ``df`` carries ``cohort`` / ``duration`` / ``source`` / ``value_col`` (plus
     the group column(s) when grouped) -- the result class's polars frame.
     """
-    import matplotlib.pyplot as plt
-
-    facets: list[tuple[Any, pl.DataFrame]] = list(_iter_group_frames(df, groups))
-    n_facets = len(facets)
-    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
-
-    if figsize is None:
-        figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    grid = open_facets(
+        _iter_group_frames(df, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(4.0, 2.6 * nc + 0.8),
+                                   max(3.0, 2.2 * nr + 1.0)),
     )
 
     # Cohort -> colour: a YlGnBu gradient over the global cohort ordering, so
@@ -103,27 +97,25 @@ def plot_fit(
     n_coh = len(cohorts)
     _coh_color = cohort_gradient(cohorts)
 
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
+    for idx, group_value, sub, ax in grid:
         _draw_fit_cohort(ax, sub, value_col, _coh_color)
         if hline is not None:
             ax.axhline(hline, linestyle=":", color="0.5", linewidth=0.8, zorder=1)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
 
-    _hide_unused(axes, n_facets, nrow, ncol)
+    grid.hide_unused()
 
-    fig.suptitle(title, fontsize=12, fontweight="normal", x=0.01, ha="left")
-    fig.supxlabel("duration", fontsize=11)
-    fig.supylabel(ylabel, fontsize=11)
+    grid.fig.suptitle(title, fontsize=12, fontweight="normal", x=0.01, ha="left")
+    grid.fig.supxlabel("duration", fontsize=11)
+    grid.fig.supylabel(ylabel, fontsize=11)
 
-    vis_axes = [axes[divmod(i, ncol)[0]][divmod(i, ncol)[1]]
+    n_facets = len(grid.facets)
+    vis_axes = [grid.axes[divmod(i, grid.ncol)[0]][divmod(i, grid.ncol)[1]]
                 for i in range(n_facets)]
     if n_coh > 1:
-        add_cohort_colorbar(fig, vis_axes, cohorts, _coh_color)
+        add_cohort_colorbar(grid.fig, vis_axes, cohorts, _coh_color)
 
-    return fig
+    return grid.fig
 
 
 __all__ = ["plot_fit", "resolve_fit_metric"]

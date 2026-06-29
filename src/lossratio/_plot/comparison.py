@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
-from .base import _hide_unused, _resolve_grid
+from .._kernels.io import _iter_group_frames
+from .base import open_facets
 
 if TYPE_CHECKING:
     from ..diagnostics.comparison import EstimatorComparisonFit
@@ -82,8 +82,6 @@ def plot_estimator_comparison(
             "projection, so the matched summaries have no incr_* lane."
         )
 
-    import matplotlib.pyplot as plt
-
     summary = {
         "horizon": fit._horizon_summary,
         "anchor":  fit._anchor_summary,
@@ -94,21 +92,12 @@ def plot_estimator_comparison(
     if lane == "incremental":
         ycol = "incr_" + ycol
 
-    groups = fit._groups
-    facets = list(_iter_group_frames(summary, groups))
-    n = max(len(facets), 1)
-    nrow, ncol = _resolve_grid(n, nrow, ncol)
-
-    if figsize is None:
-        figsize = (max(5.0, 3.2 * ncol), max(3.5, 2.6 * nrow))
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    grid = open_facets(
+        _iter_group_frames(summary, fit._groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
     )
-
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
+    for idx, group_value, sub, ax in grid:
         for i, label in enumerate(fit._labels):
             line = sub.filter(pl.col("estimator") == label).sort(xcol)
             ax.plot(
@@ -120,20 +109,19 @@ def plot_estimator_comparison(
             ax.axhline(0.0, color="grey", linewidth=0.6, linestyle="--")
         ax.grid(True, alpha=0.3, linewidth=0.4)
         ax.tick_params(labelsize=8)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         if idx == 0:
             ax.legend(fontsize=8, frameon=False)
 
-    _hide_unused(axes, len(facets), nrow, ncol)
+    grid.hide_unused()
 
     word = _METRIC_WORD[metric]
     if lane == "incremental":
         word = "per-period " + word
-    fig.suptitle(
+    grid.fig.suptitle(
         f"EstimatorComparison -- {word} vs {by}",
         fontsize=12, fontweight="bold",
     )
-    fig.supxlabel(_BY_XLABEL[by], fontsize=10)
-    fig.supylabel(word, fontsize=10)
-    return fig
+    grid.fig.supxlabel(_BY_XLABEL[by], fontsize=10)
+    grid.fig.supylabel(word, fontsize=10)
+    return grid.fig

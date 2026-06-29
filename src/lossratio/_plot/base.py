@@ -8,9 +8,12 @@ modules. The matplotlib backend is used throughout.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import polars as pl
+
+from .._kernels.io import format_group_value
 
 
 def _resolve_grid(
@@ -44,6 +47,64 @@ def _hide_unused(axes: Any, n_used: int, nrow: int, ncol: int) -> None:
     for idx in range(n_used, nrow * ncol):
         r, c = divmod(idx, ncol)
         axes[r][c].set_visible(False)
+
+
+@dataclass
+class FacetGrid:
+    """A resolved facet grid: the figure, its ``squeeze=False`` axes matrix,
+    and the per-facet ``(group_value, frame)`` list.
+
+    Iterating yields ``(idx, group_value, frame, ax)`` so a renderer drops the
+    ``divmod`` boilerplate. ``title``/``hide_unused`` cover the two other
+    universal steps. Figure-level labels (suptitle / sup-axis labels) stay with
+    the caller -- their fontsize / weight / alignment differ per plot family.
+    """
+
+    fig: Any
+    axes: Any
+    facets: list
+    nrow: int
+    ncol: int
+
+    def __iter__(self):
+        for idx, (group_value, sub) in enumerate(self.facets):
+            r, c = divmod(idx, self.ncol)
+            yield idx, group_value, sub, self.axes[r][c]
+
+    def title(self, ax: Any, group_value: Any, *, fontsize: float = 9) -> None:
+        """Plain per-facet title (skipped when ``group_value`` is ``None``)."""
+        if group_value is not None:
+            ax.set_title(format_group_value(group_value), fontsize=fontsize)
+
+    def hide_unused(self) -> None:
+        _hide_unused(self.axes, len(self.facets), self.nrow, self.ncol)
+
+
+def open_facets(
+    facets: Any,
+    *,
+    nrow: int | None,
+    ncol: int | None,
+    figsize: tuple[float, float] | None,
+    figsize_fn: Any,
+    default_ncol: int = 3,
+) -> FacetGrid:
+    """Open a faceted figure: resolve the grid, size it, build the axes.
+
+    ``figsize_fn(nrow, ncol) -> (w, h)`` supplies the per-module default size
+    (kept a caller hook because each plot family sizes differently); an
+    explicit ``figsize`` overrides it.
+    """
+    import matplotlib.pyplot as plt
+
+    facets = list(facets)
+    nrow, ncol = _resolve_grid(len(facets), nrow, ncol, default_ncol=default_ncol)
+    if figsize is None:
+        figsize = figsize_fn(nrow, ncol)
+    fig, axes = plt.subplots(
+        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    )
+    return FacetGrid(fig, axes, facets, nrow, ncol)
 
 
 def _percent_formatter():

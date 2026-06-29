@@ -21,6 +21,7 @@ from .base import (
     _percent_formatter,
     _pretty_var_label,
     _resolve_grid,
+    open_facets,
 )
 from .theme import STAT_COLORS
 
@@ -282,6 +283,15 @@ def plot_triangle_backtest(
 # ---------------------------------------------------------------------------
 
 
+def _draw_ae_band(ax: Any) -> None:
+    """Draw the 10% A/E reference band shared by the col / diag / cell views:
+    a shaded +/-10% span, dotted +/-10% lines, and a dashed zero line."""
+    ax.axhspan(-0.1, 0.1, facecolor="grey", alpha=0.12)
+    ax.axhline(0.1, color="grey", linestyle=":", linewidth=0.4)
+    ax.axhline(-0.1, color="grey", linestyle=":", linewidth=0.4)
+    ax.axhline(0.0, color="grey", linestyle="--", linewidth=0.5)
+
+
 def _plot_aggregated_lines(
     summary: pl.DataFrame,
     *,
@@ -295,30 +305,16 @@ def _plot_aggregated_lines(
     figsize: tuple[float, float] | None,
 ) -> Any:
     """col / diag plot: line per stat across x_col, faceted by group."""
-    import matplotlib.pyplot as plt
-
-    facets = list(_iter_group_frames(summary, groups))
-
-    n = len(facets)
-    nrow, ncol = _resolve_grid(n, nrow, ncol)
-
-    if figsize is None:
-        figsize = (max(5.0, 3.3 * ncol), max(3.0, 2.6 * nrow))
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    grid = open_facets(
+        _iter_group_frames(summary, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
+    for idx, group_value, sub, ax in grid:
         sub_sorted = sub.sort(x_col)
         x = sub_sorted[x_col].to_numpy()
 
-        # 10% reference band
-        ax.axhspan(-0.1, 0.1, facecolor="grey", alpha=0.12)
-        ax.axhline(0.1, color="grey", linestyle=":", linewidth=0.4)
-        ax.axhline(-0.1, color="grey", linestyle=":", linewidth=0.4)
-        ax.axhline(0.0, color="grey", linestyle="--", linewidth=0.5)
+        _draw_ae_band(ax)
 
         for stat_label, col_name in stat_cols:
             if col_name not in sub_sorted.columns:
@@ -333,17 +329,16 @@ def _plot_aggregated_lines(
                 )
 
         ax.yaxis.set_major_formatter(_percent_formatter())
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         ax.legend(loc="best", fontsize=8, frameon=False)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
-    _hide_unused(axes, n, nrow, ncol)
+    grid.hide_unused()
 
-    fig.suptitle(title, fontsize=12, fontweight="bold")
-    fig.supxlabel(x_label, fontsize=10)
-    fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
-    return fig
+    grid.fig.suptitle(title, fontsize=12, fontweight="bold")
+    grid.fig.supxlabel(x_label, fontsize=10)
+    grid.fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
+    return grid.fig
 
 
 def _plot_cell_curves(
@@ -358,7 +353,6 @@ def _plot_cell_curves(
     figsize: tuple[float, float] | None,
 ) -> Any:
     """cell plot: one line per cohort across duration, faceted by group."""
-    import matplotlib.pyplot as plt
     from matplotlib import colormaps
     from matplotlib.colors import Normalize
 
@@ -367,23 +361,13 @@ def _plot_cell_curves(
             f"Backtest has no `{ae_err_col}` column."
         )
 
-    facets = list(_iter_group_frames(ae_err, groups))
-
-    n = len(facets)
-    nrow, ncol = _resolve_grid(n, nrow, ncol)
-    if figsize is None:
-        figsize = (max(5.0, 3.3 * ncol), max(3.0, 2.6 * nrow))
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
+    grid = open_facets(
+        _iter_group_frames(ae_err, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
-        ax.axhspan(-0.1, 0.1, facecolor="grey", alpha=0.12)
-        ax.axhline(0.1, color="grey", linestyle=":", linewidth=0.4)
-        ax.axhline(-0.1, color="grey", linestyle=":", linewidth=0.4)
-        ax.axhline(0.0, color="grey", linestyle="--", linewidth=0.5)
+    for idx, group_value, sub, ax in grid:
+        _draw_ae_band(ax)
 
         cohorts = sorted(sub["cohort"].unique().to_list())
         if len(cohorts) > 1:
@@ -406,13 +390,12 @@ def _plot_cell_curves(
             ax.scatter(x[m], y[m], color=color, alpha=0.6, s=8)
 
         ax.yaxis.set_major_formatter(_percent_formatter())
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         ax.grid(True, linewidth=0.3, alpha=0.5)
 
-    _hide_unused(axes, n, nrow, ncol)
+    grid.hide_unused()
 
-    fig.suptitle(title, fontsize=12, fontweight="bold")
-    fig.supxlabel(x_label, fontsize=10)
-    fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
-    return fig
+    grid.fig.suptitle(title, fontsize=12, fontweight="bold")
+    grid.fig.supxlabel(x_label, fontsize=10)
+    grid.fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
+    return grid.fig

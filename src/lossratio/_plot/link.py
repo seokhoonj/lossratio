@@ -12,7 +12,6 @@ the Link's per-cell ``ata`` / ``intensity`` column on the fly --
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -20,11 +19,11 @@ import polars as pl
 
 from .._kernels.io import (
     _iter_group_frames,
-    format_group_value,
     group_eq,
     normalize_groups,
     set_group_values,
 )
+from .base import open_facets
 from .theme import STAT_COLORS_HUE
 
 if TYPE_CHECKING:
@@ -389,12 +388,12 @@ def _plot_per_link_scalar(
     figsize: tuple[float, float] | None,
 ) -> Any:
     """Per-link line+point plot of a single scalar column (cv / rse)."""
-    facets = _resolve_facets(summary, groups)
-    fig, axes_grid = _create_facet_grid(
-        facets, nrow=nrow, ncol=ncol, figsize=figsize
+    grid = open_facets(
+        _iter_group_frames(summary, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, (group_value, sub) in enumerate(facets):
-        ax = axes_grid[idx]
+    for idx, group_value, sub, ax in grid:
         sub_sorted = sub.sort("duration_from")
         x = sub_sorted["duration_from"].to_numpy()
         y = sub_sorted[y_col].to_numpy()
@@ -411,14 +410,13 @@ def _plot_per_link_scalar(
         # band tracks the panel's true right edge, not a pre-xtick xlim.
         _set_link_xticks(ax, x, link_labels)
         _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=hline)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         _style_ggplot(ax)
-    _finalize_facet_grid(
-        fig, axes_grid, n_used=len(facets),
-        title=title, x_label="duration link", y_label=y_label,
-    )
-    return fig
+    grid.hide_unused()
+    grid.fig.suptitle(title, fontsize=12, fontweight="normal")
+    grid.fig.supxlabel("duration link", fontsize=10)
+    grid.fig.supylabel(y_label, fontsize=10)
+    return grid.fig
 
 
 def _plot_summary_lines(
@@ -435,12 +433,12 @@ def _plot_summary_lines(
     figsize: tuple[float, float] | None,
 ) -> Any:
     """Per-link summary: mean / median / weighted lines."""
-    facets = _resolve_facets(summary, groups)
-    fig, axes_grid = _create_facet_grid(
-        facets, nrow=nrow, ncol=ncol, figsize=figsize
+    grid = open_facets(
+        _iter_group_frames(summary, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, (group_value, sub) in enumerate(facets):
-        ax = axes_grid[idx]
+    for idx, group_value, sub, ax in grid:
         sub_sorted = sub.sort("duration_from")
         x = sub_sorted["duration_from"].to_numpy()
         link_labels = _link_label_lookup(sub_sorted)
@@ -459,15 +457,14 @@ def _plot_summary_lines(
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
         _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=None)
         _set_link_xticks(ax, x, link_labels)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         ax.legend(loc="best", fontsize=8, frameon=False)
         _style_ggplot(ax)
-    _finalize_facet_grid(
-        fig, axes_grid, n_used=len(facets),
-        title=title, x_label="duration link", y_label=y_label,
-    )
-    return fig
+    grid.hide_unused()
+    grid.fig.suptitle(title, fontsize=12, fontweight="normal")
+    grid.fig.supxlabel("duration link", fontsize=10)
+    grid.fig.supylabel(y_label, fontsize=10)
+    return grid.fig
 
 
 def _plot_per_link_distribution(
@@ -485,12 +482,12 @@ def _plot_per_link_distribution(
     figsize: tuple[float, float] | None,
 ) -> Any:
     """Per-link box-plot or scatter of a cell-level column (ata / intensity)."""
-    facets = _resolve_facets(cells, groups)
-    fig, axes_grid = _create_facet_grid(
-        facets, nrow=nrow, ncol=ncol, figsize=figsize
+    grid = open_facets(
+        _iter_group_frames(cells, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, (group_value, sub) in enumerate(facets):
-        ax = axes_grid[idx]
+    for idx, group_value, sub, ax in grid:
         sub_valid = sub.filter(pl.col(y_col).is_finite())
         if sub_valid.height == 0:
             ax.text(0.5, 0.5, "(no data)", ha="center", va="center",
@@ -538,65 +535,18 @@ def _plot_per_link_distribution(
             ax.axhline(hline, color="red", linestyle="--", linewidth=0.8)
         _apply_factor_stability_overlay(ax, factor_stability, group_value, groups, y_max=None)
         _set_link_xticks(ax, duration_from_vals, link_labels)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=9)
+        grid.title(ax, group_value)
         _style_ggplot(ax)
-    _finalize_facet_grid(
-        fig, axes_grid, n_used=len(facets),
-        title=title, x_label="duration link", y_label=y_label,
-    )
-    return fig
+    grid.hide_unused()
+    grid.fig.suptitle(title, fontsize=12, fontweight="normal")
+    grid.fig.supxlabel("duration link", fontsize=10)
+    grid.fig.supylabel(y_label, fontsize=10)
+    return grid.fig
 
 
 # ---------------------------------------------------------------------------
 # Faceting + axis helpers
 # ---------------------------------------------------------------------------
-
-
-def _resolve_facets(
-    df: pl.DataFrame, groups: str | list[str] | None
-) -> list[tuple[Any, pl.DataFrame]]:
-    return list(_iter_group_frames(df, groups))
-
-
-def _create_facet_grid(
-    facets: list[tuple[Any, pl.DataFrame]],
-    *,
-    nrow: int | None,
-    ncol: int | None,
-    figsize: tuple[float, float] | None,
-):
-    import matplotlib.pyplot as plt
-
-    n = len(facets)
-    if n == 0:
-        fig, ax = plt.subplots(1, 1, figsize=figsize or (5.0, 3.5))
-        return fig, [ax]
-    if nrow is None and ncol is None:
-        ncol = min(n, 3)
-        nrow = math.ceil(n / ncol)
-    elif ncol is None:
-        ncol = math.ceil(n / max(nrow, 1))
-    elif nrow is None:
-        nrow = math.ceil(n / max(ncol, 1))
-    if figsize is None:
-        figsize = (max(4.5, 3.2 * ncol), max(3.0, 2.6 * nrow))
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
-    )
-    flat = [axes[r][c] for r in range(nrow) for c in range(ncol)]
-    return fig, flat
-
-
-def _finalize_facet_grid(
-    fig, axes_grid: list, *, n_used: int, title: str,
-    x_label: str, y_label: str,
-) -> None:
-    for ax in axes_grid[n_used:]:
-        ax.set_visible(False)
-    fig.suptitle(title, fontsize=12, fontweight="normal")
-    fig.supxlabel(x_label, fontsize=10)
-    fig.supylabel(y_label, fontsize=10)
 
 
 def _link_label_lookup(df: pl.DataFrame) -> dict[int, str]:
