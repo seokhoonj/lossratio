@@ -25,15 +25,16 @@ def _resolve_grid(
 ) -> tuple[int, int]:
     """Resolve a facet ``(nrow, ncol)`` from ``n`` facets and optional hints.
 
-    Both ``None`` -> ``ncol = min(n, default_ncol)`` and enough rows; one
-    given -> the other is sized to fit. Shared by every faceted vis
-    module (``default_ncol`` is the only per-module difference: 3 for the
-    grid plots, 2 for validation, 1 for the stacked regime ribbons).
+    Both ``None`` -> a near-square layout like ggplot2's ``facet_wrap``
+    (``ncol = ceil(sqrt(n))``), but capped at ``default_ncol`` so wide grids
+    stay readable: 4 facets -> 2x2, 6 -> 3x2, 9 -> 3x3. One given -> the other
+    is sized to fit. ``default_ncol`` is the per-module column cap: 3 for the
+    grid plots, 2 for validation, 1 for the stacked regime ribbons.
     """
     if n <= 0:
         return 1, 1
     if nrow is None and ncol is None:
-        ncol = min(n, default_ncol)
+        ncol = min(math.ceil(math.sqrt(n)), default_ncol)
         nrow = math.ceil(n / ncol)
     elif ncol is None:
         ncol = math.ceil(n / max(nrow, 1))
