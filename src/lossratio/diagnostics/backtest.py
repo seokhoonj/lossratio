@@ -641,7 +641,7 @@ class _FoldFit:
         # inherited from `self.estimator` (overridable via kwargs).
         # The Triangle renderer resolves `"auto"` for regime via an
         # inline `detect_regime` call.
-        from .._plot.triangle import _plot_triangle_usage
+        from .._plot.triangle_usage import _plot_triangle_usage
         from .regime import _resolve_regime
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()

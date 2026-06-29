@@ -1,142 +1,41 @@
 """Triangle visualisation -- matplotlib backend.
 
-Implements ``Triangle.plot_triangle(kind="value" | "usage")``.
+``plot_triangle`` is the heatmap entry point: ``kind="value"`` (this module's
+metric heatmap) or ``kind="usage"`` (dispatched to :mod:`triangle_usage`). The
+cohort-line plot ``plot`` lives in :mod:`triangle_line` and is re-exported here
+so :meth:`lossratio.Triangle.plot` keeps importing it from one place. Metric
+metadata is shared from :mod:`metric`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
 
-from .._kernels.io import (
-    _iter_group_frames,
-    format_group_value,
-)
-from ..core.usage import _compute_triangle_usage
+from .._kernels.io import _iter_group_frames, format_group_value
 from .base import (
     _cohort_label,
-    _format_period_series,
+    _format_axis,
     _get_period_type,
     _hide_unused,
     _pretty_var_label,
     _resolve_grid,
 )
-from .theme import (
-    CAPTION_COLOR,
-    STAT_COLORS,
-    add_cohort_colorbar,
-    cohort_gradient,
-    draw_facet_strip,
-    period_label_fn,
+from .metric import (
+    _AMOUNT_METRICS,
+    _RATIO_METRICS,
+    _VALID_METRICS,
+    _auto_divisor,
+    _metric_style,
 )
+from .theme import CAPTION_COLOR, draw_facet_strip
+from .triangle_line import plot
+from .triangle_usage import _plot_triangle_usage
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
-
-
-# Metric metadata for the value view -- which metrics plot_triangle accepts
-# and, per metric, the title / unit caption / cell-colouring rule. Only the
-# value heatmap consumes this, so it lives here rather than in the shared
-# plot-helper layer.
-_VALID_METRICS: tuple[str, ...] = (
-    "ratio", "incr_ratio",
-    "loss", "incr_loss",
-    "premium", "incr_premium",
-    "margin", "incr_margin",
-    "loss_share", "incr_loss_share",
-    "premium_share", "incr_premium_share",
-)
-
-_RATIO_METRICS = {"ratio", "incr_ratio"}
-_AMOUNT_METRICS = {
-    "loss", "incr_loss",
-    "premium", "incr_premium",
-    "margin", "incr_margin",
-}
-_PROP_METRICS = {
-    "loss_share", "incr_loss_share",
-    "premium_share", "incr_premium_share",
-}
-
-_TITLES: dict[str, str] = {
-    "ratio":              "Cumulative Loss Ratio",
-    "incr_ratio":         "Per-Period Loss Ratio",
-    "loss":               "Cumulative Loss",
-    "incr_loss":          "Per-Period Loss",
-    "premium":            "Cumulative Premium",
-    "incr_premium":       "Per-Period Premium",
-    "margin":             "Cumulative Margin",
-    "incr_margin":        "Per-Period Margin",
-    "loss_share":         "Cumulative Loss Proportion",
-    "incr_loss_share":    "Per-Period Loss Proportion",
-    "premium_share":      "Cumulative Premium Proportion",
-    "incr_premium_share": "Per-Period Premium Proportion",
-}
-
-
-def _auto_divisor(values: np.ndarray | pl.Series | list[float]) -> float:
-    """Pick the largest divisor in {1, 1e3, 1e6, 1e9, 1e12} such that
-    the median formats as a non-zero label at `%.1f`.
-    """
-    arr = np.asarray(values, dtype=float)
-    arr = arr[np.isfinite(arr) & (arr > 0)]
-    if arr.size == 0:
-        return 1.0
-    candidates = np.array([1.0, 1e3, 1e6, 1e9, 1e12])
-    m = float(np.median(arr))
-    ok = (m / candidates) >= 0.05 - 1e-10
-    if not ok.any():
-        return 1.0
-    return float(candidates[ok].max())
-
-
-def _get_amount_unit(divisor: float) -> str:
-    if divisor == 1:
-        return ""
-    if divisor == 1e3:
-        return "thousand"
-    if divisor == 1e6:
-        return "million"
-    if divisor == 1e9:
-        return "billion"
-    if divisor == 1e12:
-        return "trillion"
-    return f"scaled (/{divisor:.0e})"
-
-
-@dataclass
-class MetricStyle:
-    metric: str
-    kind: str            # "ratio" | "amount" | "prop"
-    title: str
-    caption: str
-    threshold: float
-    when: str            # ">" | "<"
-
-
-def _metric_style(metric: str, amount_divisor: float) -> MetricStyle:
-    """Combine metric metadata (title / threshold / when) with the
-    resolved divisor to build the caption string.
-    """
-    if metric not in _VALID_METRICS:
-        raise ValueError(
-            f"`metric` must be one of {_VALID_METRICS!r}; got {metric!r}."
-        )
-
-    title = _TITLES[metric]
-
-    if metric in _RATIO_METRICS:
-        return MetricStyle(metric, "ratio", title, "Unit: %", 1.0, ">")
-    if metric in _AMOUNT_METRICS:
-        unit = _get_amount_unit(amount_divisor)
-        caption = f"Unit: {unit}" if unit else "Unit:"
-        return MetricStyle(metric, "amount", title, caption, 0.0, "<")
-    # prop
-    return MetricStyle(metric, "prop", title, "Unit: %", 0.05, ">")
 
 
 # Value-view palette: threshold-flagged cells use "mistyrose", others
@@ -151,19 +50,6 @@ _BORDER_WIDTH = 0.3
 # is shared from `theme`.)
 _GRID_WIDTH = 0.5            # interior cell separators (thin)
 _PANEL_BORDER_WIDTH = 1.0    # outer panel frame (heavier)
-
-# Usage-view categorical palette.
-_USAGE_COLORS: dict[str, str] = {
-    "unused":   "#dcdcdc",
-    "used":     "#1f77b4",
-    "holdout":  "#d62728",
-    "future":   "#ffffff",
-    # segment_wise borrow donor: an OBSERVED older-regime cell at duration
-    # >= the newest regime's depth -- data actually used (as the borrow donor),
-    # so it is coloured like the other data cells (never a projection cell).
-    "donor":    "#6b7075",
-}
-_USAGE_STATES: tuple[str, ...] = ("unused", "used", "holdout", "future", "donor")
 
 
 def plot_triangle(
@@ -339,12 +225,6 @@ def plot_triangle(
     return fig
 
 
-def _format_axis(values: pl.Series, period_type: str | None) -> list[str]:
-    if period_type is None:
-        return [str(v) for v in values.to_list()]
-    return _format_period_series(values, period_type)
-
-
 def _cell_labels(
     df: pl.DataFrame, metric: str, label_style: str, divisor: float
 ) -> list[str]:
@@ -467,397 +347,6 @@ def _threshold_color(v: float, threshold: float, when: str) -> str:
     else:
         raise ValueError(f"Unknown `when`: {when!r}.")
     return _HIGH_COLOR if flag else _LOW_COLOR
-
-
-# ---------------------------------------------------------------------------
-# Usage view -- categorical status heatmap with filter overlays
-# ---------------------------------------------------------------------------
-
-
-def _first_post_change_idx(
-    cohort_values_desc: list[Any],
-    change_value: Any,
-) -> int | None:
-    """Position (0-based) in ``cohort_values_desc`` where the *first*
-    cohort >= ``change_value`` sits. ``cohort_values_desc`` holds the
-    underlying cohort dates / ints newest-first, matching the y-tick label
-    order. The usage axis is NOT inverted, so index 0 (newest) renders at the
-    bottom and the oldest cohorts sit on top (as in the value heatmap).
-    Returns ``None`` if no cohort is at or after the change.
-
-    The hline is drawn at ``returned_idx + 0.5`` (just above the row
-    toward older cohorts).
-    """
-    ascending = list(reversed(cohort_values_desc))
-    for i, c in enumerate(ascending):
-        if c >= change_value:
-            return len(cohort_values_desc) - 1 - i
-    return None
-
-
-def _plot_triangle_usage(
-    triangle: Triangle,
-    *,
-    recent: int | None,
-    regime: Any,
-    holdout: int | None,
-    nrow: int | None,
-    ncol: int | None,
-    figsize: tuple[float, float] | None,
-    x_axis: str = "duration",
-) -> Any:
-    """Categorical status heatmap; see ``plot_triangle.Triangle(kind="usage")``."""
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Patch, Rectangle
-
-    from ..diagnostics.regime import Regime, _resolve_regime
-
-    regime_cut = _resolve_regime(regime, triangle)
-    treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
-
-    usage_df = _compute_triangle_usage(
-        triangle,
-        recent=recent,
-        regime_cut=regime_cut,
-        holdout=holdout,
-        treatment=treatment,
-    )
-    # legend shows only the statuses actually present (so "donor" appears only
-    # under segment_wise with a real donor tail).
-    present = set(usage_df["status"].unique().to_list())
-    legend_states = tuple(s for s in _USAGE_STATES if s in present)
-
-    grp = triangle.groups
-    coh = triangle.cohort
-    duration = triangle.duration
-    grain = triangle.grain
-    coh_type = _get_period_type(coh, grain=grain)
-
-    cohort_labels = _format_axis(usage_df["cohort"], coh_type)
-    usage_df = usage_df.with_columns(
-        pl.Series(name="_y_lbl", values=cohort_labels)
-    )
-
-    # Cohort levels newest-first; the axis is not inverted, so index 0 (newest)
-    # renders at the bottom and the oldest cohorts sit on top -- matching the
-    # value heatmap's orientation.
-    coh_pairs = sorted(
-        set(zip(usage_df["cohort"].to_list(), cohort_labels)),
-        key=lambda p: p[0],
-        reverse=True,
-    )
-    cohort_values_desc = [c for c, _ in coh_pairs]
-    y_levels = [lbl for _, lbl in coh_pairs]
-
-    # x-axis: duration index (default, aligned right-triangle) or the
-    # calendar period of each cell (staircase: each cohort on its own
-    # diagonal). recent / holdout masks are calendar-diagonal, so on the
-    # calendar axis they read as clean vertical bands.
-    step = {"M": 1, "Q": 3, "H": 6, "Y": 12}[grain]
-    if x_axis == "calendar":
-        usage_df = usage_df.with_columns(
-            pl.col("cohort")
-            .dt.offset_by(((pl.col("duration") - 1) * step).cast(pl.Utf8) + "mo")
-            .alias("_xcal")
-        )
-        xkey = "_xcal"
-        x_levels = sorted(set(usage_df["_xcal"].to_list()))
-        x_labels = _format_axis(
-            pl.Series(name="_x", values=x_levels), coh_type
-        )
-        x_axis_label = (
-            _pretty_var_label(triangle.calendar)
-            if triangle.calendar is not None
-            else "calendar"
-        )
-    else:
-        xkey = "duration"
-        x_levels = sorted(set(usage_df["duration"].to_list()))
-        x_labels = [str(d) for d in x_levels]
-        x_axis_label = _pretty_var_label(duration)
-
-    facets = list(_iter_group_frames(usage_df, grp))
-
-    n_facets = len(facets)
-    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
-
-    if figsize is None:
-        fig_w = max(4.0, 0.4 * len(x_levels) * ncol + 1.5)
-        fig_h = max(3.0, 0.30 * len(y_levels) * nrow + 1.8)
-        figsize = (fig_w, fig_h)
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
-    )
-
-    # Regime hline routing: a scalar cut draws one hline on every facet; a
-    # per-segment dict (keyed by group value) draws each facet on its own cut.
-    per_group_cd: dict | None = regime_cut if isinstance(regime_cut, dict) else None
-    cd_scalar: Any = regime_cut if isinstance(regime_cut, date) else None
-
-    x_idx = {d: i for i, d in enumerate(x_levels)}
-    y_idx = {lbl: i for i, lbl in enumerate(y_levels)}
-
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
-
-        for row in sub.iter_rows(named=True):
-            xi = x_idx[row[xkey]]
-            yi = y_idx[row["_y_lbl"]]
-            color = _USAGE_COLORS[row["status"]]
-            ax.add_patch(
-                Rectangle(
-                    (xi - 0.5, yi - 0.5), 1.0, 1.0,
-                    facecolor=color,
-                    edgecolor="white",
-                    linewidth=0.4,
-                )
-            )
-
-        nx = len(x_levels)
-        ny = len(y_levels)
-        ax.set_xlim(-0.5, nx - 0.5)
-        ax.set_ylim(-0.5, ny - 0.5)
-        ax.set_xticks(range(nx))
-        ax.set_xticklabels(x_labels, fontsize=8)
-        ax.set_yticks(range(ny))
-        ax.set_yticklabels(y_levels, fontsize=8)
-
-        # Regime hline: the cohort cut between dropped (older) and kept cohorts.
-        if per_group_cd is not None and group_value is not None:
-            cd_g = per_group_cd.get(group_value)
-            if cd_g is not None:
-                hidx = _first_post_change_idx(cohort_values_desc, cd_g)
-                if hidx is not None:
-                    ax.axhline(
-                        hidx + 0.5,
-                        linestyle="--", color="black", linewidth=0.6,
-                    )
-        elif cd_scalar is not None:
-            hidx = _first_post_change_idx(cohort_values_desc, cd_scalar)
-            if hidx is not None:
-                ax.axhline(
-                    hidx + 0.5,
-                    linestyle="--", color="black", linewidth=0.6,
-                )
-
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        ax.tick_params(axis="both", which="both", length=0)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-        if group_value is not None:
-            ax.set_title(format_group_value(group_value), fontsize=10)
-
-    _hide_unused(axes, n_facets, nrow, ncol)
-
-    # Title with active filters.
-    parts: list[str] = []
-    if recent is not None:
-        parts.append(f"recent={int(recent)}")
-    if cd_scalar is not None:
-        parts.append(f"regime={cd_scalar}")
-    elif per_group_cd is not None:
-        unique_cd = sorted({str(v) for v in per_group_cd.values() if v is not None})
-        if unique_cd:
-            parts.append("regime=" + ",".join(unique_cd))
-    if holdout is not None:
-        parts.append(f"holdout={int(holdout)}")
-    title_txt = (
-        f"Data usage ({', '.join(parts)})" if parts else "Data usage (full)"
-    )
-    fig.suptitle(title_txt, fontsize=12, fontweight="bold")
-
-    fig.supxlabel(x_axis_label, fontsize=10)
-    fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
-
-    # Legend on the figure (categorical key).
-    legend_handles = [
-        Patch(facecolor=_USAGE_COLORS[s], edgecolor="black", linewidth=0.3, label=s)
-        for s in legend_states
-    ]
-    fig.legend(
-        handles=legend_handles,
-        loc="lower center",
-        ncol=len(legend_states),
-        frameon=False,
-        fontsize=8,
-        bbox_to_anchor=(0.5, -0.02),
-    )
-
-    return fig
-
-
-def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
-                       hline):
-    """Per-cohort trajectories (+ optional summary overlay) on one facet."""
-    for g in sub.partition_by("cohort", maintain_order=True):
-        gg = g.sort("duration")
-        x = gg["duration"].to_list()
-        y = gg[metric].to_list()
-        if summary:
-            ax.plot(x, y, color="0.7", alpha=0.5, linewidth=0.6, zorder=1)
-        else:
-            ax.plot(x, y, color=coh_color(gg["cohort"][0]), linewidth=1.1,
-                    zorder=2)
-
-    if hline is not None:
-        ax.axhline(hline, linestyle="--", color="red", linewidth=0.8, zorder=1)
-
-    if not summary:
-        return
-
-    # Mean / Median / Weighted summary lines, masked where too few cohorts.
-    lcol, pcol = (("loss", "premium") if metric == "ratio"
-                  else ("incr_loss", "incr_premium"))
-    agg = (sub.group_by("duration")
-              .agg(mean=pl.col(metric).mean(),
-                   median=pl.col(metric).median(),
-                   wl=pl.col(lcol).sum(),
-                   wp=pl.col(pcol).sum(),
-                   n=pl.len())
-              .sort("duration")
-              .with_columns(weighted=pl.col("wl") / pl.col("wp")))
-    xd = np.asarray(agg["duration"].to_list(), dtype=float)
-    n = np.asarray(agg["n"].to_list())
-    masked = summary_min_n is not None and np.isfinite(summary_min_n)
-    mask = n < summary_min_n if masked else np.zeros(len(n), dtype=bool)
-    for col, lbl in (("mean", "Mean"), ("median", "Median"),
-                     ("weighted", "Weighted")):
-        yv = np.asarray(agg[col].to_list(), dtype=float).copy()
-        yv[mask] = np.nan
-        ax.plot(xd, yv, color=STAT_COLORS[col], linewidth=1.7, label=lbl,
-                zorder=3)
-    if masked:
-        le = n <= summary_min_n
-        if le.any():
-            ax.axvline(xd[int(np.argmax(le))], linestyle=":", color="0.4",
-                       linewidth=1.0, zorder=1)
-
-
-def plot(
-    triangle: Triangle,
-    metric: str = "ratio",
-    summary: bool = False,
-    summary_min_n: int = 5,
-    amount_divisor: float | str = "auto",
-    nrow: int | None = None,
-    ncol: int | None = None,
-    figsize: tuple[float, float] | None = None,
-) -> Any:
-    """Cohort-trajectory line plot.
-
-    One line per cohort (x = duration index, y = ``metric``), faceted by
-    ``groups``. ``summary=True`` (ratio metrics only) fades cohort lines to
-    grey and overlays Mean / Median / Weighted lines, masked where fewer
-    than ``summary_min_n`` cohorts contribute.
-    """
-    import warnings
-
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import FuncFormatter
-
-    if metric not in _VALID_METRICS:
-        raise ValueError(
-            f"`metric` must be one of {_VALID_METRICS!r}; got {metric!r}."
-        )
-
-    df = triangle.to_polars()
-    grp = triangle.groups
-    coh = triangle.cohort
-    duration = triangle.duration
-    grain = triangle.grain
-
-    if metric in _AMOUNT_METRICS:
-        div_vals = df[metric].to_numpy()
-    else:
-        div_vals = np.array([], dtype=float)
-    if isinstance(amount_divisor, str):
-        if amount_divisor != "auto":
-            raise ValueError(
-                f"`amount_divisor` must be numeric or 'auto', got "
-                f"{amount_divisor!r}."
-            )
-        amount_divisor = _auto_divisor(div_vals)
-    amount_divisor = float(amount_divisor)
-    meta = _metric_style(metric, amount_divisor)
-
-    is_ratio = metric in _RATIO_METRICS
-    is_prop = metric in _PROP_METRICS
-    if summary and not is_ratio:
-        warnings.warn(
-            "Summary overlay is only supported for `ratio` and `incr_ratio`."
-        )
-        summary = False
-
-    facets: list[tuple[Any, pl.DataFrame]] = list(
-        _iter_group_frames(df, grp)
-    )
-    n_facets = len(facets)
-
-    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
-
-    if figsize is None:
-        figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
-    panel_h_in = max((figsize[1] - 1.0) / max(nrow, 1), 0.5)
-
-    fig, axes = plt.subplots(
-        nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
-    )
-
-    # Cohort -> colour: YlGnBu gradient over the global cohort ordering, so
-    # the same cohort keeps its colour across facets (a date gradient).
-    cohorts = sorted({c for c in df["cohort"].to_list()})
-    n_coh = len(cohorts)
-    _coh_color = cohort_gradient(cohorts)
-
-    if is_ratio:
-        hline: float | None = 1.0
-    elif metric in _AMOUNT_METRICS:
-        hline = 0.0
-    else:
-        hline = None
-
-    scale = 100.0 if (is_ratio or is_prop) else (1.0 / amount_divisor)
-    fmt = FuncFormatter(lambda v, _p, s=scale: f"{v * s:,.0f}")
-
-    for idx, (group_value, sub) in enumerate(facets):
-        r, c = divmod(idx, ncol)
-        ax = axes[r][c]
-        _draw_cohort_lines(ax, sub, metric, _coh_color, summary,
-                           summary_min_n, hline)
-        ax.yaxis.set_major_formatter(fmt)
-        if group_value is not None:
-            draw_facet_strip(ax, format_group_value(group_value), panel_h_in)
-
-    _hide_unused(axes, n_facets, nrow, ncol)
-
-    fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
-                 ha="left")
-    fig.supxlabel(_pretty_var_label(duration), fontsize=11)
-    fig.supylabel(metric, fontsize=11)
-    if meta.caption:
-        fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
-                 fontsize=8.5, color=CAPTION_COLOR)
-
-    vis_axes = [axes[divmod(i, ncol)[0]][divmod(i, ncol)[1]]
-                for i in range(n_facets)]
-    if summary:
-        handles = [
-            plt.Line2D([], [], color=STAT_COLORS["mean"], label="Mean"),
-            plt.Line2D([], [], color=STAT_COLORS["median"], label="Median"),
-            plt.Line2D([], [], color=STAT_COLORS["weighted"], label="Weighted"),
-        ]
-        fig.legend(handles=handles, loc="upper right", fontsize=8,
-                   frameon=False)
-    elif n_coh > 1:
-        # Raw-mode cohort colour bar.
-        coh_type = _get_period_type(coh, grain=grain)
-        add_cohort_colorbar(fig, vis_axes, cohorts, _coh_color,
-                            label_fn=period_label_fn(coh_type))
-
-    return fig
 
 
 __all__ = ["plot_triangle", "plot"]

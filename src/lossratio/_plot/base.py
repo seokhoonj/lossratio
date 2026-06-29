@@ -208,3 +208,11 @@ def _format_period_series(
     if period_type == "half":
         return [f"{y}{sep}{2 if m > 6 else 1}H" for y, m in zip(yr, months)]
     raise ValueError(f"Invalid period_type: {period_type!r}")
+
+
+def _format_axis(values: pl.Series, period_type: str | None) -> list[str]:
+    """Axis tick labels: period-formatted when ``period_type`` is known, else
+    plain ``str`` of each value. Shared by the value and usage heatmaps."""
+    if period_type is None:
+        return [str(v) for v in values.to_list()]
+    return _format_period_series(values, period_type)
