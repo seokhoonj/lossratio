@@ -14,6 +14,7 @@ import polars as pl
 
 from .._kernels.io import _iter_group_frames
 from .base import open_facets
+from .theme import faint_grid, finalize_figure
 
 if TYPE_CHECKING:
     from ..diagnostics.comparison import EstimatorComparisonFit
@@ -107,7 +108,7 @@ def plot_estimator_comparison(
             )
         if metric in ("ae_err", "bias"):
             ax.axhline(0.0, color="grey", linewidth=0.6, linestyle="--")
-        ax.grid(True, alpha=0.3, linewidth=0.4)
+        faint_grid(ax)
         ax.tick_params(labelsize=8)
         grid.title(ax, group_value)
         if idx == 0:
@@ -118,10 +119,10 @@ def plot_estimator_comparison(
     word = _METRIC_WORD[metric]
     if lane == "incremental":
         word = "per-period " + word
-    grid.fig.suptitle(
-        f"EstimatorComparison -- {word} vs {by}",
-        fontsize=12, fontweight="bold",
+    finalize_figure(
+        grid.fig,
+        title=f"EstimatorComparison -- {word} vs {by}",
+        xlabel=_BY_XLABEL[by],
+        ylabel=word,
     )
-    grid.fig.supxlabel(_BY_XLABEL[by], fontsize=10)
-    grid.fig.supylabel(word, fontsize=10)
     return grid.fig

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from .._kernels.io import _iter_group_frames
 from .base import open_facets
-from .theme import BLUE, RED
+from .theme import BLUE, RED, faint_grid, finalize_figure
 
 if TYPE_CHECKING:
     from ..diagnostics.backtest import BacktestFit
@@ -89,7 +89,7 @@ def plot_backtest_reliability(
             )
         if metric == "ae_err":
             ax.axhline(0.0, color="grey", linewidth=0.6, linestyle="--")
-        ax.grid(True, alpha=0.3, linewidth=0.4)
+        faint_grid(ax)
         ax.tick_params(labelsize=8)
         grid.title(ax, group_value)
         if idx == 0:
@@ -98,10 +98,10 @@ def plot_backtest_reliability(
     grid.hide_unused()
 
     metric_word = "relative A/E error" if metric == "ae_err" else "absolute A/E error"
-    grid.fig.suptitle(
-        f"Backtest reliability -- {metric_word} vs {by}",
-        fontsize=12, fontweight="bold",
+    finalize_figure(
+        grid.fig,
+        title=f"Backtest reliability -- {metric_word} vs {by}",
+        xlabel=_BY_XLABEL[by],
+        ylabel=metric_word,
     )
-    grid.fig.supxlabel(_BY_XLABEL[by], fontsize=10)
-    grid.fig.supylabel(metric_word, fontsize=10)
     return grid.fig

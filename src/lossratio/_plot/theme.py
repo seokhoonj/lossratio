@@ -36,6 +36,37 @@ STRIP_TEXT = "#1a1a1a"
 STRIP_HEIGHT_IN = 0.20    # facet-strip height in inches, constant per panel
 
 
+def finalize_figure(
+    fig: Any,
+    *,
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    caption: str | None = None,
+) -> None:
+    """Apply the package figure-level chrome (one consistent tone across all
+    plots): a left-aligned, normal-weight ``suptitle`` (the ggplot2
+    ``plot.title`` tone), shared sup-axis labels, and an optional grey
+    bottom-right caption. Each plot supplies only the strings; the fontsize /
+    weight / alignment live here so every figure reads the same.
+    """
+    if title is not None:
+        fig.suptitle(title, fontsize=12, fontweight="normal", x=0.01, ha="left")
+    if xlabel is not None:
+        fig.supxlabel(xlabel, fontsize=11)
+    if ylabel is not None:
+        fig.supylabel(ylabel, fontsize=11)
+    if caption:
+        fig.text(0.99, 0.005, caption, ha="right", va="bottom",
+                 fontsize=8.5, color=CAPTION_COLOR)
+
+
+def faint_grid(ax: Any, *, axis: str = "both") -> None:
+    """The package's faint background grid (one setting, replacing the
+    per-module ``ax.grid`` drift)."""
+    ax.grid(True, axis=axis, alpha=0.3, linewidth=0.4)
+
+
 def draw_facet_strip(ax: Any, title: str, panel_h_in: float) -> None:
     """Draw a ggplot2-style grey facet strip with a centred label in the gap
     reserved above ``ax``.

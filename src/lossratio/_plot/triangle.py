@@ -30,7 +30,7 @@ from .metric import (
     _auto_divisor,
     _metric_style,
 )
-from .theme import CAPTION_COLOR, draw_facet_strip
+from .theme import draw_facet_strip, finalize_figure
 from .triangle_line import plot
 from .triangle_usage import _plot_triangle_usage
 
@@ -212,15 +212,10 @@ def plot_triangle(
     # Hide unused axes.
     _hide_unused(axes, n_facets, nrow, ncol)
 
-    # ggplot2 `plot.title`: left-aligned, plain weight, ~1.2x base size.
-    fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
-                 ha="left")
-    fig.supxlabel(x_axis_label, fontsize=11)
-    fig.supylabel(_cohort_label(coh, grain=grain), fontsize=11)
-    if meta.caption:
-        # ggplot2 `plot.caption`: right-aligned, grey30.
-        fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
-                 fontsize=8.5, color=CAPTION_COLOR)
+    finalize_figure(
+        fig, title=meta.title, xlabel=x_axis_label,
+        ylabel=_cohort_label(coh, grain=grain), caption=meta.caption,
+    )
 
     return fig
 

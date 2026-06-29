@@ -16,7 +16,7 @@ import polars as pl
 
 from .._kernels.io import _iter_group_frames
 from .base import open_facets
-from .theme import add_cohort_colorbar, cohort_gradient
+from .theme import add_cohort_colorbar, cohort_gradient, finalize_figure
 
 if TYPE_CHECKING:
     pass
@@ -105,9 +105,7 @@ def plot_fit(
 
     grid.hide_unused()
 
-    grid.fig.suptitle(title, fontsize=12, fontweight="normal", x=0.01, ha="left")
-    grid.fig.supxlabel("duration", fontsize=11)
-    grid.fig.supylabel(ylabel, fontsize=11)
+    finalize_figure(grid.fig, title=title, xlabel="duration", ylabel=ylabel)
 
     n_facets = len(grid.facets)
     vis_axes = [grid.axes[divmod(i, grid.ncol)[0]][divmod(i, grid.ncol)[1]]

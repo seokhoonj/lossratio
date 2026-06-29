@@ -24,11 +24,11 @@ from .metric import (
     _metric_style,
 )
 from .theme import (
-    CAPTION_COLOR,
     STAT_COLORS,
     add_cohort_colorbar,
     cohort_gradient,
     draw_facet_strip,
+    finalize_figure,
     period_label_fn,
 )
 
@@ -180,13 +180,10 @@ def plot(
 
     _hide_unused(axes, n_facets, nrow, ncol)
 
-    fig.suptitle(meta.title, fontsize=13, fontweight="normal", x=0.01,
-                 ha="left")
-    fig.supxlabel(_pretty_var_label(duration), fontsize=11)
-    fig.supylabel(metric, fontsize=11)
-    if meta.caption:
-        fig.text(0.99, 0.005, meta.caption, ha="right", va="bottom",
-                 fontsize=8.5, color=CAPTION_COLOR)
+    finalize_figure(
+        fig, title=meta.title, xlabel=_pretty_var_label(duration),
+        ylabel=metric, caption=meta.caption,
+    )
 
     vis_axes = [axes[divmod(i, ncol)[0]][divmod(i, ncol)[1]]
                 for i in range(n_facets)]

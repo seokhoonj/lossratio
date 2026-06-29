@@ -23,7 +23,7 @@ from .base import (
     _resolve_grid,
     open_facets,
 )
-from .theme import STAT_COLORS
+from .theme import STAT_COLORS, faint_grid, finalize_figure
 
 if TYPE_CHECKING:
     from ..diagnostics.backtest import BacktestFit
@@ -259,12 +259,12 @@ def plot_triangle_backtest(
     _hide_unused(axes, n, nrow, ncol)
 
     mode_word = "incremental" if is_incr else "cumulative"
-    fig.suptitle(
-        f"Backtest A/E Error -- held-out cells ({mode_word})",
-        fontsize=12, fontweight="bold",
+    finalize_figure(
+        fig,
+        title=f"Backtest A/E Error -- held-out cells ({mode_word})",
+        xlabel=x_axis_label,
+        ylabel=_cohort_label(coh, grain=grain),
     )
-    fig.supxlabel(x_axis_label, fontsize=10)
-    fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
     if last_drawn is not None:
         from matplotlib.cm import ScalarMappable
         sm = ScalarMappable(norm=norm, cmap=cmap)
@@ -331,13 +331,12 @@ def _plot_aggregated_lines(
         ax.yaxis.set_major_formatter(_percent_formatter())
         grid.title(ax, group_value)
         ax.legend(loc="best", fontsize=8, frameon=False)
-        ax.grid(True, linewidth=0.3, alpha=0.5)
+        faint_grid(ax)
 
     grid.hide_unused()
 
-    grid.fig.suptitle(title, fontsize=12, fontweight="bold")
-    grid.fig.supxlabel(x_label, fontsize=10)
-    grid.fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
+    finalize_figure(grid.fig, title=title, xlabel=x_label,
+                    ylabel="A/E Error = Actual / Projected - 1")
     return grid.fig
 
 
@@ -391,11 +390,10 @@ def _plot_cell_curves(
 
         ax.yaxis.set_major_formatter(_percent_formatter())
         grid.title(ax, group_value)
-        ax.grid(True, linewidth=0.3, alpha=0.5)
+        faint_grid(ax)
 
     grid.hide_unused()
 
-    grid.fig.suptitle(title, fontsize=12, fontweight="bold")
-    grid.fig.supxlabel(x_label, fontsize=10)
-    grid.fig.supylabel("A/E Error = Actual / Projected - 1", fontsize=9)
+    finalize_figure(grid.fig, title=title, xlabel=x_label,
+                    ylabel="A/E Error = Actual / Projected - 1")
     return grid.fig

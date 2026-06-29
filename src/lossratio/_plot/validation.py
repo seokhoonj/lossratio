@@ -20,6 +20,7 @@ from .base import (
     _hide_unused,
     _resolve_grid,
 )
+from .theme import faint_grid, finalize_figure
 
 if TYPE_CHECKING:
     from ..core.triangle import TriangleValidation
@@ -83,12 +84,12 @@ def plot_validation(
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
         ax.legend(loc="best", fontsize=7, frameon=False)
-        ax.grid(True, axis="y", linewidth=0.3, alpha=0.5)
+        faint_grid(ax, axis="y")
 
     _hide_unused(axes, n, nrow, ncol)
 
-    fig.suptitle("Cohort duration-sequence gaps", fontsize=11, fontweight="bold")
-    fig.supylabel("duration count", fontsize=10)
+    finalize_figure(fig, title="Cohort duration-sequence gaps",
+                    ylabel="duration count")
     return fig
 
 
@@ -211,9 +212,11 @@ def plot_triangle_validation(
         else "Gap positions on calendar axis"
         + " (blue = observed, red = missing)"
     )
-    fig.suptitle(title, fontsize=11, fontweight="bold")
-    fig.supxlabel("duration" if x_axis == "duration" else "calendar", fontsize=10)
-    fig.supylabel("cohort", fontsize=10)
+    finalize_figure(
+        fig, title=title,
+        xlabel="duration" if x_axis == "duration" else "calendar",
+        ylabel="cohort",
+    )
     return fig
 
 

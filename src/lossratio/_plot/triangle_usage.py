@@ -23,6 +23,7 @@ from .base import (
     _pretty_var_label,
     _resolve_grid,
 )
+from .theme import finalize_figure
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -235,10 +236,8 @@ def _plot_triangle_usage(
     title_txt = (
         f"Data usage ({', '.join(parts)})" if parts else "Data usage (full)"
     )
-    fig.suptitle(title_txt, fontsize=12, fontweight="bold")
-
-    fig.supxlabel(x_axis_label, fontsize=10)
-    fig.supylabel(_cohort_label(coh, grain=grain), fontsize=10)
+    finalize_figure(fig, title=title_txt, xlabel=x_axis_label,
+                    ylabel=_cohort_label(coh, grain=grain))
 
     # Legend on the figure (categorical key).
     legend_handles = [

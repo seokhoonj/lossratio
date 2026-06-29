@@ -29,6 +29,7 @@ from .base import (
     _hide_unused,
     _resolve_grid,
 )
+from .theme import finalize_figure
 
 if TYPE_CHECKING:
     from ..diagnostics.regime import Regime
@@ -149,9 +150,9 @@ def plot_regime(
 
     _hide_unused(axes, n, nrow, ncol)
 
-    fig.suptitle(
-        f"Cohort regime detection ({regime.method})",
-        fontsize=11, fontweight="normal",
+    finalize_figure(
+        fig,
+        title=f"Cohort regime detection ({regime.method})",
+        xlabel=_cohort_label(coh, grain=grain),
     )
-    fig.supxlabel(_cohort_label(coh, grain=grain), fontsize=10)
     return fig

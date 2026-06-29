@@ -24,7 +24,7 @@ from .._kernels.io import (
     set_group_values,
 )
 from .base import open_facets
-from .theme import STAT_COLORS_HUE
+from .theme import STAT_COLORS_HUE, finalize_figure
 
 if TYPE_CHECKING:
     from ..core.link import Link
@@ -392,9 +392,8 @@ def _plot_per_link_scalar(
         grid.title(ax, group_value)
         _style_ggplot(ax)
     grid.hide_unused()
-    grid.fig.suptitle(title, fontsize=12, fontweight="normal")
-    grid.fig.supxlabel("duration link", fontsize=10)
-    grid.fig.supylabel(y_label, fontsize=10)
+    finalize_figure(grid.fig, title=title, xlabel="duration link",
+                    ylabel=y_label)
     return grid.fig
 
 
@@ -440,9 +439,8 @@ def _plot_summary_lines(
         ax.legend(loc="best", fontsize=8, frameon=False)
         _style_ggplot(ax)
     grid.hide_unused()
-    grid.fig.suptitle(title, fontsize=12, fontweight="normal")
-    grid.fig.supxlabel("duration link", fontsize=10)
-    grid.fig.supylabel(y_label, fontsize=10)
+    finalize_figure(grid.fig, title=title, xlabel="duration link",
+                    ylabel=y_label)
     return grid.fig
 
 
@@ -517,9 +515,8 @@ def _plot_per_link_distribution(
         grid.title(ax, group_value)
         _style_ggplot(ax)
     grid.hide_unused()
-    grid.fig.suptitle(title, fontsize=12, fontweight="normal")
-    grid.fig.supxlabel("duration link", fontsize=10)
-    grid.fig.supylabel(y_label, fontsize=10)
+    finalize_figure(grid.fig, title=title, xlabel="duration link",
+                    ylabel=y_label)
     return grid.fig
 
 
