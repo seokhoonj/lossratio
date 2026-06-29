@@ -289,7 +289,7 @@ class Intensity:
 
         Delegates to :meth:`Link.plot` with ``model='intensity'`` on the
         underlying :class:`Link`. Accepts ``kind`` (``"summary"`` /
-        ``"box"`` / ``"point"``), ``alpha``, ``nrow``, ``ncol``,
+        ``"box"`` / ``"point"``), ``nrow``, ``ncol``,
         ``figsize``.
         """
         from .._plot.link import plot_link

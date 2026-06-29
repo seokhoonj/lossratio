@@ -103,10 +103,45 @@ def _filter_cells_recent(
     return c.filter(pl.col("_cal") > mx - recent).drop("_cal")
 
 
+def _plot_shared_kind(
+    kind: str,
+    *,
+    cells: pl.DataFrame,
+    summary: pl.DataFrame,
+    groups: "str | list[str] | None",
+    y_col: str,
+    y_label: str,
+    title_noun: str,
+    hline: float,
+    factor_stability: "pl.DataFrame | None",
+    nrow: int | None,
+    ncol: int | None,
+    figsize: "tuple[float, float] | None",
+) -> Any:
+    """Render the ``summary`` / ``box`` / ``point`` kinds shared by the ATA
+    and intensity branches. Only the factor column, label, title noun, and
+    reference line differ between the two -- everything else is identical, so
+    the model-specific values arrive as arguments.
+    """
+    if kind == "summary":
+        return _plot_summary_lines(
+            summary, groups=groups, value_cols=_SUMMARY_STATS,
+            y_label=y_label, title=f"Summary of {title_noun}",
+            hline=hline, factor_stability=factor_stability,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+    box = kind == "box"
+    return _plot_per_link_distribution(
+        cells, groups=groups, y_col=y_col, kind=kind, y_label=y_label,
+        title=f"{'Box Plot' if box else 'Distribution'} of {title_noun}",
+        hline=hline, factor_stability=factor_stability,
+        nrow=nrow, ncol=ncol, figsize=figsize,
+    )
+
+
 def _plot_link_ata(
     link: Link,
     kind: str = "cv",
-    alpha: float = 1.0,
     show_factor_stability: bool = True,
     max_cv: float = 0.05,
     max_rse: float = 0.05,
@@ -154,39 +189,11 @@ def _plot_link_ata(
             factor_stability=factor_stability,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if kind == "summary":
-        return _plot_summary_lines(
-            summary,
-            groups=groups,
-            value_cols=_SUMMARY_STATS,
-            y_label="factor",
-            title="Summary of ATA Factors",
-            hline=1.0,
-            factor_stability=factor_stability,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    if kind == "box":
-        return _plot_per_link_distribution(
-            cells,
-            groups=groups,
-            y_col="ata",
-            kind="box",
-            y_label="factor",
-            title="Box Plot of ATA Factors",
-            hline=1.0,
-            factor_stability=factor_stability,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    # point
-    return _plot_per_link_distribution(
-        cells,
-        groups=groups,
-        y_col="ata",
-        kind="point",
-        y_label="factor",
-        title="Distribution of ATA Factors",
-        hline=1.0,
-        factor_stability=factor_stability,
+    # summary / box / point share one renderer with the intensity branch.
+    return _plot_shared_kind(
+        kind, cells=cells, summary=summary, groups=groups,
+        y_col="ata", y_label="factor", title_noun="ATA Factors",
+        hline=1.0, factor_stability=factor_stability,
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
 
@@ -194,7 +201,6 @@ def _plot_link_ata(
 def _plot_link_intensity(
     link: Link,
     kind: str = "summary",
-    alpha: float = 1.0,
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
@@ -214,38 +220,11 @@ def _plot_link_intensity(
     cells = _filter_cells_recent(link._df, groups, recent)
     summary = _intensity_summary(cells, groups)
 
-    if kind == "summary":
-        return _plot_summary_lines(
-            summary,
-            groups=groups,
-            value_cols=_SUMMARY_STATS,
-            y_label="intensity",
-            title="Summary of Incremental Loss Intensity (g)",
-            hline=0.0,
-            factor_stability=None,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    if kind == "box":
-        return _plot_per_link_distribution(
-            cells,
-            groups=groups,
-            y_col="intensity",
-            kind="box",
-            y_label="intensity",
-            title="Box Plot of Incremental Loss Intensity (g)",
-            hline=0.0,
-            factor_stability=None,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    return _plot_per_link_distribution(
-        cells,
-        groups=groups,
-        y_col="intensity",
-        kind="point",
-        y_label="intensity",
-        title="Distribution of Incremental Loss Intensity (g)",
-        hline=0.0,
-        factor_stability=None,
+    return _plot_shared_kind(
+        kind, cells=cells, summary=summary, groups=groups,
+        y_col="intensity", y_label="intensity",
+        title_noun="Incremental Loss Intensity (g)",
+        hline=0.0, factor_stability=None,
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
 
