@@ -18,9 +18,9 @@ the backtest emitted an ``anchor_value`` column; a cohort with no origin anchor
 gets a null and is dropped.
 
 It is a pure READER over a backtest's ``ae_err`` frame: no refitting, no
-estimator coupling, so it composes with both the single-origin
-(:class:`~lossratio.diagnostics.backtest.BacktestFit`) and rolling-origin
-(:class:`~lossratio.rolling_backtest.RollingBacktestFit`) hold-out backtests.
+estimator coupling, so it composes with a
+:class:`~lossratio.diagnostics.backtest.BacktestFit` in either origin mode
+(single-origin and rolling-origin hold-out backtests).
 When the frame carries a ``holdout`` column (a rolling backtest scores a
 physical cell once per origin), the panel groups by it so depths are never
 pooled into a double-counted row.

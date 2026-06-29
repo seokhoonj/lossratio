@@ -31,7 +31,7 @@ _BY_XLABEL = {
 }
 
 
-def plot_rolling_backtest(
+def plot_backtest_reliability(
     fit: "BacktestFit",
     by: str = "horizon",
     metric: str = "ae_err",

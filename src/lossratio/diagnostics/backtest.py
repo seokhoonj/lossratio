@@ -1085,11 +1085,11 @@ class BacktestFit:
                 # the single-origin primary deliverable is the A/E heatmap
                 return self._single_fold_or_raise("plot").plot_triangle(**kwargs)
             else:
-                from .._plot.rolling_backtest import plot_rolling_backtest
-                return plot_rolling_backtest(self, **kwargs)
+                from .._plot.backtest_reliability import plot_backtest_reliability
+                return plot_backtest_reliability(self, **kwargs)
         elif kind == "reliability":
-            from .._plot.rolling_backtest import plot_rolling_backtest
-            return plot_rolling_backtest(self, **kwargs)
+            from .._plot.backtest_reliability import plot_backtest_reliability
+            return plot_backtest_reliability(self, **kwargs)
         elif kind in FOLD_KINDS:
             if self.is_single_origin:
                 fold = self._single_fold_or_raise("plot")
