@@ -28,7 +28,7 @@ from .estimators.pooled_loss import PooledLoss
 from .estimators.pooled_premium import PooledPremium
 from .estimators.premium import PremiumFit
 from .estimators.ratio import Ratio, RatioFit
-from .diagnostics.regime import Regime
+from .diagnostics.regime import Regime, RegimeDetector
 from .estimators.smooth_loss import SmoothLoss
 from .estimators.smooth_premium import SmoothPremium
 from .diagnostics.stability import Stability, StabilityReport
@@ -56,6 +56,7 @@ __all__ = [
     "Ratio",
     "RatioFit",
     "Regime",
+    "RegimeDetector",
     "ResidualBootstrap",
     "SmoothLoss",
     "SmoothPremium",

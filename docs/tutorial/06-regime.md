@@ -285,20 +285,21 @@ lvl.with_columns(
 
 `regime`은 `None`, `datetime.date`(그 시점 이전 코호트를 드롭),
 `dict[담보 -> date]`(담보별 시점)에 더해, **`detect_regime()`이 돌려준
-`Regime` 객체**, **`Regime.at(change=...)`로 손수 지정한 변화점**, **`"auto"`**
-(적합 직전 자동 탐지), 그리고 **`Regime.detect(...)`가 돌려주는 *지연 스펙*
-(callable)**까지 받는다 — `latest_only`에서는 모두 적합 시점에 코호트 컷으로
-해소된다.
+`Regime` 객체**, **`Regime.at(change=...)`로 손수 지정한 변화점**, 그리고
+**`RegimeDetector(...)` 탐지기 객체**(탐지를 적합·백테스트 시점까지 미룸)까지
+받는다 — `latest_only`에서는 모두 적합 시점에 코호트 컷으로 해소된다.
 
 `Regime.at`은 변화 시점을 *이미 알 때*(예: 약관 개정일) 즉시 고정한 `Regime`을
-만든다. 반면 `Regime.detect(...)`는 *탐지를 적합·백테스트 시점까지 미루는*
-스펙이다 — 백테스트에서는 이 스펙이 각 fold의 *마스킹된* 학습 데이터로 다시
-탐지되어, 변화 시점이 hold-out 셀을 엿보지 않는다(leakage-safe).
+만든다. 반면 `RegimeDetector(...)`는 탐지 파라미터만 담은 config 객체로, 그 자체를
+`regime=`에 넘기면 *탐지를 적합·백테스트 시점까지 미룬다* — 백테스트에서는 각
+fold의 *마스킹된* 학습 데이터로 다시 탐지되어, 변화 시점이 hold-out 셀을 엿보지
+않는다(leakage-safe). 즉시 탐지가 필요하면 `RegimeDetector(...).detect(tri)`(또는
+sugar인 `tri.detect_regime(...)`)를 부른다.
 ```
 
 ```python
 lr.Regime.at(change="2024-07-01", groups={"coverage": ["SURGERY"]})  # 수동 고정
-lr.Regime.detect(target="ratio", window=12)                          # 지연 스펙
+lr.RegimeDetector(target="ratio", window=12)                         # 지연 탐지기
 ```
 
 효과는 변화 이후의 최근 코호트에서 가장 크다. regime을 무시하면 가장 최근
@@ -407,4 +408,4 @@ lr.Ratio(
 - {doc}`7장 — 예측 검증 <07-backtest>`: regime 반영(과 세 `treatment` 방식)이
   실제로 예측을 개선하는지 과거 시점에서 되짚어 확인한다.
 - {doc}`API 레퍼런스 <../api>`의 `Triangle.detect_regime`, `Regime`,
-  `Regime.at`, `Regime.detect`, `Regime.evaluate`
+  `Regime.at`, `RegimeDetector`, `Regime.evaluate`

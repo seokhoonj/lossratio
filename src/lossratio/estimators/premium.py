@@ -278,10 +278,13 @@ def _fit_premium(
     cumulative premium. ``"credible"`` adds a per-cohort credibility
     LEVEL on the self-exposure growth rate ``h_k = f^P_k - 1`` (the premium mirror
     of ``CredibleLoss``); ``"smooth"`` replaces the saturated ``h_k`` with a
-    smooth P-spline shape. ``regime`` is a RESOLVED cohort cut applied through
-    :class:`ModelFrame`; ``recent`` (all mechanisms) is the calendar-diagonal fit
-    mask (most-recent ``N`` diagonals feed the link-ratio estimation, the
-    projection seed stays full). Credible / smooth are point-only (SE null).
+    smooth P-spline shape. ``regime`` is ``None`` / a :class:`Regime` / a
+    :class:`RegimeDetector` (resolved to a concrete Regime at entry, then
+    applied as a cohort cut through :class:`ModelFrame` -- the premium ladder
+    treats every regime treatment as a latest-change cut). ``recent`` (all
+    mechanisms) is the calendar-diagonal fit mask (most-recent ``N`` diagonals
+    feed the link-ratio estimation, the projection seed stays full). Credible /
+    smooth are point-only (SE null).
     """
     model_name = _PREMIUM_MODELS.get(mechanism)
     if model_name is None:
@@ -289,6 +292,8 @@ def _fit_premium(
             f"unknown premium mechanism {mechanism!r} "
             "(pooled / credible / smooth)."
         )
+    from ..diagnostics.regime import _resolve_to_regime
+    regime = _resolve_to_regime(regime, triangle)
     groups = triangle.groups
 
     mf = ModelFrame.from_triangle(triangle, regime=regime)

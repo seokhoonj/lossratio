@@ -15,6 +15,7 @@ is then tested for structural shifts using one of two methods:
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -1395,7 +1396,8 @@ class Regime:
     def __init__(self) -> None:
         raise TypeError(
             "Regime is produced by `triangle.detect_regime()` / "
-            "`Regime.at()` / `.detect()`, not a direct constructor."
+            "`RegimeDetector(...).detect(triangle)` / `Regime.at()`, not a "
+            "direct constructor."
         )
 
     @classmethod
@@ -1849,59 +1851,6 @@ class Regime:
             treatment=treatment,
         )
 
-    @classmethod
-    def detect(
-        cls,
-        target: str = "ratio",
-        window: int = 12,
-        method: str = "e_divisive",
-        *,
-        by: "str | Sequence[str] | None" = None,
-        n_regimes: int | None = None,
-        sig_level: float = 0.05,
-        n_permutations: int = 999,
-        min_size: int = 3,
-        seed: int | None = None,
-        window_floor: int | None = None,
-        fdr: bool = False,
-        edge_scan: bool = False,
-        edge_threshold: float = 10.0,
-    ) -> Callable[["Triangle"], "Regime"]:
-        """Build a lazy regime-detection spec.
-
-        Captures :meth:`Triangle.detect_regime` arguments without running
-        detection. The returned closure is invoked by the consumer
-        (fit / backtest) on its own *internal* triangle -- crucially, inside
-        backtest this is the **masked** training triangle of each fold, so
-        change points never peek at held-out cells.
-
-        ``by`` selects a coarser detection grain (a subset of the consumer
-        triangle's groups), e.g. to detect a regime at the reporting grain of a
-        covariate fit; ``None`` defers to the triangle's own groups.
-
-        Contrast with :meth:`at`, which produces an eager Regime fixed at
-        construction time.
-        """
-        def _spec(tri: "Triangle") -> "Regime":
-            regime = tri.detect_regime(
-                target=target,
-                window=window,
-                by=by,
-                method=method,
-                n_regimes=n_regimes,
-                sig_level=sig_level,
-                n_permutations=n_permutations,
-                min_size=min_size,
-                seed=seed,
-                window_floor=window_floor,
-                fdr=fdr,
-                edge_scan=edge_scan,
-                edge_threshold=edge_threshold,
-            )
-            return regime
-
-        return _spec
-
     @property
     def changes(self):
         """Detected (or manually specified) change points as a frame."""
@@ -2281,8 +2230,103 @@ def _coerce_to_date(value: Any) -> date:
 
 
 # ---------------------------------------------------------------------------
+# Detector config object (the deferred detection recipe)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(kw_only=True)
+class RegimeDetector:
+    """Deferred regime-detection config: parameters now, detection later.
+
+    A config object (parameters only) whose :meth:`detect` runs E-Divisive
+    change-point detection on a triangle and returns a :class:`Regime`. The
+    same object plays two roles, like every other estimator in the package:
+
+    * **eager** -- call ``RegimeDetector(...).detect(tri)`` to detect now;
+    * **deferred** -- pass the detector itself as a ``regime=`` value
+      (``CredibleLoss(regime=RegimeDetector(...))``). Fit / backtest call
+      ``.detect`` on their own internal triangle -- inside backtest that is the
+      **masked** training triangle of each fold, so change points never peek
+      at held-out cells.
+
+    All fields mirror :meth:`Triangle.detect_regime`; in particular
+    ``treatment`` (``"latest_only"`` / ``"segment_wise"`` / ``"covariate"``)
+    is carried here, so the projection treatment survives the deferred path.
+    ``Triangle.detect_regime(...)`` is the eager sugar ``RegimeDetector(
+    ...).detect(self)``.
+    """
+
+    target: str = "ratio"
+    window: "int | str" = "auto"
+    by: "str | Sequence[str] | None" = None
+    method: str = "e_divisive"
+    n_regimes: int | None = None
+    sig_level: float = 0.05
+    n_permutations: int = 999
+    min_size: int = 3
+    seed: int | None = None
+    window_floor: int | None = None
+    fdr: bool = False
+    edge_scan: bool = False
+    edge_threshold: float = 10.0
+    window_sweep: "Sequence[int] | None" = None
+    grain_sweep: "Sequence[str] | None" = None
+    treatment: str = "latest_only"
+
+    def detect(self, triangle: "Triangle") -> "Regime":
+        """Run detection on ``triangle`` and return a :class:`Regime`."""
+        return Regime._from_triangle(
+            triangle,
+            target=self.target,
+            window=self.window,
+            by=self.by,
+            method=self.method,
+            n_regimes=self.n_regimes,
+            sig_level=self.sig_level,
+            n_permutations=self.n_permutations,
+            min_size=self.min_size,
+            seed=self.seed,
+            window_floor=self.window_floor,
+            fdr=self.fdr,
+            edge_scan=self.edge_scan,
+            edge_threshold=self.edge_threshold,
+            window_sweep=self.window_sweep,
+            grain_sweep=self.grain_sweep,
+            treatment=self.treatment,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Cohort filter + regime resolver (used by fit / backtest / usage)
 # ---------------------------------------------------------------------------
+
+
+def _resolve_to_regime(regime, triangle):
+    """Resolve a user ``regime=`` argument's DETECTION, leaving cuts intact.
+
+    Runs detection only when needed and returns a value the downstream paths
+    consume directly:
+
+    * ``None`` -> ``None``;
+    * a :class:`RegimeDetector` -> ``.detect(triangle)`` (a concrete Regime);
+    * a :class:`Regime` -> unchanged;
+    * a ``date`` / ``dict[segment -> date]`` -> unchanged (a direct manual cut;
+      its treatment is implicitly ``"latest_only"``).
+
+    This is the single point where a deferred detector becomes a concrete
+    Regime, so the ``treatment`` it carries is available to every downstream
+    path (the segment_wise / covariate projection branches, the cohort cut, the
+    usage view). Called at each public ``regime=`` entry BEFORE any
+    ``treatment`` is read or any cut is computed.
+    """
+    if regime is None or isinstance(regime, (Regime, date, dict)):
+        return regime
+    if isinstance(regime, RegimeDetector):
+        return regime.detect(triangle)
+    raise TypeError(
+        f"regime must be None / a date / a dict / Regime / RegimeDetector, "
+        f"got {type(regime).__name__}"
+    )
 
 
 def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
@@ -2312,33 +2356,19 @@ def _resolve_regime(regime, triangle):
     """Resolve a regime argument to a fit-ready cut.
 
     Returns ``None`` / a ``date`` / a ``dict[segment -> date]`` -- the only
-    forms the engine (and the usage view) consume. Accepts those forms
-    unchanged, a :class:`Regime` object (the latest change per segment), the
-    string ``"auto"`` (detect on ``triangle`` first), or a callable
-    ``triangle -> Regime``. Centralised here so every fit path (loss / premium
-    / ratio / backtest) and the usage heatmap accept the same inputs.
+    forms the engine (and the usage view) consume. Accepts those cut forms
+    unchanged, a :class:`Regime` (the latest change per segment), or a
+    :class:`RegimeDetector` (detected on ``triangle`` first via
+    :func:`_resolve_to_regime`). Centralised here so every fit path (loss /
+    premium / ratio / backtest) and the usage heatmap map the same inputs to a
+    cut.
     """
     from datetime import date as _date
     if regime is None or isinstance(regime, (_date, dict)):
         return regime
-    if isinstance(regime, Regime):
-        pass
-    elif isinstance(regime, str):
-        if regime != "auto":
-            raise ValueError(f"regime string must be 'auto', got {regime!r}")
-        regime = triangle.detect_regime(target="ratio")
-    elif callable(regime):
-        regime = regime(triangle)
-        if not isinstance(regime, Regime):
-            raise TypeError(
-                f"regime callable must return Regime, got "
-                f"{type(regime).__name__}"
-            )
-    else:
-        raise TypeError(
-            f"regime must be None / date / dict / 'auto' / Regime / Callable, "
-            f"got {type(regime).__name__}"
-        )
+    regime = _resolve_to_regime(regime, triangle)   # Regime / RegimeDetector -> Regime
+    if regime is None:
+        return None
     cutoff = _regime_cutoff_map(regime)        # DataFrame [group_cols?, _cutoff] | None
     if cutoff is None:
         return None

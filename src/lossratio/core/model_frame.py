@@ -91,7 +91,7 @@ class ModelFrame:
             segment; or a ``dict`` mapping a segment value (scalar for a single
             segment column, tuple for several) to its change ``date`` (segments
             absent from the dict are uncut). ModelFrame stays a pure shaper --
-            resolving a ``Regime`` / ``"auto"`` / callable to date(s) is the
+            resolving a ``Regime`` / ``RegimeDetector`` to date(s) is the
             caller's job.
         """
         segments = normalize_groups(triangle.groups)

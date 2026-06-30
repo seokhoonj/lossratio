@@ -682,10 +682,11 @@ class Triangle:
             deep tail from the older regimes (see :class:`Regime`). Default
             ``"latest_only"``.
         """
-        from ..diagnostics.regime import Regime
+        # eager sugar for RegimeDetector(...).detect(self) -- the detector
+        # config object is the single source of detection parameters.
+        from ..diagnostics.regime import RegimeDetector
 
-        return Regime._from_triangle(
-            self,
+        return RegimeDetector(
             target=target,
             window=window,
             by=by,
@@ -702,7 +703,7 @@ class Triangle:
             window_sweep=window_sweep,
             grain_sweep=grain_sweep,
             treatment=treatment,
-        )
+        ).detect(self)
 
     def mask(self, holdout: int = 0) -> Triangle:
         """Drop the most-recent ``holdout`` calendar diagonals.
@@ -797,8 +798,8 @@ class Triangle:
             recent calendar-diagonal window); cells outside drop to
             ``"unused"``. ``None`` applies no recent filter.
         regime
-            ``None``, a :class:`Regime`, ``"auto"``, or a callable
-            ``triangle -> Regime`` -- resolved to the same cohort treatment the
+            ``None``, a :class:`Regime`, or a :class:`RegimeDetector` --
+            resolved to the same cohort treatment the
             fit uses. ``latest_only`` (default) drops the pre-change cohorts to
             ``"unused"``; ``segment_wise`` / ``covariate`` keep every regime, and
             under ``segment_wise`` the older regimes' observed cells past the
@@ -814,9 +815,12 @@ class Triangle:
             ``status``. Input mirroring is preserved (pandas in -> pandas
             out).
         """
-        from ..diagnostics.regime import Regime, _resolve_regime
+        from ..diagnostics.regime import Regime, _resolve_regime, _resolve_to_regime
         from .usage import _compute_triangle_usage
 
+        # resolve a RegimeDetector to a concrete Regime first, so its treatment
+        # is read here (not silently dropped to latest_only).
+        regime = _resolve_to_regime(regime, self)
         regime_cut = _resolve_regime(regime, self)
         treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
         usage_df = _compute_triangle_usage(
@@ -881,8 +885,8 @@ class Triangle:
             (usage view) Number of trailing calendar diagonals to keep
             as "used".
         regime
-            (usage view) ``None``, a :class:`Regime` instance, ``"auto"``,
-            or a callable ``triangle -> Regime`` -- resolved to the same
+            (usage view) ``None``, a :class:`Regime` instance, or a
+            :class:`RegimeDetector` -- resolved to the same
             cohort cut the fit uses; cohorts before the change show as
             "unused", with a dashed hline at the cut.
         holdout

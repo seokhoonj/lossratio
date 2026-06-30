@@ -143,3 +143,23 @@ def test_segment_wise_rejects_covariates():
     reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
     with pytest.raises(NotImplementedError, match="covariates"):
         lr.CredibleLoss(regime=reg, covariates=["channel"]).fit(tri)
+
+
+def test_treatment_survives_the_deferred_detector_path(tri):
+    # a DEFERRED segment_wise regime (a RegimeDetector, resolved at fit time)
+    # must keep every regime and borrow the tail -- identical to the eager
+    # concrete Regime. Regression: the resolution used to read `.treatment` off
+    # a concrete Regime only, so a deferred/auto/callable regime silently fell
+    # back to latest_only (dropped the older regimes, no borrow).
+    eager = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    deferred = lr.RegimeDetector(treatment="segment_wise")
+
+    a = lr.PooledLoss(regime=eager).fit(tri).to_polars()
+    b = lr.PooledLoss(regime=deferred).fit(tri).to_polars()
+
+    # the detector finds the same planted change, so the deferred path keeps the
+    # same cohorts and borrows the same tail as the eager one
+    assert b.select(pl.col("cohort").n_unique()).item() == (
+        a.select(pl.col("cohort").n_unique()).item()
+    )
+    assert b.filter(pl.col("source") == "borrowed").height > 0

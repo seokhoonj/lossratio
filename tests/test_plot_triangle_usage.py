@@ -114,19 +114,19 @@ def test_legend_present_with_four_states(tri_with_groups):
 # --- Arg validation --------------------------------------------------
 
 
-def test_regime_auto_renders(tri_with_groups):
-    # `regime='auto'` runs detect_regime inline and resolves to the cohort cut.
-    fig = tri_with_groups.plot_triangle(kind="usage", regime="auto")
+def test_regime_default_detector_renders(tri_with_groups):
+    # a default RegimeDetector runs detection inline and resolves to the cut.
+    fig = tri_with_groups.plot_triangle(kind="usage", regime=lr.RegimeDetector())
     try:
         assert isinstance(fig, plt.Figure)
     finally:
         _close(fig)
 
 
-def test_regime_callable_renders(tri_with_groups):
+def test_regime_detector_renders(tri_with_groups):
     fig = tri_with_groups.plot_triangle(
         kind="usage",
-        regime=lambda t: t.detect_regime(window=12),
+        regime=lr.RegimeDetector(window=12),
     )
     try:
         assert isinstance(fig, plt.Figure)

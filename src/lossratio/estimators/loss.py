@@ -1188,18 +1188,26 @@ def _fit_loss(
     ``mechanism`` selects the per-segment engine fit: ``"pooled"`` (saturated
     complete-pooling baseline, intensity ``g_k``) or ``"chain_ladder"``
     (``ChainLadder``, link ratio ``f_k``). Both share this driver, the long-frame
-    assembly, and the :class:`LossFit` schema. ``regime`` is a RESOLVED cohort
-    cut (``None`` / a ``date`` / a ``dict[segment -> date]``) applied through
-    :class:`ModelFrame`. ``recent`` (calendar-diagonal window) is the data-intact
+    assembly, and the :class:`LossFit` schema. ``regime`` is ``None`` / a
+    :class:`Regime` / a :class:`RegimeDetector` (resolved to a concrete Regime
+    at entry, then carried as the cohort treatment / cut through
+    :class:`ModelFrame`). ``recent`` (calendar-diagonal window) is the data-intact
     fit mask -- only the most-recent ``N`` diagonals feed each segment's factor
     estimation, the projection seed stays full.
     """
     fit_segment, method, model = _MECHANISMS[mechanism]
 
+    # Resolve the regime to a concrete Regime FIRST -- a RegimeDetector detects
+    # on `triangle` (in backtest the masked fold triangle, so leakage-safe),
+    # None stays None. This is what makes the treatment survive every path: the
+    # branches below read `regime.treatment`, which only a concrete Regime
+    # carries (a deferred detector would otherwise silently fall to latest_only).
+    from ..diagnostics.regime import Regime, _resolve_to_regime
+    regime = _resolve_to_regime(regime, triangle)
+
     # segment_wise regime: keep ALL regimes (no cohort cut), fit each on its own
     # cohorts, borrow the deep tail from the older regimes (the cascade). The
     # default "latest_only" treatment leaves every path below byte-identical.
-    from ..diagnostics.regime import Regime
     segment_wise = (
         isinstance(regime, Regime)
         and getattr(regime, "treatment", "latest_only") == "segment_wise"

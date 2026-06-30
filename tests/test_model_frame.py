@@ -104,7 +104,7 @@ def test_regime_single_segment_dict():
 
 def test_regime_none_and_invalid():
     assert len(ModelFrame.from_triangle(_oracle_triangle(), regime=None)) == 9
-    with pytest.raises(ValueError, match="regime"):
+    with pytest.raises(TypeError, match="regime"):
         ModelFrame.from_triangle(_oracle_triangle(), regime="2020-02-01")
     with pytest.raises(ValueError, match="change must be a date"):
         ModelFrame.from_triangle(_oracle_triangle(), regime={"A": "2020-02-01"})

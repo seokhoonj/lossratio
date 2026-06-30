@@ -79,8 +79,11 @@ def _plot_triangle_usage(
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
-    from ..diagnostics.regime import Regime, _resolve_regime
+    from ..diagnostics.regime import Regime, _resolve_regime, _resolve_to_regime
 
+    # a RegimeDetector resolves to a concrete Regime here so its treatment is
+    # read (an already-concrete Regime passes through unchanged).
+    regime = _resolve_to_regime(regime, triangle)
     regime_cut = _resolve_regime(regime, triangle)
     treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
 

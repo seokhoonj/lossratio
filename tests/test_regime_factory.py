@@ -1,5 +1,5 @@
-"""Tests for the factory helpers ``regime_at`` / ``regime_spec``
-(4-type dispatch entry points)."""
+"""Tests for the regime entry points: ``Regime.at`` (eager manual) and
+``RegimeDetector`` (deferred detection config)."""
 
 from __future__ import annotations
 
@@ -83,26 +83,28 @@ def test_regime_at_validation_errors():
 
 
 # ---------------------------------------------------------------------------
-# regime_spec
+# RegimeDetector
 # ---------------------------------------------------------------------------
 
 
-def test_regime_spec_returns_callable():
-    spec = lr.Regime.detect()
-    assert callable(spec)
+def test_regime_detector_is_a_config_object():
+    det = lr.RegimeDetector()
+    assert isinstance(det, lr.RegimeDetector)
+    assert det.window == "auto"            # the canonical eager default
+    assert det.treatment == "latest_only"
 
 
-def test_regime_spec_invocation_yields_regime():
+def test_regime_detector_detect_yields_regime():
     tri = _sur_triangle()
-    spec = lr.Regime.detect(window=12)
-    r = spec(tri)
+    r = lr.RegimeDetector(window=12).detect(tri)
     assert isinstance(r, lr.Regime)
     assert r.method == "e_divisive"
     assert r.window == 12
 
 
-def test_regime_spec_forwards_method():
+def test_regime_detector_forwards_method_and_treatment():
     tri = _sur_triangle()
-    spec = lr.Regime.detect(window=12, method="hclust", n_regimes=2)
-    r = spec(tri)
+    r = lr.RegimeDetector(window=12, method="hclust", n_regimes=2).detect(tri)
     assert r.method == "hclust"
+    r2 = lr.RegimeDetector(treatment="segment_wise").detect(tri)
+    assert r2.treatment == "segment_wise"   # the field that the closure dropped

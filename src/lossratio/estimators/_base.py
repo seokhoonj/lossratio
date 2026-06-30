@@ -64,16 +64,14 @@ class _LossEstimatorBase:
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
-        if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
-            from ..diagnostics.regime import Regime
-            if not isinstance(self.regime, Regime) and not callable(self.regime):
+        if self.regime is not None and not isinstance(self.regime, (date, dict)):
+            from ..diagnostics.regime import Regime, RegimeDetector
+            if not isinstance(self.regime, (Regime, RegimeDetector)):
                 raise TypeError(
                     "regime must be None, a date, a dict[segment -> date], a "
-                    "Regime object, a callable (triangle -> Regime), or 'auto'; "
+                    "Regime, or a RegimeDetector; "
                     f"got {type(self.regime).__name__}"
                 )
-        if isinstance(self.regime, str) and self.regime != "auto":
-            raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
         if self.uncertainty is not None:
@@ -102,15 +100,13 @@ class _PremiumEstimatorBase:
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
-        if self.regime is not None and not isinstance(self.regime, (date, dict, str)):
-            from ..diagnostics.regime import Regime
-            if not isinstance(self.regime, Regime) and not callable(self.regime):
+        if self.regime is not None and not isinstance(self.regime, (date, dict)):
+            from ..diagnostics.regime import Regime, RegimeDetector
+            if not isinstance(self.regime, (Regime, RegimeDetector)):
                 raise TypeError(
                     "regime must be None, a date, a dict[segment -> date], a "
-                    "Regime object, a callable (triangle -> Regime), or 'auto'; "
+                    "Regime, or a RegimeDetector; "
                     f"got {type(self.regime).__name__}"
                 )
-        if isinstance(self.regime, str) and self.regime != "auto":
-            raise ValueError(f"regime string must be 'auto', got {self.regime!r}")
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")

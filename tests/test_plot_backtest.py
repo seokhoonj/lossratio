@@ -173,24 +173,24 @@ def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single)
         _close(fig)
 
 def test_backtest_usage_resolves_regime_on_masked_fold(monkeypatch):
-    # A callable / "auto" regime spec inherited from the estimator must be
-    # resolved on the MASKED fold triangle for the usage overlay, so the cut
-    # shown is the one the fold actually fit -- never one a full-data detect
-    # could derive from held-out cells. seed=7 is chosen so the spec detects a
-    # cut on the full triangle but NONE on the masked fold (the two diverge).
+    # A deferred RegimeDetector inherited from the estimator must be resolved on
+    # the MASKED fold triangle for the usage overlay, so the cut shown is the
+    # one the fold actually fit -- never one a full-data detect could derive
+    # from held-out cells. seed=7 is chosen so the detector finds a cut on the
+    # full triangle but NONE on the masked fold (the two diverge).
     import lossratio._plot.triangle_usage as tv
     from lossratio.diagnostics.regime import _resolve_regime
 
     tri = lr.Triangle(lr.make_experience(seed=7), groups="coverage")
     holdout = 6
-    spec = lr.Regime.detect(window=12)
+    det = lr.RegimeDetector(window=12)
     bt = lr.Backtest(
-        estimator=lr.PooledLoss(regime=spec), holdouts=holdout, target="loss"
+        estimator=lr.PooledLoss(regime=det), holdouts=holdout, target="loss"
     ).fit(tri)
 
-    cut_masked = _resolve_regime(spec, tri.mask(holdout))
-    cut_full = _resolve_regime(spec, tri)
-    assert cut_masked != cut_full  # guards: the spec genuinely diverges here
+    cut_masked = _resolve_regime(det, tri.mask(holdout))
+    cut_full = _resolve_regime(det, tri)
+    assert cut_masked != cut_full  # guards: the detector genuinely diverges here
 
     captured: dict = {}
 
@@ -202,5 +202,7 @@ def test_backtest_usage_resolves_regime_on_masked_fold(monkeypatch):
     fig = bt.plot_triangle(kind="usage")
     _close(fig)
 
-    assert captured["regime"] == cut_masked
-    assert captured["regime"] != cut_full
+    # the overlay receives the concrete Regime detected on the masked fold; its
+    # cut must match the masked detection, not the full-data one.
+    assert _resolve_regime(captured["regime"], tri) == cut_masked
+    assert _resolve_regime(captured["regime"], tri) != cut_full

@@ -639,18 +639,19 @@ class _FoldFit:
         # kind == "usage": forward to the Triangle-side usage
         # renderer with `holdout=self.holdout` and filter args
         # inherited from `self.estimator` (overridable via kwargs).
-        # The Triangle renderer resolves `"auto"` for regime via an
-        # inline `detect_regime` call.
+        # A RegimeDetector inherited from the estimator is resolved on the
+        # masked fold triangle just below before being passed on.
         from .._plot.triangle_usage import _plot_triangle_usage
-        from .regime import _resolve_regime
+        from .regime import _resolve_to_regime
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
-        # Resolve a callable / "auto" regime spec on the MASKED fold triangle --
-        # the same data the fold fit on -- so the overlay shows the cut the fold
-        # actually used, never one a full-data detect could derive from held-out
-        # cells. An already-eager Regime / date / dict resolves the same either
-        # way (its cut is intrinsic, not re-detected).
-        eff_regime = _resolve_regime(eff_regime, self._triangle.mask(self.holdout))
+        # Resolve a RegimeDetector on the MASKED fold triangle -- the same data
+        # the fold fit on -- so the overlay shows the cut the fold actually
+        # used, never one a full-data detect could derive from held-out cells.
+        # Resolving to the concrete Regime (not the cut) keeps its treatment so
+        # the usage view colours donor cells under segment_wise. An
+        # already-concrete Regime passes through unchanged.
+        eff_regime = _resolve_to_regime(eff_regime, self._triangle.mask(self.holdout))
         return _plot_triangle_usage(
             self._triangle,
             recent=eff_recent,
@@ -666,11 +667,11 @@ class _FoldFit:
     def _infer_regime(self) -> Any:
         """Extract the regime from `self.estimator`, if any.
 
-        Reads the estimator's ``regime`` (a resolved cohort cut). A legacy
-        ``loss_regime`` slot is honoured first if present. The Triangle
-        renderer accepts ``"auto"`` directly and runs
-        :meth:`Triangle.detect_regime` inline, so a literal ``"auto"`` is
-        forwarded as-is.
+        Reads the estimator's ``regime`` (``None`` / a :class:`Regime` / a
+        :class:`RegimeDetector`). A legacy ``loss_regime`` slot is honoured
+        first if present. The value is resolved on the masked fold triangle by
+        the caller, so a deferred :class:`RegimeDetector` is detected
+        leakage-safely.
         """
         est = self.estimator
         if hasattr(est, "loss_regime"):

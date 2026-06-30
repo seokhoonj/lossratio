@@ -47,6 +47,9 @@ API 레퍼런스
 .. autoclass:: lossratio.Regime
    :members:
 
+.. autoclass:: lossratio.RegimeDetector
+   :members:
+
 손해 예측 (강도 사다리 + 벤치마크)
 ----------------------------------
 
