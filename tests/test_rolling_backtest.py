@@ -493,25 +493,25 @@ def test_evidence_readers_incremental_lane(loss_fit):
     # ChainLadder carries the incr_* lane; both readers must walk it.
     a = loss_fit.anchor_summary
     expected = _walk_converged_at(a, "incr_ae_err_wt", 0.05, min_run=6)
-    got = loss_fit.convergence(tol=0.05, lane="incremental")
+    got = loss_fit.convergence(tol=0.05, basis="incremental")
     assert got["converged_at"][0] == expected
     h = loss_fit.horizon_summary
     expected_h = _walk_reliable_horizon(h, "incr_ae_err_wt", 0.05)
-    got_h = loss_fit.reliable_horizon(tol=0.05, lane="incremental")
+    got_h = loss_fit.reliable_horizon(tol=0.05, basis="incremental")
     assert got_h["reliable_horizon"][0] == expected_h
 
 
 def test_evidence_readers_incremental_lane_unavailable(loss_fit):
-    # A fit without the incremental lane must refuse lane="incremental" with
+    # A fit without the incremental lane must refuse basis="incremental" with
     # an explanatory error while the cumulative lane keeps working. No
     # existing estimator path drops the lane on this fixture, so flip the
     # flag on a shallow copy (unit-level; the module fixture stays pristine).
     no_incr = copy.copy(loss_fit)
     no_incr._has_incr = False
     with pytest.raises(ValueError, match="incremental"):
-        no_incr.convergence(lane="incremental")
+        no_incr.convergence(basis="incremental")
     with pytest.raises(ValueError, match="incremental"):
-        no_incr.reliable_horizon(lane="incremental")
+        no_incr.reliable_horizon(basis="incremental")
     assert no_incr.convergence().height == 1
     assert no_incr.reliable_horizon().height == 1
 
@@ -522,10 +522,10 @@ def test_evidence_readers_validation(loss_fit):
             loss_fit.convergence(tol=bad_tol)
         with pytest.raises(ValueError, match="tol"):
             loss_fit.reliable_horizon(tol=bad_tol)
-    with pytest.raises(ValueError, match="lane"):
-        loss_fit.convergence(lane="bogus")
-    with pytest.raises(ValueError, match="lane"):
-        loss_fit.reliable_horizon(lane="bogus")
+    with pytest.raises(ValueError, match="basis"):
+        loss_fit.convergence(basis="bogus")
+    with pytest.raises(ValueError, match="basis"):
+        loss_fit.reliable_horizon(basis="bogus")
 
 
 def test_evidence_readers_grouped():

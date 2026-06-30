@@ -218,13 +218,13 @@ def test_triangle_no_calendar_no_duration_raises():
 
 
 # ---------------------------------------------------------------------------
-# cell_type: cumulative input -> incremental recovery
+# basis: cumulative input -> incremental recovery
 # ---------------------------------------------------------------------------
 
 
-def test_triangle_cell_type_cumulative():
-    """A per-cohort cumulated input built with cell_type='cumulative'
-    equals the cell_type='incremental' build on the original."""
+def test_triangle_basis_cumulative():
+    """A per-cohort cumulated input built with basis='cumulative'
+    equals the basis='incremental' build on the original."""
     inc = lr.Triangle(_exp_input()).to_polars().sort(["cohort", "duration"])
 
     # Per-cohort cumsum of the increments -> a cumulative-style input.
@@ -241,14 +241,14 @@ def test_triangle_cell_type_cumulative():
         )
     )
     cum = (
-        lr.Triangle(cum_input, cell_type="cumulative")
+        lr.Triangle(cum_input, basis="cumulative")
         .to_polars()
         .sort(["cohort", "duration"])
     )
     for c in ("loss", "incr_loss", "premium", "incr_premium",
               "ratio", "incr_ratio"):
         assert cum[c].to_list() == inc[c].to_list(), (
-            f"cell_type='cumulative' differs on {c!r}"
+            f"basis='cumulative' differs on {c!r}"
         )
 
 

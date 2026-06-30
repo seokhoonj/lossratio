@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 
 _VALID_TYPES = ("col", "diag", "cell")
-_VALID_CELL_TYPES = ("cumulative", "incremental")
+_VALID_BASIS = ("cumulative", "incremental")
 _STAT_COLUMNS = (
     ("Mean",     "ae_err_mean", "incr_ae_err_mean"),
     ("Median",   "ae_err_med",  "incr_ae_err_med"),
@@ -41,7 +41,7 @@ _STAT_COLUMNS = (
 def plot_backtest(
     fit: BacktestFit,
     kind: str = "col",
-    cell_type: str = "cumulative",
+    basis: str = "cumulative",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
@@ -51,13 +51,13 @@ def plot_backtest(
         raise ValueError(
             f"`kind` must be one of {_VALID_TYPES!r}; got {kind!r}."
         )
-    if cell_type not in _VALID_CELL_TYPES:
+    if basis not in _VALID_BASIS:
         raise ValueError(
-            f"`cell_type` must be one of {_VALID_CELL_TYPES!r}; "
-            f"got {cell_type!r}."
+            f"`basis` must be one of {_VALID_BASIS!r}; "
+            f"got {basis!r}."
         )
 
-    is_incr = cell_type == "incremental"
+    is_incr = basis == "incremental"
     mode_word = "incremental" if is_incr else "cumulative"
     stat_cols = [(lab, incr if is_incr else cum) for lab, cum, incr in _STAT_COLUMNS]
     ae_err_col = "incr_ae_err" if is_incr else "ae_err"
@@ -95,7 +95,7 @@ def plot_backtest(
 
 def plot_triangle_backtest(
     fit: BacktestFit,
-    cell_type: str = "cumulative",
+    basis: str = "cumulative",
     label_size: float = 7.0,
     nrow: int | None = None,
     ncol: int | None = None,
@@ -115,21 +115,21 @@ def plot_triangle_backtest(
     cells align by calendar across rows and the held-out diagonal reads as a
     block of recent calendar columns -- the geometry of the masking.
     """
-    if cell_type not in _VALID_CELL_TYPES:
+    if basis not in _VALID_BASIS:
         raise ValueError(
-            f"`cell_type` must be one of {_VALID_CELL_TYPES!r}; "
-            f"got {cell_type!r}."
+            f"`basis` must be one of {_VALID_BASIS!r}; "
+            f"got {basis!r}."
         )
     if x_axis not in ("duration", "calendar"):
         raise ValueError(
             f"`x_axis` must be 'duration' or 'calendar'; got {x_axis!r}."
         )
-    is_incr = cell_type == "incremental"
+    is_incr = basis == "incremental"
     ae_err_col = "incr_ae_err" if is_incr else "ae_err"
     if ae_err_col not in fit._ae_err.columns:
         raise ValueError(
             f"Backtest has no `{ae_err_col}` column "
-            f"(cell_type={cell_type!r})."
+            f"(basis={basis!r})."
         )
 
     import matplotlib.pyplot as plt

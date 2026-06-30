@@ -543,7 +543,7 @@ class _FoldFit:
     def plot(
         self,
         kind: str = "col",
-        cell_type: str = "cumulative",
+        basis: str = "cumulative",
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -556,7 +556,7 @@ class _FoldFit:
             The aggregation the error is viewed over: ``"col"`` (default;
             by duration), ``"diag"`` (by calendar diagonal), or
             ``"cell"`` (per-cell scatter / line, one line per cohort).
-        cell_type
+        basis
             ``"cumulative"`` (default; uses ``ae_err_*`` columns) or
             ``"incremental"`` (uses ``incr_ae_err_*`` columns).
         nrow, ncol
@@ -570,14 +570,14 @@ class _FoldFit:
         """
         from .._plot.backtest import plot_backtest
         return plot_backtest(
-            self, kind=kind, cell_type=cell_type,
+            self, kind=kind, basis=basis,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
     def plot_triangle(
         self,
         kind: str = "value",
-        cell_type: str = "cumulative",
+        basis: str = "cumulative",
         label_size: float = 7.0,
         nrow: int | None = None,
         ncol: int | None = None,
@@ -598,7 +598,7 @@ class _FoldFit:
             heatmap of training / held-out / regime-excluded /
             future cells, driven by the masking + filter metadata
             inherited from this Backtest's estimator).
-        cell_type
+        basis
             (``kind='value'`` only) ``"cumulative"`` (default; uses
             ``ae_err``) or ``"incremental"`` (uses ``incr_ae_err``).
         label_size
@@ -631,7 +631,7 @@ class _FoldFit:
             from .._plot.backtest import plot_triangle_backtest
             return plot_triangle_backtest(
                 self,
-                cell_type=cell_type,
+                basis=basis,
                 label_size=label_size,
                 nrow=nrow, ncol=ncol, figsize=figsize,
                 x_axis=x_axis,
@@ -1271,8 +1271,8 @@ class BacktestFit:
 
     # -- evidence readers ----------------------------------------------------
 
-    def _resolve_bias_col(self, tol: float, lane: str) -> str:
-        """Validate the shared ``tol`` / ``lane`` arguments of the evidence
+    def _resolve_bias_col(self, tol: float, basis: str) -> str:
+        """Validate the shared ``tol`` / ``basis`` arguments of the evidence
         readers and return the pooled signed-bias column to walk."""
         if (
             isinstance(tol, bool)
@@ -1283,18 +1283,18 @@ class BacktestFit:
             raise ValueError(
                 f"tol must be a positive finite number, got {tol!r}"
             )
-        if lane not in ("cumulative", "incremental"):
+        if basis not in ("cumulative", "incremental"):
             raise ValueError(
-                f'lane must be "cumulative" or "incremental", got {lane!r}'
+                f'basis must be "cumulative" or "incremental", got {basis!r}'
             )
-        if lane == "incremental" and not self._has_incr:
+        if basis == "incremental" and not self._has_incr:
             raise ValueError(
-                'lane="incremental" is unavailable for this fit: not every '
+                'basis="incremental" is unavailable for this fit: not every '
                 "surviving hold-out depth carried an incremental projection, "
                 "so the summaries have no incr_* lane (see the module "
                 "docstring)"
             )
-        return "ae_err_wt" if lane == "cumulative" else "incr_ae_err_wt"
+        return "ae_err_wt" if basis == "cumulative" else "incr_ae_err_wt"
 
     @staticmethod
     def _threshold_walk(
@@ -1362,15 +1362,15 @@ class BacktestFit:
         return out.sort(group_cols) if group_cols else out
 
     def convergence(
-        self, tol: float = 0.03, lane: str = "cumulative", min_run: int = 6
+        self, tol: float = 0.03, basis: str = "cumulative", min_run: int = 6
     ):
         """Smallest anchor duration from which the pooled bias stays in band.
 
         Reads the ANCHOR axis of the rolling backtest: how much observed
         history a cohort needs before its out-of-sample projections settle.
         Per group, the ``anchor_summary`` pooled signed bias (``ae_err_wt``
-        for ``lane="cumulative"``, ``incr_ae_err_wt`` for
-        ``lane="incremental"``) is walked over ``anchor_duration``;
+        for ``basis="cumulative"``, ``incr_ae_err_wt`` for
+        ``basis="incremental"``) is walked over ``anchor_duration``;
         ``converged_at`` is the smallest observed anchor duration such that
         EVERY observed anchor duration at or beyond it keeps
         ``|bias| <= tol`` (a null bias counts as a violation) AND the
@@ -1391,7 +1391,7 @@ class BacktestFit:
         tolerance defaults TIGHT: the cumulative lane's denominator keeps
         growing with duration, so an apparent flattening of the cumulative
         loss ratio is an inertia illusion -- eyeballing that curve is not
-        evidence; the out-of-sample bias is. ``lane`` selects which bias to
+        evidence; the out-of-sample bias is. ``basis`` selects which bias to
         walk: the cumulative lane is the smoother primary read, while the
         incremental lane strips the cumulative-magnitude confound (see the
         module docstring's lane discussion).
@@ -1428,7 +1428,7 @@ class BacktestFit:
         tol
             Tolerance band on the pooled signed bias, ``|bias| <= tol``.
             Must be a positive finite number. Default ``0.03``.
-        lane
+        basis
             ``"cumulative"`` (default) or ``"incremental"``. The incremental
             lane is available only when every surviving hold-out depth
             carried an incremental projection.
@@ -1454,7 +1454,7 @@ class BacktestFit:
             raise ValueError(
                 f"min_run must be an int >= 1, got {min_run!r}"
             )
-        bias = self._resolve_bias_col(tol, lane)
+        bias = self._resolve_bias_col(tol, basis)
         group_cols = normalize_groups(self._groups)
         out = self._threshold_walk(
             self._anchor_summary,
@@ -1469,14 +1469,14 @@ class BacktestFit:
         )
         return mirror_output(out, self._output_type)
 
-    def reliable_horizon(self, tol: float = 0.03, lane: str = "cumulative"):
+    def reliable_horizon(self, tol: float = 0.03, basis: str = "cumulative"):
         """Largest horizon the projections stay in band for, from the front.
 
         Reads the HORIZON axis of the rolling backtest: how far past the
         as-of date a projection can be pushed before the pooled signed bias
         leaves the tolerance band. Per group, the ``horizon_summary`` bias
-        (``ae_err_wt`` for ``lane="cumulative"``, ``incr_ae_err_wt`` for
-        ``lane="incremental"``) is walked over ``horizon`` from the smallest
+        (``ae_err_wt`` for ``basis="cumulative"``, ``incr_ae_err_wt`` for
+        ``basis="incremental"``) is walked over ``horizon`` from the smallest
         observed horizon upward; ``reliable_horizon`` is the largest observed
         horizon ``H`` such that EVERY observed horizon up to and including
         ``H`` keeps ``|bias| <= tol`` -- a contiguous-from-the-front
@@ -1495,7 +1495,7 @@ class BacktestFit:
         The signed-pooled-bias rationale of :meth:`convergence` applies
         unchanged -- on a lumpy book the per-period absolute error never
         shrinks, so the bias band, not the absolute error, is what carries
-        the evidence. ``lane`` selects which bias to walk: the cumulative
+        the evidence. ``basis`` selects which bias to walk: the cumulative
         lane is the smoother primary read, while the incremental lane
         strips the cumulative-magnitude confound (the per-horizon population
         drifts toward higher durations as horizon grows -- see the module
@@ -1514,7 +1514,7 @@ class BacktestFit:
         tol
             Tolerance band on the pooled signed bias, ``|bias| <= tol``.
             Must be a positive finite number. Default ``0.03``.
-        lane
+        basis
             ``"cumulative"`` (default) or ``"incremental"``. The incremental
             lane is available only when every surviving hold-out depth
             carried an incremental projection.
@@ -1528,7 +1528,7 @@ class BacktestFit:
             first observed horizon already violates; ``max_horizon`` is the
             largest observed horizon.
         """
-        bias = self._resolve_bias_col(tol, lane)
+        bias = self._resolve_bias_col(tol, basis)
         group_cols = normalize_groups(self._groups)
         out = self._threshold_walk(
             self._horizon_summary,

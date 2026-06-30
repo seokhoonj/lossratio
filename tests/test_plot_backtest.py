@@ -49,7 +49,7 @@ def test_backtest_plot_types(bt_multi, type_):
 
 @pytest.mark.parametrize("type_", ["col", "diag", "cell"])
 def test_backtest_plot_incremental(bt_multi, type_):
-    fig = bt_multi.plot(kind=type_, cell_type="incremental")
+    fig = bt_multi.plot(kind=type_, basis="incremental")
     try:
         assert isinstance(fig, plt.Figure)
         assert "incremental" in fig._suptitle.get_text()
@@ -67,9 +67,9 @@ def test_backtest_plot_invalid_type(bt_single):
     with pytest.raises(ValueError, match="kind"):
         bt_single.plot(kind="bogus")
 
-def test_backtest_plot_invalid_cell_type(bt_single):
-    with pytest.raises(ValueError, match="cell_type"):
-        bt_single.plot(cell_type="bogus")
+def test_backtest_plot_invalid_basis(bt_single):
+    with pytest.raises(ValueError, match="basis"):
+        bt_single.plot(basis="bogus")
 
 def test_backtest_plot_triangle_default(bt_single):
     fig = bt_single.plot_triangle()
@@ -97,15 +97,15 @@ def test_backtest_plot_triangle_multi(bt_multi):
         _close(fig)
 
 def test_backtest_plot_triangle_incremental(bt_single):
-    fig = bt_single.plot_triangle(cell_type="incremental")
+    fig = bt_single.plot_triangle(basis="incremental")
     try:
         assert "incremental" in fig._suptitle.get_text()
     finally:
         _close(fig)
 
-def test_backtest_plot_triangle_invalid_cell_type(bt_single):
-    with pytest.raises(ValueError, match="cell_type"):
-        bt_single.plot_triangle(cell_type="bogus")
+def test_backtest_plot_triangle_invalid_basis(bt_single):
+    with pytest.raises(ValueError, match="basis"):
+        bt_single.plot_triangle(basis="bogus")
 
 def test_backtest_plot_triangle_duration_axis_default(bt_single):
     # default x_axis="duration" keeps the duration-period axis label.

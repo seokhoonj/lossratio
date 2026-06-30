@@ -87,7 +87,7 @@ def test_plot_signed_metric_adds_zero_line(cmp_single):
 
 
 def test_plot_incremental_lane(cmp_single):
-    fig = cmp_single.plot(lane="incremental")
+    fig = cmp_single.plot(basis="incremental")
     try:
         assert isinstance(fig, plt.Figure)
         assert "per-period" in fig._supylabel.get_text()
@@ -115,9 +115,9 @@ def test_plot_invalid_metric(cmp_single):
         cmp_single.plot(metric="bogus")
 
 
-def test_plot_invalid_lane(cmp_single):
-    with pytest.raises(ValueError, match="`lane`"):
-        cmp_single.plot(lane="bogus")
+def test_plot_invalid_basis(cmp_single):
+    with pytest.raises(ValueError, match="`basis`"):
+        cmp_single.plot(basis="bogus")
 
 
 def test_plot_empty_fit_does_not_raise():

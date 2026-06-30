@@ -468,7 +468,7 @@ def _coarsen_triangle(tri, target_grain: str):
         loss="incr_loss",
         premium="incr_premium",
         grain=target_grain,
-        cell_type="incremental",
+        basis="incremental",
     )
 
 

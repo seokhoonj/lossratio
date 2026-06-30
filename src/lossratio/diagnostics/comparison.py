@@ -803,7 +803,7 @@ class EstimatorComparisonFit:
         metric: str = "mae",
         *,
         population: str = "all",
-        lane: str = "cumulative",
+        basis: str = "cumulative",
         terminal: "int | None" = None,
     ):
         """Estimators sorted best-first by a SINGLE metric (transparent view).
@@ -819,7 +819,7 @@ class EstimatorComparisonFit:
         trade-off.
         """
         sc, group_cols = self._resolve_population(population, terminal)
-        df = sc.filter((pl.col("population") == population) & (pl.col("lane") == lane))
+        df = sc.filter((pl.col("population") == population) & (pl.col("lane") == basis))
         if metric not in df.columns:
             raise ValueError(
                 f"metric {metric!r} is not in the scorecard (point-only fits "
@@ -840,7 +840,7 @@ class EstimatorComparisonFit:
         self,
         *,
         population: str = "all",
-        lane: str = "cumulative",
+        basis: str = "cumulative",
         terminal: "int | None" = None,
         metrics: "tuple[str, ...] | None" = None,
     ):
@@ -857,7 +857,7 @@ class EstimatorComparisonFit:
         scorecard (e.g. coverage on a point-only fit) is dropped with a warning.
         """
         sc, group_cols = self._resolve_population(population, terminal)
-        df = sc.filter((pl.col("population") == population) & (pl.col("lane") == lane))
+        df = sc.filter((pl.col("population") == population) & (pl.col("lane") == basis))
         want = list(metrics) if metrics is not None else list(self._BEST_DEFAULT_METRICS)
         present = [m for m in want if m in df.columns]
         no_col = [m for m in want if m not in df.columns]
@@ -954,14 +954,14 @@ class EstimatorComparisonFit:
 
     @staticmethod
     def _pooled_value(
-        sub: pl.DataFrame, metric: str, lane: str
+        sub: pl.DataFrame, metric: str, basis: str
     ) -> "float | None":
         """Pooled metric value over a matched-cell subset (one estimator's
         side): ``"abs_err"`` -> ``mean|actual - expected|``, ``"ae_err"``
         -> ``mean|ae_err|``, ``"bias"`` -> ``|sum(actual - expected) /
         sum(expected)|``. ``None`` on an empty subset, a zero / null
         denominator, or a non-finite result."""
-        pre = "incr_" if lane == "incremental" else ""
+        pre = "incr_" if basis == "incremental" else ""
         if sub.height == 0:
             return None
         if metric == "abs_err":
@@ -995,13 +995,13 @@ class EstimatorComparisonFit:
         ch_cells: pl.DataFrame,
         base_cells: pl.DataFrame,
         metric: str,
-        lane: str,
+        basis: str,
     ) -> "str | None":
         """Winner token of the pooled metric over a matched-cell subset:
         ``"c"`` / ``"b"`` for the strictly smaller side, ``None`` on a tie
         or when either side's pooled value is unavailable."""
-        cv = cls._pooled_value(ch_cells, metric, lane)
-        bv = cls._pooled_value(base_cells, metric, lane)
+        cv = cls._pooled_value(ch_cells, metric, basis)
+        bv = cls._pooled_value(base_cells, metric, basis)
         if cv is None or bv is None:
             return None
         if cv < bv:
@@ -1014,7 +1014,7 @@ class EstimatorComparisonFit:
         self,
         by: str = "horizon",
         metric: str = "abs_err",
-        lane: str = "cumulative",
+        basis: str = "cumulative",
         min_run: int = 6,
     ):
         """Where (if anywhere) the better method flips along an axis.
@@ -1073,7 +1073,7 @@ class EstimatorComparisonFit:
         metric
             ``"abs_err"`` (default), ``"ae_err"``, or ``"bias"`` -- see
             above.
-        lane
+        basis
             ``"cumulative"`` (default) or ``"incremental"``. The
             incremental lane is available only when every estimator's
             surviving folds carried an incremental projection.
@@ -1105,13 +1105,13 @@ class EstimatorComparisonFit:
                 f"metric must be one of {tuple(self._METRIC_PAIRS)}, "
                 f"got {metric!r}"
             )
-        if lane not in ("cumulative", "incremental"):
+        if basis not in ("cumulative", "incremental"):
             raise ValueError(
-                f'lane must be "cumulative" or "incremental", got {lane!r}'
+                f'basis must be "cumulative" or "incremental", got {basis!r}'
             )
-        if lane == "incremental" and not self._has_incr:
+        if basis == "incremental" and not self._has_incr:
             raise ValueError(
-                'lane="incremental" is unavailable for this fit: not every '
+                'basis="incremental" is unavailable for this fit: not every '
                 "estimator's surviving hold-out depths carried an "
                 "incremental projection, so the matched cells have no "
                 "incr_* lane (see the module docstring)"
@@ -1133,7 +1133,7 @@ class EstimatorComparisonFit:
             else self._anchor_comparison
         )
         ch_col, base_col = self._METRIC_PAIRS[metric]
-        if lane == "incremental":
+        if basis == "incremental":
             ch_col, base_col = "incr_" + ch_col, "incr_" + base_col
 
         group_cols = normalize_groups(self._groups)
@@ -1175,7 +1175,7 @@ class EstimatorComparisonFit:
             ch_cells = sub.filter(pl.col("estimator") == label)
             base_cells = sub.filter(pl.col("estimator") == self.baseline)
 
-            overall = self._pooled_winner(ch_cells, base_cells, metric, lane)
+            overall = self._pooled_winner(ch_cells, base_cells, metric, basis)
 
             if run == 0 or run_start == 0:
                 # No pre-run cells to pool: either the deepest entry has no
@@ -1189,7 +1189,7 @@ class EstimatorComparisonFit:
                     ch_cells.filter(pl.col(axis).is_in(pre)),
                     base_cells.filter(pl.col(axis).is_in(pre)),
                     metric,
-                    lane,
+                    basis,
                 )
 
             crossover_at = None
@@ -1227,7 +1227,7 @@ class EstimatorComparisonFit:
         self,
         by: str = "horizon",
         metric: str = "abs_err",
-        lane: str = "cumulative",
+        basis: str = "cumulative",
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -1240,7 +1240,7 @@ class EstimatorComparisonFit:
         summaries: ``"abs_err"`` (default) -> ``abs_err_mean``;
         ``"ae_err"`` -> ``ae_err_mean`` (the SIGNED mean, with a zero
         line); ``"bias"`` -> ``ae_err_wt`` (signed pooled bias, zero
-        line). ``lane="incremental"`` switches to the ``incr_*`` companions
+        line). ``basis="incremental"`` switches to the ``incr_*`` companions
         (available only when every estimator carried the incremental
         lane). One facet per group; the estimator insertion order fixes the
         line / colour order and the single legend.
@@ -1251,7 +1251,7 @@ class EstimatorComparisonFit:
         """
         from .._plot.comparison import plot_estimator_comparison
         return plot_estimator_comparison(
-            self, by=by, metric=metric, lane=lane,
+            self, by=by, metric=metric, basis=basis,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 

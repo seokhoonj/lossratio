@@ -99,16 +99,16 @@ class Triangle:
         loss: str = "incr_loss",
         premium: str = "incr_premium",
         grain: str = "auto",
-        cell_type: str = "incremental",
+        basis: str = "incremental",
         fill_gaps: bool = False,
     ) -> None:
         self._output_type = detect_input_type(df)
         df_pl = to_polars(df)
 
-        if cell_type not in ("incremental", "cumulative"):
+        if basis not in ("incremental", "cumulative"):
             raise ValueError(
-                f"cell_type must be 'incremental' or 'cumulative', "
-                f"got {cell_type!r}"
+                f"basis must be 'incremental' or 'cumulative', "
+                f"got {basis!r}"
             )
         if calendar is None and duration is None:
             raise ValueError(
@@ -141,7 +141,7 @@ class Triangle:
         # Cumulative input: difference per-cohort to recover increments
         # at INPUT grain (before binning). Sort axis prefers calendar
         # when present, else duration -- both monotone within a cohort.
-        if cell_type == "cumulative":
+        if basis == "cumulative":
             sort_axis = calendar if calendar is not None else duration
             sort_keys: list[str] = normalize_groups(groups)
             sort_keys.extend([cohort, sort_axis])  # type: ignore[list-item]

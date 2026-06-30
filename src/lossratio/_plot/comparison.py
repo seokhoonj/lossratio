@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 _VALID_BY = ("horizon", "anchor", "holdout")
 _VALID_METRIC = ("abs_err", "ae_err", "bias")
-_VALID_LANE = ("cumulative", "incremental")
+_VALID_BASIS = ("cumulative", "incremental")
 _BY_XCOL = {
     "horizon": "horizon",
     "anchor":  "anchor_duration",
@@ -49,7 +49,7 @@ def plot_estimator_comparison(
     fit: "EstimatorComparisonFit",
     by: str = "horizon",
     metric: str = "abs_err",
-    lane: str = "cumulative",
+    basis: str = "cumulative",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
@@ -61,7 +61,7 @@ def plot_estimator_comparison(
     ``metric`` selects the y statistic from the matched summaries:
     ``"abs_err"`` -> ``abs_err_mean``; ``"ae_err"`` -> ``ae_err_mean``
     (signed -- a zero line is drawn); ``"bias"`` -> ``ae_err_wt`` (signed
-    pooled bias, zero line). ``lane="incremental"`` switches to the
+    pooled bias, zero line). ``basis="incremental"`` switches to the
     ``incr_*`` companions (available only when every estimator's surviving
     folds carried an incremental projection). Estimator insertion order
     fixes the line / colour order and the legend.
@@ -72,13 +72,13 @@ def plot_estimator_comparison(
         raise ValueError(
             f"`metric` must be one of {_VALID_METRIC!r}; got {metric!r}."
         )
-    if lane not in _VALID_LANE:
+    if basis not in _VALID_BASIS:
         raise ValueError(
-            f"`lane` must be one of {_VALID_LANE!r}; got {lane!r}."
+            f"`basis` must be one of {_VALID_BASIS!r}; got {basis!r}."
         )
-    if lane == "incremental" and not fit._has_incr:
+    if basis == "incremental" and not fit._has_incr:
         raise ValueError(
-            'lane="incremental" is unavailable for this fit: not every '
+            'basis="incremental" is unavailable for this fit: not every '
             "estimator's surviving hold-out depths carried an incremental "
             "projection, so the matched summaries have no incr_* lane."
         )
@@ -90,7 +90,7 @@ def plot_estimator_comparison(
     }[by]
     xcol = _BY_XCOL[by]
     ycol = _METRIC_COL[metric]
-    if lane == "incremental":
+    if basis == "incremental":
         ycol = "incr_" + ycol
 
     grid = open_facets(
@@ -117,7 +117,7 @@ def plot_estimator_comparison(
     grid.hide_unused()
 
     word = _METRIC_WORD[metric]
-    if lane == "incremental":
+    if basis == "incremental":
         word = "per-period " + word
     finalize_figure(
         grid.fig,

@@ -373,7 +373,7 @@ def test_incr_lane_present_when_all_carry_it(cmp_fit):
     assert "incr_win_rate" in cmp_fit.horizon_comparison.columns
     assert "incr_base_abs_err_mean" in cmp_fit.horizon_comparison.columns
     # the incremental crossover walk runs
-    out = cmp_fit.crossover(lane="incremental")
+    out = cmp_fit.crossover(basis="incremental")
     assert out.height == 1
 
 
@@ -388,9 +388,9 @@ def test_incr_all_or_nothing():
     ):
         assert not any(c.startswith("incr_") for c in frame.columns)
     with pytest.raises(ValueError, match="incremental"):
-        fit.crossover(lane="incremental")
+        fit.crossover(basis="incremental")
     with pytest.raises(ValueError, match="incremental"):
-        fit.plot(lane="incremental")
+        fit.plot(basis="incremental")
 
 
 # ---------------------------------------------------------------------------
@@ -551,8 +551,8 @@ def test_crossover_validation(cmp_fit):
         cmp_fit.crossover(by="holdout")
     with pytest.raises(ValueError, match="metric"):
         cmp_fit.crossover(metric="bogus")
-    with pytest.raises(ValueError, match="lane"):
-        cmp_fit.crossover(lane="bogus")
+    with pytest.raises(ValueError, match="basis"):
+        cmp_fit.crossover(basis="bogus")
     for bad in (0, -1, True, 2.5):
         with pytest.raises(ValueError, match="min_run"):
             cmp_fit.crossover(min_run=bad)
