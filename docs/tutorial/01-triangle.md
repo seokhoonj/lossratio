@@ -375,7 +375,7 @@ mydata = pl.DataFrame({
 
 tri = lr.Triangle(mydata, cohort="sign_ym", calendar="event_ym",
                   loss="paid", premium="risk_prem",
-                  grain="M", cell_type="incremental")
+                  grain="M", basis="incremental")
 
 tri.df.select(["cohort", "duration", "incr_loss", "loss", "incr_premium", "premium"]).sort(["cohort", "duration"])
 #> shape: (3, 6)
@@ -395,11 +395,11 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "incr_premium", "premi
 - `grain` — 집계 주기. `"M"`/`"Q"`/`"H"`/`"Y"`(월/분기/반기/연) 중
   하나이며, 기본값 `"auto"`는 코호트·달력 열의 간격을 보고 자동으로
   고릅니다.
-- `cell_type` — 입력 셀이 증분인가 누적인가. 기본값 `"incremental"`은
+- `basis` — 입력 셀이 증분인가 누적인가. 기본값 `"incremental"`은
   한 행이 *그 기간만의* 손해·보험료라는 뜻이고, 코호트별로 누적합을 더해
-  `loss`/`premium`을 만듭니다. 이미 누적값이라면 `cell_type="cumulative"`로
+  `loss`/`premium`을 만듭니다. 이미 누적값이라면 `basis="cumulative"`로
   넣습니다(이 경우 코호트별 차분으로 `incr_` 열을 자동 산출). 2장·3장의
-  손계산 예제가 바로 `cell_type="cumulative"`로 누적 입력을 받는 경우입니다.
+  손계산 예제가 바로 `basis="cumulative"`로 누적 입력을 받는 경우입니다.
 
 월 단위 표만 있고 분기·반기·연 열이 없다면 `derive_grain_columns()`로
 나머지 주기 열을 만들 수 있고, 손에 데이터가 없다면 `make_experience()`로

@@ -135,7 +135,7 @@ toy = pl.DataFrame({
 }).with_columns(pl.col(["uy_m", "cy_m"]).str.to_date())
 
 tri = lr.Triangle(toy, cohort="uy_m", calendar="cy_m",
-                  loss="loss", premium="premium", cell_type="cumulative")
+                  loss="loss", premium="premium", basis="cumulative")
 
 tri.link(target="loss", exposure="premium").intensity().df.select(
     ["duration", "g", "n_cohorts"])

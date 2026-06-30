@@ -114,7 +114,7 @@ toy = pl.DataFrame({
 }).with_columns(pl.col(["uy_m", "cy_m"]).str.to_date())
 
 tri = lr.Triangle(toy, cohort="uy_m", calendar="cy_m",
-                  loss="loss", premium="premium", cell_type="cumulative")
+                  loss="loss", premium="premium", basis="cumulative")
 
 tri.link(target="loss").ata().df.select(["duration", "f", "n_cohorts"])
 #> shape: (2, 3)
