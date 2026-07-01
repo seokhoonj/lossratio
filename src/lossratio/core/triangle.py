@@ -130,6 +130,24 @@ class Triangle:
                 f"Required: {sorted(required)}"
             )
 
+        # A null level in a group column cannot be aggregated into a segment:
+        # it survives grouping but then fails to match on the segment join,
+        # crashing the per-segment fit downstream. Reject it up front with a
+        # clear message rather than an opaque error at fit time.
+        group_cols = normalize_groups(groups)
+        if group_cols:
+            null_counts = df_pl.select(group_cols).null_count().row(0)
+            offenders = {
+                c: n for c, n in zip(group_cols, null_counts, strict=True) if n
+            }
+            if offenders:
+                raise ValueError(
+                    f"Group column(s) contain null values: {offenders}. "
+                    f"A null group level cannot form a segment; drop those rows "
+                    f"or relabel the nulls to an explicit level (e.g. 'unknown') "
+                    f"before building the Triangle."
+                )
+
         # Coerce cohort (and calendar if present) to Date.
         date_cols = [cohort] + ([calendar] if calendar is not None else [])
         df_pl = coerce_cols_to_date(df_pl, date_cols)

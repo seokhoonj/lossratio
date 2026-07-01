@@ -178,6 +178,26 @@ def test_triangle_mode1_cohort_calendar():
     assert tri.calendar == "cy_m"
 
 
+def test_triangle_null_group_level_raises():
+    """A null value in a group column is rejected at construction with a clear
+    error, rather than surviving aggregation and crashing the per-segment fit
+    downstream with an opaque OutOfBoundsError."""
+    df = pl.DataFrame(
+        {
+            "cv": ["A", "A", None, None],
+            "cy_m": ["2024-01-01", "2024-02-01", "2024-01-01", "2024-02-01"],
+            "uy_m": ["2024-01-01", "2024-01-01", "2024-01-01", "2024-01-01"],
+            "incr_loss": [10.0, 20.0, 5.0, 8.0],
+            "incr_premium": [100.0, 100.0, 50.0, 50.0],
+        }
+    ).with_columns(pl.col("cy_m").str.to_date(), pl.col("uy_m").str.to_date())
+    with pytest.raises(ValueError, match="null value"):
+        lr.Triangle(
+            df, groups="cv", cohort="uy_m", calendar="cy_m",
+            loss="incr_loss", premium="incr_premium",
+        )
+
+
 def test_triangle_floors_non_period_aligned_dates():
     """Same-grain input whose dates are not on period starts must still be
     floored: two January cohort dates (day 15 and 25) collapse into one
