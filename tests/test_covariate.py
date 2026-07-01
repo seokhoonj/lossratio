@@ -631,6 +631,130 @@ def test_collapse_nulls_any_held_subcell():
     assert row["incr_loss"].item() is None
 
 
+def test_ratio_covariate_headline_no_crash():
+    """A covariate loss fit reports at the collapsed reporting grain; composing
+    it with a full-grain premium ladder must not crash on the group-key mismatch
+    (F1) and must leave no null projected ratio."""
+    import lossratio as lr
+    from lossratio._kernels.io import normalize_groups
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
+        premium=lr.PooledPremium(),
+    ).fit(_tri(df))
+    assert isinstance(rat, lr.RatioFit)
+    # groups collapse to the reporting grain (sex was the only group + covariate)
+    assert normalize_groups(rat.groups) == []
+    head = rat.predict()
+    assert head.select(pl.col("ratio_proj").is_null().sum()).item() == 0
+
+
+def test_ratio_predict_by_reconciles_loss_and_premium():
+    """predict(by=<covariate>) disaggregates the ratio; both the loss numerator
+    and the premium denominator sum back to the by=None headline exactly (both
+    are additive at a fixed cohort x duration)."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
+        premium=lr.PooledPremium(),
+    ).fit(_tri(df))
+    head = rat.predict().sort(["cohort", "duration"])
+    roll = (
+        rat.predict(by="sex")
+        .group_by(["cohort", "duration"])
+        .agg(pl.col("loss_proj").sum().alias("l"),
+             pl.col("premium_proj").sum().alias("p"))
+        .sort(["cohort", "duration"])
+    )
+    j = head.join(roll, on=["cohort", "duration"], how="inner")
+    assert j.height == head.height
+    la, lb = j["loss_proj"].to_numpy(), j["l"].to_numpy()
+    pa, pb = j["premium_proj"].to_numpy(), j["p"].to_numpy()
+    # compare only where the headline cell is present (an all-null report cell
+    # rolls to a spurious 0 from polars sum; the headline keeps it null)
+    ml = ~np.isnan(la) & ~np.isnan(lb)
+    mp = ~np.isnan(pa) & ~np.isnan(pb)
+    assert ml.any() and mp.any()
+    assert np.allclose(la[ml], lb[ml], rtol=1e-9, atol=1e-9)
+    assert np.allclose(pa[mp], pb[mp], rtol=1e-9, atol=1e-9)
+
+
+def test_ratio_predict_by_shows_ratio_relativity():
+    """The disaggregated ratio carries the loss-ratio relativity: F (1.3x
+    morbidity, same premium) projects a higher loss ratio than M."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
+        premium=lr.PooledPremium(),
+    ).fit(_tri(df))
+    by = rat.predict(by="sex").filter(pl.col("source") == "own")
+    piv = by.pivot(values="ratio_proj", index=["cohort", "duration"],
+                   on="sex").drop_nulls(["F", "M"])
+    assert piv.height > 0
+    fa, ma = piv["F"].to_numpy(), piv["M"].to_numpy()
+    # premium differs by level (allocated per cell), so the 1.3x loss relativity
+    # is not exact cell-for-cell in the ratio; it holds on aggregate and in the
+    # majority of cells.
+    assert np.mean(fa) > np.mean(ma)
+    assert int(np.sum(fa > ma)) >= int(0.6 * piv.height)
+
+
+def test_ratio_predict_by_rejects_loss_only_covariate():
+    """A loss-only derived covariate (e.g. "regime") has no premium split, so
+    predict(by=) rejects any column not among the triangle's real group cols."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
+        premium=lr.PooledPremium(),
+    ).fit(_tri(df))
+    with pytest.raises(ValueError, match="cannot decompose"):
+        rat.predict(by="regime")
+
+
+def test_ratio_predict_by_requires_covariate_fit():
+    """predict(by=) is defined only for a covariate loss fit; a plain composition
+    has no covariate surface to disaggregate."""
+    import lossratio as lr
+    df = _experience_source({"F": 1.3, "M": 1.0})
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(), premium=lr.PooledPremium()
+    ).fit(_tri(df))
+    with pytest.raises(ValueError, match="covariates="):
+        rat.predict(by="sex")
+
+
+def test_ratio_predict_by_ragged_spans_reconcile():
+    """Ragged covariate spans (levels enter at different cohorts): the loss /
+    premium decomposition still sums back to the reporting-grain headline where
+    the headline cell is present."""
+    import lossratio as lr
+    df = _ragged_source()
+    tri = lr.Triangle(df, groups=["coverage", "age_band"])
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(covariates=["age_band"], lam_cov=0.0),
+        premium=lr.PooledPremium(),
+    ).fit(tri)
+    head = rat.predict().sort(["coverage", "cohort", "duration"])
+    roll = (
+        rat.predict(by="age_band")
+        .group_by(["coverage", "cohort", "duration"])
+        .agg(pl.col("loss_proj").sum().alias("l"),
+             pl.col("premium_proj").sum().alias("p"))
+        .sort(["coverage", "cohort", "duration"])
+    )
+    j = head.join(roll, on=["coverage", "cohort", "duration"], how="inner")
+    la, lb = j["loss_proj"].to_numpy(), j["l"].to_numpy()
+    pa, pb = j["premium_proj"].to_numpy(), j["p"].to_numpy()
+    ml = ~np.isnan(la) & ~np.isnan(lb)
+    mp = ~np.isnan(pa) & ~np.isnan(pb)
+    assert ml.any() and mp.any()
+    assert np.allclose(la[ml], lb[ml], rtol=1e-9, atol=1e-9)
+    assert np.allclose(pa[mp], pb[mp], rtol=1e-9, atol=1e-9)
+
+
 def test_backtest_covariate_ragged_spans_not_undercounted():
     """A covariate backtest on ragged spans must train the refit on the TRUE
     collapsed cells: every observed (non-held) report cell equals the true

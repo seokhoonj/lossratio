@@ -86,13 +86,41 @@ class Ratio:
         """Fit both sides on ``triangle`` and compose the loss ratio."""
         loss_fit = self.loss.fit(triangle)
         premium_fit = self.premium.fit(triangle)
-        groups = normalize_groups(triangle.groups)
-        keys = (groups or []) + ["cohort", "duration"]
+        # A covariate loss fit reports at the collapsed reporting grain
+        # (triangle.groups - covariates): it pools the duration shape across the
+        # covariate columns and reports them as level effects. Key the join on
+        # the loss fit's OWN reporting groups, not the triangle's full grain --
+        # the loss frame carries no covariate columns to select. Without
+        # covariates the two grains coincide and this path is byte-identical.
+        report_groups = normalize_groups(loss_fit.groups)
+        full_groups = normalize_groups(triangle.groups)
+        keys = (report_groups or []) + ["cohort", "duration"]
 
         left = loss_fit._df.select(
             [*keys, "loss_proj", "loss_total_se", "source"]
         )
-        right = premium_fit._df.select([*keys, "premium_proj", "premium_total_se"])
+        dropped = [g for g in (full_groups or []) if g not in set(report_groups or [])]
+        if dropped:
+            # Premium carries no covariate design, so it was fit at the FULL
+            # grain; aggregate its projection down to the reporting grain.
+            # Premium is additive at a fixed cohort x duration, so summing the
+            # covariate sub-cells is exact (in the projected tail the covariate
+            # levels can span unequally -- fine-then-sum, accepted). The SE does
+            # not sum cell-wise, so it is dropped (null) rather than let .sum()
+            # fabricate a 0.0; an all-null reporting cell stays null.
+            right = (
+                premium_fit._df.group_by(keys, maintain_order=True)
+                .agg(
+                    premium_proj=pl.when(pl.col("premium_proj").is_not_null().any())
+                    .then(pl.col("premium_proj").sum())
+                    .otherwise(None),
+                )
+                .with_columns(premium_total_se=pl.lit(None, dtype=pl.Float64))
+            )
+        else:
+            right = premium_fit._df.select(
+                [*keys, "premium_proj", "premium_total_se"]
+            )
         joined = left.join(right, on=keys, how="left")
 
         z = float(norm.ppf((1 + self.confidence_level) / 2))
@@ -126,12 +154,12 @@ class Ratio:
             ratio_ci_hi=pl.col("ratio_proj") + z * pl.col("ratio_se"),
         )
 
-        order = (groups or []) + _RATIO_COLUMNS
+        order = (report_groups or []) + _RATIO_COLUMNS
         df = composed.select(order)
 
         return RatioFit(
             df,
-            groups=triangle.groups,
+            groups=loss_fit.groups,
             loss_model=loss_fit.model,
             premium_model=premium_fit.model,
             confidence_level=self.confidence_level,
@@ -230,13 +258,80 @@ class RatioFit:
         )
         return mirror_output(agg, self._output_type)
 
-    def predict(self) -> "FrameLike":
+    def predict(self, by: "str | list[str] | None" = None) -> "FrameLike":
         """Per-cell projection surface: projected loss, projected premium, the
         projected loss ratio, and each cell's ``source``. A focused view of
-        :attr:`df` without the SE / CI columns."""
+        :attr:`df` without the SE / CI columns.
+
+        ``by`` (covariate loss fits only) disaggregates the loss ratio by one or
+        more of the fitted covariates -- one row per ``cohort x duration x by``
+        cell. The loss numerator comes from the loss fit's covariate surface
+        (summed over the covariates NOT in ``by``); the premium denominator is
+        the full-grain premium aggregated to the reporting grain plus ``by``
+        (premium carries no covariate design -- it is simply summed to that
+        grain). The decomposed loss / premium reconcile exactly to the
+        ``by=None`` headline (both are additive); the ratio does not
+        (a ratio of sums is not a sum of ratios). Only real premium group columns
+        can appear in ``by`` -- a loss-only derived covariate such as ``regime``
+        has no premium split and is rejected."""
         keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
-        cols = keys + ["loss_proj", "premium_proj", "ratio_proj", "source"]
-        return mirror_output(self._df.select(cols), self._output_type)
+        if by is None:
+            cols = keys + ["loss_proj", "premium_proj", "ratio_proj", "source"]
+            return mirror_output(self._df.select(cols), self._output_type)
+
+        if self.loss_fit._covariate_surface is None:
+            raise ValueError("predict(by=...) requires a loss estimator fit with covariates=.")
+        if self._triangle is None:
+            raise ValueError(
+                "predict(by=...) requires the source triangle; build the fit via "
+                "Ratio(...).fit(triangle)."
+            )
+        by = [by] if isinstance(by, str) else list(by)
+        full_groups = set(normalize_groups(self._triangle.groups) or [])
+        # Premium can only be split by real group columns; a loss-only derived
+        # covariate (e.g. "regime") has no premium counterpart to decompose.
+        bad = [b for b in by if b not in full_groups]
+        if bad:
+            raise ValueError(
+                f"by={bad} cannot decompose the ratio: only premium group columns "
+                f"{sorted(full_groups)} can (a loss-only covariate such as 'regime' "
+                f"has no premium split)."
+            )
+        surf = self.loss_fit._covariate_surface
+        covs = [c for c in surf.columns if c not in (
+            *keys, "loss_proj", "incr_loss_proj", "premium_proj", "ratio_proj",
+            "source",
+        )]
+        unknown = [b for b in by if b not in covs]
+        if unknown:
+            raise ValueError(f"by={unknown} are not fitted covariates {covs}.")
+        gb = keys + by
+        # loss: covariate surface summed over the covariates NOT in `by`.
+        loss_sub = surf.group_by(gb).agg(
+            pl.col("loss_proj").sum(),
+            pl.col("incr_loss_proj").sum(),
+            (pl.col("source") == "observed").all().alias("_all_obs"),
+        )
+        # premium: full-grain premium aggregated to the reporting grain + `by`
+        # (fine-then-sum; an all-null cell stays null, matching the headline).
+        prem = self.premium_fit._df.group_by(gb).agg(
+            premium_proj=pl.when(pl.col("premium_proj").is_not_null().any())
+            .then(pl.col("premium_proj").sum())
+            .otherwise(None),
+        )
+        out = (
+            loss_sub.join(prem, on=gb, how="left")
+            .with_columns(
+                (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
+                pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
+                .otherwise(pl.lit("own")).alias("source"),
+            )
+            .drop("_all_obs")
+            .sort(gb)
+        )
+        order = gb + ["loss_proj", "incr_loss_proj", "premium_proj",
+                      "ratio_proj", "source"]
+        return mirror_output(out.select(order), self._output_type)
 
     def plot(
         self,
