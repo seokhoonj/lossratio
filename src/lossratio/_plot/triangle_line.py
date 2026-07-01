@@ -84,7 +84,7 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
 
 
 def plot(
-    triangle: "Triangle",
+    triangle: Triangle,
     metric: str = "ratio",
     summary: bool = False,
     summary_min_n: int = 5,
@@ -134,7 +134,8 @@ def plot(
     is_prop = metric in _PROP_METRICS
     if summary and not is_ratio:
         warnings.warn(
-            "Summary overlay is only supported for `ratio` and `incr_ratio`."
+            "Summary overlay is only supported for `ratio` and `incr_ratio`.",
+            stacklevel=2,
         )
         summary = False
 

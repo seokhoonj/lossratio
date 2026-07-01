@@ -33,7 +33,7 @@ _BY_XLABEL = {
 
 
 def plot_backtest_reliability(
-    fit: "BacktestFit",
+    fit: BacktestFit,
     by: str = "horizon",
     metric: str = "ae_err",
     nrow: int | None = None,

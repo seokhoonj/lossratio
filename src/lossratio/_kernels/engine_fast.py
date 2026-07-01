@@ -91,7 +91,7 @@ def pearson_dispersion(
     ends = np.append(starts[1:], dur0.size)
     present = uniq.tolist()
     first_valid = np.nan
-    for d, s, e in zip(present, starts.tolist(), ends.tolist()):
+    for d, s, e in zip(present, starts.tolist(), ends.tolist(), strict=False):
         df = (e - s) - 1
         if df > 0:
             phi[d] = sum(terms[s:e]) / df
@@ -125,8 +125,11 @@ def buhlmann_straub_psi(
     m_list = (sm[cohorts] ** 2 / sphim[cohorts]).tolist()
     r_list = (sy[cohorts] / sm[cohorts]).tolist()
     mplus = sum(m_list)
-    rbar = sum(mi * ri for mi, ri in zip(m_list, r_list)) / mplus
-    num = sum(mi * (ri - rbar) ** 2 for mi, ri in zip(m_list, r_list)) - (len(m_list) - 1)
+    rbar = sum(mi * ri for mi, ri in zip(m_list, r_list, strict=False)) / mplus
+    num = (
+        sum(mi * (ri - rbar) ** 2 for mi, ri in zip(m_list, r_list, strict=False))
+        - (len(m_list) - 1)
+    )
     den = mplus - sum(mi ** 2 for mi in m_list) / mplus
     return max(0.0, num / den)
 

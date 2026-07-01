@@ -82,7 +82,7 @@ def plot_link(
 
 
 def _filter_cells_recent(
-    cells: pl.DataFrame, groups: "str | list[str] | None", recent: int | None
+    cells: pl.DataFrame, groups: str | list[str] | None, recent: int | None
 ) -> pl.DataFrame:
     """Restrict link cells to the recent calendar-diagonal wedge, per group.
 
@@ -108,15 +108,15 @@ def _plot_shared_kind(
     *,
     cells: pl.DataFrame,
     summary: pl.DataFrame,
-    groups: "str | list[str] | None",
+    groups: str | list[str] | None,
     y_col: str,
     y_label: str,
     title_noun: str,
     hline: float,
-    factor_stability: "pl.DataFrame | None",
+    factor_stability: pl.DataFrame | None,
     nrow: int | None,
     ncol: int | None,
-    figsize: "tuple[float, float] | None",
+    figsize: tuple[float, float] | None,
 ) -> Any:
     """Render the ``summary`` / ``box`` / ``point`` kinds shared by the ATA
     and intensity branches. Only the factor column, label, title noun, and
@@ -372,7 +372,7 @@ def _plot_per_link_scalar(
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, group_value, sub, ax in grid:
+    for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort("duration_from")
         x = sub_sorted["duration_from"].to_numpy()
         y = sub_sorted[y_col].to_numpy()
@@ -416,7 +416,7 @@ def _plot_summary_lines(
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, group_value, sub, ax in grid:
+    for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort("duration_from")
         x = sub_sorted["duration_from"].to_numpy()
         link_labels = _link_label_lookup(sub_sorted)
@@ -464,7 +464,7 @@ def _plot_per_link_distribution(
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, group_value, sub, ax in grid:
+    for _, group_value, sub, ax in grid:
         sub_valid = sub.filter(pl.col(y_col).is_finite())
         if sub_valid.height == 0:
             ax.text(0.5, 0.5, "(no data)", ha="center", va="center",

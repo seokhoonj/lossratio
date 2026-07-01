@@ -8,7 +8,6 @@ import pytest
 import lossratio as lr
 from lossratio.diagnostics.comparison import EstimatorComparisonFit
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -532,7 +531,7 @@ def test_non_default_baseline_flips_roles():
     pairs = [
         (f, d)
         for f, d in zip(
-            hc_f["abs_err_rel"].to_list(), hc_d["abs_err_rel"].to_list()
+            hc_f["abs_err_rel"].to_list(), hc_d["abs_err_rel"].to_list(), strict=False
         )
         if f is not None and d is not None and d != 0
     ]
@@ -612,7 +611,7 @@ def _cells_frame(horizons, base_err, ch_err):
         "estimator": [], "horizon": [], "actual": [], "expected": [],
         "ae_err": [],
     }
-    for h, be, ce in zip(horizons, base_err, ch_err):
+    for h, be, ce in zip(horizons, base_err, ch_err, strict=False):
         rows["estimator"] += ["base", "ch"]
         rows["horizon"] += [h, h]
         rows["actual"] += [100.0, 100.0]

@@ -8,12 +8,12 @@ import numpy as np
 import polars as pl
 import pytest
 
-from lossratio.diagnostics.backtest import Backtest
-from lossratio.estimators.credible_loss import CredibleLoss
-from lossratio.estimators.chain_ladder import ChainLadder
-from lossratio._kernels.scorecard import score_cells
-from lossratio.estimators.pooled_loss import PooledLoss
 from lossratio._kernels.resample import ResidualBootstrap
+from lossratio._kernels.scorecard import score_cells
+from lossratio.diagnostics.backtest import Backtest
+from lossratio.estimators.chain_ladder import ChainLadder
+from lossratio.estimators.credible_loss import CredibleLoss
+from lossratio.estimators.pooled_loss import PooledLoss
 
 
 def _to_polars(x) -> pl.DataFrame:

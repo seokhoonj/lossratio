@@ -47,16 +47,16 @@ def test_total_sums_match_triangle(sample_triangle):
         )
         .sort("coverage")
     )
-    for a, b in zip(tot["loss"].to_list(), direct["loss_d"].to_list()):
+    for a, b in zip(tot["loss"].to_list(), direct["loss_d"].to_list(), strict=False):
         assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
-    for a, b in zip(tot["premium"].to_list(), direct["premium_d"].to_list()):
+    for a, b in zip(tot["premium"].to_list(), direct["premium_d"].to_list(), strict=False):
         assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
 
 
 def test_total_ratio_equals_loss_over_premium(sample_triangle):
     tri = sample_triangle()
     tot = tri.total_agg().to_polars()
-    for loss, premium, ratio_val in zip(tot["loss"], tot["premium"], tot["ratio"]):
+    for loss, premium, ratio_val in zip(tot["loss"], tot["premium"], tot["ratio"], strict=False):
         assert ratio_val == pytest.approx(loss / premium, rel=1e-12)
 
 
@@ -86,7 +86,7 @@ def test_total_cohort_range(sample_triangle):
         .sort("coverage")
     )
     tot_sorted = tot.sort("coverage")
-    for a, b in zip(tot_sorted["n_cohorts"].to_list(), direct["n"].to_list()):
+    for a, b in zip(tot_sorted["n_cohorts"].to_list(), direct["n"].to_list(), strict=False):
         assert a == b
 
 

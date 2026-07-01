@@ -27,7 +27,6 @@ from lossratio.diagnostics.regime import (
     _resolve_by,
 )
 
-
 # ---------------------------------------------------------------------------
 # Kneedle elbow (low-level numeric helper)
 # ---------------------------------------------------------------------------
@@ -59,7 +58,7 @@ def test_kneedle_elbow_too_few_points_returns_none():
 # ---------------------------------------------------------------------------
 
 
-def _sur_triangle() -> "lr.Triangle":
+def _sur_triangle() -> lr.Triangle:
     return lr.Triangle(
         lr.load_experience().filter(pl.col("coverage") == "SURGERY")
     )
@@ -226,7 +225,7 @@ def test_by_explicit_str_matches_default_on_grouped_triangle(tri):
     assert a._labels_df.equals(b._labels_df)
 
 
-def _two_col_triangle() -> "lr.Triangle":
+def _two_col_triangle() -> lr.Triangle:
     """A genuine multi-column triangle: ``coverage`` x a synthetic block."""
     df = lr.load_experience().with_columns(
         pl.when(pl.col("uy_m").dt.year() % 2 == 0)

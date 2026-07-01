@@ -81,7 +81,7 @@ def _compare_loose_numeric(
             continue
         py_v = py_df[c].to_list()
         r_v = r_df[c].to_list()
-        for i, (a, b) in enumerate(zip(py_v, r_v)):
+        for i, (a, b) in enumerate(zip(py_v, r_v, strict=False)):
             if a is None or b is None:
                 continue
             if isinstance(a, float) and (a != a):
@@ -273,7 +273,7 @@ def test_derived_regime_trajectory_matches_r(target: str):
     # The derived value itself: deterministic, tight tolerance.
     py_vals = py_sorted[target].to_list()
     r_vals = r_sorted[target].to_list()
-    for i, (a, b) in enumerate(zip(py_vals, r_vals)):
+    for i, (a, b) in enumerate(zip(py_vals, r_vals, strict=False)):
         if a is None or b is None:
             continue
         if isinstance(a, float) and (a != a):

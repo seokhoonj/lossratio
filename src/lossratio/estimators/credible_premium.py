@@ -45,7 +45,7 @@ class CrediblePremium(_PremiumEstimatorBase):
         Two-sided confidence level (unused in v1 -- SE/CI are null point-only).
     """
 
-    psi: "float | str" = "auto"
+    psi: float | str = "auto"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -59,7 +59,7 @@ class CrediblePremium(_PremiumEstimatorBase):
                     f'psi must be "auto" or a non-negative float, got {self.psi!r}'
                 )
 
-    def fit(self, triangle: "Triangle") -> PremiumFit:
+    def fit(self, triangle: Triangle) -> PremiumFit:
         """Fit the credibility premium projection on a :class:`Triangle`."""
         return _fit_premium(
             triangle,

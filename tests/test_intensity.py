@@ -76,7 +76,7 @@ def test_intensity_g_is_finite_for_nontrivial_links(toy_input):
     intensity = _tri(toy_input).link().intensity()
     df = intensity.df
     # links 1..3 have at least 2 cohorts contributing → g should be finite
-    for k, g in zip(df["duration"].to_list(), df["g"].to_list()):
+    for k, g in zip(df["duration"].to_list(), df["g"].to_list(), strict=False):
         if k <= 3:
             assert g is not None
 

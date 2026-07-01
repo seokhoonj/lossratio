@@ -260,10 +260,10 @@ class ATA:
     @classmethod
     def _from_link(
         cls,
-        link: "Link",
+        link: Link,
         sigma_method: str = "locf",
         recent: int | None = None,
-    ) -> "ATA":
+    ) -> ATA:
         _validate_recent(recent)
         self = cls.__new__(cls)
         self._link = link
@@ -306,11 +306,11 @@ class ATA:
         return self
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         """Per-link diagnostic table in the original input format."""
         return mirror_output(self._df, self._output_type)
 
-    def summary(self) -> "FrameLike":
+    def summary(self) -> FrameLike:
         """Alias for :attr:`df` (parallel to :meth:`Intensity.summary`)."""
         return mirror_output(self._df, self._output_type)
 

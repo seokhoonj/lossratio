@@ -30,8 +30,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import engine_fast
-from .recursion import _fit_multiplicative
 from .recent import recent_link_mask
+from .recursion import _fit_multiplicative
 from .resample import (
     _calendar_drift_se,
     _ev_fitted_increments,
@@ -106,15 +106,17 @@ class WeightedBootstrap:
 
 def _weighted_refit_additive(
     resp: np.ndarray, expo: np.ndarray, dur0: np.ndarray, coh0: np.ndarray,
-    W: np.ndarray, mechanism: str, psi: "float | str", n_cohorts: int, n_links: int,
+    W: np.ndarray, mechanism: str, psi: float | str, n_cohorts: int, n_links: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Batched weighted refit -> ``(g[B,nL], u[B,nC], phi[B,nL])``.
 
     Each quantity is a weighted sum of fixed per-cell values; ``W`` is the
     ``(B, n_cells)`` weight matrix. ``W = 1`` reproduces the point estimate."""
     B, J = W.shape
-    Dind = np.zeros((J, n_links)); Dind[np.arange(J), dur0] = 1.0
-    Cind = np.zeros((J, n_cohorts)); Cind[np.arange(J), coh0] = 1.0
+    Dind = np.zeros((J, n_links))
+    Dind[np.arange(J), dur0] = 1.0
+    Cind = np.zeros((J, n_cohorts))
+    Cind[np.arange(J), coh0] = 1.0
 
     # weighted saturated g_k
     den = (W * expo) @ Dind
@@ -134,9 +136,11 @@ def _weighted_refit_additive(
     with np.errstate(invalid="ignore", divide="ignore"):
         phi = np.where(df > 0, phi_num / np.where(df <= 0, 1.0, df), np.nan)
     for k in range(1, n_links):                          # locf forward
-        bad = np.isnan(phi[:, k]); phi[bad, k] = phi[bad, k - 1]
+        bad = np.isnan(phi[:, k])
+        phi[bad, k] = phi[bad, k - 1]
     for k in range(n_links - 2, -1, -1):                 # backfill leading gap
-        bad = np.isnan(phi[:, k]); phi[bad, k] = phi[bad, k + 1]
+        bad = np.isnan(phi[:, k])
+        phi[bad, k] = phi[bad, k + 1]
     phi_cell = phi[:, dur0]
     okp = okm & np.isfinite(phi_cell) & (phi_cell > 0)
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -162,7 +166,9 @@ def _weighted_refit_additive(
         ncoh = has.sum(1)
         num_psi = (m_i * (r_i - rbar[:, None]) ** 2).sum(1) - np.maximum(ncoh - 1, 0)
         with np.errstate(invalid="ignore", divide="ignore"):
-            den_psi = mplus - np.where(mplus > 0, (m_i ** 2).sum(1) / np.where(mplus > 0, mplus, 1.0), 0.0)
+            den_psi = mplus - np.where(
+                mplus > 0, (m_i ** 2).sum(1) / np.where(mplus > 0, mplus, 1.0), 0.0
+            )
             psi_b = np.where((den_psi > 0) & (ncoh >= 2),
                              np.maximum(num_psi / np.where(den_psi > 0, den_psi, 1.0), 0.0), 0.0)
     else:
@@ -234,11 +240,19 @@ def _process_additive_batched(
         good = (mean_inc > 0) & np.isfinite(mean_inc) & (phik > 0) & np.isfinite(phik)
         if good.any():
             shape = np.where(good, mean_inc / np.where(phik > 0, phik, 1.0), 1.0)
-            draw = np.where(good, rng.gamma(np.where(good, shape, 1.0)) * np.broadcast_to(phik, mean_inc.shape), draw)
+            draw = np.where(
+                good,
+                rng.gamma(np.where(good, shape, 1.0)) * np.broadcast_to(phik, mean_inc.shape),
+                draw,
+            )
         # calendar drift shift (per cell antidiagonal beyond the frontier)
         c = np.maximum((rows[None, :] + (k + 1)) - frontier, 0)
         driftable = (eps[:, None] != 0.0) & np.isfinite(phik) & (phik > 0)
-        shift = np.where(driftable, c * eps[:, None] * np.sqrt(np.where(phik > 0, phik, 0.0) * np.maximum(mean_inc, 0.0)), 0.0)
+        shift = np.where(
+            driftable,
+            c * eps[:, None] * np.sqrt(np.where(phik > 0, phik, 0.0) * np.maximum(mean_inc, 0.0)),
+            0.0,
+        )
         draw = draw + shift
         amask = active[None, :] & ~np.isnan(pred[:, :, k]) & ~np.isnan(param_draws[:, :, k + 1])
         pred[:, :, k + 1] = np.where(amask, pred[:, :, k] + draw, pred[:, :, k + 1])
@@ -251,7 +265,7 @@ def bootstrap_segment_weighted_additive(
     *,
     mechanism: str,
     sigma_method: str,
-    psi: "float | str",
+    psi: float | str,
     spec: WeightedBootstrap,
     confidence_level: float,
     rng: np.random.Generator,
@@ -527,7 +541,8 @@ def _perturb_donor_batched(donor, rng, B):
         fb[:, ok] = f[ok] + rng.standard_normal((B, int(ok.sum()))) * np.sqrt(var[ok])
     fb = np.where(np.isfinite(fb), np.maximum(fb, 1e-9), fb)
     for k in range(1, fb.shape[1]):                      # LOCF forward (row-wise)
-        bad = np.isnan(fb[:, k]); fb[bad, k] = fb[bad, k - 1]
+        bad = np.isnan(fb[:, k])
+        fb[bad, k] = fb[bad, k - 1]
     return fb
 
 
@@ -585,10 +600,20 @@ def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
         g_ok = (mean_inc > 0) & np.isfinite(mean_inc) & np.isfinite(phik) & (phik > 0)
         if g_ok.any():
             shape = np.where(g_ok, mean_inc / np.where(phik > 0, phik, 1.0), 1.0)
-            draw = np.where(g_ok, rng.gamma(np.where(g_ok, shape, 1.0)) * np.broadcast_to(phik, mean_inc.shape), draw)
+            draw = np.where(
+                g_ok,
+                rng.gamma(np.where(g_ok, shape, 1.0)) * np.broadcast_to(phik, mean_inc.shape),
+                draw,
+            )
             if (eps != 0.0).any():
                 c = np.maximum((rows[None, :] + (k + 1)) - frontier, 0)
-                draw = draw + np.where(g_ok, c * eps[:, None] * np.sqrt(np.where(phik > 0, phik, 0.0) * np.maximum(mean_inc, 0.0)), 0.0)
+                draw = draw + np.where(
+                    g_ok,
+                    c
+                    * eps[:, None]
+                    * np.sqrt(np.where(phik > 0, phik, 0.0) * np.maximum(mean_inc, 0.0)),
+                    0.0,
+                )
         sig = donor_sig[k] if k < donor_sig.size else np.nan
         use_d = (~np.isfinite(phik) | (phik <= 0))
         if np.isfinite(sig) and sig > 0 and np.any(use_d):

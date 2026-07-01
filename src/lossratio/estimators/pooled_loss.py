@@ -61,8 +61,8 @@ class PooledLoss(_LossEstimatorBase):
     """
 
     balance: bool = False
-    covariates: "list[str] | None" = None
-    lam_cov: "float | str | dict" = 0.0
+    covariates: list[str] | None = None
+    lam_cov: float | str | dict = 0.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -73,7 +73,7 @@ class PooledLoss(_LossEstimatorBase):
                 raise ValueError("covariates must be a string or list of strings.")
         _validate_lam_cov(self.lam_cov)
 
-    def fit(self, triangle: "Triangle") -> LossFit:
+    def fit(self, triangle: Triangle) -> LossFit:
         """Fit the saturated-mode loss projection on a :class:`Triangle`.
 
         With ``covariates`` the pooled intensity carries cell-level fixed-effect

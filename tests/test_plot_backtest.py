@@ -16,6 +16,7 @@ import pytest
 
 import lossratio as lr
 
+
 @pytest.fixture
 def tri_multi():
     return lr.Triangle(lr.make_experience(seed=1), groups="coverage")

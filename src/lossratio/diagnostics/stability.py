@@ -50,6 +50,7 @@ def _segment_matrices(sub: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, np.nda
         sub.get_column("duration").to_list(),
         sub.get_column("loss").to_list(),
         sub.get_column("premium").to_list(),
+        strict=False,
     ):
         L[ci[c], di[d]] = lo
         P[ci[c], di[d]] = pr
@@ -129,7 +130,7 @@ class Stability:
         if self.min_links < self.window:
             raise ValueError("min_links must be >= window")
 
-    def assess(self, triangle: "Triangle") -> "StabilityReport":
+    def assess(self, triangle: Triangle) -> StabilityReport:
         """Assess go-forward stability per segment on ``triangle``."""
         df = triangle.to_polars() if hasattr(triangle, "to_polars") else triangle._df
         groups = triangle.groups
@@ -143,7 +144,7 @@ class Stability:
         for key in seg_keys:
             if group_cols:
                 mask = pl.lit(True)
-                for col, val in zip(group_cols, key):
+                for col, val in zip(group_cols, key, strict=False):
                     mask = mask & (pl.col(col) == val)
                 sub = df.filter(mask)
             else:
@@ -153,7 +154,7 @@ class Stability:
             usable = np.isfinite(rho) & (nco >= self.min_cohorts)
             ks = np.where(usable)[0]
             row: dict[str, Any] = {}
-            for col, val in zip(group_cols, key):
+            for col, val in zip(group_cols, key, strict=False):
                 row[col] = val
             # frontier = deepest duration that carries a pooled ratio
             front_j = max((j for j in range(len(durs)) if np.nansum(P[:, j]) > 0
@@ -217,7 +218,7 @@ class StabilityReport:
         self,
         df: pl.DataFrame,
         *,
-        groups: "str | list[str] | None",
+        groups: str | list[str] | None,
         window: int,
         tol: float,
         output_type: str,
@@ -229,13 +230,13 @@ class StabilityReport:
         self._output_type = output_type
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
 
-    def frozen_ratio(self) -> "FrameLike":
+    def frozen_ratio(self) -> FrameLike:
         """The go-forward loss ratio per segment: ``frontier_ratio`` where the
         verdict is ``stable``, null otherwise (no trustworthy freeze)."""
         out = self._df.with_columns(

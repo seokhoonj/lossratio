@@ -21,8 +21,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import polars as pl  # noqa: E402
-from polars.testing import assert_frame_equal  # noqa: E402
 import pytest  # noqa: E402
+from polars.testing import assert_frame_equal  # noqa: E402
 
 import lossratio as lr  # noqa: E402
 
@@ -43,7 +43,7 @@ def _frame(obj) -> pl.DataFrame:
 
 def _sorted(df: pl.DataFrame) -> pl.DataFrame:
     """Deterministic row order: sort by the non-float (key) columns."""
-    keys = [c for c, t in zip(df.columns, df.dtypes) if not t.is_float()]
+    keys = [c for c, t in zip(df.columns, df.dtypes, strict=False) if not t.is_float()]
     return df.sort(keys) if keys else df
 
 

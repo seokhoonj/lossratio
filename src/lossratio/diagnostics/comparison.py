@@ -92,7 +92,10 @@ class EstimatorComparison:
     >>> import lossratio as lr
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> cmp = lr.EstimatorComparison(
-    ...     {"pooled": lr.Ratio(loss=lr.PooledLoss()), "credible": lr.Ratio(loss=lr.CredibleLoss())},
+    ...     {
+    ...         "pooled": lr.Ratio(loss=lr.PooledLoss()),
+    ...         "credible": lr.Ratio(loss=lr.CredibleLoss()),
+    ...     },
     ...     holdouts=(6, 12, 18, 24),
     ... ).fit(tri)
     >>> cmp.horizon_comparison   # challenger vs baseline, by horizon
@@ -102,15 +105,16 @@ class EstimatorComparison:
 
     def __init__(
         self,
-        estimators: "Mapping[str, Any]",
-        holdouts: "tuple[int, ...] | list[int]" = (6, 12, 18, 24),
+        estimators: Mapping[str, Any],
+        holdouts: tuple[int, ...] | list[int] = (6, 12, 18, 24),
         target: str = "ratio",
         baseline: str | None = None,
     ) -> None:
         if not isinstance(estimators, Mapping):
             raise TypeError(
                 "estimators must be a Mapping of label -> estimator, e.g. "
-                '{"pooled": lr.Ratio(loss=lr.PooledLoss()), "credible": lr.Ratio(loss=lr.CredibleLoss())}'
+                '{"pooled": lr.Ratio(loss=lr.PooledLoss()), '
+                '"credible": lr.Ratio(loss=lr.CredibleLoss())}'
                 f"; got {type(estimators).__name__}. Labels are required "
                 "because two estimator instances can differ only by "
                 "configuration (two lr.Ratio instances with different "
@@ -164,7 +168,7 @@ class EstimatorComparison:
         self.baseline = baseline
         self._backtests = backtests
 
-    def fit(self, triangle: "Triangle") -> "EstimatorComparisonFit":
+    def fit(self, triangle: Triangle) -> EstimatorComparisonFit:
         # Every inner Backtest runs on the SAME triangle object --
         # the by-construction comparability guarantee.
         fits = {
@@ -257,8 +261,8 @@ class EstimatorComparisonFit:
 
     @classmethod
     def _from_fits(
-        cls, fits: "dict[str, BacktestFit]", baseline: str
-    ) -> "EstimatorComparisonFit":
+        cls, fits: dict[str, BacktestFit], baseline: str
+    ) -> EstimatorComparisonFit:
         self = cls.__new__(cls)
         labels = list(fits)
         first = fits[labels[0]]
@@ -287,7 +291,8 @@ class EstimatorComparisonFit:
                 f"not all and were dropped from the comparison (pooled "
                 f"error over different fold sets is not an apples-to-apples "
                 f"comparison); the per-estimator evidence remains reachable "
-                f"via .fits[label]."
+                f"via .fits[label].",
+                stacklevel=2,
             )
 
         # MATCHED cells: restrict each estimator's per-cell frame to the
@@ -717,7 +722,7 @@ class EstimatorComparisonFit:
         }
 
     @property
-    def fits(self) -> "dict[str, BacktestFit]":
+    def fits(self) -> dict[str, BacktestFit]:
         return dict(self._fits)
 
     # -- scorecard / selection -------------------------------------------------
@@ -728,7 +733,7 @@ class EstimatorComparisonFit:
     _BEST_DEFAULT_METRICS = ("bias", "mae", "coverage_80")
 
     @staticmethod
-    def _rank_key(metric: str) -> "pl.Expr":
+    def _rank_key(metric: str) -> pl.Expr:
         """The ascending sort key for one metric: a lower-is-better expression
         ``rank`` / ``best`` rank on, so every metric ranks in one direction.
         ``mae`` / ``rmse`` / ``deviance`` are already lower-better; ``bias``
@@ -743,8 +748,8 @@ class EstimatorComparisonFit:
         return pl.col(metric)
 
     def _build_scorecard(
-        self, *, terminal: "int | None", coverage_levels: "tuple[float, ...]"
-    ) -> "pl.DataFrame":
+        self, *, terminal: int | None, coverage_levels: tuple[float, ...]
+    ) -> pl.DataFrame:
         from .._kernels.scorecard import score_cells
 
         blocks = []
@@ -762,8 +767,8 @@ class EstimatorComparisonFit:
     def scorecard(
         self,
         *,
-        terminal: "int | None" = None,
-        coverage_levels: "tuple[float, ...]" = (0.80, 0.95),
+        terminal: int | None = None,
+        coverage_levels: tuple[float, ...] = (0.80, 0.95),
     ):
         """Stack every estimator's validation scorecard into one frame.
 
@@ -781,8 +786,8 @@ class EstimatorComparisonFit:
         )
 
     def _resolve_population(
-        self, population: str, terminal: "int | None"
-    ) -> "tuple[pl.DataFrame, list[str]]":
+        self, population: str, terminal: int | None
+    ) -> tuple[pl.DataFrame, list[str]]:
         if population not in ("all", "terminal"):
             raise ValueError(
                 f'population must be "all" or "terminal", got {population!r}'
@@ -804,7 +809,7 @@ class EstimatorComparisonFit:
         *,
         population: str = "all",
         basis: str = "cumulative",
-        terminal: "int | None" = None,
+        terminal: int | None = None,
     ):
         """Estimators sorted best-first by a SINGLE metric (transparent view).
 
@@ -841,8 +846,8 @@ class EstimatorComparisonFit:
         *,
         population: str = "all",
         basis: str = "cumulative",
-        terminal: "int | None" = None,
-        metrics: "tuple[str, ...] | None" = None,
+        terminal: int | None = None,
+        metrics: tuple[str, ...] | None = None,
     ):
         """Mechanical multi-metric pick: sum each estimator's per-metric rank,
         lowest total wins (a Borda count).
@@ -872,7 +877,8 @@ class EstimatorComparisonFit:
             warnings.warn(
                 f"dropped {no_col + partial} from the Borda panel "
                 f"(not a scorecard column, or null for some estimators -- e.g. "
-                f"coverage on point-only fits); ranking on {use}."
+                f"coverage on point-only fits); ranking on {use}.",
+                stacklevel=2,
             )
         if not use:
             raise ValueError(
@@ -904,12 +910,12 @@ class EstimatorComparisonFit:
     @staticmethod
     def _entry_winners(
         ch_vals: list, base_vals: list
-    ) -> "list[str | None]":
+    ) -> list[str | None]:
         """Per-entry winner tokens: ``"c"`` (challenger's value strictly
         smaller), ``"b"`` (baseline's), or ``None`` on an exact tie or any
         null / non-finite value (no evidence either way)."""
-        winners: "list[str | None]" = []
-        for c, b in zip(ch_vals, base_vals):
+        winners: list[str | None] = []
+        for c, b in zip(ch_vals, base_vals, strict=False):
             if c is None or b is None:
                 winners.append(None)
             elif not (math.isfinite(c) and math.isfinite(b)):
@@ -924,8 +930,8 @@ class EstimatorComparisonFit:
 
     @staticmethod
     def _terminal_run(
-        winners: "list[str | None]",
-    ) -> "tuple[int, str | None, int, int]":
+        winners: list[str | None],
+    ) -> tuple[int, str | None, int, int]:
         """Walk backward from the deepest entry for the MAXIMAL TERMINAL
         same-winner run (a null winner breaks the run).
 
@@ -939,7 +945,7 @@ class EstimatorComparisonFit:
         preferred over a window-expression formulation.
         """
         run = 0
-        owner: "str | None" = None
+        owner: str | None = None
         for w in reversed(winners):
             if w is None:
                 break
@@ -949,13 +955,13 @@ class EstimatorComparisonFit:
                 break
             run += 1
         seq = [w for w in winners if w is not None]
-        n_flips = sum(1 for a, b in zip(seq, seq[1:]) if a != b)
+        n_flips = sum(1 for a, b in zip(seq, seq[1:], strict=False) if a != b)
         return run, owner, len(winners) - run, n_flips
 
     @staticmethod
     def _pooled_value(
         sub: pl.DataFrame, metric: str, basis: str
-    ) -> "float | None":
+    ) -> float | None:
         """Pooled metric value over a matched-cell subset (one estimator's
         side): ``"abs_err"`` -> ``mean|actual - expected|``, ``"ae_err"``
         -> ``mean|ae_err|``, ``"bias"`` -> ``|sum(actual - expected) /
@@ -996,7 +1002,7 @@ class EstimatorComparisonFit:
         base_cells: pl.DataFrame,
         metric: str,
         basis: str,
-    ) -> "str | None":
+    ) -> str | None:
         """Winner token of the pooled metric over a matched-cell subset:
         ``"c"`` / ``"b"`` for the strictly smaller side, ``None`` on a tie
         or when either side's pooled value is unavailable."""
@@ -1201,7 +1207,7 @@ class EstimatorComparisonFit:
             ):
                 crossover_at = values[run_start]
 
-            def lab(token: "str | None") -> "str | None":
+            def lab(token: str | None, label: str = label) -> str | None:
                 if token == "c":
                     return label
                 if token == "b":

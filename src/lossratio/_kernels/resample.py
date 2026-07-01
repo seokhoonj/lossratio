@@ -46,19 +46,19 @@ from __future__ import annotations
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
-from . import engine
-from . import engine_fast
-from .recursion import _fit_multiplicative
-from .recent import recent_link_mask
+from . import engine, engine_fast
 from .credible import (
     _credible_levels,
     _project_borrow,
     _project_credible,
     _smooth_backfit,
 )
+from .recent import recent_link_mask
+from .recursion import _fit_multiplicative
 
 
 def _project_borrow_cum(
@@ -66,7 +66,7 @@ def _project_borrow_cum(
     premium_proj: np.ndarray,
     body: str,
     own: np.ndarray,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray]",
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray],
     own_u: np.ndarray | None = None,
 ) -> np.ndarray:
     """Cumulative-loss path with the segment's own body + the FIXED donor tail.
@@ -94,8 +94,8 @@ def _project_borrow_cum(
 
 
 def _perturb_donor(
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray]", rng: np.random.Generator
-) -> "tuple[np.ndarray, np.ndarray, np.ndarray]":
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray], rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Parametric per-replicate draw of the borrowed donor link ratios:
     ``f_b = f + N(0, sqrt(Var f))``.
 
@@ -229,10 +229,10 @@ def _estimate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
-    psi: "float | str",
+    psi: float | str,
     mechanism: str,
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
     link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Refit the intensity pipeline on one (pseudo)triangle: ``(g_k, u_vec)``.
@@ -305,7 +305,7 @@ def _calendar_drift_se(
     a = (ii + kk + 1)[ok]
     r = resid[ok]
     by: dict[int, list[float]] = {}
-    for t, v in zip(a.tolist(), r.tolist()):
+    for t, v in zip(a.tolist(), r.tolist(), strict=False):
         by.setdefault(int(t), []).append(v)
     diags = sorted(by)
     if len(diags) < 3:
@@ -322,14 +322,14 @@ def bootstrap_segment_additive(
     *,
     mechanism: str,
     sigma_method: str,
-    psi: "float | str",
+    psi: float | str,
     spec: ResidualBootstrap,
     confidence_level: float,
     rng: np.random.Generator,
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Residual-bootstrap SE / CI matrices for one segment.
 
@@ -518,17 +518,17 @@ def bootstrap_segment_additive(
 def bootstrap_segment_covariate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
-    data: "Any",
-    covariates: "list[str]",
+    data: Any,
+    covariates: list[str],
     *,
     sigma_method: str,
-    psi: "float | str",
+    psi: float | str,
     lam: float,
     spec: ResidualBootstrap,
     confidence_level: float,
     rng: np.random.Generator,
-    n_basis: "int | None" = None,
-    lam_smooth: "float | str" = "auto",
+    n_basis: int | None = None,
+    lam_smooth: float | str = "auto",
 ) -> dict[str, np.ndarray]:
     """Residual-bootstrap SE / CI for a Pooled / Credible / Smooth covariate fit.
 
@@ -715,7 +715,9 @@ def _multiplicative_increments(loss_obs: np.ndarray):
             c = loss_obs[i, j]
             if np.isnan(c):
                 continue
-            ii.append(i); jj.append(j); yy.append(float(c - prev))
+            ii.append(i)
+            jj.append(j)
+            yy.append(float(c - prev))
             prev = c
     return (np.array(ii, dtype=np.int64), np.array(jj, dtype=np.int64),
             np.array(yy, dtype=np.float64))
@@ -774,7 +776,7 @@ def bootstrap_segment_multiplicative(
     confidence_level: float,
     rng: np.random.Generator,
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """England-Verrall ODP residual bootstrap for the ``ChainLadder`` benchmark.
 

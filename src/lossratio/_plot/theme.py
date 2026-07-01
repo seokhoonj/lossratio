@@ -12,7 +12,8 @@ they remove the copy-paste, not the per-plot differences.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import polars as pl
 

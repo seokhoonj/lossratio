@@ -81,12 +81,12 @@ class SmoothLoss(_LossEstimatorBase):
         factors (Ohlsson 2008).
     """
 
-    psi: "float | str" = "auto"
-    lam: "float | str" = "auto"
-    n_basis: "int | None" = None
+    psi: float | str = "auto"
+    lam: float | str = "auto"
+    n_basis: int | None = None
     balance: bool = False
-    covariates: "list[str] | None" = None
-    lam_cov: "float | str | dict" = 0.0
+    covariates: list[str] | None = None
+    lam_cov: float | str | dict = 0.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -115,7 +115,7 @@ class SmoothLoss(_LossEstimatorBase):
                 raise ValueError("covariates must be a string or list of strings.")
         _validate_lam_cov(self.lam_cov)
 
-    def fit(self, triangle: "Triangle") -> LossFit:
+    def fit(self, triangle: Triangle) -> LossFit:
         """Fit the smooth (GLMM) loss projection on a :class:`Triangle`.
 
         With ``covariates`` the smooth duration shape and the covariate

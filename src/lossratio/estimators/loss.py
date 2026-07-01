@@ -27,6 +27,13 @@ import polars as pl
 from scipy.stats import norm
 
 from .._kernels import engine
+from .._kernels.credible import (
+    _credible_levels,
+    _project_borrow,
+    _project_credible,
+    _smooth_backfit,
+    _smooth_backfit_covariate,
+)
 from .._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
@@ -35,23 +42,16 @@ from .._kernels.io import (
     mirror_output,
     normalize_groups,
 )
+from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
     _build_value_matrices,
+    _fit_multiplicative,
+    _step_additive,
+    _step_multiplicative,
     _wls_factor_var,
     _wls_sigma2,
-    _step_multiplicative,
-    _step_additive,
-    _fit_multiplicative,
 )
-from .._kernels.recent import recent_link_mask
 from .._kernels.sigma import extrapolate_tail_sigma2
-from .._kernels.credible import (
-    _credible_levels,
-    _project_borrow,
-    _project_credible,
-    _smooth_backfit,
-    _smooth_backfit_covariate,
-)
 from ..core.model_frame import ModelFrame
 from ._cascade import (
     _cohort_subset_donor,
@@ -121,7 +121,7 @@ def _segment_premium_proj(
     premium_obs: np.ndarray,
     sigma_method: str,
     premium_mask: np.ndarray | None = None,
-    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Premium projection for a loss segment's denominator.
 
@@ -158,9 +158,9 @@ def _fit_segment_additive(
     sigma_method: str,
     *,
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    g_override: "np.ndarray | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    g_override: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """Saturated-mode complete-pooling intensity fit for one segment's loss /
     premium matrices.
@@ -335,8 +335,8 @@ def _fit_segment_multiplicative(
     sigma_method: str,
     *,
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Link-ratio (``ChainLadder``) fit for one segment.
 
@@ -503,10 +503,10 @@ def _fit_segment_credible(
     sigma_method: str,
     *,
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    psi: "float | str" = "auto",
-    g_override: "np.ndarray | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    psi: float | str = "auto",
+    g_override: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) fit for one segment.
 
@@ -605,13 +605,13 @@ def _fit_segment_smooth(
     sigma_method: str,
     *,
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    premium_donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
-    psi: "float | str" = "auto",
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
-    cov_data: "Any" = None,
-    covariates: "list[str] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    psi: float | str = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
+    cov_data: Any = None,
+    covariates: list[str] | None = None,
     lam_cov: float = 0.0,
 ) -> dict[str, np.ndarray]:
     """Smooth (GLMM) fit for one segment -- the top ladder rung.
@@ -689,10 +689,10 @@ def _fit_segment_smooth(
 def _segment_long_df(
     fit: dict[str, np.ndarray],
     cohorts: list,
-    groups: "str | list[str] | None",
+    groups: str | list[str] | None,
     group_value: Any | None,
     confidence_level: float,
-    ci: "tuple[np.ndarray, np.ndarray] | None" = None,
+    ci: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> pl.DataFrame:
     """Assemble one segment's fit matrices into the long loss frame.
 
@@ -772,8 +772,8 @@ def _segment_long_df(
 
 
 def _segment_coefficients_df(
-    covfit: "Any",
-    groups: "str | list[str] | None",
+    covfit: Any,
+    groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """One segment's covariate log-relativities (CredibleLoss covariates= only).
@@ -810,10 +810,10 @@ def _segment_covariate_surface(
     loss_proj: np.ndarray,
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
-    cov_data: "Any",
-    covfit: "Any",
-    covariates: "list[str]",
-    groups: "str | list[str] | None",
+    cov_data: Any,
+    covfit: Any,
+    covariates: list[str],
+    groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """Disaggregated per-covariate-cell projection surface for one segment.
@@ -839,8 +839,8 @@ def _segment_covariate_surface(
         if not durs:
             continue
         last_obs_d = durs[-1]
-        cp: "dict[int, dict]" = {}
-        cells: "dict[tuple, dict]" = {}
+        cp: dict[int, dict] = {}
+        cells: dict[tuple, dict] = {}
         for d in durs:
             cp[d] = {}
             for cell_dict, c_cp in by_cd[(coh, d)]:
@@ -914,7 +914,7 @@ _MECHANISMS = {
 }
 
 
-def _regime_covariate_codes(frame: pl.DataFrame, regime: "Any") -> pl.DataFrame:
+def _regime_covariate_codes(frame: pl.DataFrame, regime: Any) -> pl.DataFrame:
     """Add a treatment-coded ``"regime"`` covariate column derived from the cohort.
 
     A regime is a property of the cohort (a cohort sits wholly in one regime),
@@ -939,7 +939,7 @@ def _regime_covariate_codes(frame: pl.DataFrame, regime: "Any") -> pl.DataFrame:
 
 def _fit_segment_cascade(
     seg_sub: pl.DataFrame,
-    fit_segment: "Any",
+    fit_segment: Any,
     mechanism: str,
     extra: dict,
     sigma_method: str,
@@ -1017,8 +1017,8 @@ def _fit_segment_cascade(
 def _apply_balance(
     fit: dict[str, np.ndarray],
     recent: int | None,
-    ci: "tuple[np.ndarray, np.ndarray] | None",
-) -> "tuple[dict[str, np.ndarray], tuple[np.ndarray, np.ndarray] | None, float]":
+    ci: tuple[np.ndarray, np.ndarray] | None,
+) -> tuple[dict[str, np.ndarray], tuple[np.ndarray, np.ndarray] | None, float]:
     """Balance-property calibration (Ohlsson 2008): scale the projection so the
     in-sample fitted-increment total matches the observed-increment total -- one
     ``alpha`` per segment, over the same links the factors were fit on.
@@ -1088,7 +1088,7 @@ def _apply_balance(
 
 def _segment_balance_df(
     alpha: float,
-    groups: "str | list[str] | None",
+    groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """One-row per-segment balance factor (``[groups?, alpha]``)."""
@@ -1100,21 +1100,21 @@ def _segment_balance_df(
 
 
 def _fit_loss(
-    triangle: "Triangle",
+    triangle: Triangle,
     *,
     mechanism: str,
     sigma_method: str,
-    regime: "Any" = None,
+    regime: Any = None,
     recent: int | None = None,
     confidence_level: float = 0.95,
-    psi: "float | str" = "auto",
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
+    psi: float | str = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
     balance: bool = False,
-    uncertainty: "Any" = None,
-    covariates: "list[str] | None" = None,
+    uncertainty: Any = None,
+    covariates: list[str] | None = None,
     lam_cov: float = 0.0,
-) -> "LossFit":
+) -> LossFit:
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
     ``mechanism`` selects the per-segment engine fit: ``"pooled"`` (saturated
@@ -1302,7 +1302,7 @@ def _fit_loss(
     if boot_spec is not None:
         # independent, reproducible child streams per segment (in id order)
         children = np.random.SeedSequence(boot_spec.seed).spawn(len(seg_ids))
-        seg_seeds = dict(zip(seg_ids, children))
+        seg_seeds = dict(zip(seg_ids, children, strict=False))
     for sid in seg_ids:
         sub = frame.filter(pl.col("_segment_id") == sid)
         if group_cols:
@@ -1357,12 +1357,14 @@ def _fit_loss(
             extra = {}
         if cov_cells is not None:
             from .._kernels.covariate import (
-                _build_g_eff, _covariate_segment_data, fit_covariate_intensity,
+                _build_g_eff,
+                _covariate_segment_data,
+                fit_covariate_intensity,
             )
             seg_cov = cov_cells
             if group_cols:
                 vals = (group_value,) if len(group_cols) == 1 else group_value
-                for col, val in zip(group_cols, vals):
+                for col, val in zip(group_cols, vals, strict=False):
                     seg_cov = seg_cov.filter(pl.col(col) == val)
             # restrict the source cells to this segment's (regime-cut) cohort
             # set -- otherwise the kernel would fit on cohorts the regime cut
@@ -1477,7 +1479,7 @@ def _fit_loss(
 
     # pass 2: splice the bootstrap SE / CI into each segment's fit, apply the
     # balance rescale, and accumulate (segments stay in stable id order).
-    for (fit, cohorts, group_value), boot in zip(seg_states, seg_boots):
+    for (fit, cohorts, group_value), boot in zip(seg_states, seg_boots, strict=False):
         ci = None
         if boot is not None:
             # replace the analytical / null SE with the bootstrap spread and
@@ -1583,7 +1585,7 @@ class LossFit:
         self,
         df: pl.DataFrame,
         *,
-        groups: "str | list[str] | None",
+        groups: str | list[str] | None,
         method: str,
         model: str,
         sigma_method: str,
@@ -1596,10 +1598,10 @@ class LossFit:
         converged: bool,
         cell_counts: dict[str, int],
         uncertainty: Any = None,
-        credibility: "pl.DataFrame | None" = None,
-        coefficients: "pl.DataFrame | None" = None,
-        covariate_surface: "pl.DataFrame | None" = None,
-        balance: "pl.DataFrame | None" = None,
+        credibility: pl.DataFrame | None = None,
+        coefficients: pl.DataFrame | None = None,
+        covariate_surface: pl.DataFrame | None = None,
+        balance: pl.DataFrame | None = None,
     ) -> None:
         self._df = df
         self._credibility = credibility
@@ -1621,10 +1623,10 @@ class LossFit:
         self.cell_counts = cell_counts
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
-    def at_grain(self, grain: str) -> "FrameLike":
+    def at_grain(self, grain: str) -> FrameLike:
         """View the projection at a COARSER grain by aggregating this fit.
 
         The fit is computed once at its own (finer) grain; a coarser view is a
@@ -1706,7 +1708,7 @@ class LossFit:
         return mirror_output(agg.select(out_cols), self._output_type)
 
     @property
-    def credibility(self) -> "FrameLike | None":
+    def credibility(self) -> FrameLike | None:
         """Per-cohort credibility diagnostics (``cohort``, ``u``, ``Z``,
         ``psi``) for a ``CredibleLoss`` fit, or ``None`` for the pooled /
         link-ratio rungs that carry no cohort level."""
@@ -1715,7 +1717,7 @@ class LossFit:
         return mirror_output(self._credibility, self._output_type)
 
     @property
-    def coefficients(self) -> "FrameLike | None":
+    def coefficients(self) -> FrameLike | None:
         """Covariate log-relativities (``[groups?, covariate, level, beta,
         exp_beta]``) for a ``CredibleLoss`` fit run with ``covariates=``, else
         ``None``. ``beta`` is the treatment-coded log effect against the
@@ -1726,7 +1728,7 @@ class LossFit:
         return mirror_output(self._coefficients, self._output_type)
 
     @property
-    def balance_factor(self) -> "FrameLike | None":
+    def balance_factor(self) -> FrameLike | None:
         """Per-segment balance-property factor (``[groups?, alpha]``) when the
         fit was run with ``balance=True``, else ``None``. ``alpha`` is the
         multiplicative calibration applied so the in-sample fitted-increment
@@ -1738,7 +1740,7 @@ class LossFit:
     def to_polars(self) -> pl.DataFrame:
         return self._df
 
-    def summary(self) -> "FrameLike":
+    def summary(self) -> FrameLike:
         """Per-cohort summary: last observed cumulative loss, within-triangle
         projection, the unobserved remainder, and the projection SE."""
         keys = (normalize_groups(self.groups) or []) + ["cohort"]
@@ -1757,7 +1759,7 @@ class LossFit:
         )
         return mirror_output(agg, self._output_type)
 
-    def predict(self, by: "str | list[str] | None" = None) -> "FrameLike":
+    def predict(self, by: str | list[str] | None = None) -> FrameLike:
         """Per-cell projection surface: cumulative + incremental projected
         loss, the projected loss ratio, and each cell's ``source`` (observed /
         own / borrowed). A focused view of :attr:`df` without the SE / CI
@@ -1808,7 +1810,7 @@ class LossFit:
         return mirror_output(out.select(order), self._output_type)
 
     @property
-    def covariate_surface(self) -> "FrameLike | None":
+    def covariate_surface(self) -> FrameLike | None:
         """The full disaggregated per-covariate-cell projection surface for a
         ``covariates=`` fit (else ``None``); ``predict(by=...)`` is the usual
         entry point. Summing ``loss_proj`` over the covariates reproduces the
@@ -1823,7 +1825,7 @@ class LossFit:
         *,
         nrow: int | None = None,
         ncol: int | None = None,
-        figsize: "tuple[float, float] | None" = None,
+        figsize: tuple[float, float] | None = None,
     ) -> Any:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail dashed. ``metric`` is

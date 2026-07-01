@@ -25,7 +25,9 @@ def exp() -> pl.DataFrame:
 @pytest.fixture(scope="module")
 def single_ae(exp) -> pl.DataFrame:
     tri = lr.Triangle(exp, groups="coverage")
-    return _to_polars(lr.Backtest(estimator=PooledLoss(), holdouts=6, target="loss").fit(tri).ae_err)
+    return _to_polars(
+        lr.Backtest(estimator=PooledLoss(), holdouts=6, target="loss").fit(tri).ae_err
+    )
 
 
 def test_panel_structure(single_ae):
@@ -278,7 +280,9 @@ def test_point_only_fit_emits_no_coverage_columns(exp):
     # to keep the "no SE -> no coverage column" contract
     from lossratio.estimators.credible_loss import CredibleLoss
     tri = lr.Triangle(exp, groups="coverage")
-    ae = _to_polars(lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err)
+    ae = _to_polars(
+        lr.Backtest(estimator=CredibleLoss(), holdouts=6, target="loss").fit(tri).ae_err
+    )
     panel = _to_polars(score_cells(ae, groups="coverage", coverage_levels=(0.80, 0.95)))
     assert not [c for c in panel.columns if c.startswith("coverage_")]
 

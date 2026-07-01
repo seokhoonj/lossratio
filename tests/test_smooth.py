@@ -29,7 +29,8 @@ def cells():
     for k in range(1, 6):
         for _ in range(6):
             p = rng.uniform(5e5, 2e6)
-            dur.append(k); P.append(p)
+            dur.append(k)
+            P.append(p)
             y.append(true_g[k] * p * rng.uniform(0.8, 1.2))
     return np.array(dur), np.array(y), np.array(P)
 
@@ -147,7 +148,8 @@ def test_wide_range_shape_does_not_collapse():
     for k in true_g:
         for _ in range(8):
             p = rng.uniform(5e5, 2e6)
-            dur.append(k); P.append(p)
+            dur.append(k)
+            P.append(p)
             y.append(true_g[k] * p * rng.uniform(0.85, 1.15))
     sm = smooth_intensity(response=y, exposure=P, duration=dur)
     sat = _engine.saturated_intensity(response=y, exposure=P, duration=dur)
@@ -167,7 +169,8 @@ def test_grid_reaches_meaningful_smoothing():
     for k in base:
         for _ in range(6):
             p = rng.uniform(1e6, 3e6)
-            dur.append(k); P.append(p)
+            dur.append(k)
+            P.append(p)
             y.append(base[k] * p * rng.uniform(0.7, 1.3))
     sm = smooth_intensity(response=y, exposure=P, duration=dur)
     assert sm.converged

@@ -52,7 +52,7 @@ class ChainLadder(_LossEstimatorBase):
         Two-sided confidence level for the analytical CI columns.
     """
 
-    def fit(self, triangle: "Triangle") -> LossFit:
+    def fit(self, triangle: Triangle) -> LossFit:
         """Fit the link-ratio loss projection on a :class:`Triangle`."""
         return _fit_loss(
             triangle,

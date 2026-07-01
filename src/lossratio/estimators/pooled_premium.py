@@ -46,7 +46,7 @@ class PooledPremium(_PremiumEstimatorBase):
         on an allocated exposure is an artifact and is not surfaced).
     """
 
-    def fit(self, triangle: "Triangle") -> PremiumFit:
+    def fit(self, triangle: Triangle) -> PremiumFit:
         """Fit the pooled link-ratio premium projection on a :class:`Triangle`."""
         return _fit_premium(
             triangle,

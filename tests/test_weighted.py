@@ -11,7 +11,11 @@ from lossratio._kernels.weighted import WeightedBootstrap, _weighted_refit_addit
 
 
 def test_weighted_fills_se_band(tri):
-    d = lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=120, seed=7)).fit(tri).to_polars()
+    d = (
+        lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=120, seed=7))
+        .fit(tri)
+        .to_polars()
+    )
     own = d.filter(pl.col("source") == "own")
     for c in ("loss_proc_se", "loss_param_se", "loss_total_se", "loss_ci_lo", "loss_ci_hi"):
         assert own[c].is_not_null().all(), c
@@ -26,8 +30,18 @@ def test_weighted_reproducible(tri):
 
 
 def test_weighted_n_jobs_bit_identical(tri):
-    a = lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=80, seed=3, n_jobs=1)).fit(tri).to_polars().sort(["coverage", "cohort", "duration"])
-    b = lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=80, seed=3, n_jobs=-1)).fit(tri).to_polars().sort(["coverage", "cohort", "duration"])
+    a = (
+        lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=80, seed=3, n_jobs=1))
+        .fit(tri)
+        .to_polars()
+        .sort(["coverage", "cohort", "duration"])
+    )
+    b = (
+        lr.CredibleLoss(uncertainty=WeightedBootstrap(n_replicates=80, seed=3, n_jobs=-1))
+        .fit(tri)
+        .to_polars()
+        .sort(["coverage", "cohort", "duration"])
+    )
     for c in ("loss_total_se", "loss_ci_lo", "loss_proj"):
         assert (a[c].fill_null(-1) - b[c].fill_null(-1)).abs().max() == 0.0
 

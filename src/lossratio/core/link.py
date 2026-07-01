@@ -184,13 +184,13 @@ class Link:
     @classmethod
     def _from_triangle(
         cls,
-        triangle: "Triangle",
+        triangle: Triangle,
         target: str = "loss",
         exposure: str | None = "premium",
         weight: str | None = None,
         min_denom: float = 0.0,
         drop_invalid: bool = False,
-    ) -> "Link":
+    ) -> Link:
         self = cls.__new__(cls)
         self._output_type = triangle._output_type
         self._groups = triangle._groups
@@ -272,7 +272,7 @@ class Link:
         self,
         sigma_method: str = "locf",
         recent: int | None = None,
-    ) -> "ATA":
+    ) -> ATA:
         """ATA factor diagnostic on this link.
 
         Aggregates the per-cell ``ata`` column across cohorts via
@@ -299,7 +299,7 @@ class Link:
         self,
         sigma_method: str = "locf",
         recent: int | None = None,
-    ) -> "Intensity":
+    ) -> Intensity:
         """Additive intensity diagnostic on this link.
 
         Requires the Link to be in dual mode (``exposure`` set).

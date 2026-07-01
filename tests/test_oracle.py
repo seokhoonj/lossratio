@@ -179,8 +179,7 @@ def test_oracle_balance_property_saturated():
 
 def test_oracle_credibility_blend_identity():
     """u_hat_i == Z_i * r_i^w + (1 - Z_i) * 1, exactly (Fraction)."""
-    m0, phi, psi = _m0(), _phi(), _psi()
-    inv = F(1) / psi
+    m0, phi = _m0(), _phi()
     u, Z = _conjugate()
     for i in COHORTS:
         ks = sorted(P[i])

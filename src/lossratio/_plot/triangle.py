@@ -138,7 +138,7 @@ def plot_triangle(
     coh_type = _get_period_type(coh, grain=grain)
     cohort_labels = _format_axis(df["cohort"], coh_type)
     coh_pairs = sorted(
-        set(zip(df["cohort"].to_list(), cohort_labels)),
+        set(zip(df["cohort"].to_list(), cohort_labels, strict=False)),
         key=lambda p: p[0],
     )
     y_levels = [lbl for _, lbl in coh_pairs]   # cohort, oldest -> newest
@@ -165,7 +165,7 @@ def plot_triangle(
         x_axis_label = _pretty_var_label(duration)
 
     # Ordered unique levels.
-    x_pairs = sorted(set(zip(x_values, x_labels)), key=lambda p: p[0])
+    x_pairs = sorted(set(zip(x_values, x_labels, strict=False)), key=lambda p: p[0])
     x_levels = [lbl for _, lbl in x_pairs]   # smallest -> largest
 
     df = df.with_columns(
@@ -233,7 +233,7 @@ def _cell_labels(
         loss_vals = df[loss_col].to_numpy() / divisor
         premium_vals = df[premium_col].to_numpy() / divisor
         out = []
-        for r, lo, pr in zip(scaled, loss_vals, premium_vals):
+        for r, lo, pr in zip(scaled, loss_vals, premium_vals, strict=False):
             if not np.isfinite(r):
                 out.append("")
             else:
@@ -275,7 +275,7 @@ def _draw_cell_grid(
     y_pos = [y_idx[lbl] for lbl in sub["_y_lab"].to_list()]
     labels = sub["_label"].to_list()
 
-    for xi, yi, v, lab in zip(x_pos, y_pos, metric_vals, labels):
+    for xi, yi, v, lab in zip(x_pos, y_pos, metric_vals, labels, strict=False):
         color = _threshold_color(v, threshold, when)
         ax.add_patch(
             Rectangle(

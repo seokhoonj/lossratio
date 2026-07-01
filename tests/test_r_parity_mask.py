@@ -60,7 +60,7 @@ def _compare_numeric(
         assert c in py_df.columns, f"Python output missing column {c!r}"
         py_v = py_df[c].to_list()
         r_v = r_df[c].to_list()
-        for i, (a, b) in enumerate(zip(py_v, r_v)):
+        for i, (a, b) in enumerate(zip(py_v, r_v, strict=False)):
             if a is None or b is None:
                 continue
             if isinstance(a, float) and (a != a):

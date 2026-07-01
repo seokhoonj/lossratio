@@ -50,9 +50,9 @@ class SmoothPremium(_PremiumEstimatorBase):
         Two-sided confidence level (unused in v1 -- SE/CI are null point-only).
     """
 
-    psi: "float | str" = "auto"
-    lam: "float | str" = "auto"
-    n_basis: "int | None" = None
+    psi: float | str = "auto"
+    lam: float | str = "auto"
+    n_basis: int | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -75,7 +75,7 @@ class SmoothPremium(_PremiumEstimatorBase):
                 f"n_basis must be None or an int >= 4, got {self.n_basis!r}"
             )
 
-    def fit(self, triangle: "Triangle") -> PremiumFit:
+    def fit(self, triangle: Triangle) -> PremiumFit:
         """Fit the smooth premium projection on a :class:`Triangle`."""
         return _fit_premium(
             triangle,

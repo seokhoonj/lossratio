@@ -295,6 +295,7 @@ def test_project_borrow_leading_gap_and_short_donor_fill_the_tail():
     # shallower than the segment horizon must LOCF-extend -- neither may leave a
     # NaN tail or index out of bounds.
     import numpy as np
+
     from lossratio._kernels.credible import _project_borrow
 
     own_h = np.array([np.nan, np.nan, 0.10])        # leading gap at links 0, 1

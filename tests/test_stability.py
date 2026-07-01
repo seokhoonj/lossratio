@@ -92,7 +92,11 @@ def test_frozen_ratio_masks_developing():
     tri = _make_triangle(11, 16, loss_at=lambda d: 30.0 + 8.0 * d,
                          premium_at=lambda d: 100.0)
     fr = lr.Stability().assess(tri).frozen_ratio()
-    row = pl.DataFrame(fr).row(0, named=True) if not isinstance(fr, pl.DataFrame) else fr.row(0, named=True)
+    row = (
+        pl.DataFrame(fr).row(0, named=True)
+        if not isinstance(fr, pl.DataFrame)
+        else fr.row(0, named=True)
+    )
     assert row["go_forward_ratio"] is None        # developing -> no freeze
     assert row["status"] == "developing"
 

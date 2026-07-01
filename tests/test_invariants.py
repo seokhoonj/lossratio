@@ -34,7 +34,7 @@ def _experience() -> pl.DataFrame:
     return df if isinstance(df, pl.DataFrame) else pl.from_pandas(df)
 
 
-def _triangle(df: pl.DataFrame) -> "lr.Triangle":
+def _triangle(df: pl.DataFrame) -> lr.Triangle:
     return lr.Triangle(df, groups="coverage", cohort="uy_m", calendar="cy_m",
                        loss="incr_loss", premium="incr_premium", grain="M")
 

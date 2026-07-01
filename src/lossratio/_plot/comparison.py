@@ -46,7 +46,7 @@ _METRIC_WORD = {
 
 
 def plot_estimator_comparison(
-    fit: "EstimatorComparisonFit",
+    fit: EstimatorComparisonFit,
     by: str = "horizon",
     metric: str = "abs_err",
     basis: str = "cumulative",

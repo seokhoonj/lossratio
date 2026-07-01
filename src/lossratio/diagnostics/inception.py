@@ -42,8 +42,8 @@ def inception_credibility(
     counts: Any,
     rates: Any,
     *,
-    on: "str | Sequence[str]",
-    by: "str | Sequence[str]",
+    on: str | Sequence[str],
+    by: str | Sequence[str],
     count: str = "count",
     rate: str = "rate",
     severity: Any = None,
@@ -52,7 +52,7 @@ def inception_credibility(
     horizon: float = 1.0,
     usable: float = 0.5,
     thin: float = 0.3,
-) -> "FrameLike":
+) -> FrameLike:
     """Credibility ``Z`` per ``by`` group from segmented counts and rates.
 
     Parameters

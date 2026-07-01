@@ -35,7 +35,6 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.interpolate import BSpline
 
-
 # ---------------------------------------------------------------------------
 # Basis + penalty
 # ---------------------------------------------------------------------------
@@ -160,8 +159,8 @@ def penalized_irls(
 
     obj = _neg_obj(beta, eta)
     converged = False
-    it = 0
-    for it in range(1, max_iter + 1):
+    _it = 0
+    for _it in range(1, max_iter + 1):
         mu = np.exp(eta)
         w = mu                                   # IRLS weight = (dmu/deta)^2/V = mu
         z = (eta - offset) + (y - mu) / mu       # working response on the s scale
@@ -207,7 +206,7 @@ def penalized_irls(
     except np.linalg.LinAlgError:
         edf = float(p)
     pearson = float(np.sum((y - mu) ** 2 / mu))
-    return _IRLSResult(beta, eta, mu, edf, pearson, converged, it)
+    return _IRLSResult(beta, eta, mu, edf, pearson, converged, _it)
 
 
 # ---------------------------------------------------------------------------
@@ -236,9 +235,9 @@ def smooth_intensity(
     response,
     exposure,
     duration,
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
-    lam_grid: "np.ndarray | None" = None,
+    n_basis: int | None = None,
+    lam: float | str = "auto",
+    lam_grid: np.ndarray | None = None,
     degree: int = 3,
 ) -> _SmoothResult:
     """Smooth duration intensity ``g_k = exp(s(k))`` by penalized IRLS.

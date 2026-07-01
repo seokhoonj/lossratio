@@ -85,12 +85,17 @@ def test_ridge_keeps_a_separated_level_finite():
     g_true = np.array([0.05, 0.04, 0.03, 0.02])
     rng = np.random.default_rng(1)
     resp, expo, dur, codes = [], [], [], []
-    for i in range(10):
+    for _ in range(10):
         for k in range(1, 5):
             p = float(rng.uniform(500.0, 1500.0))
-            resp.append(p * g_true[k - 1]); expo.append(p); dur.append(k)
+            resp.append(p * g_true[k - 1])
+            expo.append(p)
+            dur.append(k)
             codes.append("common")
-    resp.append(1e5); expo.append(1.0); dur.append(1); codes.append("rare")
+    resp.append(1e5)
+    expo.append(1.0)
+    dur.append(1)
+    codes.append("rare")
     fit = fit_covariate_intensity(
         np.array(resp), np.array(expo), np.array(dur),
         {"grp": np.array(codes, dtype=object)}, lam=1.0,
@@ -116,7 +121,10 @@ def test_eb_auto_keeps_signal_shrinks_noise():
             nz = ["a", "b", "c", "d"][int(rng.integers(4))]  # no true effect
             fac = 1.3 if sx == "F" else 1.0
             resp.append(p * g[k - 1] * fac * float(rng.uniform(0.9, 1.1)))
-            expo.append(p); dur.append(k); sex.append(sx); noise.append(nz)
+            expo.append(p)
+            dur.append(k)
+            sex.append(sx)
+            noise.append(nz)
     fit = fit_covariate_intensity(
         np.array(resp), np.array(expo), np.array(dur),
         {"sex": np.array(sex, dtype=object), "noise": np.array(noise, dtype=object)},
@@ -133,12 +141,17 @@ def test_eb_auto_keeps_separated_level_finite():
     g = np.array([0.05, 0.04, 0.03, 0.02])
     rng = np.random.default_rng(1)
     resp, expo, dur, codes = [], [], [], []
-    for i in range(10):
+    for _ in range(10):
         for k in range(1, 5):
             p = float(rng.uniform(500.0, 1500.0))
-            resp.append(p * g[k - 1]); expo.append(p); dur.append(k)
+            resp.append(p * g[k - 1])
+            expo.append(p)
+            dur.append(k)
             codes.append("common")
-    resp.append(1e5); expo.append(1.0); dur.append(1); codes.append("rare")
+    resp.append(1e5)
+    expo.append(1.0)
+    dur.append(1)
+    codes.append("rare")
     fit = fit_covariate_intensity(
         np.array(resp), np.array(expo), np.array(dur),
         {"grp": np.array(codes, dtype=object)}, lam="auto",

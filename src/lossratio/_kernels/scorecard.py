@@ -75,7 +75,7 @@ def _coverage_aggs(cov_cols: list[str], zs: list[float]) -> list[pl.Expr]:
     return [
         ((pl.col("actual") - pl.col("expected")).abs()
          <= z * pl.col("expected_se")).mean().alias(col)
-        for col, z in zip(cov_cols, zs)
+        for col, z in zip(cov_cols, zs, strict=False)
     ]
 
 
@@ -152,12 +152,12 @@ def _attach_coverage(
 
 
 def score_cells(
-    ae_err: "FrameLike",
+    ae_err: FrameLike,
     *,
-    groups: "str | list[str] | None" = None,
+    groups: str | list[str] | None = None,
     terminal: int | None = None,
-    coverage_levels: "tuple[float, ...]" = _DEFAULT_COVERAGE,
-) -> "FrameLike":
+    coverage_levels: tuple[float, ...] = _DEFAULT_COVERAGE,
+) -> FrameLike:
     """Structure a backtest's per-cell A/E into the validation scorecard.
 
     Parameters

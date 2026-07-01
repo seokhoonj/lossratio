@@ -76,7 +76,7 @@ def test_ata_f_is_finite_for_nontrivial_links(toy_input):
     ata = _tri(toy_input).link().ata()
     df = ata.df
     # links 1..3 have at least 2 cohorts contributing → f should be finite
-    for k, f in zip(df["duration"].to_list(), df["f"].to_list()):
+    for k, f in zip(df["duration"].to_list(), df["f"].to_list(), strict=False):
         if k <= 3:
             assert f is not None
 

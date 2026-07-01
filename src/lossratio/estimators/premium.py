@@ -38,6 +38,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
+from .._kernels.credible import _credible_levels, _project_borrow, _smooth_backfit
 from .._kernels.io import (
     _nan_skip_diff,
     _nan_to_null,
@@ -46,8 +47,9 @@ from .._kernels.io import (
     mirror_output,
     normalize_groups,
 )
-from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
 from .._kernels.recent import recent_link_mask
+from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
+from ..core.model_frame import ModelFrame
 from ._cascade import (
     _cohort_subset_donor,
     _pad_cols,
@@ -55,8 +57,6 @@ from ._cascade import (
     _stack_cascade_fits,
 )
 from ._credibility import _segment_credibility_df
-from .._kernels.credible import _credible_levels, _project_borrow, _smooth_backfit
-from ..core.model_frame import ModelFrame
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
@@ -83,7 +83,7 @@ def _segment_premium_df(
     param_se: np.ndarray,
     total_se: np.ndarray,
     cohorts: list,
-    groups: "str | list[str] | None",
+    groups: str | list[str] | None,
     group_value: Any | None,
     confidence_level: float,
     borrowed: np.ndarray | None = None,
@@ -174,10 +174,10 @@ def _project_self_exposure(
 
 def _premium_borrow_proj(
     premium_obs: np.ndarray, *, body: str,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray]",
-    own_f: "np.ndarray | None" = None,
-    own_h: "np.ndarray | None" = None,
-    own_u: "np.ndarray | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray],
+    own_f: np.ndarray | None = None,
+    own_h: np.ndarray | None = None,
+    own_u: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Own premium body to the own-data boundary, then a donor f^P_k borrow tail.
 
@@ -204,7 +204,7 @@ def _premium_borrow_proj(
 def _fit_segment_pooled_premium(
     premium_obs: np.ndarray, sigma_method: str, *,
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Pooled (chain-ladder) premium fit for one cascade regime.
 
@@ -234,9 +234,9 @@ def _fit_segment_pooled_premium(
 
 
 def _fit_segment_credible_premium(
-    premium_obs: np.ndarray, sigma_method: str, *, psi: "float | str" = "auto",
+    premium_obs: np.ndarray, sigma_method: str, *, psi: float | str = "auto",
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Credibility (partial-pooling) premium fit for one segment.
 
@@ -293,11 +293,11 @@ def _fit_segment_smooth_premium(
     premium_obs: np.ndarray,
     sigma_method: str,
     *,
-    psi: "float | str" = "auto",
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
+    psi: float | str = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
     recent: int | None = None,
-    donor: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Smooth premium fit for one segment -- the top denominator rung.
 
@@ -415,17 +415,17 @@ _PREMIUM_MODELS = {
 
 
 def _fit_premium(
-    triangle: "Triangle",
+    triangle: Triangle,
     *,
     mechanism: str = "pooled",
     sigma_method: str = "locf",
-    regime: "Any" = None,
+    regime: Any = None,
     recent: int | None = None,
     confidence_level: float = 0.95,
-    psi: "float | str" = "auto",
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
-) -> "PremiumFit":
+    psi: float | str = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
+) -> PremiumFit:
     """Fit a single-mechanism premium projection on a :class:`Triangle`.
 
     ``mechanism="pooled"`` is the volume-weighted pooled link ratio on
@@ -626,7 +626,7 @@ class PremiumFit:
         self,
         df: pl.DataFrame,
         *,
-        groups: "str | list[str] | None",
+        groups: str | list[str] | None,
         method: str,
         model: str,
         sigma_method: str,
@@ -636,7 +636,7 @@ class PremiumFit:
         status: str,
         status_reasons: list[str],
         cell_counts: dict[str, int],
-        credibility: "pl.DataFrame | None" = None,
+        credibility: pl.DataFrame | None = None,
         converged: bool = True,
     ) -> None:
         self._df = df
@@ -654,11 +654,11 @@ class PremiumFit:
         self.converged = converged
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
     @property
-    def credibility(self) -> "FrameLike | None":
+    def credibility(self) -> FrameLike | None:
         """Per-cohort credibility diagnostics ``[groups?, cohort, u, Z, psi]``
         for ``CrediblePremium`` / ``SmoothPremium``; ``None`` for the pooled
         link ratio (no per-cohort level)."""
@@ -669,7 +669,7 @@ class PremiumFit:
     def to_polars(self) -> pl.DataFrame:
         return self._df
 
-    def summary(self) -> "FrameLike":
+    def summary(self) -> FrameLike:
         """Per-cohort summary: last observed cumulative premium, the
         within-triangle projection, the unobserved remainder, and the
         projection SE."""
@@ -688,7 +688,7 @@ class PremiumFit:
         )
         return mirror_output(agg, self._output_type)
 
-    def predict(self) -> "FrameLike":
+    def predict(self) -> FrameLike:
         """Per-cell projection surface: cumulative + incremental projected
         premium and each cell's ``source`` (observed / own). A focused view of
         :attr:`df` without the SE / CI columns."""
@@ -702,7 +702,7 @@ class PremiumFit:
         *,
         nrow: int | None = None,
         ncol: int | None = None,
-        figsize: "tuple[float, float] | None" = None,
+        figsize: tuple[float, float] | None = None,
     ) -> Any:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail dashed. ``metric`` is

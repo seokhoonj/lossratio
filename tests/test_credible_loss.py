@@ -92,7 +92,7 @@ def test_credible_scales_pooled_increment_by_cohort_level(tri):
         (pl.col("u").max() - pl.col("u").min()).alias("spread")
     )
     assert spread["spread"].max() == pytest.approx(0.0, abs=1e-9)   # u_i constant per cohort
-    assert (j["u"] - 1.0).abs().max() > 1e-6                        # and not all 1 (credibility active)
+    assert (j["u"] - 1.0).abs().max() > 1e-6  # and not all 1 (credibility active)
 
 
 def test_point_only_se_is_null(tri):
@@ -165,8 +165,9 @@ def test_zero_increment_duration_does_not_nan_the_level():
     # but cannot carry a Pearson residual (0/0). With an explicit psi > 0 the
     # conjugate level used to come back NaN; the m0 > 0 filter must drop those
     # cells so the level (and loss_proj) stay finite.
-    import polars as pl
     from datetime import date
+
+    import polars as pl
 
     rows = []
     for i in range(8):

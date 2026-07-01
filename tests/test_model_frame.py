@@ -30,7 +30,7 @@ def _oracle_triangle() -> Triangle:
     rows = []
     for i in (1, 2, 3):
         prev = 0
-        for k, (y, pcum) in enumerate(zip(Y[i], P_CUM[i]), start=1):
+        for k, (y, pcum) in enumerate(zip(Y[i], P_CUM[i], strict=False), start=1):
             rows.append({
                 "grp": "A", "uy_m": COH_DATE[i], "duration_m": k,
                 "incr_loss": float(y), "incr_premium": float(pcum - prev),

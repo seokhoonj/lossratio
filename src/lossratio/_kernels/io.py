@@ -40,7 +40,7 @@ def to_polars(df: Any) -> pl.DataFrame:
     return pl.from_pandas(df)
 
 
-def mirror_output(df_pl: pl.DataFrame, output_type: str) -> "FrameLike":
+def mirror_output(df_pl: pl.DataFrame, output_type: str) -> FrameLike:
     """Return df_pl in the format requested by ``output_type``."""
     if output_type == "pandas":
         return df_pl.to_pandas()
@@ -75,7 +75,7 @@ def _nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
     for missing values (which polars stores as null, not NaN).
     """
     float_cols = [
-        c for c, dt in zip(df.columns, df.dtypes) if dt == pl.Float64
+        c for c, dt in zip(df.columns, df.dtypes, strict=False) if dt == pl.Float64
     ]
     if not float_cols:
         return df
@@ -83,7 +83,7 @@ def _nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def normalize_groups(
-    groups: "str | Sequence[str] | None",
+    groups: str | Sequence[str] | None,
 ) -> list[str]:
     """Normalize a ``groups`` argument to a list of column names.
 
@@ -112,8 +112,8 @@ def normalize_groups(
 
 
 def collapse_groups(
-    groups: "str | Sequence[str] | None",
-) -> "str | list[str] | None":
+    groups: str | Sequence[str] | None,
+) -> str | list[str] | None:
     """Storage form of a ``groups`` argument: ``None`` / scalar ``str`` /
     ``list[str]``.
 
@@ -136,7 +136,7 @@ def collapse_groups(
     return norm
 
 
-def group_eq(groups: "str | Sequence[str]", value: Any) -> pl.Expr:
+def group_eq(groups: str | Sequence[str], value: Any) -> pl.Expr:
     """polars predicate selecting the rows of a single group.
 
     ``groups`` is a single column name (``str``) paired with a scalar
@@ -148,7 +148,7 @@ def group_eq(groups: "str | Sequence[str]", value: Any) -> pl.Expr:
     if isinstance(groups, str):
         return pl.col(groups) == value
     expr: pl.Expr | None = None
-    for col, val in zip(groups, value):
+    for col, val in zip(groups, value, strict=False):
         eq = pl.col(col) == val
         expr = eq if expr is None else (expr & eq)
     if expr is None:
@@ -158,7 +158,7 @@ def group_eq(groups: "str | Sequence[str]", value: Any) -> pl.Expr:
 
 def fill_group_columns(
     data: dict[str, Any],
-    groups: "str | Sequence[str] | None",
+    groups: str | Sequence[str] | None,
     value: Any,
     n: int,
 ) -> None:
@@ -173,13 +173,13 @@ def fill_group_columns(
     if isinstance(groups, str):
         data[groups] = [value] * n
         return
-    for col, val in zip(groups, value):
+    for col, val in zip(groups, value, strict=False):
         data[col] = [val] * n
 
 
 def set_group_values(
     row: dict[str, Any],
-    groups: "str | Sequence[str] | None",
+    groups: str | Sequence[str] | None,
     value: Any,
 ) -> None:
     """Write a single group's value into a row-dict.
@@ -193,7 +193,7 @@ def set_group_values(
     if isinstance(groups, str):
         row[groups] = value
         return
-    for col, val in zip(groups, value):
+    for col, val in zip(groups, value, strict=False):
         row[col] = val
 
 
@@ -212,7 +212,7 @@ def format_group_value(value: Any) -> str:
 
 
 def _iter_group_frames(
-    df: pl.DataFrame, groups: "str | Sequence[str] | None"
+    df: pl.DataFrame, groups: str | Sequence[str] | None
 ) -> Iterator[tuple[Any, pl.DataFrame]]:
     """Yield ``(group_value, sub_frame)`` pairs for a grouped fit.
 
@@ -239,7 +239,7 @@ def _iter_group_frames(
 
 def _arrays_to_long_df(
     cols: dict[str, np.ndarray],
-    groups: "str | Sequence[str] | None" = None,
+    groups: str | Sequence[str] | None = None,
     group_value: Any = None,
 ) -> pl.DataFrame:
     """Build a long-format DataFrame column-wise from per-link arrays.
@@ -260,7 +260,7 @@ def _arrays_to_long_df(
         else:
             group_cols = [
                 pl.lit(val).alias(col)
-                for col, val in zip(groups, group_value)
+                for col, val in zip(groups, group_value, strict=False)
             ]
         df = df.select(*group_cols, *[pl.col(c) for c in cols])
     return _nan_to_null(df)

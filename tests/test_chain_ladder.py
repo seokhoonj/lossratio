@@ -107,7 +107,9 @@ def test_odp_bootstrap_in_calibration_range(exp):
     from lossratio._kernels.resample import ResidualBootstrap
     tri = lr.Triangle(exp, groups="coverage")
     ana = _to_polars(ChainLadder().fit(tri))
-    boot = _to_polars(ChainLadder(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri))
+    boot = _to_polars(
+        ChainLadder(uncertainty=ResidualBootstrap(n_replicates=300, seed=1, drift=False)).fit(tri)
+    )
     j = ana.join(boot, on=["coverage", "cohort", "duration"], suffix="_b").filter(
         pl.col("source") == "own"
     )

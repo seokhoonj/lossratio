@@ -23,8 +23,8 @@ if TYPE_CHECKING:
 
 
 def _regime_cut_frames(
-    regime_cut: "date | dict | None", group_cols: list[str],
-) -> "tuple[Any, pl.DataFrame | None]":
+    regime_cut: date | dict | None, group_cols: list[str],
+) -> tuple[Any, pl.DataFrame | None]:
     """Split a RESOLVED regime cut into ``(scalar_date, per_group_df)``.
 
     ``regime_cut`` is what :func:`lossratio.diagnostics.regime._resolve_regime` returns --
@@ -47,7 +47,7 @@ def _regime_cut_frames(
         rows = []
         for seg_val, change in regime_cut.items():
             keys = (seg_val,) if len(group_cols) == 1 else tuple(seg_val)
-            rows.append({**dict(zip(group_cols, keys)), "_change": change})
+            rows.append({**dict(zip(group_cols, keys, strict=False)), "_change": change})
         return None, pl.DataFrame(rows)
     raise ValueError(
         f"regime_cut must be None, a date, or a dict; got "
@@ -56,9 +56,9 @@ def _regime_cut_frames(
 
 
 def _compute_triangle_usage(
-    triangle: "Triangle",
+    triangle: Triangle,
     recent: int | None = None,
-    regime_cut: "date | dict | None" = None,
+    regime_cut: date | dict | None = None,
     holdout: int | None = None,
     treatment: str = "latest_only",
 ) -> pl.DataFrame:
@@ -108,7 +108,7 @@ def _compute_triangle_usage(
             cohorts = sub["cohort"].unique().sort()
             durations = sub["duration"].unique().sort()
             grid = cohorts.to_frame().join(durations.to_frame(), how="cross")
-            for col, v in zip(group_cols, g_val):
+            for col, v in zip(group_cols, g_val, strict=False):
                 grid = grid.with_columns(pl.lit(v).alias(col))
             parts.append(grid.select(group_cols + ["cohort", "duration"]))
         expanded = pl.concat(parts, how="vertical_relaxed")

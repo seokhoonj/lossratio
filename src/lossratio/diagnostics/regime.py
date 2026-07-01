@@ -156,8 +156,8 @@ def _kneedle_elbow(
 
 def _resolve_by(
     by: str | Sequence[str] | None,
-    triangle: "Triangle",
-) -> "str | list[str] | None":
+    triangle: Triangle,
+) -> str | list[str] | None:
     """Normalise the ``by`` argument to a group spec or ``None``.
 
     - ``None``: defer to ``triangle.groups`` (per-group when set, pooled
@@ -244,7 +244,7 @@ def _detect_regime_single(
                     change_idxs.append(e)
                     p_vals.append(float("nan"))
             if change_idxs:
-                paired = sorted(zip(change_idxs, p_vals), key=lambda t: t[0])
+                paired = sorted(zip(change_idxs, p_vals, strict=False), key=lambda t: t[0])
                 change_idxs = [b for b, _ in paired]
                 p_vals = [p for _, p in paired]
     else:  # hclust
@@ -353,7 +353,7 @@ def _sweep_window_candidates(
             continue
         n_win += 1
         n_coh = len(res["cohorts"])
-        for change_point, a in zip(res["change_points"], res["assess"]):
+        for change_point, a in zip(res["change_points"], res["assess"], strict=False):
             rec = by_date.setdefault(change_point, {"count": 0, "best_n": -1, "assess": None})
             rec["count"] += 1
             if n_coh > rec["best_n"]:
@@ -1403,7 +1403,7 @@ class Regime:
     @classmethod
     def _from_triangle(
         cls,
-        triangle: "Triangle",
+        triangle: Triangle,
         *,
         target: str = "ratio",
         window: int | str = "auto",
@@ -1421,7 +1421,7 @@ class Regime:
         window_sweep: Sequence[int] | None = None,
         grain_sweep: Sequence[str] | None = None,
         treatment: str = "latest_only",
-    ) -> "Regime":
+    ) -> Regime:
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
@@ -1511,8 +1511,8 @@ class Regime:
         # change-count sweep; if the elbow is also undefined, falls
         # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
-            from ..core.ata import _detect_stability_point
             from .._kernels.recursion import _build_value_matrix
+            from ..core.ata import _detect_stability_point
 
             # Map the regime target -> a valid cumulative metric for the
             # ATA factor diagnostic (cumulative metrics only). Derived
@@ -1583,7 +1583,7 @@ class Regime:
         # multi-group call). Skipped combos contribute zero rows to
         # `changes`/`labels`.
         per_combo_results: list[tuple[Any, dict[str, Any]]] = []
-        for combo, k in zip(combos, window_per_combo):
+        for combo, k in zip(combos, window_per_combo, strict=False):
             sub = sub_by_combo[combo]
             try:
                 res = _detect_regime_single(
@@ -1675,7 +1675,7 @@ class Regime:
             keep: dict[int, set[int]] = {
                 ci: set() for ci in range(len(per_combo_results))
             }
-            for (ci, bi), a, p0 in zip(refs, adj, flat_p):
+            for (ci, bi), a, p0 in zip(refs, adj, flat_p, strict=False):
                 if not np.isfinite(p0) or a <= sig_level:
                     keep[ci].add(bi)
             rebuilt: list[tuple[Any, dict[str, Any]]] = []
@@ -1737,7 +1737,7 @@ class Regime:
         changes_df: pl.DataFrame,
         groups: str | list[str] | None,
         treatment: str = "latest_only",
-    ) -> "Regime":
+    ) -> Regime:
         """Construct a Regime by hand (no auto-detection).
 
         Used by :meth:`Regime.at` to wrap user-supplied change points.
@@ -1773,7 +1773,7 @@ class Regime:
         *,
         groups: Mapping[str, Sequence[Any]] | None = None,
         treatment: str = "latest_only",
-    ) -> "Regime":
+    ) -> Regime:
         """Build a :class:`Regime` from explicit, user-supplied change points.
 
         Use this when you already know where the cohort regime shifts (e.g.
@@ -2041,7 +2041,7 @@ class Regime:
             self._output_type,
         )
 
-    def accepted(self, **evaluate_kwargs) -> "Regime":
+    def accepted(self, **evaluate_kwargs) -> Regime:
         """Return a Regime of the accepted changes, ready to drive a fit.
 
         Runs :meth:`evaluate`, keeps the ``action == "regime"`` candidates,
@@ -2119,7 +2119,7 @@ class Regime:
             keyvals = key if isinstance(key, tuple) else (key,)
             if group_cols:
                 chg = changes
-                for c, v in zip(group_cols, keyvals):
+                for c, v in zip(group_cols, keyvals, strict=False):
                     chg = chg.filter(pl.col(c) == v)
             else:
                 chg = changes
@@ -2141,7 +2141,7 @@ class Regime:
             res = _borrow_screen_group(
                 loss_cum, np.arange(len(cohorts)), seg_ids
             )
-            row = {c: v for c, v in zip(group_cols, keyvals)}
+            row = {c: v for c, v in zip(group_cols, keyvals, strict=False)}
             row.update(res)
             rows.append(row)
 
@@ -2257,8 +2257,8 @@ class RegimeDetector:
     """
 
     target: str = "ratio"
-    window: "int | str" = "auto"
-    by: "str | Sequence[str] | None" = None
+    window: int | str = "auto"
+    by: str | Sequence[str] | None = None
     method: str = "e_divisive"
     n_regimes: int | None = None
     sig_level: float = 0.05
@@ -2269,11 +2269,11 @@ class RegimeDetector:
     fdr: bool = False
     edge_scan: bool = False
     edge_threshold: float = 10.0
-    window_sweep: "Sequence[int] | None" = None
-    grain_sweep: "Sequence[str] | None" = None
+    window_sweep: Sequence[int] | None = None
+    grain_sweep: Sequence[str] | None = None
     treatment: str = "latest_only"
 
-    def detect(self, triangle: "Triangle") -> "Regime":
+    def detect(self, triangle: Triangle) -> Regime:
         """Run detection on ``triangle`` and return a :class:`Regime`."""
         return Regime._from_triangle(
             triangle,
@@ -2329,7 +2329,7 @@ def _resolve_to_regime(regime, triangle):
     )
 
 
-def _regime_cutoff_map(regime: "Regime") -> pl.DataFrame | None:
+def _regime_cutoff_map(regime: Regime) -> pl.DataFrame | None:
     """Per-group ``(group_value, cutoff)`` table.
 
     The cutoff is the **latest** change point per group -- cohorts

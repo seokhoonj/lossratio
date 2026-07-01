@@ -25,9 +25,9 @@ from .._kernels.period import (
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
     from .._types import RegimeArg
+    from ..diagnostics.regime import Regime
     from .calendar import Calendar
     from .link import Link
-    from ..diagnostics.regime import Regime
     from .total import Total
 
 
@@ -421,7 +421,7 @@ class Triangle:
         tri._duration = original._duration
         return tri
 
-    def collapse(self, groups: "str | Sequence[str] | None") -> "Triangle":
+    def collapse(self, groups: str | Sequence[str] | None) -> Triangle:
         """Re-aggregate to a SUBSET of the current group columns.
 
         Sums the incremental loss / premium over the dropped group columns
@@ -505,7 +505,7 @@ class Triangle:
         out._premium = self._premium
         return out
 
-    def calendar_agg(self) -> "Calendar":
+    def calendar_agg(self) -> Calendar:
         """Aggregate this triangle to its calendar-period diagonals.
 
         Each row of the result is one ``(group, calendar)`` cell: the sum
@@ -519,7 +519,7 @@ class Triangle:
 
         return Calendar._from_triangle(self)
 
-    def total_agg(self) -> "Total":
+    def total_agg(self) -> Total:
         """Aggregate this triangle to per-group portfolio totals.
 
         One row per group with cohort count, sales window, total loss /
@@ -777,9 +777,9 @@ class Triangle:
         self,
         *,
         recent: int | None = None,
-        regime: "RegimeArg" = None,
+        regime: RegimeArg = None,
         holdout: int | None = None,
-    ) -> "FrameLike":
+    ) -> FrameLike:
         """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
 
         Returns one row per ``group x cohort x duration`` cell with a ``status``
@@ -842,7 +842,7 @@ class Triangle:
         *,
         x_axis: str = "duration",
         recent: int | None = None,
-        regime: "RegimeArg" = None,
+        regime: RegimeArg = None,
         holdout: int | None = None,
     ) -> Any:
         """Triangle heatmap (cell-value or status), backed by matplotlib.

@@ -20,10 +20,9 @@ import numpy as np
 import polars as pl
 
 from .._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
-from .._kernels.recursion import _wls_sigma2
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
-from .._kernels.recursion import _build_value_matrices
+from .._kernels.recursion import _build_value_matrices, _wls_sigma2
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
@@ -215,10 +214,10 @@ class Intensity:
     @classmethod
     def _from_link(
         cls,
-        link: "Link",
+        link: Link,
         sigma_method: str = "locf",
         recent: int | None = None,
-    ) -> "Intensity":
+    ) -> Intensity:
         _validate_recent(recent)
         self = cls.__new__(cls)
         self._link = link
@@ -274,11 +273,11 @@ class Intensity:
         return self
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         """Per-link diagnostic table in the original input format."""
         return mirror_output(self._df, self._output_type)
 
-    def summary(self) -> "FrameLike":
+    def summary(self) -> FrameLike:
         """Alias for :attr:`df`. Provided for parity with
         :meth:`ATA.summary`; the intensity diagnostic reports diagnostics
         only, with no factor-stability point."""

@@ -274,7 +274,8 @@ def _draw_calendar_panel(
 
     # Build per-row calendar values for every duration in [1..duration_max].
     # Collect the unique calendar set across the facet for x-axis levels.
-    per_row_cells: list[tuple[int, list[tuple[Any, bool]]]] = []  # (row_idx, list[(cal, is_missing)])
+    # per_row_cells entries: (row_idx, list[(cal, is_missing)])
+    per_row_cells: list[tuple[int, list[tuple[Any, bool]]]] = []
     all_cals: set[Any] = set()
     for row_idx, row in enumerate(sub_sorted.iter_rows(named=True)):
         d_max = int(row["duration_max"])

@@ -151,7 +151,7 @@ def test_classifier_counts_full_no_filter(tri_single):
     """No recent/regime/holdout -> all observed cells are "used"."""
     df = _compute_triangle_usage(tri_single)
     cnts = df.group_by("status").len().sort("status")
-    out = dict(zip(cnts["status"].to_list(), cnts["len"].to_list()))
+    out = dict(zip(cnts["status"].to_list(), cnts["len"].to_list(), strict=False))
     assert out.get("holdout", 0) == 0
     assert out.get("unused", 0) == 0
     assert out.get("used", 0) > 0
@@ -161,7 +161,7 @@ def test_classifier_counts_full_no_filter(tri_single):
 def test_classifier_holdout_only(tri_single):
     df = _compute_triangle_usage(tri_single, holdout=3)
     cnts = df.group_by("status").len().sort("status")
-    out = dict(zip(cnts["status"].to_list(), cnts["len"].to_list()))
+    out = dict(zip(cnts["status"].to_list(), cnts["len"].to_list(), strict=False))
     assert out.get("holdout", 0) > 0
     assert out.get("used", 0) > 0
     assert out.get("unused", 0) == 0
@@ -170,7 +170,7 @@ def test_classifier_holdout_only(tri_single):
 def test_classifier_recent_introduces_unused(tri_single):
     df = _compute_triangle_usage(tri_single, recent=6)
     cnts = df.group_by("status").len().sort("status")
-    out = dict(zip(cnts["status"].to_list(), cnts["len"].to_list()))
+    out = dict(zip(cnts["status"].to_list(), cnts["len"].to_list(), strict=False))
     assert out.get("unused", 0) > 0
     assert out.get("used", 0) > 0
 
@@ -416,8 +416,8 @@ def test_usage_segment_wise_marks_donor_observed_cells():
     k_new = tri._df.filter(pl.col("cohort") >= cut)["duration"].max()
     assert bool((donor["duration"] >= k_new).all())  # only past the newest depth
     # every donor cell is a real observed cell (never a projection cell)
-    obs = set(zip(tri._df["cohort"].to_list(), tri._df["duration"].to_list()))
-    donor_cells = set(zip(donor["cohort"].to_list(), donor["duration"].to_list()))
+    obs = set(zip(tri._df["cohort"].to_list(), tri._df["duration"].to_list(), strict=False))
+    donor_cells = set(zip(donor["cohort"].to_list(), donor["duration"].to_list(), strict=False))
     assert donor_cells <= obs
 
 

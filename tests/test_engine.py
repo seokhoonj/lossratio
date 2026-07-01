@@ -6,7 +6,6 @@ import pytest
 
 from lossratio._kernels.engine import buhlmann_straub_psi, pearson_dispersion
 
-
 # A cell contributes ``(y - m0)^2 / m0`` to its duration's dispersion, divided by
 # ``n_k - 1``. With m0 = 10 throughout, a single (y - m0) = d cell pair gives
 # phi = d^2 / 10.

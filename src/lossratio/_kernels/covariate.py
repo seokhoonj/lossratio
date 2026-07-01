@@ -57,11 +57,11 @@ class CovariateFit:
 
     durations: list[int]
     s: np.ndarray
-    levels: "dict[str, list]"
-    beta: "dict[tuple[str, object], float]"
+    levels: dict[str, list]
+    beta: dict[tuple[str, object], float]
     converged: bool
 
-    def intensity(self, duration: int, cell: "dict[str, object] | None" = None) -> float:
+    def intensity(self, duration: int, cell: dict[str, object] | None = None) -> float:
         """``g_k(x) = exp(s_k + sum_c beta[c, x_c])`` for a covariate cell ``x``
         (a ``{covariate: level}`` mapping; missing / reference levels contribute
         0). Returns ``nan`` for an unobserved duration."""
@@ -76,17 +76,17 @@ class CovariateFit:
 
 
 def _covariate_dummies(
-    covariates: "dict[str, np.ndarray]",
-) -> "tuple[list[np.ndarray], dict[str, list], list[tuple[str, object]]]":
+    covariates: dict[str, np.ndarray],
+) -> tuple[list[np.ndarray], dict[str, list], list[tuple[str, object]]]:
     """Treatment-coded covariate dummy columns (reference level dropped).
 
     Returns ``(blocks, levels, beta_cols)``: one ``(n, 1)`` indicator block per
     non-reference level, ``levels`` the per-covariate sorted level list
     (reference = first), ``beta_cols`` the ``(covariate, level)`` labels in
     column order."""
-    blocks: "list[np.ndarray]" = []
-    levels: "dict[str, list]" = {}
-    beta_cols: "list[tuple[str, object]]" = []
+    blocks: list[np.ndarray] = []
+    levels: dict[str, list] = {}
+    beta_cols: list[tuple[str, object]] = []
     for name, codes in covariates.items():
         uniq = sorted(np.unique(codes).tolist(), key=lambda v: str(v))
         levels[name] = uniq
@@ -98,8 +98,8 @@ def _covariate_dummies(
 
 def _covariate_design(
     duration: np.ndarray,
-    covariates: "dict[str, np.ndarray]",
-) -> "tuple[np.ndarray, np.ndarray, list[int], dict[str, list], list[tuple[str, object]]]":
+    covariates: dict[str, np.ndarray],
+) -> tuple[np.ndarray, np.ndarray, list[int], dict[str, list], list[tuple[str, object]]]:
     """Build ``B = [duration one-hot | covariate treatment dummies]`` and the
     ridge penalty mask (0 on the saturated duration block, 1 on the covariate
     block).
@@ -125,14 +125,14 @@ def _covariate_design(
 
 
 def _cov_ridge_diag(
-    lam: "float | str | dict",
-    beta_cols: "list[tuple[str, object]]",
+    lam: float | str | dict,
+    beta_cols: list[tuple[str, object]],
     B: np.ndarray,
     n_shape: int,
     response: np.ndarray,
     offset: np.ndarray,
-    shape_penalty: "np.ndarray | None" = None,
-) -> "tuple[np.ndarray, bool]":
+    shape_penalty: np.ndarray | None = None,
+) -> tuple[np.ndarray, bool]:
     """Per-covariate-column ridge penalty diagonal. Returns ``(ridge, converged)``.
 
     ``lam = "auto"`` -> data-estimated random-effect shrinkage (Schall 1991 EB,
@@ -177,12 +177,12 @@ def _eb_ridge_diag(
     offset: np.ndarray,
     B: np.ndarray,
     n_shape: int,
-    beta_cols: "list[tuple[str, object]]",
+    beta_cols: list[tuple[str, object]],
     *,
-    shape_penalty: "np.ndarray | None" = None,
+    shape_penalty: np.ndarray | None = None,
     max_iter: int = 40,
     tol: float = 1e-2,
-) -> "tuple[np.ndarray, bool]":
+) -> tuple[np.ndarray, bool]:
     """Empirical-Bayes (random-effect) ridge for the covariate block.
 
     Treats each covariate's level effects as a random effect with its own
@@ -266,11 +266,11 @@ def fit_covariate_intensity(
     response: np.ndarray,
     exposure: np.ndarray,
     duration: np.ndarray,
-    covariates: "dict[str, np.ndarray]",
+    covariates: dict[str, np.ndarray],
     *,
-    lam: "float | dict" = 0.0,
-    n_basis: "int | None" = None,
-    lam_smooth: "float | str" = "auto",
+    lam: float | dict = 0.0,
+    n_basis: int | None = None,
+    lam_smooth: float | str = "auto",
     degree: int = 3,
 ) -> CovariateFit:
     """Penalized quasi-Poisson log-link GLM of the covariate-adjusted intensity.
@@ -416,16 +416,16 @@ class SegmentCovData:
     expo: np.ndarray
     dur: np.ndarray
     coh_idx: np.ndarray
-    codes: "dict[str, np.ndarray]"
-    by_cd: "dict[tuple, list[tuple[dict, float]]]"
-    last_obs: "dict[object, int]"
+    codes: dict[str, np.ndarray]
+    by_cd: dict[tuple, list[tuple[dict, float]]]
+    last_obs: dict[object, int]
     cohorts: list
     n_links: int
 
 
 def _covariate_segment_data(
     sub_cells: pl.DataFrame,
-    covariates: "list[str]",
+    covariates: list[str],
     cohorts: list,
     n_links: int,
 ) -> SegmentCovData:
@@ -453,8 +453,8 @@ def _covariate_segment_data(
         [coh_pos.get(c, -1) for c in links["cohort"].to_list()], dtype=np.int64
     )
 
-    by_cd: "dict[tuple, list[tuple[dict, float]]]" = defaultdict(list)
-    last_obs: "dict[object, int]" = {}
+    by_cd: dict[tuple, list[tuple[dict, float]]] = defaultdict(list)
+    last_obs: dict[object, int] = {}
     for r in s.select(["cohort", "duration", "_cp", *covariates]).iter_rows(named=True):
         cp = float(r["_cp"])
         d = int(r["duration"])

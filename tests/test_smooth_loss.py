@@ -91,8 +91,8 @@ def test_config_guards(tri):
 
 def test_bootstrap_populates_se_ci_and_coverage(tri):
     from lossratio._kernels.resample import ResidualBootstrap
-    from lossratio.diagnostics.backtest import Backtest
     from lossratio._kernels.scorecard import score_cells
+    from lossratio.diagnostics.backtest import Backtest
     est = SmoothLoss(uncertainty=ResidualBootstrap(n_replicates=15, seed=7))
     d = est.fit(tri).to_polars()
     proj = d.filter(pl.col("source") == "own")

@@ -203,11 +203,11 @@ def _format_period_series(
     yr = [f"{y % 100:02d}" if abb else str(y) for y in years]
 
     if period_type == "month":
-        return [f"{y}{sep}{m:02d}" for y, m in zip(yr, months)]
+        return [f"{y}{sep}{m:02d}" for y, m in zip(yr, months, strict=False)]
     if period_type == "quarter":
-        return [f"{y}{sep}{(m - 1) // 3 + 1}Q" for y, m in zip(yr, months)]
+        return [f"{y}{sep}{(m - 1) // 3 + 1}Q" for y, m in zip(yr, months, strict=False)]
     if period_type == "half":
-        return [f"{y}{sep}{2 if m > 6 else 1}H" for y, m in zip(yr, months)]
+        return [f"{y}{sep}{2 if m > 6 else 1}H" for y, m in zip(yr, months, strict=False)]
     raise ValueError(f"Invalid period_type: {period_type!r}")
 
 

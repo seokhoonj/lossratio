@@ -149,7 +149,7 @@ def test_backtest_ae_err_actual_matches_original_loss():
         on=["cohort", "duration"],
         how="inner",
     )
-    for actual, loss in zip(joined["actual"].to_list(), joined["loss"].to_list()):
+    for actual, loss in zip(joined["actual"].to_list(), joined["loss"].to_list(), strict=False):
         assert actual == pytest.approx(loss)
 
 
@@ -167,6 +167,7 @@ def test_backtest_ae_err_equals_relative_error():
         df["actual"].to_list(),
         df["expected"].to_list(),
         df["ae_err"].to_list(),
+        strict=False,
     ):
         if pred is None or pred == 0:
             assert err is None

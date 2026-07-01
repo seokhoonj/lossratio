@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .._types import RegimeArg
 
 
-def _validate_lam_cov(lam_cov: "float | str | dict") -> None:
+def _validate_lam_cov(lam_cov: float | str | dict) -> None:
     """Validate a covariate ridge spec: ``"auto"`` (data-estimated random-effect
     shrinkage), a non-negative scalar (fixed ridge), or a ``{covariate: "auto"
     or non-negative float}`` dict (per-covariate)."""
@@ -57,10 +57,10 @@ class _LossEstimatorBase:
     """
 
     recent: int | None = None
-    regime: "RegimeArg" = None
+    regime: RegimeArg = None
     sigma_method: str = "locf"
     confidence_level: float = 0.95
-    uncertainty: "Any" = None
+    uncertainty: Any = None
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
@@ -94,7 +94,7 @@ class _PremiumEstimatorBase:
     """
 
     recent: int | None = None
-    regime: "RegimeArg" = None
+    regime: RegimeArg = None
     sigma_method: str = "locf"
     confidence_level: float = 0.95
 

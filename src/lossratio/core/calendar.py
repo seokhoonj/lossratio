@@ -26,7 +26,7 @@ class Calendar:
         )
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle") -> "Calendar":
+    def _from_triangle(cls, triangle: Triangle) -> Calendar:
         tri_df = triangle.to_polars()
         grp = triangle.groups
         grain = triangle.grain
@@ -134,7 +134,7 @@ class Calendar:
         return self
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:

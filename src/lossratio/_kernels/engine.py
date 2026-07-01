@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 def _sum_by(values: Sequence[float], keys: Sequence) -> dict:
     out: dict = {}
-    for v, k in zip(values, keys):
+    for v, k in zip(values, keys, strict=False):
         out[k] = out.get(k, 0.0) + v
     return out
 
@@ -45,7 +45,7 @@ def saturated_intensity(*, response, exposure, duration) -> dict:
 
 def fitted_mean(*, g, exposure, duration) -> list:
     """Per-cell fitted mean at ``u = 1``: ``m0 = g_k * exposure``."""
-    return [g[k] * p for p, k in zip(exposure, duration)]
+    return [g[k] * p for p, k in zip(exposure, duration, strict=False)]
 
 
 def link_ratios(*, response, cohort, duration, include=None) -> dict:
@@ -66,9 +66,9 @@ def link_ratios(*, response, cohort, duration, include=None) -> dict:
     a zero / negative base carries no defined development ratio, so (as in the
     standard volume-weighted estimate) it is dropped from both sums rather than
     silently inflating the numerator."""
-    cell = {(i, k): y for y, i, k in zip(response, cohort, duration)}
+    cell = {(i, k): y for y, i, k in zip(response, cohort, duration, strict=False)}
     keep = (None if include is None
-            else {(i, k) for inc, i, k in zip(include, cohort, duration) if inc})
+            else {(i, k) for inc, i, k in zip(include, cohort, duration, strict=False) if inc})
     cohorts = sorted(set(cohort))
     durs = sorted(set(duration))
     cum: dict = {}
@@ -103,7 +103,7 @@ def pearson_dispersion(*, response, fitted, duration, sigma_method="locf") -> di
             f"(only 'locf')"
         )
     by: dict = {}
-    for y, m0, k in zip(response, fitted, duration):
+    for y, m0, k in zip(response, fitted, duration, strict=False):
         by.setdefault(k, []).append((y, m0))
     durs = sorted(by)
     phi: dict = {}
@@ -137,7 +137,7 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
     sm = _sum_by(fitted, cohort)
     sy = _sum_by(response, cohort)
     sphim: dict = {}
-    for m0, i, k in zip(fitted, cohort, duration):
+    for m0, i, k in zip(fitted, cohort, duration, strict=False):
         sphim[i] = sphim.get(i, 0.0) + phi[k] * m0
     cohorts = sorted(sm)
     if len(cohorts) < 2:        # no between-cohort variance to estimate -> complete pooling
@@ -168,7 +168,7 @@ def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> _LevelR
     the complete-pooling intensity ``PooledLoss`` (``u = 1``, ``Z = 0``)."""
     A: dict = {}
     sy: dict = {}
-    for y, m0, i, k in zip(response, fitted, cohort, duration):
+    for y, m0, i, k in zip(response, fitted, cohort, duration, strict=False):
         A[i] = A.get(i, 0.0) + m0 / phi[k]
         sy[i] = sy.get(i, 0.0) + y / phi[k]
     cohorts = sorted(A)
@@ -185,7 +185,7 @@ def quasi_poisson_deviance(*, response, fitted) -> float:
     """Total quasi-Poisson deviance ``D = 2 sum [y log(y/mu) - (y - mu)]``
     (the ``y log(y/mu)`` term is 0 at ``y = 0``)."""
     d = 0.0
-    for y, mu in zip(response, fitted):
+    for y, mu in zip(response, fitted, strict=False):
         term = -(y - mu)
         if y > 0.0:
             term += y * math.log(y / mu)

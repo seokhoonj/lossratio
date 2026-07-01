@@ -10,6 +10,8 @@ No reporting / Polars assembly here -- that stays in the estimator layer.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from . import engine, engine_fast
@@ -35,9 +37,9 @@ def _credible_levels(
     premium_obs: np.ndarray,
     g_k: np.ndarray,
     sigma_method: str,
-    psi: "float | str",
+    psi: float | str,
     link_mask: np.ndarray | None = None,
-) -> "tuple[np.ndarray, np.ndarray, float]":
+) -> tuple[np.ndarray, np.ndarray, float]:
     """Per-cohort credibility level ``u_i``, weight ``Z_i``, and ``psi_hat``.
 
     The estimation "cells" are the observed loss increments: response =
@@ -153,9 +155,9 @@ def _smooth_backfit(
     premium_obs: np.ndarray,
     sigma_method: str,
     *,
-    psi: "float | str" = "auto",
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
+    psi: float | str = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
     max_outer: int = 100,
     tol: float = 1e-4,
     link_mask: np.ndarray | None = None,
@@ -193,8 +195,10 @@ def _smooth_backfit(
         if link_mask is not None:
             mask = mask & link_mask[:, k]
         for i in np.flatnonzero(mask):
-            resp.append(float(dl[i])); expo.append(float(ck[i]))
-            dur.append(k + 1); coh.append(int(i))
+            resp.append(float(dl[i]))
+            expo.append(float(ck[i]))
+            dur.append(k + 1)
+            coh.append(int(i))
     resp_a = np.array(resp, dtype=np.float64)
     expo_a = np.array(expo, dtype=np.float64)
     dur_l = dur
@@ -224,7 +228,7 @@ def _smooth_backfit(
     # lambda is GCV-selected ONCE on the first (pooled) s-step, then held fixed
     # through the backfitting: the shape smoothness is a pipeline choice, and
     # re-selecting it each pass adds cost and can stall the alternation.
-    cur_lam: "float | str" = lam
+    cur_lam: float | str = lam
     if resp_a.size:
         backfit_converged = False
         for _ in range(max_outer):
@@ -295,13 +299,13 @@ def _smooth_backfit(
 def _smooth_backfit_covariate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
-    cov_data: "Any",
-    covariates: "list[str]",
+    cov_data: Any,
+    covariates: list[str],
     sigma_method: str,
     *,
-    psi: "float | str" = "auto",
-    n_basis: "int | None" = None,
-    lam: "float | str" = "auto",
+    psi: float | str = "auto",
+    n_basis: int | None = None,
+    lam: float | str = "auto",
     lam_cov: float = 1.0,
     max_outer: int = 100,
     tol: float = 1e-4,

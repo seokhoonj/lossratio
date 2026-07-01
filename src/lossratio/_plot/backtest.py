@@ -164,7 +164,7 @@ def plot_triangle_backtest(
         work = work.with_columns(
             pl.col("cohort")
             .dt.offset_by(
-                (((pl.col("duration") - 1) * months_per).cast(pl.Utf8) + "mo")
+                ((pl.col("duration") - 1) * months_per).cast(pl.Utf8) + "mo"
             )
             .alias("_x_cal")
         )
@@ -310,7 +310,7 @@ def _plot_aggregated_lines(
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, group_value, sub, ax in grid:
+    for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort(x_col)
         x = sub_sorted[x_col].to_numpy()
 
@@ -365,7 +365,7 @@ def _plot_cell_curves(
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
     )
-    for idx, group_value, sub, ax in grid:
+    for _, group_value, sub, ax in grid:
         _draw_ae_band(ax)
 
         cohorts = sorted(sub["cohort"].unique().to_list())

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     pass
 
 # metric -> (projection column, y-axis label, reference hline)
-_FIT_METRICS: dict[str, tuple[str, str, "float | None"]] = {
+_FIT_METRICS: dict[str, tuple[str, str, float | None]] = {
     "loss": ("loss_proj", "cumulative loss", None),
     "premium": ("premium_proj", "cumulative premium", None),
     "ratio": ("ratio_proj", "loss ratio", 1.0),
@@ -31,7 +31,7 @@ _FIT_METRICS: dict[str, tuple[str, str, "float | None"]] = {
 
 def resolve_fit_metric(
     metric: str, allowed: tuple[str, ...]
-) -> tuple[str, str, "float | None"]:
+) -> tuple[str, str, float | None]:
     """Validate ``metric`` against a result class's allowed set and return its
     ``(column, ylabel, hline)`` triple."""
     if metric not in allowed:
@@ -73,11 +73,11 @@ def plot_fit(
     value_col: str,
     ylabel: str,
     title: str,
-    groups: "str | list[str] | None",
-    hline: "float | None",
+    groups: str | list[str] | None,
+    hline: float | None,
     nrow: int | None,
     ncol: int | None,
-    figsize: "tuple[float, float] | None",
+    figsize: tuple[float, float] | None,
 ) -> Any:
     """Faceted per-cohort projection plot for a fit's long frame.
 
@@ -97,7 +97,7 @@ def plot_fit(
     n_coh = len(cohorts)
     _coh_color = cohort_gradient(cohorts)
 
-    for idx, group_value, sub, ax in grid:
+    for _, group_value, sub, ax in grid:
         _draw_fit_cohort(ax, sub, value_col, _coh_color)
         if hline is not None:
             ax.axhline(hline, linestyle=":", color="0.5", linewidth=0.8, zorder=1)

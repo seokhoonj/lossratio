@@ -90,7 +90,7 @@ def _normalised(
     weights: tuple[float, ...], factors: tuple[float, ...]
 ) -> tuple[float, ...]:
     """Scale `factors` so the `weights`-weighted average is exactly 1."""
-    m = sum(w * f for w, f in zip(weights, factors))
+    m = sum(w * f for w, f in zip(weights, factors, strict=False))
     return tuple(f / m for f in factors)
 
 

@@ -19,7 +19,7 @@ from .._kernels.io import fill_group_columns, normalize_groups
 def _segment_credibility_df(
     fit: dict[str, np.ndarray],
     cohorts: list,
-    groups: "str | list[str] | None",
+    groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
     """One segment's per-cohort credibility diagnostics (CredibleLoss only).

@@ -25,7 +25,7 @@ class Total:
         )
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle") -> "Total":
+    def _from_triangle(cls, triangle: Triangle) -> Total:
         tri_df = triangle.to_polars()
         grp = triangle.groups
 
@@ -65,7 +65,7 @@ class Total:
         return self
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
@@ -88,7 +88,7 @@ class Total:
     def columns(self) -> list[str]:
         return self._df.columns
 
-    def summary(self) -> "FrameLike":
+    def summary(self) -> FrameLike:
         """Return rows sorted by descending ``ratio``.
 
         Mirrors the input frame type (pandas in -> pandas out)."""

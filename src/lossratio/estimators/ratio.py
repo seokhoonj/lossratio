@@ -29,9 +29,8 @@ import polars as pl
 from scipy.stats import norm
 
 from .._kernels.io import mirror_output, normalize_groups
-from ._base import _LossEstimatorBase
+from ._base import _LossEstimatorBase, _PremiumEstimatorBase
 from .loss import LossFit
-from ._base import _PremiumEstimatorBase
 from .premium import PremiumFit
 
 if TYPE_CHECKING:
@@ -64,8 +63,8 @@ class Ratio:
         Two-sided confidence level for the ratio CI columns.
     """
 
-    loss: "_LossEstimatorBase"
-    premium: "_PremiumEstimatorBase" = field(default_factory=lambda: _default_premium())
+    loss: _LossEstimatorBase
+    premium: _PremiumEstimatorBase = field(default_factory=lambda: _default_premium())
     confidence_level: float = 0.95
 
     def __post_init__(self) -> None:
@@ -82,7 +81,7 @@ class Ratio:
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
 
-    def fit(self, triangle: "Triangle") -> "RatioFit":
+    def fit(self, triangle: Triangle) -> RatioFit:
         """Fit both sides on ``triangle`` and compose the loss ratio."""
         loss_fit = self.loss.fit(triangle)
         premium_fit = self.premium.fit(triangle)
@@ -170,7 +169,7 @@ class Ratio:
         )
 
 
-def _default_premium() -> "_PremiumEstimatorBase":
+def _default_premium() -> _PremiumEstimatorBase:
     # local import avoids a module-load cycle (pooled_premium -> premium_fit;
     # ratio -> pooled_premium would otherwise import at module scope).
     from .pooled_premium import PooledPremium
@@ -220,14 +219,14 @@ class RatioFit:
         self,
         df: pl.DataFrame,
         *,
-        groups: "str | list[str] | None",
+        groups: str | list[str] | None,
         loss_model: str,
         premium_model: str,
         confidence_level: float,
         output_type: str,
         loss_fit: LossFit,
         premium_fit: PremiumFit,
-        triangle: "Triangle | None" = None,
+        triangle: Triangle | None = None,
     ) -> None:
         self._df = df
         self._output_type = output_type
@@ -240,13 +239,13 @@ class RatioFit:
         self.premium_fit = premium_fit
 
     @property
-    def df(self) -> "FrameLike":
+    def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
 
-    def summary(self) -> "FrameLike":
+    def summary(self) -> FrameLike:
         """Per-cohort summary: the latest within-triangle projected loss ratio
         and its SE."""
         keys = (normalize_groups(self.groups) or []) + ["cohort"]
@@ -258,7 +257,7 @@ class RatioFit:
         )
         return mirror_output(agg, self._output_type)
 
-    def predict(self, by: "str | list[str] | None" = None) -> "FrameLike":
+    def predict(self, by: str | list[str] | None = None) -> FrameLike:
         """Per-cell projection surface: projected loss, projected premium, the
         projected loss ratio, and each cell's ``source``. A focused view of
         :attr:`df` without the SE / CI columns.
@@ -339,7 +338,7 @@ class RatioFit:
         *,
         nrow: int | None = None,
         ncol: int | None = None,
-        figsize: "tuple[float, float] | None" = None,
+        figsize: tuple[float, float] | None = None,
     ) -> Any:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail dashed. ``metric`` is
@@ -359,7 +358,7 @@ class RatioFit:
     def extend(
         self, *, horizon: int, window: int = 6, tol: float = 0.01,
         amounts: bool = False,
-    ) -> "FrameLike":
+    ) -> FrameLike:
         """Extend the projected loss ratio flat to a target ``horizon`` duration.
 
         Beyond the observed loss-ratio frontier the honest go-forward is to hold
@@ -486,13 +485,13 @@ class RatioFit:
         for key in seg_keys:
             if group_cols:
                 m = pl.lit(True)
-                for col, val in zip(group_cols, key):
+                for col, val in zip(group_cols, key, strict=False):
                     m = m & (pl.col(col) == val)
                 sub = df_tri.filter(m)
             else:
                 sub = df_tri
             g = _segment_premium_growth(sub, window)
-            rows.append({**{c: v for c, v in zip(group_cols, key)}, "_gP": g})
+            rows.append({**{c: v for c, v in zip(group_cols, key, strict=False)}, "_gP": g})
         return pl.DataFrame(rows)
 
     def __repr__(self) -> str:

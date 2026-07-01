@@ -65,7 +65,7 @@ def _first_post_change_idx(
 
 
 def _plot_triangle_usage(
-    triangle: "Triangle",
+    triangle: Triangle,
     *,
     recent: int | None,
     regime: Any,
@@ -114,7 +114,7 @@ def _plot_triangle_usage(
     # renders at the bottom and the oldest cohorts sit on top -- matching the
     # value heatmap's orientation.
     coh_pairs = sorted(
-        set(zip(usage_df["cohort"].to_list(), cohort_labels)),
+        set(zip(usage_df["cohort"].to_list(), cohort_labels, strict=False)),
         key=lambda p: p[0],
         reverse=True,
     )

@@ -29,8 +29,9 @@ def test_regime_detector_flows_into_a_fit():
     # A deferred RegimeDetector must be accepted by the estimator and resolved
     # at fit time -- so backtest detects per masked fold (leakage-safe). An
     # invalid type is rejected at construction.
-    import lossratio as lr
     import pytest
+
+    import lossratio as lr
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     det = lr.RegimeDetector(window=12)
@@ -52,8 +53,9 @@ def test_regime_string_is_rejected():
     # regime strings (the old "auto" sentinel included) are no longer accepted;
     # use a RegimeDetector. The error is clear both at the resolver and at
     # estimator construction.
-    import lossratio as lr
     import pytest
+
+    import lossratio as lr
     from lossratio.diagnostics.regime import _resolve_regime
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")

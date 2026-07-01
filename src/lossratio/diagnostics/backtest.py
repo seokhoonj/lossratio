@@ -252,7 +252,7 @@ class _FoldBacktest:
         self.holdout = holdout
         self.target = target
 
-    def fit(self, triangle: "Triangle") -> "_FoldFit":
+    def fit(self, triangle: Triangle) -> _FoldFit:
         return _FoldFit._from_triangle(triangle, self)
 
 
@@ -288,7 +288,7 @@ class _FoldFit:
         )
 
     @classmethod
-    def _from_triangle(cls, triangle: "Triangle", bt: "_FoldBacktest") -> "_FoldFit":
+    def _from_triangle(cls, triangle: Triangle, bt: _FoldBacktest) -> _FoldFit:
         from ..core.triangle import Triangle
 
         self = cls.__new__(cls)
@@ -584,7 +584,7 @@ class _FoldFit:
         figsize: tuple[float, float] | None = None,
         *,
         recent: int | None = None,
-        regime: "RegimeArg" = None,
+        regime: RegimeArg = None,
         x_axis: str = "duration",
     ) -> Any:
         """A/E error heatmap (``kind='value'``) or cell-status
@@ -675,13 +675,16 @@ class _FoldFit:
         """
         est = self.estimator
         if hasattr(est, "loss_regime"):
-            return getattr(est, "loss_regime")
+            return est.loss_regime
         return getattr(est, "regime", None)
 
     def __repr__(self) -> str:
         n_cells = self._ae_err.height
         est_name = type(self.estimator).__name__
-        return f"<_FoldFit: estimator={est_name}, holdout={self.holdout}, n_held_out_cells={n_cells}>"
+        return (
+            f"<_FoldFit: estimator={est_name}, holdout={self.holdout}, "
+            f"n_held_out_cells={n_cells}>"
+        )
 
 def _normalize_holdouts_seq(holdouts):
     """Validate, de-duplicate, and sort a sequence of hold-out depths."""
@@ -771,9 +774,9 @@ class Backtest:
                 items = tuple(holdouts)
             except TypeError:
                 raise TypeError(
-                    f"holdouts must be an int or a sequence of ints; got "
+                    "holdouts must be an int or a sequence of ints; got "
                     f"{type(holdouts).__name__}"
-                )
+                ) from None
             norm = _normalize_holdouts_seq(items)
 
         # Probe the first depth for early estimator / target / bootstrap checks
@@ -858,8 +861,8 @@ class BacktestFit:
 
     @classmethod
     def _from_triangle(
-        cls, triangle: "Triangle", bt: "Backtest"
-    ) -> "BacktestFit":
+        cls, triangle: Triangle, bt: Backtest
+    ) -> BacktestFit:
         self = cls.__new__(cls)
         # Scoring happens at the estimator's REPORTING grain (triangle.groups -
         # covariates); the per-fold refit keeps the finer triangle. Mirror the
@@ -1111,7 +1114,7 @@ class BacktestFit:
 
     @staticmethod
     def _run_holdout(
-        bt: "Backtest", triangle: "Triangle", holdout: int
+        bt: Backtest, triangle: Triangle, holdout: int
     ) -> Any | None:
         """Run one depth's inner Backtest, returning ``None`` if unrunnable.
 
@@ -1221,7 +1224,7 @@ class BacktestFit:
         return exprs
 
     @staticmethod
-    def _empty_ae_err(group_cols: list[str], triangle: "Triangle") -> pl.DataFrame:
+    def _empty_ae_err(group_cols: list[str], triangle: Triangle) -> pl.DataFrame:
         """A 0-row combined frame with the expected schema.
 
         ``cohort`` / ``duration`` dtypes are read from the source triangle
@@ -1342,7 +1345,7 @@ class BacktestFit:
             if mode == "suffix":
                 result = None
                 run = 0
-                for v, ok in zip(reversed(values), reversed(within)):
+                for v, ok in zip(reversed(values), reversed(within), strict=False):
                     if not ok:
                         break
                     result = v
@@ -1351,7 +1354,7 @@ class BacktestFit:
                     result = None
             else:  # prefix
                 result = 0
-                for v, ok in zip(values, within):
+                for v, ok in zip(values, within, strict=False):
                     if not ok:
                         break
                     result = v
@@ -1553,7 +1556,7 @@ class BacktestFit:
         """Extract the regime from `self.estimator`, if any."""
         est = self.estimator
         if hasattr(est, "loss_regime"):
-            return getattr(est, "loss_regime")
+            return est.loss_regime
         return getattr(est, "regime", None)
 
     def __repr__(self) -> str:

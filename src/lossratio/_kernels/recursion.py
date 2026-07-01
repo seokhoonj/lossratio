@@ -34,7 +34,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-
 if TYPE_CHECKING:
     pass
 
@@ -165,7 +164,9 @@ class _MultiplicativeResult:
     total_se: np.ndarray    # (n_cohorts, n_durations) -- sqrt(proc^2 + param^2)
     f_k: np.ndarray         # (n_durations - 1,)
     sigma2_k: np.ndarray    # (n_durations - 1,)
-    sum_value_k: np.ndarray   # (n_durations - 1,) -- per-link sum of loss_from over the fit subset (used as Var(f_k) denominator)
+    # (n_durations - 1,) -- per-link sum of loss_from over the fit subset
+    # (used as Var(f_k) denominator)
+    sum_value_k: np.ndarray
 
 
 def _multiplicative_var(result: _MultiplicativeResult) -> np.ndarray:

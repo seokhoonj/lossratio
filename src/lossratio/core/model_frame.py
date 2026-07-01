@@ -61,8 +61,8 @@ class ModelFrame:
 
     @classmethod
     def from_triangle(
-        cls, triangle: "Triangle", *, regime: "date | dict | None" = None,
-    ) -> "ModelFrame":
+        cls, triangle: Triangle, *, regime: date | dict | None = None,
+    ) -> ModelFrame:
         """Build the design-matrix frame from a :class:`Triangle`.
 
         ``exposure`` (= cumulative ``premium``) is the from-anchor offset the
@@ -116,8 +116,8 @@ class ModelFrame:
         months = _GRAIN_MONTHS[triangle.grain]
         df = df.with_columns(
             calendar=pl.col("cohort").dt.offset_by(
-                (((pl.col("duration") - 1) * months)
-                 .cast(pl.Int64).cast(pl.Utf8) + "mo")
+                ((pl.col("duration") - 1) * months)
+                 .cast(pl.Int64).cast(pl.Utf8) + "mo"
             )
         )
 
@@ -131,7 +131,7 @@ class ModelFrame:
 
     @staticmethod
     def _apply_regime(
-        df: pl.DataFrame, regime: "date | dict | None", segments: list[str],
+        df: pl.DataFrame, regime: date | dict | None, segments: list[str],
     ) -> pl.DataFrame:
         """Drop cells with ``cohort < change`` (resolved cut; per segment)."""
         if regime is None:
@@ -151,7 +151,7 @@ class ModelFrame:
                         f"regime change must be a date, got {change!r}"
                     )
                 keys = (seg_val,) if len(segments) == 1 else tuple(seg_val)
-                rows.append({**dict(zip(segments, keys)), "_change": change})
+                rows.append({**dict(zip(segments, keys, strict=False)), "_change": change})
             rmap = pl.DataFrame(rows)
             return (df.join(rmap, on=segments, how="left")
                     .filter(pl.col("_change").is_null()

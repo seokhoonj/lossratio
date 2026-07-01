@@ -62,7 +62,7 @@ def _cohort_subset_donor(
     return (mr.f_k, mr.sigma2_k, _multiplicative_var(mr))
 
 
-def _segment_change_dates(regime: "Any", group_value: "Any") -> list:
+def _segment_change_dates(regime: Any, group_value: Any) -> list:
     """The sorted change dates that apply to one segment (for ``segment_wise``).
 
     Reads the regime's own ``_changes_df`` and, when grouped, keeps only the
@@ -78,7 +78,7 @@ def _segment_change_dates(regime: "Any", group_value: "Any") -> list:
     change_group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
     if change_group_cols:
         vals = group_value if isinstance(group_value, tuple) else (group_value,)
-        keymap = dict(zip(change_group_cols, vals))
+        keymap = dict(zip(change_group_cols, vals, strict=False))
         for g in change_group_cols:
             if g in keymap:
                 changes = changes.filter(pl.col(g) == keymap[g])
@@ -87,9 +87,9 @@ def _segment_change_dates(regime: "Any", group_value: "Any") -> list:
 
 def _stack_cascade_fits(
     parts: list[dict], mechanism: str, *,
-    keys: "list[str] | None" = None,
+    keys: list[str] | None = None,
     n_rows_key: str = "loss_obs",
-) -> dict[str, "Any"]:
+) -> dict[str, Any]:
     """Row-stack the per-regime fits into one segment-level fit dict.
 
     Each regime's matrices are already widened to the segment's global horizon

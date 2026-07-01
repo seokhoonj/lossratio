@@ -8,7 +8,6 @@ import pytest
 import lossratio as lr
 from lossratio.diagnostics.backtest import BacktestFit as RollingBacktestFit
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -153,7 +152,7 @@ def test_error_grows_with_horizon():
     # deepest horizon exceeds that at horizon 1.
     assert abs_err[-1] > abs_err[0]
     # Monotone-ish: more than half the consecutive steps increase.
-    ups = sum(1 for a, b in zip(abs_err, abs_err[1:]) if b >= a)
+    ups = sum(1 for a, b in zip(abs_err, abs_err[1:], strict=False) if b >= a)
     assert ups >= (len(abs_err) - 1) / 2
 
 
@@ -410,6 +409,7 @@ def _walk_converged_at(
     for a, b in zip(
         reversed(summary["anchor_duration"].to_list()),
         reversed(summary[bias_col].to_list()),
+        strict=False,
     ):
         if b is None or not abs(b) <= tol:
             break
@@ -423,7 +423,7 @@ def _walk_reliable_horizon(summary: pl.DataFrame, bias_col: str, tol: float):
     summary = summary.sort("horizon")
     reliable = 0
     for h, b in zip(
-        summary["horizon"].to_list(), summary[bias_col].to_list()
+        summary["horizon"].to_list(), summary[bias_col].to_list(), strict=False
     ):
         if b is None or not abs(b) <= tol:
             break

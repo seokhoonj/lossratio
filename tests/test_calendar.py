@@ -40,7 +40,7 @@ def test_calendar_schema_no_group(sample_triangle):
 def test_calendar_cal_idx_is_sequential_per_group(sample_triangle):
     tri = sample_triangle()
     cal = tri.calendar_agg().to_polars().sort(["coverage", "calendar"])
-    for grp, sub in cal.group_by("coverage"):
+    for _, sub in cal.group_by("coverage"):
         n = sub.height
         assert sub["cal_idx"].to_list() == list(range(1, n + 1))
 
@@ -71,7 +71,7 @@ def test_calendar_diagonal_sum_matches_triangle(sample_triangle):
         ("incr_loss", "incr_loss_direct"),
         ("incr_premium", "incr_premium_direct"),
     ]:
-        for a, b in zip(joined[c_left].to_list(), joined[c_right].to_list()):
+        for a, b in zip(joined[c_left].to_list(), joined[c_right].to_list(), strict=False):
             assert a == pytest.approx(b, rel=1e-12, abs=1e-6)
 
 
@@ -79,11 +79,11 @@ def test_calendar_cumulative_consistency(sample_triangle):
     """loss = cumsum(incr_loss) within each group, sorted by calendar."""
     tri = sample_triangle()
     cal = tri.calendar_agg().to_polars().sort(["coverage", "calendar"])
-    for grp, sub in cal.group_by("coverage", maintain_order=True):
+    for _, sub in cal.group_by("coverage", maintain_order=True):
         incr = sub["incr_loss"].to_list()
         cum = sub["loss"].to_list()
         running = 0.0
-        for v_incr, v_cum in zip(incr, cum):
+        for v_incr, v_cum in zip(incr, cum, strict=False):
             running += v_incr
             assert v_cum == pytest.approx(running, rel=1e-12, abs=1e-6)
 
