@@ -1683,11 +1683,11 @@ class LossFit:
                 ((pl.col("duration") - 1) * months).cast(pl.Utf8) + "mo"
             ).alias("_cal")
         ).with_columns(
-            floor_to_period(pl.col("cohort"), grain).alias("_uc"),
-            floor_to_period(pl.col("_cal"), grain).alias("_cc"),
+            floor_to_period(pl.col("cohort"), grain).alias("_cohort_floor"),
+            floor_to_period(pl.col("_cal"), grain).alias("_calendar_floor"),
         )
         agg = (
-            df.group_by([*group_cols, "_uc", "_cc"])
+            df.group_by([*group_cols, "_cohort_floor", "_calendar_floor"])
             .agg(
                 pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
                 pl.col("incr_premium_proj").sum().alias("incr_premium_proj"),
@@ -1695,10 +1695,12 @@ class LossFit:
                 (pl.col("source") == "borrowed").any().alias("_any_borrow"),
             )
             .with_columns(
-                count_periods(pl.col("_uc"), pl.col("_cc"), grain).alias("duration")
+                count_periods(
+                    pl.col("_cohort_floor"), pl.col("_calendar_floor"), grain
+                ).alias("duration")
             )
-            .rename({"_uc": "cohort"})
-            .drop("_cc")
+            .rename({"_cohort_floor": "cohort"})
+            .drop("_calendar_floor")
             .sort([*group_cols, "cohort", "duration"])
             .with_columns(
                 pl.col("incr_loss_proj").cum_sum().over([*group_cols, "cohort"])
