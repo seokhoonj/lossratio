@@ -159,8 +159,12 @@ class Triangle:
         grain = resolve_grain(input_grain, grain)
 
         # Bin cohort (and calendar if present) to requested grain.
-        if grain != input_grain:
-            df_pl = floor_cols_to_period(df_pl, date_cols, grain)
+        # Always floor: even when grain == input_grain, the input dates may
+        # not sit on period starts (e.g. two January dates 2024-01-15 and
+        # 2024-01-25), and flooring collapses them into one cohort. Skipping
+        # this would silently split a single period into multiple cohorts.
+        # floor_to_period is idempotent on already-aligned dates.
+        df_pl = floor_cols_to_period(df_pl, date_cols, grain)
 
         # Three-mode dispatch: derive / validate the integer duration axis.
         if calendar is not None and duration is not None:

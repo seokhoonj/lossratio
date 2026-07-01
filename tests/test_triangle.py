@@ -178,6 +178,32 @@ def test_triangle_mode1_cohort_calendar():
     assert tri.calendar == "cy_m"
 
 
+def test_triangle_floors_non_period_aligned_dates():
+    """Same-grain input whose dates are not on period starts must still be
+    floored: two January cohort dates (day 15 and 25) collapse into one
+    2024-01 cohort rather than splitting into two."""
+    df = pl.DataFrame(
+        {
+            "cohort":   ["2024-01-15", "2024-01-25", "2024-02-10"],
+            "calendar": ["2024-01-15", "2024-01-25", "2024-02-10"],
+            "incr_loss":    [10.0, 20.0, 7.0],
+            "incr_premium": [100.0, 200.0, 70.0],
+        }
+    ).with_columns(
+        pl.col("cohort").str.to_date(), pl.col("calendar").str.to_date()
+    )
+    tri = lr.Triangle(
+        df, cohort="cohort", calendar="calendar",
+        loss="incr_loss", premium="incr_premium",
+    )
+    out = tri.to_polars().sort(["cohort", "duration"])
+    assert out["cohort"].n_unique() == 2  # 2024-01 and 2024-02, not 3
+    jan = out.filter(pl.col("cohort") == pl.date(2024, 1, 1))
+    assert jan.height == 1
+    assert jan["incr_loss"].item() == 30.0  # 10 + 20 merged
+    assert jan["incr_premium"].item() == 300.0
+
+
 def test_triangle_mode2_cohort_duration():
     """mode 2: cohort + duration (no calendar) -> duration taken directly,
     `calendar` attribute is None, numerically identical to mode 1."""

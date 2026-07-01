@@ -209,7 +209,15 @@ def infer_grain(col: pl.Series) -> str:
     if len(ym) < 2:
         return "M"
 
+    # Drop zero diffs: distinct dates that share the same year+month (sub-month
+    # day variation) contribute a 0 spacing. Since 0 is divisible by every
+    # candidate period, a leftover zero would misclassify -- e.g. a book living
+    # in a single month (all diffs 0) would fall through to "Y". Ignoring them
+    # leaves only real period spacing; if none remain, the finest grain "M".
     diffs = np.diff(ym)
+    diffs = diffs[diffs != 0]
+    if len(diffs) == 0:
+        return "M"
     if np.all(diffs % 12 == 0):
         return "Y"
     if np.all(diffs % 6 == 0):

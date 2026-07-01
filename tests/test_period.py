@@ -37,6 +37,11 @@ def test_grain_order_is_coarsening():
         ([dt.date(2024, 1, 1), dt.date(2024, 4, 1), dt.date(2024, 7, 1)], "Q"),
         ([dt.date(2024, 1, 1), dt.date(2024, 7, 1), dt.date(2025, 1, 1)], "H"),
         ([dt.date(2022, 1, 1), dt.date(2023, 1, 1), dt.date(2024, 1, 1)], "Y"),
+        # Distinct dates inside one month (sub-month day variation) give a
+        # zero month-spacing; must resolve to the finest grain "M", not "Y".
+        ([dt.date(2024, 1, 15), dt.date(2024, 1, 25)], "M"),
+        # Zero spacing mixed with a real monthly step still resolves to "M".
+        ([dt.date(2024, 1, 5), dt.date(2024, 1, 20), dt.date(2024, 2, 1)], "M"),
     ],
 )
 def test_infer_grain(dates, expected):
