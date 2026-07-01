@@ -37,6 +37,7 @@ def _resolve_grid(
         ncol = min(math.ceil(math.sqrt(n)), default_ncol)
         nrow = math.ceil(n / ncol)
     elif ncol is None:
+        assert nrow is not None  # only ncol was omitted in this branch
         ncol = math.ceil(n / max(nrow, 1))
     elif nrow is None:
         nrow = math.ceil(n / max(ncol, 1))

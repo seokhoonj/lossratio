@@ -476,6 +476,8 @@ class RatioFit:
     def _premium_growth(self, group_cols: list[str], window: int) -> pl.DataFrame:
         """Per-segment recent premium growth factor (``_gP``) for amount
         extension."""
+        # Only reached from `extend`, which has already guarded `_triangle`.
+        assert self._triangle is not None
         df_tri = self._triangle.to_polars()
         if group_cols:
             seg_keys = df_tri.select(group_cols).unique(maintain_order=True).rows()

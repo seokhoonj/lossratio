@@ -306,7 +306,7 @@ def _smooth_backfit_covariate(
     psi: float | str = "auto",
     n_basis: int | None = None,
     lam: float | str = "auto",
-    lam_cov: float = 1.0,
+    lam_cov: float | str | dict = 1.0,
     max_outer: int = 100,
     tol: float = 1e-4,
     link_mask: np.ndarray | None = None,
@@ -421,9 +421,13 @@ def _project_borrow(
     # own-data boundary = last link the segment can fit on its own (-1 if none).
     # Taken from the ORIGINAL finite own factors (before the LOCF below): it marks
     # where the segment's own data ends and the borrowed tail begins.
-    own = (own_g if body == "additive"
-           else own_h if body == "self_exposure"
-           else own_f)
+    if body == "additive":
+        own = own_g
+    elif body == "self_exposure":
+        assert own_h is not None  # supplied by the caller for this body
+        own = own_h
+    else:
+        own = own_f
     own_links = np.flatnonzero(np.isfinite(own))
     own_boundary = int(own_links.max()) if own_links.size else -1
 
@@ -468,9 +472,13 @@ def _project_borrow(
         pk = premium_proj[:, k]
         # the own factor for this body at link k (LOCF-filled above, so an
         # interior gap carries forward; a leading gap stays NaN -> donor tail).
-        own_k = (own_g[k] if body == "additive"
-                 else own_h[k] if body == "self_exposure"
-                 else own_f[k])
+        if body == "additive":
+            own_k = own_g[k]
+        elif body == "self_exposure":
+            assert own_h is not None
+            own_k = own_h[k]
+        else:
+            own_k = own_f[k]
         if k <= own_boundary and np.isfinite(own_k):      # own body
             if body == "additive":
                 pos = active & ~np.isnan(pk) & (pk > 0)
@@ -482,6 +490,7 @@ def _project_borrow(
                 # premium self-exposure growth: P_{k+1} = P_k * (1 + u_i * h_k).
                 # point-only -> no variance step (the premium fitter discards the
                 # SE arms and writes nan_se).
+                assert own_h is not None
                 pos = active & ~np.isnan(ck) & (ck > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = ck[pos] * (1.0 + u_body[pos] * own_h[k])

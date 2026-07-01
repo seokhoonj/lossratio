@@ -31,6 +31,8 @@ from typing import Any
 import numpy as np
 import polars as pl
 
+from .io import scalar_int
+
 # Grain codes ordered finest -> coarsest.
 GRAIN_ORDER = {"M": 0, "Q": 1, "H": 2, "Y": 3}
 
@@ -59,8 +61,8 @@ def _int_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
     valid = df[var_name].drop_nulls()
     if valid.len() == 0:
         return df.with_columns(pl.col(var_name).cast(pl.Date))
-    vmin = int(valid.min())
-    vmax = int(valid.max())
+    vmin = scalar_int(valid.min())
+    vmax = scalar_int(valid.max())
 
     col = pl.col(var_name)
     if 1900 <= vmin and vmax <= 2100:

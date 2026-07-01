@@ -41,6 +41,7 @@ from .._kernels.io import (
     fill_group_columns,
     mirror_output,
     normalize_groups,
+    scalar_int,
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
@@ -612,7 +613,7 @@ def _fit_segment_smooth(
     lam: float | str = "auto",
     cov_data: Any = None,
     covariates: list[str] | None = None,
-    lam_cov: float = 0.0,
+    lam_cov: float | str | dict = 0.0,
 ) -> dict[str, np.ndarray]:
     """Smooth (GLMM) fit for one segment -- the top ladder rung.
 
@@ -633,6 +634,7 @@ def _fit_segment_smooth(
 
     covfit = None
     if cov_data is not None:
+        assert covariates is not None  # supplied whenever cov_data is
         bf = _smooth_backfit_covariate(
             loss_obs, premium_obs, cov_data, list(covariates), sigma_method,
             psi=psi, n_basis=n_basis, lam=lam, lam_cov=lam_cov, link_mask=loss_mask,
@@ -963,7 +965,7 @@ def _fit_segment_cascade(
     precisely to lend the data-rich older shape, so a recency window must not
     thin it.
     """
-    global_n_dur = int(seg_sub.get_column("duration").max())
+    global_n_dur = scalar_int(seg_sub.get_column("duration").max())
     cuts = sorted(changes)
     starts = [None, *cuts]              # regime j starts at starts[j]
     parts: list[dict] = []
@@ -987,7 +989,7 @@ def _fit_segment_cascade(
             if not older.is_empty():
                 donor = _cohort_subset_donor(older, sigma_method, "loss")
                 premium_donor = _cohort_subset_donor(older, sigma_method, "premium")
-        elif cuts and int(own.get_column("duration").max()) < global_n_dur:
+        elif cuts and scalar_int(own.get_column("duration").max()) < global_n_dur:
             # oldest regime, ragged depth: no older cohorts and its own data stops
             # short of the segment horizon (a younger cohort runs deeper). Lend the
             # deep level-invariant SHAPE from the younger regimes pooled. When the
@@ -1113,7 +1115,7 @@ def _fit_loss(
     balance: bool = False,
     uncertainty: Any = None,
     covariates: list[str] | None = None,
-    lam_cov: float = 0.0,
+    lam_cov: float | str | dict = 0.0,
 ) -> LossFit:
     """Fit a single-mechanism loss projection on a :class:`Triangle`.
 
@@ -1325,6 +1327,7 @@ def _fit_loss(
             # cascade: fit each regime on its own cohorts, borrow the deep tail
             # from the pooled older regimes. balance / covariates / bootstrap are
             # rejected above, so no boot task is collected for this segment.
+            extra: dict[str, Any]
             if mechanism == "credible":
                 extra = {"psi": psi}
             elif mechanism == "smooth":
@@ -1348,7 +1351,7 @@ def _fit_loss(
         premium_donor = None
 
         cov_data = None
-        covfit = None
+        covfit: Any = None  # CovariateFit (precomputed) or pulled from the fit dict
         if mechanism == "credible":
             extra = {"psi": psi}
         elif mechanism == "smooth":
@@ -1356,6 +1359,7 @@ def _fit_loss(
         else:
             extra = {}
         if cov_cells is not None:
+            assert covariates is not None  # covariates drive the cov_cells path
             from .._kernels.covariate import (
                 _build_g_eff,
                 _covariate_segment_data,
@@ -1363,6 +1367,7 @@ def _fit_loss(
             )
             seg_cov = cov_cells
             if group_cols:
+                assert group_value is not None  # set from the segment's group row
                 vals = (group_value,) if len(group_cols) == 1 else group_value
                 for col, val in zip(group_cols, vals, strict=False):
                     seg_cov = seg_cov.filter(pl.col(col) == val)
@@ -1398,6 +1403,7 @@ def _fit_loss(
             n_smooth_nonconv += int(not fit["smooth_converged"])
 
         if cov_data is not None:
+            assert covariates is not None  # covariates drive the cov_data path
             # smooth's covfit comes out of the backfit; pooled / credible
             # precomputed it above. pooled keeps u = 1 (no credibility level).
             if covfit is None:
@@ -1420,6 +1426,7 @@ def _fit_loss(
         # no change to any value (pass 1.5).
         if boot_spec is not None:
             from .._kernels.weighted import WeightedBootstrap
+            task: dict[str, Any]
             if isinstance(boot_spec, WeightedBootstrap):
                 # FRW path -- batched weighted refit (additive pooled/credible
                 # via g_k, ChainLadder via the weighted link ratio f_k)
@@ -1440,6 +1447,7 @@ def _fit_loss(
                     "recent": recent, "donor": donor,
                 }
             elif cov_data is not None:
+                assert covariates is not None  # covariates drive the cov_data path
                 # pooled covariate keeps u = 1 (psi = 0); credible uses its psi
                 task = {
                     "kind": "covariate",

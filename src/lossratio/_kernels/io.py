@@ -47,6 +47,14 @@ def mirror_output(df_pl: pl.DataFrame, output_type: str) -> FrameLike:
     return df_pl
 
 
+def scalar_int(x: Any) -> int:
+    """Coerce a polars scalar reduction (``.min()`` / ``.max()`` / count) to a
+    Python ``int``. Such reductions are typed as an optional literal union, but
+    on a non-empty numeric frame the value is always present; this centralises
+    the coercion so call sites stay readable."""
+    return int(x)
+
+
 def _nan_skip_diff(arr: np.ndarray) -> np.ndarray:
     """Per-row incremental: ``cur - last_finite_prev`` (prev = 0 initially).
 

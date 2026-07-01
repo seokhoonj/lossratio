@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from .._kernels.io import collapse_groups, mirror_output, normalize_groups
+from .._kernels.io import collapse_groups, mirror_output, normalize_groups, scalar_int
 
 if TYPE_CHECKING:
     from .._types import RegimeArg
@@ -70,7 +70,7 @@ def _build_masked_df(
         )
         df = df.join(max_per_group, on=group_cols, how="left")
     else:
-        max_cal = int(df["cal_idx"].max())
+        max_cal = scalar_int(df["cal_idx"].max())
         df = df.with_columns(pl.lit(max_cal).alias("_max_cal"))
 
     df = df.with_columns(
@@ -931,7 +931,7 @@ class BacktestFit:
                 pl.col("cal_idx").max().alias("_max_cal")
             )
         else:
-            max_cal_scalar = int(full["cal_idx"].max())
+            max_cal_scalar = scalar_int(full["cal_idx"].max())
 
         per_holdout: list[pl.DataFrame] = []
         fits: dict[int, Any] = {}
@@ -1193,7 +1193,7 @@ class BacktestFit:
         """
         agg_exprs = cls._agg_exprs(has_incr)
         if ae_err.height == 0:
-            schema = {c: ae_err.schema[c] for c in by_cols}
+            schema: dict[str, Any] = {c: ae_err.schema[c] for c in by_cols}
             schema["n"] = pl.UInt32
             schema.update(
                 {name: pl.Float64 for name in cls._summary_stat_names(has_incr)}

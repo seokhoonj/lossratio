@@ -46,6 +46,7 @@ from .._kernels.io import (
     fill_group_columns,
     mirror_output,
     normalize_groups,
+    scalar_int,
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
@@ -360,7 +361,7 @@ def _fit_premium_segment_cascade(
     (one value column, premium donor, no loss / SE). ``recent`` windows each
     regime's OWN factor estimation; the donor stays full-history.
     """
-    global_n_dur = int(seg_sub.get_column("duration").max())
+    global_n_dur = scalar_int(seg_sub.get_column("duration").max())
     cuts = sorted(changes)
     starts = [None, *cuts]
     fitter = _SEGMENT_PREMIUM_FITTERS[mechanism]
@@ -382,7 +383,7 @@ def _fit_premium_segment_cascade(
             older = seg_sub.filter(pl.col("cohort") < start)
             if not older.is_empty():
                 donor = _cohort_subset_donor(older, sigma_method, "premium")
-        elif cuts and int(own.get_column("duration").max()) < global_n_dur:
+        elif cuts and scalar_int(own.get_column("duration").max()) < global_n_dur:
             # oldest regime, ragged depth: it has no older cohorts, and its own
             # data stops short of the segment horizon (a younger cohort runs
             # deeper). Lend the deep SHAPE from the younger regimes' pooled

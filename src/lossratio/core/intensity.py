@@ -143,7 +143,7 @@ def _compute_intensity(
     # premium volume. On a monotonic (unfiltered) triangle only the tail is
     # filled, so this is byte-identical there.
     filled = (sigma2_k > 0) & ~(old_sigma2 > 0)
-    for k in np.flatnonzero(filled):
+    for k in np.flatnonzero(filled).tolist():
         sp = sum_premium_k[k]
         if sp > 0:
             g_se_k[k] = float(np.sqrt(sigma2_k[k] / sp))

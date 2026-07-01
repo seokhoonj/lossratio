@@ -34,6 +34,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
+from .io import scalar_int
+
 if TYPE_CHECKING:
     pass
 
@@ -193,7 +195,7 @@ def _build_value_matrix(
     cohorts_df = df.select("cohort").unique(maintain_order=True)
     cohorts = cohorts_df["cohort"].to_list()
     n_cohorts = len(cohorts)
-    max_duration = int(df["duration"].max())
+    max_duration = scalar_int(df["duration"].max())
 
     # Left-join the observed cells onto the full (sorted cohort) x (duration
     # 1..max_duration) grid; the cross join is cohort-major so a row-major
@@ -226,7 +228,7 @@ def _build_value_matrices(
     cohorts_df = df.select("cohort").unique(maintain_order=True)
     cohorts = cohorts_df["cohort"].to_list()
     n_cohorts = len(cohorts)
-    max_duration = int(df["duration"].max())
+    max_duration = scalar_int(df["duration"].max())
 
     grid = cohorts_df.join(
         pl.DataFrame({"duration": list(range(1, max_duration + 1))}), how="cross"

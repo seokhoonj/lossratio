@@ -278,7 +278,7 @@ _ASSESS_KEYS = (
 
 def _build_candidates_df(
     per_combo_results: list[tuple[Any, dict[str, Any]]],
-    grp: str | None,
+    grp: str | list[str] | None,
 ) -> pl.DataFrame:
     """Candidate table: one row per detected change with assess metrics.
 
@@ -378,7 +378,7 @@ _SWEEP_KEYS = ("change", "window_stability", "n_windows") + _ASSESS_KEYS
 def _build_sweep_candidates_df(
     sub_by_combo: dict[Any, pl.DataFrame],
     combos: list[Any],
-    grp: str | None,
+    grp: str | list[str] | None,
     *,
     target: str,
     windows: Sequence[int],
@@ -609,7 +609,7 @@ def _grain_sweep_candidates(
 
 def _combine_combo_results(
     per_combo_results: list[tuple[Any, dict[str, Any]]],
-    grp: str | None,
+    grp: str | list[str] | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame, list[Any], int, list[Any] | dict[Any, list[Any]]]:
     """Stack per-combo (labels, changes) into one frame each.
 

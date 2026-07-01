@@ -19,6 +19,9 @@ from .._kernels.recent import validate_recent
 
 if TYPE_CHECKING:
     from .._types import RegimeArg
+    from ..core.triangle import Triangle
+    from .loss import LossFit
+    from .premium import PremiumFit
 
 
 def _validate_lam_cov(lam_cov: float | str | dict) -> None:
@@ -62,6 +65,10 @@ class _LossEstimatorBase:
     confidence_level: float = 0.95
     uncertainty: Any = None
 
+    def fit(self, triangle: Triangle) -> LossFit:
+        """Fit the loss projection on ``triangle`` (overridden per estimator)."""
+        raise NotImplementedError
+
     def __post_init__(self) -> None:
         validate_recent(self.recent)
         if self.regime is not None and not isinstance(self.regime, (date, dict)):
@@ -97,6 +104,10 @@ class _PremiumEstimatorBase:
     regime: RegimeArg = None
     sigma_method: str = "locf"
     confidence_level: float = 0.95
+
+    def fit(self, triangle: Triangle) -> PremiumFit:
+        """Fit the premium projection on ``triangle`` (overridden per estimator)."""
+        raise NotImplementedError
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)

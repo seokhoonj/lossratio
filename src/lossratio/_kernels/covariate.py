@@ -268,7 +268,7 @@ def fit_covariate_intensity(
     duration: np.ndarray,
     covariates: dict[str, np.ndarray],
     *,
-    lam: float | dict = 0.0,
+    lam: float | str | dict = 0.0,
     n_basis: int | None = None,
     lam_smooth: float | str = "auto",
     degree: int = 3,
@@ -494,6 +494,8 @@ def _build_g_eff(covfit: CovariateFit, data: SegmentCovData) -> np.ndarray:
                 if ld is None:
                     continue
                 cells = data.by_cd.get((coh, ld))
+                if cells is None:
+                    continue
             tot = sum(cp for _, cp in cells if cp > 0)
             if tot <= 0:
                 continue

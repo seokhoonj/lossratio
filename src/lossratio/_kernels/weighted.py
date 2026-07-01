@@ -228,7 +228,7 @@ def _process_additive_batched(
     obs = ~np.isnan(loss_obs)
     has_obs = obs.any(1)
     last_obs = np.where(has_obs, n_durations - 1 - obs[:, ::-1].argmax(1), -1)
-    eps = rng.normal(0.0, drift_se, size=B) if drift_se > 0.0 else np.zeros(B)
+    eps = np.asarray(rng.normal(0.0, drift_se, size=B)) if drift_se > 0.0 else np.zeros(B)
     rows = np.arange(n_cohorts)
     for k in range(n_links):
         active = has_obs & (last_obs <= k)
@@ -430,7 +430,7 @@ def _process_multiplicative_batched(
     obs = ~np.isnan(loss_obs)
     has = obs.any(1)
     last = np.where(has, n_durations - 1 - obs[:, ::-1].argmax(1), -1)
-    eps = rng.normal(0.0, drift_se, size=B) if drift_se > 0.0 else np.zeros(B)
+    eps = np.asarray(rng.normal(0.0, drift_se, size=B)) if drift_se > 0.0 else np.zeros(B)
     rows = np.arange(n_cohorts)
     for k in range(n_links):
         active = has & (last <= k)
@@ -587,7 +587,7 @@ def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
     if process == "none":
         return param, param
 
-    eps = rng.normal(0.0, drift_se, size=B) if drift_se > 0.0 else np.zeros(B)
+    eps = np.asarray(rng.normal(0.0, drift_se, size=B)) if drift_se > 0.0 else np.zeros(B)
     rows = np.arange(n_cohorts)
     pred = np.broadcast_to(loss_obs, (B, n_cohorts, n_durations)).copy()
     for k in range(n_links):

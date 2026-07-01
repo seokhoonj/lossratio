@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
+from .._kernels.io import _iter_group_frames, format_group_value, scalar_int
 from .._kernels.period import add_periods, infer_grain, resolve_grain
 from .base import (
     _format_period_series,
@@ -171,7 +171,7 @@ def plot_triangle_validation(
         r, c = divmod(idx, ncol)
         ax = axes[r][c]
         sub_sorted = sub.sort(coh)
-        max_duration = int(sub_sorted["duration_max"].max())
+        max_duration = scalar_int(sub_sorted["duration_max"].max())
         # cohort labels (oldest at top)
         cohorts = sub_sorted[coh].to_list()
         if coh_type is not None:

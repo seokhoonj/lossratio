@@ -192,7 +192,9 @@ class Triangle:
                 .alias("_duration_temp")
             )
         else:
-            # mode 2: take supplied duration directly.
+            # mode 2: take supplied duration directly (calendar is None here,
+            # so duration is guaranteed present by the earlier validation).
+            assert duration is not None
             df_pl = df_pl.with_columns(
                 pl.col(duration).cast(pl.Int64).alias("_duration_temp")
             )
@@ -1088,6 +1090,8 @@ class TriangleValidation:
         # Derive duration when only calendar is supplied (the same Triangle
         # 3-mode dispatch).
         if duration is None:
+            # duration absent -> calendar is present (validated on entry).
+            assert calendar is not None
             input_grain = infer_grain(df_for_gaps[cohort])
             g = resolve_grain(input_grain, grain)
             df_for_gaps = df_for_gaps.with_columns(

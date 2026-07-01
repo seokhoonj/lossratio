@@ -26,7 +26,7 @@ from .base import (
 from .theme import BLUE, RED, STAT_COLORS, faint_grid, finalize_figure
 
 if TYPE_CHECKING:
-    from ..diagnostics.backtest import BacktestFit
+    from ..diagnostics.backtest import _FoldFit
 
 
 _VALID_TYPES = ("col", "diag", "cell")
@@ -39,7 +39,7 @@ _STAT_COLUMNS = (
 
 
 def plot_backtest(
-    fit: BacktestFit,
+    fit: _FoldFit,
     kind: str = "col",
     basis: str = "cumulative",
     nrow: int | None = None,
@@ -94,7 +94,7 @@ def plot_backtest(
 
 
 def plot_triangle_backtest(
-    fit: BacktestFit,
+    fit: _FoldFit,
     basis: str = "cumulative",
     label_size: float = 7.0,
     nrow: int | None = None,
