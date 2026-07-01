@@ -20,6 +20,15 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+def _estimator_covariates(estimator: Any) -> list[str] | None:
+    """Covariates driving an estimator's reporting grain, resolved through the
+    loss side of a ``Ratio`` (whose covariates live on ``.loss``, not on the
+    ``Ratio`` itself). A bare loss estimator carries ``covariates`` directly."""
+    return getattr(estimator, "covariates", None) or getattr(
+        getattr(estimator, "loss", None), "covariates", None
+    )
+
+
 def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.DataFrame:
     """Add a 1-based calendar index per cell.
 
@@ -313,7 +322,7 @@ class _FoldFit:
         # masking and scoring therefore live at the reporting grain, while the
         # REFIT keeps the finer triangle (its sub-cells carry the covariate
         # effects). Without covariates the reporting grain IS the triangle grain.
-        covs = getattr(bt.estimator, "covariates", None)
+        covs = _estimator_covariates(bt.estimator)
         if covs:
             report_cols = [
                 g for g in normalize_groups(triangle._groups)
@@ -898,7 +907,7 @@ class BacktestFit:
         # covariates); the per-fold refit keeps the finer triangle. Mirror the
         # _FoldFit collapse so the cross-fold aggregation keys match the folds'
         # reporting-grain A/E frames.
-        covs = getattr(bt.estimator, "covariates", None)
+        covs = _estimator_covariates(bt.estimator)
         if covs:
             report_cols = [
                 g for g in normalize_groups(triangle._groups)

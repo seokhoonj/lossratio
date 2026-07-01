@@ -48,6 +48,30 @@ def _cl_backtest(holdouts: int = 2):
 # ---------------------------------------------------------------------------
 
 
+def test_backtest_covariate_ratio_reaches_reporting_grain():
+    """A covariate-aware Ratio (covariates live on Ratio.loss, not the Ratio)
+    must be backtestable at target="ratio": the backtest resolves covariates
+    through the loss side and scores at the collapsed reporting grain, instead
+    of crashing with an opaque ColumnNotFoundError at the full triangle grain."""
+    df = lr.load_experience()
+    if hasattr(df, "to_polars"):
+        df = df.to_polars()
+    # two coverages keep the run small while retaining channel variation.
+    df = df.filter(pl.col("coverage").is_in(df["coverage"].unique().to_list()[:2]))
+    tri = lr.Triangle(
+        df, groups=["coverage", "channel"], cohort="uy_m", calendar="cy_m",
+        loss="incr_loss", premium="incr_premium",
+    )
+    fit = lr.Backtest(
+        estimator=lr.Ratio(loss=lr.CredibleLoss(covariates=["channel"])),
+        holdouts=(6,), target="ratio",
+    ).fit(tri)
+    # reporting grain collapses channel -> keyed on coverage only.
+    assert "coverage" in fit._ae_err.columns
+    assert "channel" not in fit._ae_err.columns
+    assert fit._ae_err.height > 0
+
+
 def test_backtest_invalid_holdout():
     with pytest.raises(ValueError, match="holdout"):
         lr.Backtest(estimator=lr.ChainLadder(), holdouts=0, target="loss")
