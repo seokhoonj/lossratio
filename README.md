@@ -48,9 +48,9 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
   external exposure, so it self-develops by its own volume-weighted link ratio.
 - **Loss-ratio composition** — `Ratio(loss=..., premium=...)` pairs a loss-side
   and a premium-side estimator into `ratio_proj = loss_proj / premium_proj`
-  (returns a `RatioFit`). `se_method="fixed"` treats premium as known;
-  `se_method="delta"` adds premium variance and an optional loss-premium
-  correlation `rho`.
+  (returns a `RatioFit`). The premium denominator is a known allocated
+  exposure, so the ratio band comes from the loss side alone:
+  `ratio_se = loss_total_se / premium_proj`.
 - **Uncertainty** — pass `uncertainty=ResidualBootstrap(...)` to a loss
   estimator for a full-refit residual bootstrap (with a calendar-drift band)
   that fills `loss_total_se` / `loss_ci_lo` / `loss_ci_hi` and the ratio band.
@@ -132,10 +132,10 @@ loss.summary().head(3)
 #> └──────────┴────────────┴──────────────┴───────────┴───────────────┴───────────────┴──────────────────────┘
 
 # 4. Compose the loss ratio from a loss model and a premium model. The premium
-#    defaults to PooledPremium(); se_method="fixed" treats premium as known.
+#    defaults to PooledPremium() and is treated as a known denominator.
 fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
 fit
-#> RatioFit(loss_model='pooled_loss', premium_model='pooled_premium', se_method='fixed', rows=1296)
+#> RatioFit(loss_model='pooled_loss', premium_model='pooled_premium', rows=1296)
 fit.summary().head(3)
 #> shape: (3, 6)
 #> ┌──────────┬────────────┬───────────┬──────────────┬────────────┬──────────┐
