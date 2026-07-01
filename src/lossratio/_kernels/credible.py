@@ -369,21 +369,27 @@ def _project_borrow(
     own_f: np.ndarray, own_sig_f: np.ndarray, own_var_f: np.ndarray,
     donor_f: np.ndarray, donor_sig_f: np.ndarray, donor_var_f: np.ndarray,
     own_u: np.ndarray | None = None,
+    own_h: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Projection with a level-invariant borrowed tail.
 
     The own-data boundary is the LAST link the segment can fit on its own data
     (last finite own factor). Links at or below it use the segment's OWN factor
     (``body="additive"`` -> intensity ``g_k`` additive; ``body="multiplicative"`` -> link ratio
-    ``f_k`` multiplicative); links beyond it switch to the BORROWED donor link
+    ``f_k`` multiplicative; ``body="self_exposure"`` -> premium growth
+    ``P_{k+1} = P_k * (1 + u_i * h_k)`` with ``h_k = f^P_k - 1``, point-only so
+    no variance is accumulated on the own body); links beyond it switch to the BORROWED donor link
     ratio ``donor_f`` (always multiplicative -- level-invariant, so it lends
     development SHAPE on the segment's own last cumulative loss, never the
-    donor's loss-ratio level). Switching is by INDEX (not per-link finiteness),
-    so an interior own gap is not mistaken for the tail; the donor is LOCF-
-    filled so a sparse interior donor link cannot break the tail chain. The
-    process / parameter variance accumulators carry across the boundary (donor
-    links use the donor's sigma2 / Var). Returns ``(loss_proj, proc_se,
-    param_se, total_se, borrowed)`` where ``borrowed`` flags the donor cells.
+    donor's loss-ratio level). The own factors are LOCF-filled across their own
+    domain and the donor is LOCF-filled AND padded to this segment's horizon, so
+    a sparse interior own / donor link (e.g. from a ``recent`` window) or a donor
+    shallower than the segment (ragged depth) cannot break the recursion chain; a
+    link at or below the own boundary with no own factor even after the fill
+    falls through to the donor tail. The process / parameter variance
+    accumulators carry across the boundary (donor links use the donor's sigma2 /
+    Var). Returns ``(loss_proj, proc_se, param_se, total_se, borrowed)`` where
+    ``borrowed`` flags the donor cells.
 
     ``own_u`` is the per-cohort credibility level for the additive body: the
     ``CredibleLoss`` / ``SmoothLoss`` projected increment is ``u_i * g_k * P_k``,
@@ -408,15 +414,42 @@ def _project_borrow(
     )
     eligible = (last_obs >= 0) & (last_obs < n_durations - 1)
 
-    # own-data boundary = last link the segment can fit on its own (-1 if none)
-    own = own_g if body == "additive" else own_f
+    # own-data boundary = last link the segment can fit on its own (-1 if none).
+    # Taken from the ORIGINAL finite own factors (before the LOCF below): it marks
+    # where the segment's own data ends and the borrowed tail begins.
+    own = (own_g if body == "additive"
+           else own_h if body == "self_exposure"
+           else own_f)
     own_links = np.flatnonzero(np.isfinite(own))
     own_boundary = int(own_links.max()) if own_links.size else -1
+
+    def _fill(a: np.ndarray) -> np.ndarray:
+        """Right-pad to n_links, then carry the last finite factor forward."""
+        if a.shape[0] < n_links:
+            a = np.concatenate([a, np.full(n_links - a.shape[0], np.nan)])
+        return _locf_forward(a)
+
     # LOCF the donor link ratio / variance so a sparse interior donor link does
-    # not break the tail recursion (mirrors the tail-sigma carry-forward).
-    donor_f = _locf_forward(donor_f)
-    donor_sig_f = _locf_forward(donor_sig_f)
-    donor_var_f = _locf_forward(donor_var_f)
+    # not break the tail recursion, and pad it to this segment's horizon so a
+    # donor shallower than the segment (ragged depth) extends its last factor
+    # across the tail instead of indexing out of bounds.
+    donor_f = _fill(donor_f)
+    donor_sig_f = _fill(donor_sig_f)
+    donor_var_f = _fill(donor_var_f)
+
+    # LOCF the own factors across their own domain too, so an INTERIOR own gap
+    # (e.g. a `recent` window that leaves a middle link unestimated) carries the
+    # last own factor forward rather than breaking the chain. A LEADING own gap
+    # stays NaN and falls through to the donor tail below. own_boundary is
+    # unchanged (from the original finite mask), so the tail region still borrows.
+    own_g = _locf_forward(own_g)
+    own_sig_g = _locf_forward(own_sig_g)
+    own_var_g = _locf_forward(own_var_g)
+    own_f = _locf_forward(own_f)
+    own_sig_f = _locf_forward(own_sig_f)
+    own_var_f = _locf_forward(own_var_f)
+    if own_h is not None:
+        own_h = _locf_forward(own_h)
 
     u_body = np.ones(n_cohorts, dtype=np.float64) if own_u is None else own_u
 
@@ -429,18 +462,26 @@ def _project_borrow(
             continue
         ck = loss_proj[:, k]
         pk = premium_proj[:, k]
-        if k <= own_boundary:                             # own body
+        # the own factor for this body at link k (LOCF-filled above, so an
+        # interior gap carries forward; a leading gap stays NaN -> donor tail).
+        own_k = (own_g[k] if body == "additive"
+                 else own_h[k] if body == "self_exposure"
+                 else own_f[k])
+        if k <= own_boundary and np.isfinite(own_k):      # own body
             if body == "additive":
-                if not np.isfinite(own_g[k]):
-                    continue                              # interior own gap
                 pos = active & ~np.isnan(pk) & (pk > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = ck[pos] + u_body[pos] * own_g[k] * pk[pos]
                     _step_additive(proc_acc, param_acc, pos,
                                   own_sig_g[k], own_var_g[k], pk)
+            elif body == "self_exposure":
+                # premium self-exposure growth: P_{k+1} = P_k * (1 + u_i * h_k).
+                # point-only -> no variance step (the premium fitter discards the
+                # SE arms and writes nan_se).
+                pos = active & ~np.isnan(ck) & (ck > 0)
+                if pos.any():
+                    loss_proj[pos, k + 1] = ck[pos] * (1.0 + u_body[pos] * own_h[k])
             else:
-                if not np.isfinite(own_f[k]):
-                    continue
                 pos = active & ~np.isnan(ck) & (ck > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = own_f[k] * ck[pos]

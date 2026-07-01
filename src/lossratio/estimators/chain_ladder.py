@@ -39,8 +39,11 @@ class ChainLadder(_LossEstimatorBase):
     sigma_method
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).
     regime
-        Resolved cohort cut: ``None``, a ``date``, or a
-        ``dict[segment -> date]``.
+        ``None`` / a :class:`~lossratio.Regime` / a
+        :class:`~lossratio.RegimeDetector` (resolved at fit time). With
+        ``treatment="segment_wise"`` ChainLadder keeps every regime, fitting
+        each on its own cohorts with its own link ratio ``f_k`` and borrowing
+        the deep region from the older regimes' pooled ``f_k``.
     recent
         Calendar-diagonal fit window: ``None`` (all data) or a positive integer
         ``N`` -- only the most-recent ``N`` diagonals feed factor estimation;

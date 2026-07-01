@@ -37,7 +37,6 @@ from .._kernels.io import (
 )
 from .._kernels.recursion import (
     _build_value_matrices,
-    _multiplicative_var,
     _wls_factor_var,
     _wls_sigma2,
     _step_multiplicative,
@@ -54,6 +53,12 @@ from .._kernels.credible import (
     _smooth_backfit_covariate,
 )
 from ..core.model_frame import ModelFrame
+from ._cascade import (
+    _cohort_subset_donor,
+    _pad_cols,
+    _segment_change_dates,
+    _stack_cascade_fits,
+)
 from ._credibility import _segment_credibility_df
 
 if TYPE_CHECKING:
@@ -130,18 +135,18 @@ def _segment_premium_proj(
     the loss body only consumes premium within the own boundary, so extending
     the premium tail never changes the loss projection.
     """
-    mk = _fit_multiplicative(
+    mr = _fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     )
     if premium_donor is None:
-        return mk.value_proj
+        return mr.value_proj
     n_links = premium_obs.shape[1] - 1
     nan = np.full(n_links, np.nan)
     zero = np.zeros(n_links, dtype=np.float64)
     proj = _project_borrow(
         premium_obs, np.full_like(premium_obs, np.nan), body="multiplicative",
         own_g=nan, own_sig_g=nan, own_var_g=nan,
-        own_f=mk.f_k, own_sig_f=zero, own_var_f=zero,
+        own_f=mr.f_k, own_sig_f=zero, own_var_f=zero,
         donor_f=premium_donor[0], donor_sig_f=zero, donor_var_f=zero,
     )[0]
     return proj
@@ -909,61 +914,6 @@ _MECHANISMS = {
 }
 
 
-def _pad_cols(mat: np.ndarray, n_cols: int) -> np.ndarray:
-    """Right-pad a matrix to ``n_cols`` columns with NaN (no-op if already wide
-    enough)."""
-    if mat.shape[1] >= n_cols:
-        return mat
-    pad = np.full((mat.shape[0], n_cols - mat.shape[1]), np.nan)
-    return np.hstack([mat, pad])
-
-
-def _cohort_subset_donor(
-    seg_sub: pl.DataFrame, sigma_method: str, value: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Pooled level-invariant link ratio over an already-filtered cohort subset.
-
-    The cascade (``segment_wise``) donor: ``segment_wise`` fits each regime on
-    its own cohorts, and lends the deep tail from the link ratio ``f_k`` of the
-    OLDER (deeper) regimes pooled -- their data-rich cohorts reach the depth a
-    younger regime cannot. ``f_k`` cancels the level, so only shape is lent.
-    The frame is already restricted to the donor cohorts (``value="loss"``
-    cumulates ``incr_loss``; ``"premium"`` is already cumulative). Returns
-    ``(f_k, sigma2_f_k, var_f_k)``.
-    """
-    sub = seg_sub.sort(["cohort", "duration"])
-    if value == "loss":
-        sub = sub.with_columns(
-            pl.col("incr_loss").cum_sum().over("cohort").alias("loss")
-        )
-    (mat,), _, _ = _build_value_matrices(sub, value_cols=(value,))
-    mk = _fit_multiplicative(mat, sigma_method=sigma_method)
-    return (mk.f_k, mk.sigma2_k, _multiplicative_var(mk))
-
-
-def _segment_change_dates(regime: "Any", group_value: "Any") -> list:
-    """The sorted change dates that apply to one segment (for ``segment_wise``).
-
-    Reads the regime's own ``_changes_df`` and, when grouped, keeps only the
-    rows matching this segment's group value (the group columns are read off the
-    change frame itself). Derives the regime partition from the change DATES
-    directly (not ``regime_id``), so it works the same for a hand-built
-    :meth:`Regime.at` and an auto-detected regime. A segment with no change
-    returns ``[]`` -- the cascade then degenerates to a single plain fit.
-    """
-    changes = getattr(regime, "_changes_df", None)
-    if changes is None or changes.is_empty():
-        return []
-    change_group_cols = [c for c in changes.columns if c not in ("change", "regime_id")]
-    if change_group_cols:
-        vals = group_value if isinstance(group_value, tuple) else (group_value,)
-        keymap = dict(zip(change_group_cols, vals))
-        for g in change_group_cols:
-            if g in keymap:
-                changes = changes.filter(pl.col(g) == keymap[g])
-    return sorted(changes.get_column("change").to_list())
-
-
 def _regime_covariate_codes(frame: pl.DataFrame, regime: "Any") -> pl.DataFrame:
     """Add a treatment-coded ``"regime"`` covariate column derived from the cohort.
 
@@ -985,34 +935,6 @@ def _regime_covariate_codes(frame: pl.DataFrame, regime: "Any") -> pl.DataFrame:
                 cond = cond & (pl.col(g) == pl.lit(row[g]))
             idx = idx + cond.cast(pl.Int32)
     return frame.with_columns(("R" + idx.cast(pl.Utf8)).alias("regime"))
-
-
-def _stack_cascade_fits(
-    parts: list[dict], mechanism: str,
-) -> dict[str, "Any"]:
-    """Row-stack the per-regime fits into one segment-level fit dict.
-
-    Each regime's matrices are already widened to the segment's global horizon
-    (same column count), and the regimes are date-disjoint with ascending
-    cohorts, so a row-stack yields a single rectangular cohort x duration grid
-    in globally-ascending cohort order -- exactly what ``_segment_long_df``
-    expects. ``g_k`` / ``f_k`` are per-link (not per-cohort) and unused
-    downstream, so they are dropped. ``psi`` is carried PER COHORT (each
-    cohort's own regime's between-cohort variance).
-    """
-    keys = ["loss_obs", "loss_proj", "premium_obs", "premium_proj",
-            "proc_se", "param_se", "total_se", "borrowed"]
-    out: dict[str, Any] = {k: np.vstack([p[k] for p in parts]) for k in keys}
-    if mechanism in ("credible", "smooth"):
-        out["u"] = np.concatenate([np.asarray(p["u"]) for p in parts])
-        out["Z"] = np.concatenate([np.asarray(p["Z"]) for p in parts])
-        out["psi"] = np.concatenate(
-            [np.full(p["loss_obs"].shape[0], float(p["psi"])) for p in parts]
-        )
-    if mechanism == "smooth":
-        out["representable"] = all(bool(p["representable"]) for p in parts)
-        out["smooth_converged"] = all(bool(p["smooth_converged"]) for p in parts)
-    return out
 
 
 def _fit_segment_cascade(
@@ -1065,8 +987,18 @@ def _fit_segment_cascade(
             if not older.is_empty():
                 donor = _cohort_subset_donor(older, sigma_method, "loss")
                 premium_donor = _cohort_subset_donor(older, sigma_method, "premium")
-        # widen to the segment horizon so a borrowed tail fills it (a no-op for
-        # the oldest regime, whose own depth already is the horizon).
+        elif cuts and int(own.get_column("duration").max()) < global_n_dur:
+            # oldest regime, ragged depth: no older cohorts and its own data stops
+            # short of the segment horizon (a younger cohort runs deeper). Lend the
+            # deep level-invariant SHAPE from the younger regimes pooled. When the
+            # oldest regime IS the deepest (the usual case) this is skipped, so its
+            # donor-less path is unchanged.
+            deeper = seg_sub.filter(pl.col("cohort") >= cuts[0])
+            if not deeper.is_empty():
+                donor = _cohort_subset_donor(deeper, sigma_method, "loss")
+                premium_donor = _cohort_subset_donor(deeper, sigma_method, "premium")
+        # widen to the segment horizon so a borrowed tail fills it (usually a
+        # no-op for the oldest regime, whose own depth already is the horizon).
         loss_r = _pad_cols(loss_r, global_n_dur)
         prem_r = _pad_cols(prem_r, global_n_dur)
         fit_r = fit_segment(
@@ -1118,8 +1050,8 @@ def _apply_balance(
             continue
         pk = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
-        mk = mask[:, k] if mask is not None else np.ones(n_cohorts, dtype=bool)
-        ok = mk & np.isfinite(pk) & (pk > 0) & np.isfinite(dl)
+        col_mask = mask[:, k] if mask is not None else np.ones(n_cohorts, dtype=bool)
+        ok = col_mask & np.isfinite(pk) & (pk > 0) & np.isfinite(dl)
         if ok.any():
             s_fit += float(np.sum(u[ok] * g_k[k] * pk[ok]))
             s_act += float(np.sum(dl[ok]))
@@ -1213,10 +1145,10 @@ def _fit_loss(
         and getattr(regime, "treatment", "latest_only") == "segment_wise"
     )
     if segment_wise:
-        if mechanism not in ("pooled", "credible", "smooth"):
+        if mechanism not in ("pooled", "credible", "smooth", "chain_ladder"):
             raise NotImplementedError(
                 f"regime treatment='segment_wise' is wired for PooledLoss / "
-                f"CredibleLoss / SmoothLoss, not {model!r}."
+                f"CredibleLoss / SmoothLoss / ChainLadder, not {model!r}."
             )
         if covariates:
             raise NotImplementedError(

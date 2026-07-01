@@ -133,8 +133,8 @@ def test_segment_wise_rejects_unsupported_combinations(tri):
             regime=reg,
             uncertainty=lr.ResidualBootstrap(n_replicates=5, seed=1),
         ).fit(tri)
-    with pytest.raises(NotImplementedError, match="segment_wise"):
-        lr.ChainLadder(regime=reg).fit(tri)
+    # ChainLadder segment_wise IS supported (the link-ratio f_k cascade); see
+    # test_chain_ladder_segment_wise_borrows.
 
 
 def test_segment_wise_rejects_covariates():
@@ -163,3 +163,176 @@ def test_treatment_survives_the_deferred_detector_path(tri):
         a.select(pl.col("cohort").n_unique()).item()
     )
     assert b.filter(pl.col("source") == "borrowed").height > 0
+
+
+# ---------------------------------------------------------------------------
+# premium ladder segment_wise (the f^P_k cascade) + ChainLadder + the F2 close
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "Est", [lr.PooledPremium, lr.CrediblePremium, lr.SmoothPremium]
+)
+def test_premium_segment_wise_keeps_all_regimes_and_borrows(Est, tri):
+    reg_sw = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    reg_lo = lr.Regime.at(change=CHANGE)
+
+    sw = Est(regime=reg_sw).fit(tri).to_polars()
+    lo = Est(regime=reg_lo).fit(tri).to_polars()
+
+    # every regime kept (vs latest_only dropping the pre-change cohorts)
+    assert sw.select(pl.col("cohort").n_unique()).item() > (
+        lo.select(pl.col("cohort").n_unique()).item()
+    )
+    # the young regime's borrow region is filled from the donor regimes
+    assert sw.filter(pl.col("source") == "borrowed").height > 0
+    # no projection gap -- premium is fully covered (this is what closes F2)
+    assert sw.select(pl.col("premium_proj").is_null().sum()).item() == 0
+
+
+@pytest.mark.parametrize(
+    "Prem", [lr.PooledPremium, lr.CrediblePremium, lr.SmoothPremium]
+)
+def test_both_side_segment_wise_ratio_has_no_null(Prem, tri):
+    # the footgun F2: a segment_wise loss keeps every cohort; if the premium
+    # could only cut, the old cohorts' ratio would be null. With premium
+    # segment_wise both sides keep every cohort -> zero null ratio.
+    reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    rat = lr.Ratio(
+        loss=lr.CredibleLoss(regime=reg), premium=Prem(regime=reg)
+    ).fit(tri).to_polars()
+    assert rat.select(pl.col("ratio_proj").is_null().sum()).item() == 0
+
+
+def test_premium_rejects_covariate_treatment(tri):
+    reg = lr.Regime.at(change=CHANGE, treatment="covariate")
+    with pytest.raises(ValueError, match="covariate"):
+        lr.PooledPremium(regime=reg).fit(tri)
+
+
+def test_chain_ladder_segment_wise_borrows(tri):
+    reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    cl = lr.ChainLadder(regime=reg).fit(tri).to_polars()
+    assert cl.filter(pl.col("source") == "borrowed").height > 0
+    assert cl.select(pl.col("loss_proj").is_null().sum()).item() == 0
+
+
+_RAGGED_CHANGES = ["2023-04-01", "2023-06-01"]
+
+
+def _ragged_input() -> pl.DataFrame:
+    """A ragged triangle where the OLDEST regime is the SHALLOWEST.
+
+    Consecutive monthly cohorts (so the grain infers as monthly) across three
+    regimes cut at ``_RAGGED_CHANGES``: the oldest regime (2023-01..03) is
+    observed only to duration 3, the middle (2023-04..05) to duration 4, the
+    newest (2023-06..07) to duration 10 -- the deepest, so the segment horizon is
+    10. The oldest regime stops well short of the horizon and, being oldest, has
+    no older donor; the middle regime's donor (the oldest) is itself shallower
+    than the horizon. This is the ragged-depth shape that used to crash the
+    cascade (donor index overrun) or re-null the oldest regime's tail.
+    """
+    specs = [
+        ("2023-01", 3), ("2023-02", 3), ("2023-03", 3),   # R0 (oldest, shallow)
+        ("2023-04", 4), ("2023-05", 4),                    # R1
+        ("2023-06", 10), ("2023-07", 10),                  # R2 (deepest -> horizon 10)
+    ]
+    rows = []
+    for start, n in specs:
+        y, m = (int(x) for x in start.split("-"))
+        for d in range(n):
+            month = (m - 1) + d
+            rows.append({
+                "uy_m": f"{start}-01",
+                "cy_m": f"{y + month // 12:04d}-{month % 12 + 1:02d}-01",
+                "incr_loss": 10.0 + d,
+                "incr_premium": 100.0,
+            })
+    return pl.DataFrame(rows)
+
+
+@pytest.mark.parametrize(
+    "Est",
+    [lr.PooledPremium, lr.CrediblePremium, lr.SmoothPremium,
+     lr.ChainLadder, lr.PooledLoss],
+)
+def test_ragged_depth_oldest_shallower_no_crash_no_null(Est):
+    # ragged depth: the oldest regime is the SHALLOWEST. This used to (a) crash
+    # with an IndexError (a middle regime's donor is shallower than the segment
+    # horizon, so donor_f indexes out of bounds) and (b) re-null the oldest
+    # regime's tail (a donor-less oldest regime stops at its own depth). Every
+    # cohort must now project to the horizon with no gap.
+    tri = lr.Triangle(_ragged_input(), grain="M")
+    reg = lr.Regime.at(
+        change=_RAGGED_CHANGES, treatment="segment_wise"
+    )
+    proj_col = "loss_proj" if Est in (lr.ChainLadder, lr.PooledLoss) else "premium_proj"
+    out = Est(regime=reg).fit(tri).to_polars()
+    assert out.select(pl.col(proj_col).is_null().sum()).item() == 0
+    # the oldest cohort reaches the segment horizon (duration 10) with a value
+    oldest = out.filter(pl.col("cohort") == pl.lit("2023-01-01").cast(pl.Date))
+    assert oldest.select(pl.col("duration").max()).item() == 10
+    assert oldest.filter(pl.col("duration") == 10).select(
+        pl.col(proj_col).is_not_null().all()
+    ).item()
+
+
+def test_ragged_depth_both_side_ratio_has_no_null():
+    # the end-to-end F2 guard on ragged depth: both sides segment_wise, oldest
+    # regime shallowest -> zero null ratio.
+    tri = lr.Triangle(_ragged_input(), grain="M")
+    reg = lr.Regime.at(
+        change=_RAGGED_CHANGES, treatment="segment_wise"
+    )
+    rat = lr.Ratio(
+        loss=lr.PooledLoss(regime=reg), premium=lr.PooledPremium(regime=reg)
+    ).fit(tri).to_polars()
+    assert rat.select(pl.col("ratio_proj").is_null().sum()).item() == 0
+
+
+def test_project_borrow_leading_gap_and_short_donor_fill_the_tail():
+    # kernel guard: a LEADING own gap (e.g. from a `recent` window that leaves the
+    # early links unestimated) must fall through to the donor tail, and a donor
+    # shallower than the segment horizon must LOCF-extend -- neither may leave a
+    # NaN tail or index out of bounds.
+    import numpy as np
+    from lossratio._kernels.credible import _project_borrow
+
+    own_h = np.array([np.nan, np.nan, 0.10])        # leading gap at links 0, 1
+    zero, nan3 = np.zeros(3), np.full(3, np.nan)
+    loss_obs = np.array([
+        [100.0, np.nan, np.nan, np.nan],            # shallow cohort (obs to dur 1)
+        [100.0, 110.0, 120.0, np.nan],
+    ])
+    prem, u = np.full_like(loss_obs, np.nan), np.ones(2)
+
+    def _run(donor_f):
+        n = donor_f.shape[0]
+        return _project_borrow(
+            loss_obs, prem, body="self_exposure",
+            own_g=nan3, own_sig_g=nan3, own_var_g=nan3,
+            own_f=nan3, own_sig_f=zero, own_var_f=zero,
+            donor_f=donor_f, donor_sig_f=np.zeros(n), donor_var_f=np.zeros(n),
+            own_u=u, own_h=own_h,
+        )[0]
+
+    assert not np.isnan(_run(np.array([1.2, 1.15, 1.1]))[0, 1:]).any()
+    # a donor shorter than the horizon must not crash (LOCF-extends its last link)
+    assert not np.isnan(_run(np.array([1.2]))[0, 1:]).any()
+
+
+@pytest.mark.parametrize(
+    "Est", [lr.PooledPremium, lr.CrediblePremium, lr.SmoothPremium]
+)
+def test_premium_no_change_segment_wise_equals_latest_only(Est, tri):
+    # a segment with NO change date degenerates to one regime, no donor -> the
+    # cascade must equal the plain (latest_only / no-regime) fit on those cohorts.
+    far = "2099-01-01"   # later than any cohort -> no actual change
+    sw = Est(regime=lr.Regime.at(change=far, treatment="segment_wise")).fit(tri).to_polars()
+    plain = Est().fit(tri).to_polars()
+    key = ["coverage", "cohort", "duration"]
+    j = sw.select([*key, "premium_proj"]).join(
+        plain.select([*key, pl.col("premium_proj").alias("ref")]), on=key, how="inner"
+    )
+    assert j.height > 0
+    d = j.select((pl.col("premium_proj") - pl.col("ref")).abs().max()).item()
+    assert d == pytest.approx(0.0, abs=1e-9)
