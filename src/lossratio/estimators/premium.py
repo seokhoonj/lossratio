@@ -238,7 +238,7 @@ def _fit_segment_credible_premium(
     premium_obs: np.ndarray, sigma_method: str, *, psi: float | str = "auto",
     recent: int | None = None,
     donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
-) -> dict[str, np.ndarray]:
+) -> dict[str, Any]:
     """Credibility (partial-pooling) premium fit for one segment.
 
     Premium self-develops, so the growth rate is ``h_k = f^P_k - 1`` (the pooled

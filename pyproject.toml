@@ -105,16 +105,14 @@ select = ["E", "F", "I", "B", "UP", "N"]
 ignore = ["N803", "N806", "N817"]
 
 [tool.mypy]
-python_version = "3.10"
+# Analyse under 3.12 so modern third-party stubs (numpy, sphinx via
+# matplotlib.sphinxext) parse -- their .pyi files use 3.12-only `type`
+# statements that mypy rejects as a syntax error under an older target. Our own
+# 3.10 floor is enforced separately (ruff `UP` + target-version, CI test matrix
+# on 3.10-3.12), so targeting 3.12 here costs no 3.10 coverage.
+python_version = "3.12"
 files = ["src/lossratio"]
 # Third-party numeric/plotting libs ship partial or no type information;
 # checking our own code against their public API is enough without their
 # internals being fully typed.
 ignore_missing_imports = true
-
-# Do not descend into sphinx: matplotlib.sphinxext pulls it in, and its source
-# uses 3.12-only `type` statements that fail to parse under python_version 3.10.
-# It is a docs-only dependency the package never imports at runtime.
-[[tool.mypy.overrides]]
-module = "sphinx.*"
-follow_imports = "skip"

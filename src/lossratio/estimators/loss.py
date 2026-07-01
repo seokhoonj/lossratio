@@ -508,7 +508,7 @@ def _fit_segment_credible(
     premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
     psi: float | str = "auto",
     g_override: np.ndarray | None = None,
-) -> dict[str, np.ndarray]:
+) -> dict[str, Any]:
     """Credibility (partial-pooling) fit for one segment.
 
     Pooled intensity ``g_k`` (the same closed-form saturated mode as
