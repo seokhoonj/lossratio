@@ -216,7 +216,7 @@ def penalized_irls(
 
 
 @dataclass
-class SmoothResult:
+class _SmoothResult:
     g: dict                 # {duration: g_k = exp(s(k))}
     lam: float              # selected smoothing parameter
     edf: float
@@ -240,7 +240,7 @@ def smooth_intensity(
     lam: "float | str" = "auto",
     lam_grid: "np.ndarray | None" = None,
     degree: int = 3,
-) -> SmoothResult:
+) -> _SmoothResult:
     """Smooth duration intensity ``g_k = exp(s(k))`` by penalized IRLS.
 
     ``response`` / ``exposure`` / ``duration`` are parallel per-cell sequences
@@ -266,7 +266,7 @@ def smooth_intensity(
     durs = sorted(set(int(x) for x in dur))
 
     if y.size == 0 or float(y.sum()) <= 0.0:
-        return SmoothResult(
+        return _SmoothResult(
             g={k: 0.0 for k in durs}, lam=0.0, edf=0.0, pearson=0.0,
             representable=False, converged=True,
         )
@@ -305,7 +305,7 @@ def smooth_intensity(
     Bk, _ = bspline_design(np.array(durs, dtype=np.int64), nb, degree)
     s_k = Bk @ fit.beta
     g = {k: float(np.exp(s_k[j])) for j, k in enumerate(durs)}
-    return SmoothResult(
+    return _SmoothResult(
         g=g, lam=best_lam, edf=fit.edf, pearson=fit.pearson,
         representable=True, converged=fit.converged,
     )

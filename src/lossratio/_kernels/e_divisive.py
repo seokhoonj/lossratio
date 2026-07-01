@@ -45,7 +45,7 @@ import numpy as np
 from scipy.spatial.distance import pdist, squareform
 
 
-class EDivisiveResult(NamedTuple):
+class _EDivisiveResult(NamedTuple):
     """Outcome of an E-Divisive run.
 
     Attributes
@@ -222,7 +222,7 @@ def e_divisive(
     min_size: int = 30,
     alpha: float = 1.0,
     seed: int | None = None,
-) -> EDivisiveResult:
+) -> _EDivisiveResult:
     """E-Divisive change-point detection.
 
     Greedy divisive change-point detection on a multivariate sequence
@@ -252,7 +252,7 @@ def e_divisive(
 
     Returns
     -------
-    EDivisiveResult
+    _EDivisiveResult
         Sorted change_points (right-side starts) and matching p-values.
 
     Notes
@@ -268,7 +268,7 @@ def e_divisive(
     n = len(X)
 
     if n < 2 * min_size:
-        return EDivisiveResult([], [])
+        return _EDivisiveResult([], [])
 
     # Pairwise distances raised to alpha (alpha=1 -> plain Euclidean)
     D = squareform(pdist(X, metric="euclidean"))
@@ -321,7 +321,7 @@ def e_divisive(
         segments.append((tau, end))
 
     change_points.sort()
-    return EDivisiveResult(
+    return _EDivisiveResult(
         change_points=change_points,
         p_values=[p_values[bp] for bp in change_points],
     )

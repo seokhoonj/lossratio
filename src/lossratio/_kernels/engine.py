@@ -152,7 +152,7 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
 
 
 @dataclass
-class LevelResult:
+class _LevelResult:
     """Per-cohort conjugate level estimate: ``u`` (mean-1 natural-scale level)
     and ``Z`` (credibility)."""
 
@@ -160,7 +160,7 @@ class LevelResult:
     Z: dict
 
 
-def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> LevelResult:
+def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> _LevelResult:
     """Dispersion-scaled conjugate (Buhlmann-Straub) cohort level.
 
     ``A_i = sum(m0/phi)`` (SHRINKAGE exposure), ``u_i = (1/psi + sum y/phi) /
@@ -173,12 +173,12 @@ def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> LevelRe
         sy[i] = sy.get(i, 0.0) + y / phi[k]
     cohorts = sorted(A)
     if psi <= 0.0:
-        return LevelResult(u={i: 1.0 for i in cohorts},
+        return _LevelResult(u={i: 1.0 for i in cohorts},
                            Z={i: 0.0 for i in cohorts})
     inv = 1.0 / psi
     u = {i: (inv + sy[i]) / (inv + A[i]) for i in cohorts}
     Z = {i: A[i] / (A[i] + inv) for i in cohorts}
-    return LevelResult(u=u, Z=Z)
+    return _LevelResult(u=u, Z=Z)
 
 
 def quasi_poisson_deviance(*, response, fitted) -> float:
