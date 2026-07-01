@@ -1393,6 +1393,22 @@ class Regime:
 
     treatment: str = "latest_only"
 
+    # Instance attributes are set in `_from_triangle`/`_manual` (built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _labels_df: pl.DataFrame
+    _changes_df: pl.DataFrame
+    _candidates_df: pl.DataFrame
+    _output_type: str
+    method: str
+    target: str
+    window: int | list[int]
+    cohort: str
+    duration: str
+    groups: str | list[str] | None
+    change_points: list[Any]
+    n_regimes: int
+    dropped: list[Any] | dict[Any, list[Any]]
+
     def __init__(self) -> None:
         raise TypeError(
             "Regime is produced by `triangle.detect_regime()` / "

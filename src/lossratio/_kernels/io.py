@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
 import polars as pl
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     # The mirrored output type: polars in -> polars out, pandas in -> out.
     # Used to annotate every `.df` / `.summary()` accessor.
-    FrameLike = pl.DataFrame | pd.DataFrame
+    FrameLike: TypeAlias = pl.DataFrame | pd.DataFrame
 
 
 def detect_input_type(df: Any) -> str:

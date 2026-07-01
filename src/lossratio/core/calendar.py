@@ -20,6 +20,14 @@ class Calendar:
     Use :meth:`Triangle.calendar_agg` to construct.
     """
 
+    # Instance attributes are set in `_from_triangle` (built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _df: pl.DataFrame
+    _output_type: str
+    _groups: str | list[str] | None
+    _calendar: str | None
+    _grain: str
+
     def __init__(self) -> None:
         raise TypeError(
             "Calendar is produced by `triangle.calendar_agg()`, not a direct constructor."

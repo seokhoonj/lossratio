@@ -14,11 +14,11 @@ cannot introduce an import cycle.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 if TYPE_CHECKING:
     from .diagnostics.regime import Regime, RegimeDetector
 
     # Regime (cohort-axis) filter: a concrete Regime, a deferred
     # RegimeDetector (detected at fit / backtest time), or None (no filter).
-    RegimeArg = Regime | RegimeDetector | None
+    RegimeArg: TypeAlias = Regime | RegimeDetector | None

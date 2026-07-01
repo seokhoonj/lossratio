@@ -19,6 +19,12 @@ class Total:
     Use :meth:`Triangle.total_agg` to construct.
     """
 
+    # Instance attributes are set in `_from_triangle` (the class is built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _df: pl.DataFrame
+    _output_type: str
+    _groups: str | list[str] | None
+
     def __init__(self) -> None:
         raise TypeError(
             "Total is produced by `triangle.total_agg()`, not a direct constructor."

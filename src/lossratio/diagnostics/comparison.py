@@ -241,6 +241,26 @@ class EstimatorComparisonFit:
         the unmatched, per-estimator evidence.
     """
 
+    # Instance attributes are set in `_from_fits` (the class is built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _output_type:        str
+    _groups:             str | list[str] | None
+    _labels:             list[str]
+    _fits:               dict[str, BacktestFit]
+    baseline:            str
+    target:              str
+    _common_holdouts:    tuple[int, ...]
+    _n_matched:          int
+    _has_incr:           bool
+    _cells:              pl.DataFrame
+    _horizon_summary:    pl.DataFrame
+    _anchor_summary:     pl.DataFrame
+    _holdout_summary:    pl.DataFrame
+    _horizon_comparison: pl.DataFrame
+    _anchor_comparison:  pl.DataFrame
+    _holdout_comparison: pl.DataFrame
+    _match_summary:      pl.DataFrame
+
     # The incremental companion columns the inner fits may carry through.
     _INCR_CELL_COLS = BacktestFit._INCR_CELL_COLS
 

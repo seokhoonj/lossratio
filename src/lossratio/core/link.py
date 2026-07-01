@@ -176,6 +176,18 @@ class Link:
     >>> link.df            # raw long-format link table
     """
 
+    # Instance attributes are set in `_from_triangle` (built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _df: pl.DataFrame
+    _tri_df: pl.DataFrame
+    _output_type: str
+    _groups: str | list[str] | None
+    _cohort: str
+    _duration: str
+    _target: str
+    _premium: str | None
+    _weight: str | None
+
     def __init__(self) -> None:
         raise TypeError(
             "Link is produced by `triangle.link(...)`, not a direct constructor."

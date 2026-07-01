@@ -282,6 +282,21 @@ class _FoldFit:
         The refitted estimator's result (a ``LossFit``).
     """
 
+    # Instance attributes are set in `_from_triangle` (the class is built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _output_type: str
+    _groups: str | list[str] | None
+    _cohort: str
+    _duration: str
+    _triangle: Triangle
+    holdout: int
+    estimator: Any
+    _refit: Any
+    target: str
+    _ae_err: pl.DataFrame
+    _col_summary: pl.DataFrame
+    _diag_summary: pl.DataFrame
+
     def __init__(self) -> None:
         raise TypeError(
             "_FoldFit is an internal per-fold building block. Use Backtest(...).fit(triangle)."
@@ -850,6 +865,21 @@ class BacktestFit:
         The inner per-fold ``_FoldFit`` for each depth that produced
         cells, keyed by hold-out depth -- for drill-down / inspection.
     """
+
+    # Instance attributes are set in `_from_triangle` (the class is built via
+    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    _output_type: str
+    _groups: str | list[str] | None
+    estimator: Any
+    target: str
+    holdouts: tuple[int, ...]
+    _skipped: list[int]
+    _fits: dict[int, Any]
+    _ae_err: pl.DataFrame
+    _has_incr: bool
+    _horizon_summary: pl.DataFrame
+    _anchor_summary: pl.DataFrame
+    _holdout_summary: pl.DataFrame
 
     # The incremental companion columns the inner Backtest may carry through.
     _INCR_CELL_COLS = ("incr_actual", "incr_expected", "incr_aeg", "incr_ae_err")

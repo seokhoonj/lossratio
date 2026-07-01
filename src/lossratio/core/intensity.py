@@ -206,6 +206,16 @@ class Intensity:
     >>> intf.df              # diagnostic table
     """
 
+    # Instance attributes are set in `_from_link` (built via `cls.__new__`,
+    # not `__init__`); declared here so the type is visible.
+    _df: pl.DataFrame
+    _link: Link
+    _recent: int | None
+    _output_type: str
+    _groups: str | list[str] | None
+    _cohort: str
+    _duration: str
+
     def __init__(self) -> None:
         raise TypeError(
             "Intensity is produced by `link.intensity()`, not a direct constructor."
