@@ -266,6 +266,37 @@ class EstimatorComparisonFit:
         self = cls.__new__(cls)
         labels = list(fits)
         first = fits[labels[0]]
+
+        # Every estimator must report at the SAME group grain for the matched
+        # comparison to be apples-to-apples. A covariate estimator collapses
+        # its reporting grain to (groups minus covariates), so it carries
+        # FEWER group columns than a non-covariate fit. Mixing the two -- or
+        # two covariate estimators with different covariates -- would either
+        # fail the key-column select (a needed group column is absent) or
+        # silently compare mismatched populations (one estimator's finer cells
+        # pooled against another's collapsed cells). Require equal grains and
+        # fail loudly.
+        base_grain = normalize_groups(first._groups)
+        offenders = {
+            label: normalize_groups(f._groups)
+            for label, f in fits.items()
+            if normalize_groups(f._groups) != base_grain
+        }
+        if offenders:
+            detail = ", ".join(
+                f"{label!r} at {grain or '<no groups>'}"
+                for label, grain in offenders.items()
+            )
+            raise ValueError(
+                f"every estimator must report at the same group grain, but "
+                f"{labels[0]!r} reports at {base_grain or '<no groups>'} while "
+                f"{detail}. A covariate estimator collapses its reporting grain "
+                f"to (groups minus covariates), so it cannot be compared cell "
+                f"for cell against a non-covariate fit or one with different "
+                f"covariates. Give every estimator the same covariates (or "
+                f"none), or compare them at the same groups."
+            )
+
         self._output_type = first._output_type
         self._groups = first._groups
         self._labels = labels

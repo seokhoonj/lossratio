@@ -165,6 +165,39 @@ def test_direct_init_raises():
         EstimatorComparisonFit()
 
 
+def test_mismatched_group_grain_raises():
+    """A covariate estimator collapses its reporting grain to (groups minus
+    covariates). Comparing it against a full-grain estimator -- in EITHER
+    order -- must raise (used to crash on a missing key column when the
+    covariate fit came second, and silently pool mismatched populations when
+    it came first)."""
+    tri = _triangle(groups=["coverage", "channel"])
+    noncov = lr.PooledLoss()
+    cov = lr.CredibleLoss(covariates=["channel"])
+    for ests in (
+        {"pooled": noncov, "cov": cov},   # covariate second
+        {"cov": cov, "pooled": noncov},   # covariate first
+    ):
+        with pytest.raises(ValueError, match="same group grain"):
+            lr.EstimatorComparison(
+                ests, holdouts=(4, 8), target="loss"
+            ).fit(tri)
+
+
+def test_matched_covariate_grain_ok():
+    """Estimators sharing the same covariates report at the same collapsed
+    grain and compare cleanly."""
+    tri = _triangle(groups=["coverage", "channel"])
+    fit = lr.EstimatorComparison(
+        {
+            "cred":   lr.CredibleLoss(covariates=["channel"]),
+            "smooth": lr.SmoothLoss(covariates=["channel"]),
+        },
+        holdouts=(4, 8), target="loss",
+    ).fit(tri)
+    assert fit._n_matched > 0
+
+
 # ---------------------------------------------------------------------------
 # Matched-cell assembly
 # ---------------------------------------------------------------------------
