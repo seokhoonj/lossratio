@@ -46,6 +46,7 @@ pandas = [
 ]
 dev = [
   "build>=1.0",
+  "mypy>=1.8",
   "pandas>=2.0",
   "pyarrow>=10",
   "pytest>=7.0",
@@ -102,3 +103,18 @@ select = ["E", "F", "I", "B", "UP", "N"]
 # N803/N806/N817: uppercase math symbols (matrices, credibility Z, design X)
 # are idiomatic in the actuarial kernels and mandated by the naming convention.
 ignore = ["N803", "N806", "N817"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/lossratio"]
+# Third-party numeric/plotting libs ship partial or no type information;
+# checking our own code against their public API is enough without their
+# internals being fully typed.
+ignore_missing_imports = true
+
+# Do not descend into sphinx: matplotlib.sphinxext pulls it in, and its source
+# uses 3.12-only `type` statements that fail to parse under python_version 3.10.
+# It is a docs-only dependency the package never imports at runtime.
+[[tool.mypy.overrides]]
+module = "sphinx.*"
+follow_imports = "skip"
