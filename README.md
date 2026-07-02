@@ -147,14 +147,6 @@ fit.summary().head(3)
 #> │ SURGERY  ┆ 2023-03-01 ┆ 8.8364e8  ┆ 5.8066e8     ┆ 1.521789   ┆ 0.007969 │
 #> └──────────┴────────────┴───────────┴──────────────┴────────────┴──────────┘
 
-# 4b. Plot the per-cohort loss-ratio trajectories (observed solid, projected
-#     dashed), coloured by cohort.
-fit.plot()
-```
-
-![Loss-ratio projection for SURGERY: per-cohort trajectories, observed (solid) vs projected (dashed), coloured by cohort. Older cohorts settle near 1.5; the 2024-07 regime shift pulls newer cohorts lower.](assets/quickstart_ratio.png)
-
-```python
 # 5. Add an uncertainty band with a residual bootstrap, and read the per-cohort
 #    credibility (u = level, Z = credibility weight, psi = between-cohort var).
 cred = lr.CredibleLoss(uncertainty=lr.ResidualBootstrap(n_replicates=200, seed=1)).fit(tri)
@@ -174,6 +166,20 @@ reg = tri.detect_regime(target="ratio", window=12)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
+# 6b. Project respecting the detected regime (segment_wise: each regime's
+#     cohorts develop along their own shape). The post-2024-07 cohorts now
+#     project along their own ~0.9 level instead of being dragged up toward the
+#     pre-regime ~1.5 -- observed solid, projected dashed, coloured by cohort.
+reg_fit = lr.Ratio(
+    loss=lr.PooledLoss(regime=lr.RegimeDetector(treatment="segment_wise")),
+    premium=lr.PooledPremium(),
+).fit(tri)
+reg_fit.plot()
+```
+
+![Regime-aware loss-ratio projection for SURGERY: two bands -- pre-2024-07 cohorts settle near 1.5, post-regime cohorts near 0.9 -- each projected along its own regime's shape (observed solid, projected dashed, coloured by cohort).](assets/quickstart_ratio.png)
+
+```python
 # 7. Out-of-sample validation. A sequence of holdouts runs a rolling-origin
 #    backtest; reliable_horizon() reports how many durations ahead the
 #    projection stays within tolerance.
