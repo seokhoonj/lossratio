@@ -167,8 +167,8 @@ def _diagnostic_to_df(
     return _arrays_to_long_df(
         {
             "duration": np.arange(1, n + 1, dtype=np.int64),
-            "g": result.g_k,
-            "g_se": result.g_se_k,
+            "intensity": result.g_k,
+            "intensity_se": result.g_se_k,
             "sigma2": result.sigma2_k,
             "n_cohorts": np.asarray(result.n_obs_k, dtype=np.int64),
         },

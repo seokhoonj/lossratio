@@ -18,7 +18,7 @@ def test_total_schema_grouped(sample_triangle):
     tri = sample_triangle()
     tot = tri.total_agg().to_polars()
     expected = {
-        "coverage", "n_cohorts", "sales_start", "sales_end",
+        "coverage", "n_cohorts", "cohort_min", "cohort_max",
         "loss", "premium", "ratio",
         "loss_share", "premium_share",
     }

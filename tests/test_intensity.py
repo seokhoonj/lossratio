@@ -49,13 +49,15 @@ def test_intensity_repr_grouped(toy_input):
 
 def test_intensity_df_columns_no_group(toy_input):
     intensity = _tri(toy_input).link().intensity()
-    assert set(intensity.df.columns) >= {"duration", "g", "g_se", "sigma2", "n_cohorts"}
+    assert set(intensity.df.columns) >= {
+        "duration", "intensity", "intensity_se", "sigma2", "n_cohorts"
+    }
 
 
 def test_intensity_df_columns_with_group(toy_input):
     intensity = _tri_grouped(toy_input).link().intensity()
     assert set(intensity.df.columns) >= {
-        "coverage", "duration", "g", "g_se", "sigma2", "n_cohorts",
+        "coverage", "duration", "intensity", "intensity_se", "sigma2", "n_cohorts",
     }
 
 
@@ -76,14 +78,14 @@ def test_intensity_g_is_finite_for_nontrivial_links(toy_input):
     intensity = _tri(toy_input).link().intensity()
     df = intensity.df
     # links 1..3 have at least 2 cohorts contributing → g should be finite
-    for k, g in zip(df["duration"].to_list(), df["g"].to_list(), strict=False):
+    for k, g in zip(df["duration"].to_list(), df["intensity"].to_list(), strict=False):
         if k <= 3:
             assert g is not None
 
 
 def test_intensity_g_se_nonneg_when_present(toy_input):
     intensity = _tri(toy_input).link().intensity()
-    for v in intensity.df["g_se"].to_list():
+    for v in intensity.df["intensity_se"].to_list():
         assert v is None or v >= 0.0
 
 
@@ -131,8 +133,8 @@ def test_intensity_per_group_independent(toy_input):
     tri = lr.Triangle(df_grouped, groups="coverage")
     intensity = tri.link().intensity()
     df = intensity.df
-    a_g = df.filter(pl.col("coverage") == "A").sort("duration")["g"].to_list()
-    b_g = df.filter(pl.col("coverage") == "B").sort("duration")["g"].to_list()
+    a_g = df.filter(pl.col("coverage") == "A").sort("duration")["intensity"].to_list()
+    b_g = df.filter(pl.col("coverage") == "B").sort("duration")["intensity"].to_list()
     assert a_g == b_g
 
 

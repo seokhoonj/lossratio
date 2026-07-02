@@ -265,7 +265,7 @@ def _ata_summary(
     # cross-cohort SD divided by the unweighted mean. RSE = SE(f) / f
     # with SE(f) = sd / sqrt(n).
     agg = agg.with_columns(
-        pl.col("weighted").alias("f"),
+        pl.col("weighted").alias("ata"),
         pl.when(pl.col("mean").is_not_null() & (pl.col("mean") != 0.0))
         .then(pl.col("_sd") / pl.col("mean").abs())
         .otherwise(None)

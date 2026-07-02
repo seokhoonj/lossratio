@@ -111,10 +111,10 @@ def test_link_build_once_summarise_twice(toy_input):
     """Same Link should produce identical ATA / Intensity results
     each time it's queried."""
     link = _tri(toy_input).link()
-    a1 = link.ata().df.sort("duration")["f"].to_list()
-    a2 = link.ata().df.sort("duration")["f"].to_list()
-    i1 = link.intensity().df.sort("duration")["g"].to_list()
-    i2 = link.intensity().df.sort("duration")["g"].to_list()
+    a1 = link.ata().df.sort("duration")["ata"].to_list()
+    a2 = link.ata().df.sort("duration")["ata"].to_list()
+    i1 = link.intensity().df.sort("duration")["intensity"].to_list()
+    i2 = link.intensity().df.sort("duration")["intensity"].to_list()
     assert a1 == a2
     assert i1 == i2
 

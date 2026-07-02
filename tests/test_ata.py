@@ -49,13 +49,13 @@ def test_ata_repr_grouped(toy_input):
 
 def test_ata_df_columns_no_group(toy_input):
     ata = _tri(toy_input).link().ata()
-    assert set(ata.df.columns) >= {"duration", "f", "sigma2", "cv", "rse", "n_cohorts"}
+    assert set(ata.df.columns) >= {"duration", "ata", "sigma2", "cv", "rse", "n_cohorts"}
 
 
 def test_ata_df_columns_with_group(toy_input):
     ata = _tri_grouped(toy_input).link().ata()
     assert set(ata.df.columns) >= {
-        "coverage", "duration", "f", "sigma2", "cv", "rse", "n_cohorts",
+        "coverage", "duration", "ata", "sigma2", "cv", "rse", "n_cohorts",
     }
 
 
@@ -76,7 +76,7 @@ def test_ata_f_is_finite_for_nontrivial_links(toy_input):
     ata = _tri(toy_input).link().ata()
     df = ata.df
     # links 1..3 have at least 2 cohorts contributing → f should be finite
-    for k, f in zip(df["duration"].to_list(), df["f"].to_list(), strict=False):
+    for k, f in zip(df["duration"].to_list(), df["ata"].to_list(), strict=False):
         if k <= 3:
             assert f is not None
 
@@ -131,8 +131,8 @@ def test_ata_per_group_independent(toy_input):
     tri = lr.Triangle(df_grouped, groups="coverage")
     ata = tri.link().ata()
     df = ata.df
-    a_f = df.filter(pl.col("coverage") == "A").sort("duration")["f"].to_list()
-    b_f = df.filter(pl.col("coverage") == "B").sort("duration")["f"].to_list()
+    a_f = df.filter(pl.col("coverage") == "A").sort("duration")["ata"].to_list()
+    b_f = df.filter(pl.col("coverage") == "B").sort("duration")["ata"].to_list()
     assert a_f == b_f
 
 

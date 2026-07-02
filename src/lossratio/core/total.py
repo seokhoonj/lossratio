@@ -37,8 +37,8 @@ class Total:
 
         agg_exprs = [
             pl.col("cohort").n_unique().alias("n_cohorts"),
-            pl.col("cohort").min().alias("sales_start"),
-            pl.col("cohort").max().alias("sales_end"),
+            pl.col("cohort").min().alias("cohort_min"),
+            pl.col("cohort").max().alias("cohort_max"),
             pl.col("incr_loss").sum().alias("loss"),
             pl.col("incr_premium").sum().alias("premium"),
         ]
@@ -58,7 +58,7 @@ class Total:
         if grp is not None:
             ordered.extend(normalize_groups(grp))
         ordered.extend([
-            "n_cohorts", "sales_start", "sales_end",
+            "n_cohorts", "cohort_min", "cohort_max",
             "loss", "premium", "ratio",
             "loss_share", "premium_share",
         ])

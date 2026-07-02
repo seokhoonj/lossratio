@@ -208,7 +208,7 @@ def _diagnostic_to_df(
     return _arrays_to_long_df(
         {
             "duration": np.arange(1, n + 1, dtype=np.int64),
-            "f": result.f_k,
+            "ata": result.f_k,
             "sigma2": result.sigma2_k,
             "cv": result.cv_k,
             "rse": result.rse_k,
