@@ -51,20 +51,20 @@ _STR_DATE_FORMATS = (
 # ---------------------------------------------------------------------------
 
 
-def _int_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
+def _int_to_date(df: pl.DataFrame, col_name: str) -> pl.DataFrame:
     """Coerce integer column to Date by digit-count heuristic.
 
     - 4-digit yyyy (1900-2100):       2024 -> 2024-01-01
     - 6-digit yyyymm (190001-210012): 202403 -> 2024-03-01
     - 8-digit yyyymmdd:               20240315 -> 2024-03-15
     """
-    valid = df[var_name].drop_nulls()
+    valid = df[col_name].drop_nulls()
     if valid.len() == 0:
-        return df.with_columns(pl.col(var_name).cast(pl.Date))
+        return df.with_columns(pl.col(col_name).cast(pl.Date))
     vmin = scalar_int(valid.min())
     vmax = scalar_int(valid.max())
 
-    col = pl.col(var_name)
+    col = pl.col(col_name)
     if 1900 <= vmin and vmax <= 2100:
         expr = pl.date(col, 1, 1)
     elif 190001 <= vmin and vmax <= 210012:
@@ -73,14 +73,14 @@ def _int_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
         expr = pl.date(col // 10000, (col // 100) % 100, col % 100)
     else:
         raise ValueError(
-            f"Integer column '{var_name}' (range {vmin}-{vmax}) doesn't match "
+            f"Integer column '{col_name}' (range {vmin}-{vmax}) doesn't match "
             f"yyyy / yyyymm / yyyymmdd patterns. Provide as Date, ISO string, "
             f"or convert manually."
         )
-    return df.with_columns(expr.alias(var_name))
+    return df.with_columns(expr.alias(col_name))
 
 
-def _str_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
+def _str_to_date(df: pl.DataFrame, col_name: str) -> pl.DataFrame:
     """Coerce string column to Date by trying ISO-first format list.
 
     Strict, explicit, with an informative error on unparseable values.
@@ -100,12 +100,12 @@ def _str_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
     repeated date strings.
     """
     df = df.with_columns(
-        pl.col(var_name).str.strip_chars().replace("", None).alias(var_name)
+        pl.col(col_name).str.strip_chars().replace("", None).alias(col_name)
     )
 
-    mapping = pl.DataFrame({var_name: df[var_name].unique()})
+    mapping = pl.DataFrame({col_name: df[col_name].unique()})
     parse_exprs = [
-        pl.col(var_name).str.to_date(format=fmt, strict=False)
+        pl.col(col_name).str.to_date(format=fmt, strict=False)
         for fmt in _STR_DATE_FORMATS
     ]
     mapping = mapping.with_columns(
@@ -113,38 +113,38 @@ def _str_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
     )
 
     bad = mapping.filter(
-        pl.col(var_name).is_not_null() & pl.col("_parsed").is_null()
+        pl.col(col_name).is_not_null() & pl.col("_parsed").is_null()
     )
     if bad.height > 0:
-        bad_vals = bad[var_name].to_list()
+        bad_vals = bad[col_name].to_list()
         sample = bad_vals[:5]
         suffix = ", ..." if len(bad_vals) > 5 else ""
         raise ValueError(
-            f"Unsupported date format(s) in column '{var_name}': "
+            f"Unsupported date format(s) in column '{col_name}': "
             f"{sample}{suffix}. Supported: ISO YYYY-MM-DD, YYYY/MM/DD, "
             f"YYYYMMDD, plus those with HH:MM:SS time suffix."
         )
 
     return (
-        df.join(mapping, on=var_name, how="left")
-        .drop(var_name)
-        .rename({"_parsed": var_name})
+        df.join(mapping, on=col_name, how="left")
+        .drop(col_name)
+        .rename({"_parsed": col_name})
     )
 
 
-def _coerce_one_to_date(df: pl.DataFrame, var_name: str) -> pl.DataFrame:
+def _coerce_one_to_date(df: pl.DataFrame, col_name: str) -> pl.DataFrame:
     """Coerce a single column to ``pl.Date``. Private helper."""
-    dtype = df[var_name].dtype
+    dtype = df[col_name].dtype
     if dtype == pl.Date:
         return df
     if dtype == pl.Datetime:
-        return df.with_columns(pl.col(var_name).cast(pl.Date))
+        return df.with_columns(pl.col(col_name).cast(pl.Date))
     if dtype.is_integer():
-        return _int_to_date(df, var_name)
+        return _int_to_date(df, col_name)
     if dtype == pl.String:
-        return _str_to_date(df, var_name)
+        return _str_to_date(df, col_name)
     raise TypeError(
-        f"Cannot coerce column '{var_name}' (dtype={dtype}) to Date. "
+        f"Cannot coerce column '{col_name}' (dtype={dtype}) to Date. "
         f"Supported: Date, Datetime, integer (yyyy/yyyymm/yyyymmdd), "
         f"ISO string."
     )
@@ -168,8 +168,8 @@ def coerce_cols_to_date(df: pl.DataFrame, col_names: list[str]) -> pl.DataFrame:
     parsing path needs DataFrame context for the unique-then-join
     optimisation), so a multi-col interface is the natural shape.
     """
-    for var_name in col_names:
-        df = _coerce_one_to_date(df, var_name)
+    for col_name in col_names:
+        df = _coerce_one_to_date(df, col_name)
     return df
 
 

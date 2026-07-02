@@ -43,25 +43,25 @@ def link_feed(
     loss_obs: np.ndarray, premium_obs: np.ndarray,
     link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Observed loss links as ``(resp, expo, dur0, coh0)`` in k-major /
+    """Observed loss links as ``(response, exposure, dur0, coh0)`` in k-major /
     cohort-minor order -- the array form of the feed loop."""
     n_links = loss_obs.shape[1] - 1
-    ck = premium_obs[:, :n_links]
+    exposure_obs = premium_obs[:, :n_links]
     dl = loss_obs[:, 1:] - loss_obs[:, :n_links]
-    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+    mask = ~np.isnan(exposure_obs) & ~np.isnan(dl) & (exposure_obs > 0)
     if link_mask is not None:
         mask = mask & link_mask[:, :n_links]
     dur0, coh0 = np.nonzero(mask.T)
-    return dl[coh0, dur0], ck[coh0, dur0], dur0, coh0
+    return dl[coh0, dur0], exposure_obs[coh0, dur0], dur0, coh0
 
 
 def saturated_intensity(
-    resp: np.ndarray, expo: np.ndarray, dur0: np.ndarray, n_links: int
+    response: np.ndarray, exposure: np.ndarray, dur0: np.ndarray, n_links: int
 ) -> np.ndarray:
     """Pooled intensity ``g_k`` per from-duration (NaN where absent, ``0.0``
     where the exposure sum is zero)."""
-    num = _group_sum(resp, dur0, n_links)
-    den = _group_sum(expo, dur0, n_links)
+    num = _group_sum(response, dur0, n_links)
+    den = _group_sum(exposure, dur0, n_links)
     present = _group_count(dur0, n_links) > 0
     g = np.full(n_links, np.nan, dtype=np.float64)
     nz = present & (den != 0.0)
@@ -71,7 +71,7 @@ def saturated_intensity(
 
 
 def pearson_dispersion(
-    resp: np.ndarray, fitted: np.ndarray, dur0: np.ndarray, n: int,
+    response: np.ndarray, fitted: np.ndarray, dur0: np.ndarray, n: int,
     sigma_method: str = "locf",
 ) -> np.ndarray:
     """Per-from-duration Pearson dispersion ``phi_k`` (NaN where absent), with
@@ -86,7 +86,7 @@ def pearson_dispersion(
     phi = np.full(n, np.nan, dtype=np.float64)
     if dur0.size == 0:
         return phi
-    terms = ((resp - fitted) ** 2 / fitted).tolist()
+    terms = ((response - fitted) ** 2 / fitted).tolist()
     uniq, starts = np.unique(dur0, return_index=True)
     ends = np.append(starts[1:], dur0.size)
     present = uniq.tolist()
@@ -110,14 +110,14 @@ def pearson_dispersion(
 
 
 def buhlmann_straub_psi(
-    resp: np.ndarray, fitted: np.ndarray, phi: np.ndarray,
+    response: np.ndarray, fitted: np.ndarray, phi: np.ndarray,
     coh0: np.ndarray, dur0: np.ndarray, n_cohorts: int,
 ) -> float:
     """Buhlmann-Straub moment estimate of ``psi`` (array form). The cross-cohort
     reductions stay sequential builtin sums over the sorted cohorts to match the
     engine's ``sum(...)``."""
     sm = _group_sum(fitted, coh0, n_cohorts)
-    sy = _group_sum(resp, coh0, n_cohorts)
+    sy = _group_sum(response, coh0, n_cohorts)
     sphim = _group_sum(phi[dur0] * fitted, coh0, n_cohorts)
     cohorts = np.flatnonzero(_group_count(coh0, n_cohorts) > 0)
     if cohorts.size < 2:
@@ -135,13 +135,13 @@ def buhlmann_straub_psi(
 
 
 def conjugate_levels(
-    resp: np.ndarray, fitted: np.ndarray, phi: np.ndarray, psi: float,
+    response: np.ndarray, fitted: np.ndarray, phi: np.ndarray, psi: float,
     coh0: np.ndarray, dur0: np.ndarray, n_cohorts: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Per-cohort conjugate level ``u`` / credibility ``Z`` (array form), plus
     the present-cohort mask."""
     A = _group_sum(fitted / phi[dur0], coh0, n_cohorts)
-    sy = _group_sum(resp / phi[dur0], coh0, n_cohorts)
+    sy = _group_sum(response / phi[dur0], coh0, n_cohorts)
     present = _group_count(coh0, n_cohorts) > 0
     coh = np.flatnonzero(present)
     u = np.full(n_cohorts, np.nan, dtype=np.float64)

@@ -570,8 +570,8 @@ def _fit_premium(
         last_obs = np.where(
             has_obs, n_dur - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
         )
-        dur_idx = np.arange(n_dur)[None, :]
-        should_proj = (dur_idx > last_obs[:, None]) & has_obs[:, None]
+        duration_idx = np.arange(n_dur)[None, :]
+        should_proj = (duration_idx > last_obs[:, None]) & has_obs[:, None]
         n_unfittable += int((should_proj & np.isnan(premium_proj)).sum())
 
         long_parts.append(

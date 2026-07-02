@@ -33,7 +33,7 @@ import warnings
 
 import numpy as np
 
-VALID_SIGMA_METHODS: tuple[str, ...] = (
+_VALID_SIGMA_METHODS: tuple[str, ...] = (
     "min_last2",
     "locf",
     "loglinear",
@@ -57,7 +57,7 @@ def extrapolate_tail_sigma2(
     sigma2_k
         1-D array of ``sigma^2`` per link. Length ``n_links``.
     sigma_method
-        One of :data:`VALID_SIGMA_METHODS`.
+        One of :data:`_VALID_SIGMA_METHODS`.
 
     Returns
     -------
@@ -65,9 +65,9 @@ def extrapolate_tail_sigma2(
         Copy of ``sigma2_k`` with unestimated entries filled when
         possible.
     """
-    if sigma_method not in VALID_SIGMA_METHODS:
+    if sigma_method not in _VALID_SIGMA_METHODS:
         raise ValueError(
-            f"sigma_method must be one of {VALID_SIGMA_METHODS}, "
+            f"sigma_method must be one of {_VALID_SIGMA_METHODS}, "
             f"got {sigma_method!r}"
         )
 

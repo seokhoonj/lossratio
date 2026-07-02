@@ -75,16 +75,16 @@ def bspline_design(
 def onehot_design(duration: np.ndarray) -> tuple[np.ndarray, np.ndarray, list[int]]:
     """One-hot (saturated) basis over the distinct durations + zero penalty.
 
-    Returns ``(B, P, durs)`` where ``B[c, j] = 1`` iff cell ``c`` is at the
-    ``j``-th distinct duration ``durs[j]``, and ``P`` is the zero penalty.
+    Returns ``(B, P, durations)`` where ``B[c, j] = 1`` iff cell ``c`` is at the
+    ``j``-th distinct duration ``durations[j]``, and ``P`` is the zero penalty.
     With ``lambda = 0`` the penalized GLM on this basis reduces to the
     saturated per-duration fit (the golden-anchor reduction)."""
-    durs = sorted(set(int(x) for x in duration))
-    idx = {k: j for j, k in enumerate(durs)}
-    B = np.zeros((len(duration), len(durs)), dtype=np.float64)
+    durations = sorted(set(int(x) for x in duration))
+    idx = {k: j for j, k in enumerate(durations)}
+    B = np.zeros((len(duration), len(durations)), dtype=np.float64)
     for c, k in enumerate(duration):
         B[c, idx[int(k)]] = 1.0
-    return B, np.zeros((len(durs), len(durs)), dtype=np.float64), durs
+    return B, np.zeros((len(durations), len(durations)), dtype=np.float64), durations
 
 
 # ---------------------------------------------------------------------------
@@ -254,26 +254,26 @@ def smooth_intensity(
     boundary fit (``representable = False``, all ``g_k = 0``)."""
     y = np.asarray(response, dtype=np.float64)
     P = np.asarray(exposure, dtype=np.float64)
-    dur = np.asarray(duration, dtype=np.int64)
+    duration = np.asarray(duration, dtype=np.int64)
 
     # filter to fittable cells FIRST (positive, finite exposure + finite
     # response), so every downstream quantity -- the duration key set, the
     # basis sizing, the boundary gate, the prediction range -- is derived from
     # the data actually fit (boundary policy on the real total).
     ok = np.isfinite(P) & (P > 0.0) & np.isfinite(y)
-    y, P, dur = y[ok], P[ok], dur[ok]
-    durs = sorted(set(int(x) for x in dur))
+    y, P, duration = y[ok], P[ok], duration[ok]
+    durations = sorted(set(int(x) for x in duration))
 
     if y.size == 0 or float(y.sum()) <= 0.0:
         return _SmoothResult(
-            g={k: 0.0 for k in durs}, lam=0.0, edf=0.0, pearson=0.0,
+            g={k: 0.0 for k in durations}, lam=0.0, edf=0.0, pearson=0.0,
             representable=False, converged=True,
         )
 
     offset = np.log(P)
-    nb = n_basis if n_basis is not None else _default_n_basis(len(durs), degree)
-    nb = max(degree + 1, min(nb, len(durs)))
-    B, penalty = bspline_design(dur, nb, degree)
+    nb = n_basis if n_basis is not None else _default_n_basis(len(durations), degree)
+    nb = max(degree + 1, min(nb, len(durations)))
+    B, penalty = bspline_design(duration, nb, degree)
 
     if lam != "auto":
         fit = penalized_irls(y, offset, B, penalty, float(lam))
@@ -301,9 +301,9 @@ def smooth_intensity(
                 best_gcv, fit, best_lam = gcv, f, float(lg)
 
     # evaluate g_k = exp(s(k)) at each distinct duration (offset excluded)
-    Bk, _ = bspline_design(np.array(durs, dtype=np.int64), nb, degree)
+    Bk, _ = bspline_design(np.array(durations, dtype=np.int64), nb, degree)
     s_k = Bk @ fit.beta
-    g = {k: float(np.exp(s_k[j])) for j, k in enumerate(durs)}
+    g = {k: float(np.exp(s_k[j])) for j, k in enumerate(durations)}
     return _SmoothResult(
         g=g, lam=best_lam, edf=fit.edf, pearson=fit.pearson,
         representable=True, converged=fit.converged,

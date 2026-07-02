@@ -63,33 +63,33 @@ def _credible_levels(
     # numpy feed (k-major / cohort-minor); the vectorized engine matches the
     # dict-loop primitives to the rounding floor, so this is the single source
     # of truth for the point fit AND every bootstrap replicate.
-    resp, expo, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
+    response, exposure, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
     if g_k.ndim == 1:
-        m0 = g_k[dur0] * expo
+        m0 = g_k[dur0] * exposure
     else:
-        # covariate path: g is the per-cohort effective intensity g_eff[i, k],
-        # so m0 = g_eff[cohort, from-duration] * P (cell-aligned with expo/dur0).
-        m0 = g_k[coh0, dur0] * expo
+        # covariate path: g is the per-cohort marginal intensity g_marginal[i, k],
+        # so m0 = g_marginal[cohort, from-duration] * P (cell-aligned with exposure/dur0).
+        m0 = g_k[coh0, dur0] * exposure
 
     u_vec = np.ones(n_cohorts, dtype=np.float64)
     z_vec = np.zeros(n_cohorts, dtype=np.float64)
     psi_hat = 0.0
     fin = np.isfinite(m0) & (m0 > 0)
     if fin.any():
-        resp_f, m0_f, dur_f, coh_f = resp[fin], m0[fin], dur0[fin], coh0[fin]
-        phi = engine_fast.pearson_dispersion(resp_f, m0_f, dur_f, n_links, sigma_method)
+        response_f, m0_f, duration_f, coh_f = response[fin], m0[fin], dur0[fin], coh0[fin]
+        phi = engine_fast.pearson_dispersion(response_f, m0_f, duration_f, n_links, sigma_method)
         # Degenerate cases collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
         # to carry), and the Buhlmann-Straub psi moment is undefined (0/0) with
         # a single cohort. Both leave u = 1 = exactly PooledLoss.
-        phi_ok = not np.isnan(phi[np.unique(dur_f)]).any()
+        phi_ok = not np.isnan(phi[np.unique(duration_f)]).any()
         n_coh = int(np.unique(coh_f).size)
         if phi_ok:
             if psi == "auto":
                 psi_hat = (
                     engine_fast.buhlmann_straub_psi(
-                        resp_f, m0_f, phi, coh_f, dur_f, n_cohorts
+                        response_f, m0_f, phi, coh_f, duration_f, n_cohorts
                     )
                     if n_coh >= 2
                     else 0.0
@@ -97,7 +97,7 @@ def _credible_levels(
             else:
                 psi_hat = float(psi)
             u_arr, z_arr, present = engine_fast.conjugate_levels(
-                resp_f, m0_f, phi, psi_hat, coh_f, dur_f, n_cohorts
+                response_f, m0_f, phi, psi_hat, coh_f, duration_f, n_cohorts
             )
             u_vec[present] = np.maximum(u_arr[present], 0.0)   # recovery floor
             z_vec[present] = z_arr[present]
@@ -118,7 +118,7 @@ def _project_credible(
 
     ``g_k`` is either the pooled per-duration intensity (1-D, shape
     ``(n_links,)``) or, on the covariate path, the per-cohort effective
-    intensity ``g_eff`` (2-D, shape ``(n_cohorts, n_links)``); the 1-D path is
+    intensity ``g_marginal`` (2-D, shape ``(n_cohorts, n_links)``); the 1-D path is
     byte-identical to the original recursion."""
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -184,9 +184,9 @@ def _smooth_backfit(
 
     # valid loss-link cells: response = dLoss, exposure = predetermined premium,
     # keyed by from-duration + cohort row (cohort needed for the u-adjustment).
-    resp: list[float] = []
-    expo: list[float] = []
-    dur: list[int] = []
+    response: list[float] = []
+    exposure: list[float] = []
+    duration: list[int] = []
     coh: list[int] = []
     for k in range(n_links):
         ck = premium_obs[:, k]
@@ -195,13 +195,13 @@ def _smooth_backfit(
         if link_mask is not None:
             mask = mask & link_mask[:, k]
         for i in np.flatnonzero(mask):
-            resp.append(float(dl[i]))
-            expo.append(float(ck[i]))
-            dur.append(k + 1)
+            response.append(float(dl[i]))
+            exposure.append(float(ck[i]))
+            duration.append(k + 1)
             coh.append(int(i))
-    resp_a = np.array(resp, dtype=np.float64)
-    expo_a = np.array(expo, dtype=np.float64)
-    dur_l = dur
+    response_a = np.array(response, dtype=np.float64)
+    exposure_a = np.array(exposure, dtype=np.float64)
+    duration_l = duration
     coh_a = np.array(coh, dtype=np.int64)
 
     u_vec = np.ones(n_cohorts, dtype=np.float64)
@@ -215,9 +215,9 @@ def _smooth_backfit(
     backfit_converged = True            # trivially so for no cells / single pass
 
     def _smooth_g(u: np.ndarray, lam_use):
-        adj = (u[coh_a] * expo_a).tolist()       # divide u out -> shape on u*P
+        adj = (u[coh_a] * exposure_a).tolist()       # divide u out -> shape on u*P
         sm = smooth_intensity(
-            response=resp_a.tolist(), exposure=adj, duration=dur_l,
+            response=response_a.tolist(), exposure=adj, duration=duration_l,
             n_basis=n_basis, lam=lam_use,
         )
         gk = np.array(
@@ -229,7 +229,7 @@ def _smooth_backfit(
     # through the backfitting: the shape smoothness is a pipeline choice, and
     # re-selecting it each pass adds cost and can stall the alternation.
     cur_lam: float | str = lam
-    if resp_a.size:
+    if response_a.size:
         backfit_converged = False
         for _ in range(max_outer):
             # s-step: smooth shape on the u-adjusted exposure
@@ -238,8 +238,8 @@ def _smooth_backfit(
                 # boundary -> fallback (saturated g_k on raw exposure)
                 representable = False
                 g_map = engine.saturated_intensity(
-                    response=resp_a.tolist(), exposure=expo_a.tolist(),
-                    duration=dur_l,
+                    response=response_a.tolist(), exposure=exposure_a.tolist(),
+                    duration=duration_l,
                 )
                 g_k = np.array(
                     [g_map.get(k + 1, np.nan) for k in range(n_links)],
@@ -315,12 +315,12 @@ def _smooth_backfit_covariate(
 
     The s-step fits the SMOOTH covariate kernel (P-spline duration shape + ridge
     covariate level) on the ``u``-adjusted sub-cell exposure ``u_i * P`` and
-    collapses ``g_d(x)`` to the 2-D effective intensity ``g_eff``; the u-step is
-    the dispersion-scaled conjugate on ``g_eff``. The two alternate (damped) to
-    convergence, mirroring the pooled smooth backfit. Returns ``g_eff`` / ``u`` /
-    ``Z`` / ``psi`` / ``covfit`` / ``representable`` / ``converged``.
+    collapses ``g_d(x)`` to the 2-D marginal intensity ``g_marginal``; the u-step is
+    the dispersion-scaled conjugate on ``g_marginal``. The two alternate (damped) to
+    convergence, mirroring the pooled smooth backfit. Returns ``g_marginal`` / ``u`` /
+    ``Z`` / ``psi`` / ``cov_fit`` / ``representable`` / ``converged``.
     """
-    from .covariate import _build_g_eff, fit_covariate_intensity
+    from .covariate import _build_g_marginal, fit_covariate_intensity
 
     n_cohorts = loss_obs.shape[0]
     u_vec = np.ones(n_cohorts, dtype=np.float64)
@@ -328,26 +328,26 @@ def _smooth_backfit_covariate(
     psi_hat = 0.0
 
     def _step(u: np.ndarray):
-        adj = u[cov_data.coh_idx] * cov_data.expo      # divide u out -> shape on u*P
-        cf = fit_covariate_intensity(
-            cov_data.resp, adj, cov_data.dur, cov_data.codes,
+        adj = u[cov_data.coh_idx] * cov_data.exposure      # divide u out -> shape on u*P
+        cov_fit = fit_covariate_intensity(
+            cov_data.response, adj, cov_data.duration, cov_data.codes,
             lam=lam_cov, n_basis=n_basis, lam_smooth=lam,
         )
-        return cf, _build_g_eff(cf, cov_data)
+        return cov_fit, _build_g_marginal(cov_fit, cov_data)
 
-    if cov_data.resp.size == 0:
-        return {"g_eff": np.full((n_cohorts, loss_obs.shape[1] - 1), np.nan),
-                "u": u_vec, "Z": z_vec, "psi": 0.0, "covfit": None,
+    if cov_data.response.size == 0:
+        return {"g_marginal": np.full((n_cohorts, loss_obs.shape[1] - 1), np.nan),
+                "u": u_vec, "Z": z_vec, "psi": 0.0, "cov_fit": None,
                 "representable": False, "converged": True}
 
-    covfit, g_eff = _step(u_vec)
-    inner_converged = covfit.converged
+    cov_fit, g_marginal = _step(u_vec)
+    inner_converged = cov_fit.converged
     backfit_converged = False
     for _ in range(max_outer):
-        covfit, g_eff = _step(u_vec)
-        inner_converged = covfit.converged
+        cov_fit, g_marginal = _step(u_vec)
+        inner_converged = cov_fit.converged
         u_conj, z_vec, psi_hat = _credible_levels(
-            loss_obs, premium_obs, g_eff, sigma_method, psi, link_mask=link_mask
+            loss_obs, premium_obs, g_marginal, sigma_method, psi, link_mask=link_mask
         )
         resid = float(np.max(np.abs(u_conj - u_vec)))
         u_vec = u_vec + _BACKFIT_RELAX * (u_conj - u_vec)
@@ -355,12 +355,12 @@ def _smooth_backfit_covariate(
             backfit_converged = True
             break
     else:
-        covfit, g_eff = _step(u_vec)            # final consistency refit at u
+        cov_fit, g_marginal = _step(u_vec)            # final consistency refit at u
         _, z_vec, psi_hat = _credible_levels(
-            loss_obs, premium_obs, g_eff, sigma_method, psi, link_mask=link_mask
+            loss_obs, premium_obs, g_marginal, sigma_method, psi, link_mask=link_mask
         )
     return {
-        "g_eff": g_eff, "u": u_vec, "Z": z_vec, "psi": psi_hat, "covfit": covfit,
+        "g_marginal": g_marginal, "u": u_vec, "Z": z_vec, "psi": psi_hat, "cov_fit": cov_fit,
         "representable": True, "converged": inner_converged and backfit_converged,
     }
 

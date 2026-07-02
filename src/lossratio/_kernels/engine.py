@@ -70,16 +70,16 @@ def link_ratios(*, response, cohort, duration, include=None) -> dict:
     keep = (None if include is None
             else {(i, k) for inc, i, k in zip(include, cohort, duration, strict=False) if inc})
     cohorts = sorted(set(cohort))
-    durs = sorted(set(duration))
+    durations = sorted(set(duration))
     cum: dict = {}
     for i in cohorts:
         run = 0.0
-        for k in durs:
+        for k in durations:
             if (i, k) in cell:
                 run += cell[(i, k)]
                 cum[(i, k)] = run
     f: dict = {}
-    for k in durs:
+    for k in durations:
         both = [i for i in cohorts
                 if (i, k) in cum and (i, k + 1) in cum and cum[(i, k)] > 0.0
                 and (keep is None or (i, k) in keep)]
@@ -105,10 +105,10 @@ def pearson_dispersion(*, response, fitted, duration, sigma_method="locf") -> di
     by: dict = {}
     for y, m0, k in zip(response, fitted, duration, strict=False):
         by.setdefault(k, []).append((y, m0))
-    durs = sorted(by)
+    durations = sorted(by)
     phi: dict = {}
     valid: list = []
-    for k in durs:
+    for k in durations:
         cells = by[k]
         df = len(cells) - 1
         if df <= 0:
@@ -118,7 +118,7 @@ def pearson_dispersion(*, response, fitted, duration, sigma_method="locf") -> di
         valid.append(k)
     if valid:
         last = None
-        for k in durs:                       # locf: carry nearest prior valid forward
+        for k in durations:                       # locf: carry nearest prior valid forward
             if phi[k] is not None:
                 last = phi[k]
             elif last is not None:           # interior/tail gap -> nearest prior valid

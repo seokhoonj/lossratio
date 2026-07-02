@@ -401,23 +401,23 @@ def fit_covariate_intensity(
 
 
 @dataclass
-class SegmentCovData:
+class SegmentCovariateData:
     """Per-segment covariate link data (reused by the point fit and the
-    bootstrap). ``resp`` / ``expo`` / ``dur`` are the sub-cell loss links
-    (response = ``dLoss``, exposure = from-cell cumulative premium, ``dur`` =
+    bootstrap). ``response`` / ``exposure`` / ``duration`` are the sub-cell loss links
+    (response = ``dLoss``, exposure = from-cell cumulative premium, ``duration`` =
     1-based from-duration), ``coh_idx`` the cohort row index per link, ``codes``
-    the per-covariate level codes per link. ``by_cd`` maps ``(cohort_value,
+    the per-covariate level codes per link. ``by_cohort_duration`` maps ``(cohort_value,
     from-duration) -> [(cell, from-premium)]`` and ``last_obs`` the cohort's last
     observed from-duration -- together they carry the premium mix used to
-    collapse ``g_d(x)`` to ``g_eff``.
+    collapse ``g_d(x)`` to ``g_marginal``.
     """
 
-    resp: np.ndarray
-    expo: np.ndarray
-    dur: np.ndarray
+    response: np.ndarray
+    exposure: np.ndarray
+    duration: np.ndarray
     coh_idx: np.ndarray
     codes: dict[str, np.ndarray]
-    by_cd: dict[tuple, list[tuple[dict, float]]]
+    by_cohort_duration: dict[tuple, list[tuple[dict, float]]]
     last_obs: dict[object, int]
     cohorts: list
     n_links: int
@@ -428,12 +428,12 @@ def _covariate_segment_data(
     covariates: list[str],
     cohorts: list,
     n_links: int,
-) -> SegmentCovData:
+) -> SegmentCovariateData:
     """Build the sub-cell loss links + premium-mix structure for one segment."""
     keys = ["cohort", *covariates]
     s = sub_cells.sort([*keys, "duration"]).with_columns(
-        pl.col("incr_loss").cum_sum().over(keys).alias("_cl"),
-        pl.col("incr_premium").cum_sum().over(keys).alias("_cp"),
+        pl.col("incr_loss").cum_sum().over(keys).alias("_cum_loss"),
+        pl.col("incr_premium").cum_sum().over(keys).alias("_cum_premium"),
     )
     # links: row at from-duration d joined with the to-cell cumulative loss at
     # d+1 -- response = dLoss over the link, exposure = from-cell cumulative
@@ -441,66 +441,66 @@ def _covariate_segment_data(
     nxt = s.select([
         *keys,
         (pl.col("duration") - 1).alias("duration"),
-        pl.col("_cl").alias("_cl_to"),
+        pl.col("_cum_loss").alias("_cum_loss_to"),
     ])
     links = (
         s.join(nxt, on=[*keys, "duration"], how="inner")
-        .with_columns((pl.col("_cl_to") - pl.col("_cl")).alias("_resp"))
-        .filter(pl.col("_cp") > 0)
+        .with_columns((pl.col("_cum_loss_to") - pl.col("_cum_loss")).alias("_resp"))
+        .filter(pl.col("_cum_premium") > 0)
     )
     coh_pos = {c: i for i, c in enumerate(cohorts)}
     coh_idx = np.array(
         [coh_pos.get(c, -1) for c in links["cohort"].to_list()], dtype=np.int64
     )
 
-    by_cd: dict[tuple, list[tuple[dict, float]]] = defaultdict(list)
+    by_cohort_duration: dict[tuple, list[tuple[dict, float]]] = defaultdict(list)
     last_obs: dict[object, int] = {}
-    for r in s.select(["cohort", "duration", "_cp", *covariates]).iter_rows(named=True):
-        cp = float(r["_cp"])
+    for r in s.select(["cohort", "duration", "_cum_premium", *covariates]).iter_rows(named=True):
+        cp = float(r["_cum_premium"])
         d = int(r["duration"])
         cell = {c: r[c] for c in covariates}
-        by_cd[(r["cohort"], d)].append((cell, cp))
+        by_cohort_duration[(r["cohort"], d)].append((cell, cp))
         if cp > 0 and d > last_obs.get(r["cohort"], 0):
             last_obs[r["cohort"]] = d
 
-    return SegmentCovData(
-        resp=links["_resp"].to_numpy(),
-        expo=links["_cp"].to_numpy(),
-        dur=links["duration"].to_numpy(),
+    return SegmentCovariateData(
+        response=links["_resp"].to_numpy(),
+        exposure=links["_cum_premium"].to_numpy(),
+        duration=links["duration"].to_numpy(),
         coh_idx=coh_idx,
         codes={c: links[c].to_numpy() for c in covariates},
-        by_cd=by_cd,
+        by_cohort_duration=by_cohort_duration,
         last_obs=last_obs,
         cohorts=cohorts,
         n_links=n_links,
     )
 
 
-def _build_g_eff(covfit: CovariateFit, data: SegmentCovData) -> np.ndarray:
-    """Collapse the per-cell intensity ``g_d(x)`` to the 2-D effective intensity
-    ``g_eff[i, k] = sum_x g_d(x) * share[i, d, x]`` (mix frozen beyond a cohort's
+def _build_g_marginal(cov_fit: CovariateFit, cov_data: SegmentCovariateData) -> np.ndarray:
+    """Collapse the per-cell intensity ``g_d(x)`` to the 2-D marginal intensity
+    ``g_marginal[i, k] = sum_x g_d(x) * share[i, d, x]`` (mix frozen beyond a cohort's
     last observed from-duration). ``nan`` where the from-duration is unfittable
     or the cohort has no premium mix."""
-    est_durs = set(covfit.durations)
-    g_eff = np.full((len(data.cohorts), data.n_links), np.nan, dtype=np.float64)
-    for i, coh in enumerate(data.cohorts):
-        for k in range(data.n_links):
+    est_durs = set(cov_fit.durations)
+    g_marginal = np.full((len(cov_data.cohorts), cov_data.n_links), np.nan, dtype=np.float64)
+    for i, coh in enumerate(cov_data.cohorts):
+        for k in range(cov_data.n_links):
             d = k + 1                                # from-duration label
             if d not in est_durs:
                 continue
-            cells = data.by_cd.get((coh, d))
+            cells = cov_data.by_cohort_duration.get((coh, d))
             if cells is None:                        # projected link: freeze mix
-                ld = data.last_obs.get(coh)
+                ld = cov_data.last_obs.get(coh)
                 if ld is None:
                     continue
-                cells = data.by_cd.get((coh, ld))
+                cells = cov_data.by_cohort_duration.get((coh, ld))
                 if cells is None:
                     continue
             tot = sum(cp for _, cp in cells if cp > 0)
             if tot <= 0:
                 continue
-            g_eff[i, k] = sum(
-                covfit.intensity(d, cell) * (cp / tot)
+            g_marginal[i, k] = sum(
+                cov_fit.intensity(d, cell) * (cp / tot)
                 for cell, cp in cells if cp > 0
             )
-    return g_eff
+    return g_marginal

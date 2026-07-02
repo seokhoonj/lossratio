@@ -250,8 +250,8 @@ def _estimate(
         )
         return bf["g_k"], bf["u"]
     n_links = loss_obs.shape[1] - 1
-    resp, expo, dur0, _coh = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
-    g_k = engine_fast.saturated_intensity(resp, expo, dur0, n_links)
+    response, exposure, dur0, _coh = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
+    g_k = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
     if mechanism == "credible":
         u_vec = _credible_levels(
             loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
@@ -412,10 +412,10 @@ def bootstrap_segment_additive(
         nan = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
         return {"proc_se": nan, "param_se": nan.copy(), "total_se": nan.copy(),
                 "ci_lo": nan.copy(), "ci_hi": nan.copy()}
-    dur_pools: dict[int, np.ndarray] = {}
+    duration_pools: dict[int, np.ndarray] = {}
     for k in range(n_links):
         pool = resid[(kk == k) & np.isfinite(resid)]
-        dur_pools[k] = pool if pool.size >= spec.min_pool else global_pool
+        duration_pools[k] = pool if pool.size >= spec.min_pool else global_pool
 
     # projection seed = each cohort's own observed last cell
     obs_mask = ~np.isnan(loss_obs)
@@ -445,7 +445,7 @@ def bootstrap_segment_additive(
             sel = kk == k
             n_sel = int(sel.sum())
             if n_sel:
-                rstar[sel] = rng.choice(dur_pools[k], size=n_sel, replace=True)
+                rstar[sel] = rng.choice(duration_pools[k], size=n_sel, replace=True)
         # 2. pseudo increment y* = mu + r* sqrt(phi mu); fall back to the
         #    observed increment where the cell is not resamplable (mu <= 0)
         ystar = np.where(res_ok, mu + rstar * scale, y)
@@ -536,62 +536,62 @@ def bootstrap_segment_covariate(
     cells): each replicate resamples standardized Pearson residuals about the
     full fitted mean ``mu = u_i * g_d(x) * P_from``, rebuilds pseudo sub-cell
     increments, and re-fits the WHOLE profiled pipeline -- the covariate kernel
-    (-> ``g_eff_b``) and the credibility level (-> ``u_b``) -- so the dominant
+    (-> ``g_marginal_b``) and the credibility level (-> ``u_b``) -- so the dominant
     long-horizon trend-parameter (``beta`` / ``s_k``) uncertainty is propagated,
     not just the level. The aggregate pseudo cumulative (sub-cell increments
     summed per cohort x duration) feeds the conjugate; the predictive band adds
     the over-dispersed process draw + calendar drift on the aggregate residuals,
     matching :func:`bootstrap_segment_additive`. Premium projection is
-    deterministic (v1). ``data`` is the segment's :class:`SegmentCovData`.
+    deterministic (v1). ``data`` is the segment's :class:`SegmentCovariateData`.
     """
     from dataclasses import replace
 
-    from .covariate import _build_g_eff, fit_covariate_intensity
+    from .covariate import _build_g_marginal, fit_covariate_intensity
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
     premium_proj = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
 
-    def _cov_estimate(resp_arr: np.ndarray, loss_mat: np.ndarray):
-        """Re-fit the covariate pipeline (-> g_eff, u, covfit) on a response
+    def _cov_estimate(response_arr: np.ndarray, loss_mat: np.ndarray):
+        """Re-fit the covariate pipeline (-> g_marginal, u, cov_fit) on a response
         vector + loss matrix. Smooth re-runs the backfit; pooled / credible fit
         the saturated kernel once + the conjugate (psi=0 pins u=1 for pooled)."""
         if n_basis is None:
             cf = fit_covariate_intensity(
-                resp_arr, data.expo, data.dur, data.codes, lam=lam
+                response_arr, data.exposure, data.duration, data.codes, lam=lam
             )
-            g = _build_g_eff(cf, data)
+            g = _build_g_marginal(cf, data)
             u, _z, _p = _credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
             return g, u, cf
         from .credible import _smooth_backfit_covariate
         bf = _smooth_backfit_covariate(
-            loss_mat, premium_obs, replace(data, resp=resp_arr), covariates,
+            loss_mat, premium_obs, replace(data, response=response_arr), covariates,
             sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam,
         )
-        return bf["g_eff"], bf["u"], bf["covfit"]
+        return bf["g_marginal"], bf["u"], bf["cov_fit"]
 
-    # --- point fit: g_eff, u, projection ---
-    g_eff, u_vec, covfit = _cov_estimate(data.resp, loss_obs)
-    point_proj = _project_credible(loss_obs, premium_proj, g_eff, u_vec)
+    # --- point fit: g_marginal, u, projection ---
+    g_marginal, u_vec, cov_fit = _cov_estimate(data.response, loss_obs)
+    point_proj = _project_credible(loss_obs, premium_proj, g_marginal, u_vec)
 
     # --- sub-cell fitted mean, dispersion, standardized residuals ---
-    dur = data.dur.astype(np.int64)
+    duration = data.duration.astype(np.int64)
     coh = data.coh_idx.astype(np.int64)
     g_link = np.array(
-        [covfit.intensity(int(dur[j]), {c: data.codes[c][j] for c in covariates})
-         for j in range(dur.size)],
+        [cov_fit.intensity(int(duration[j]), {c: data.codes[c][j] for c in covariates})
+         for j in range(duration.size)],
         dtype=np.float64,
     )
-    mu = u_vec[coh] * g_link * data.expo
-    y = data.resp.astype(np.float64)
+    mu = u_vec[coh] * g_link * data.exposure
+    y = data.response.astype(np.float64)
     usable = np.isfinite(mu) & (mu > 0.0)
     phi_map = engine.pearson_dispersion(
         response=y[usable].tolist(), fitted=mu[usable].tolist(),
-        duration=dur[usable].tolist(), sigma_method=sigma_method,
+        duration=duration[usable].tolist(), sigma_method=sigma_method,
     )
     phi_link = np.array(
         [phi_map.get(int(d)) if phi_map.get(int(d)) is not None else np.nan
-         for d in dur],
+         for d in duration],
         dtype=np.float64,
     )
     scale = np.sqrt(phi_link * mu)
@@ -604,19 +604,19 @@ def bootstrap_segment_covariate(
         nan = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
         return {"proc_se": nan, "param_se": nan.copy(), "total_se": nan.copy(),
                 "ci_lo": nan.copy(), "ci_hi": nan.copy()}
-    dur_pools: dict[int, np.ndarray] = {}
-    for d in np.unique(dur):
-        pool = resid[(dur == d) & np.isfinite(resid)]
-        dur_pools[int(d)] = pool if pool.size >= spec.min_pool else global_pool
+    duration_pools: dict[int, np.ndarray] = {}
+    for d in np.unique(duration):
+        pool = resid[(duration == d) & np.isfinite(resid)]
+        duration_pools[int(d)] = pool if pool.size >= spec.min_pool else global_pool
 
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
     last_obs = np.where(
         has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
     )
-    # calendar drift on the AGGREGATE-cell residuals (mu_agg = u * g_eff * P)
+    # calendar drift on the AGGREGATE-cell residuals (mu_agg = u * g_marginal * P)
     aii, akk, ay, ap = _valid_cells(loss_obs, premium_obs)
-    amu = u_vec[aii] * g_eff[aii, akk] * ap
+    amu = u_vec[aii] * g_marginal[aii, akk] * ap
     a_ok = np.isfinite(amu) & (amu > 0.0)
     aphi = np.array(
         [phi_map.get(int(k + 1)) if phi_map.get(int(k + 1)) is not None else np.nan
@@ -632,16 +632,16 @@ def bootstrap_segment_covariate(
     rows = np.arange(n_cohorts)
 
     orig_agg_incr = np.diff(loss_obs, axis=1)             # (N, n_links)
-    flat = coh * n_links + (dur - 1)                      # aggregate-cell index
+    flat = coh * n_links + (duration - 1)                      # aggregate-cell index
     B = spec.n_replicates
     param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
     pred_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
 
     for b in range(B):
         rstar = np.empty(mu.shape, dtype=np.float64)
-        for d in np.unique(dur):
-            sel = dur == d
-            rstar[sel] = rng.choice(dur_pools[int(d)], size=int(sel.sum()), replace=True)
+        for d in np.unique(duration):
+            sel = duration == d
+            rstar[sel] = rng.choice(duration_pools[int(d)], size=int(sel.sum()), replace=True)
         ystar = np.where(res_ok, mu + rstar * scale, y)   # pseudo sub-cell dLoss
         # aggregate the pseudo increments to a cohort x duration pseudo cumulative
         dY = np.zeros(n_cohorts * n_links, dtype=np.float64)
@@ -658,15 +658,15 @@ def bootstrap_segment_covariate(
             cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
         # re-fit the whole covariate pipeline on the pseudo data (g on the
         # sub-cell links, u on the aggregate pseudo cumulative)
-        g_eff_b, u_b, _cf = _cov_estimate(ystar, cum)
-        param_cum = _project_credible(loss_obs, premium_proj, g_eff_b, u_b)
+        g_marginal_b, u_b, _cf = _cov_estimate(ystar, cum)
+        param_cum = _project_credible(loss_obs, premium_proj, g_marginal_b, u_b)
         param_draws[b] = param_cum
 
         if spec.process == "none":
             pred_draws[b] = param_cum
             continue
         pred_cum = loss_obs.copy()
-        phi_b = _refit_phi(cum, premium_obs, g_eff_b, u_b, sigma_method, True, n_links)
+        phi_b = _refit_phi(cum, premium_obs, g_marginal_b, u_b, sigma_method, True, n_links)
         eps_b = rng.normal(0.0, drift_se) if drift_se > 0.0 else 0.0
         for k in range(n_links):
             active = has_obs & (last_obs <= k) & ~np.isnan(param_cum[:, k + 1]) \
@@ -949,7 +949,7 @@ def _refit_phi(
     if ii.size == 0:
         return np.full(n_links, np.nan, dtype=np.float64)
     # g_b is the per-duration pooled intensity (1-D) or the per-cohort effective
-    # intensity g_eff (2-D, covariate path).
+    # intensity g_marginal (2-D, covariate path).
     g_at = g_b[kk] if g_b.ndim == 1 else g_b[ii, kk]
     mu = u_b[ii] * g_at * p
     ok = np.isfinite(mu) & (mu > 0.0)

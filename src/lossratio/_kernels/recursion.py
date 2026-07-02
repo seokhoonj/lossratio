@@ -91,7 +91,7 @@ def _step_multiplicative(
     param_acc: np.ndarray,
     pos: np.ndarray,
     f: float,
-    sigma2: float,
+    sigma2_f: float,
     f_var: float,
     c: np.ndarray,
 ) -> None:
@@ -100,7 +100,7 @@ def _step_multiplicative(
     Mutates the per-cohort process / parameter variance accumulators
     in place, on the cohort subset selected by the boolean mask ``pos``::
 
-        proc'  = f^2 * proc  + sigma2   * C
+        proc'  = f^2 * proc  + sigma2_f   * C
         param' = f^2 * param + C^2 * Var(f_hat)
 
     ``c`` is the full-length cumulative-loss-at-duration-k vector (only
@@ -114,8 +114,8 @@ def _step_multiplicative(
         f2 = f ** 2
         proc_acc[pos] = f2 * proc_acc[pos]
         param_acc[pos] = f2 * param_acc[pos]
-    if np.isfinite(sigma2):
-        proc_acc[pos] = proc_acc[pos] + sigma2 * c[pos]
+    if np.isfinite(sigma2_f):
+        proc_acc[pos] = proc_acc[pos] + sigma2_f * c[pos]
     if np.isfinite(f_var):
         param_acc[pos] = param_acc[pos] + (c[pos] ** 2) * f_var
 

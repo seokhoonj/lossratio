@@ -39,12 +39,12 @@ if TYPE_CHECKING:
 
 def _segment_matrices(sub: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """cohort x duration cumulative loss / premium matrices + duration axis."""
-    durs = sorted(sub.get_column("duration").unique().to_list())
+    durations = sorted(sub.get_column("duration").unique().to_list())
     cohorts = sub.get_column("cohort").unique().sort().to_list()
     ci = {c: i for i, c in enumerate(cohorts)}
-    di = {d: j for j, d in enumerate(durs)}
-    L = np.full((len(cohorts), len(durs)), np.nan)
-    P = np.full((len(cohorts), len(durs)), np.nan)
+    di = {d: j for j, d in enumerate(durations)}
+    L = np.full((len(cohorts), len(durations)), np.nan)
+    P = np.full((len(cohorts), len(durations)), np.nan)
     for c, d, lo, pr in zip(
         sub.get_column("cohort").to_list(),
         sub.get_column("duration").to_list(),
@@ -54,7 +54,7 @@ def _segment_matrices(sub: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, np.nda
     ):
         L[ci[c], di[d]] = lo
         P[ci[c], di[d]] = pr
-    return L, P, np.asarray(durs)
+    return L, P, np.asarray(durations)
 
 
 def _ratio_step(L: np.ndarray, P: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -149,7 +149,9 @@ class Stability:
                 sub = df.filter(mask)
             else:
                 sub = df
-            L, P, durs = _segment_matrices(sub.select(["cohort", "duration", "loss", "premium"]))
+            L, P, durations = _segment_matrices(
+                sub.select(["cohort", "duration", "loss", "premium"])
+            )
             rho, nco = _ratio_step(L, P)
             usable = np.isfinite(rho) & (nco >= self.min_cohorts)
             ks = np.where(usable)[0]
@@ -157,9 +159,9 @@ class Stability:
             for col, val in zip(group_cols, key, strict=False):
                 row[col] = val
             # frontier = deepest duration that carries a pooled ratio
-            front_j = max((j for j in range(len(durs)) if np.nansum(P[:, j]) > 0
+            front_j = max((j for j in range(len(durations)) if np.nansum(P[:, j]) > 0
                            and np.nansum(L[:, j]) >= 0), default=None)
-            row["frontier_duration"] = int(durs[front_j]) if front_j is not None else None
+            row["frontier_duration"] = int(durations[front_j]) if front_j is not None else None
             sL = np.nansum(L[:, front_j]) if front_j is not None else np.nan
             sP = np.nansum(P[:, front_j]) if front_j is not None else np.nan
             row["frontier_ratio"] = float(sL / sP) if (front_j is not None and sP > 0) else None
@@ -181,7 +183,7 @@ class Stability:
             for start in ks:
                 tail = ks[ks >= start]
                 if np.all(excess[tail] < self.tol):
-                    stable_from = int(durs[start])
+                    stable_from = int(durations[start])
                     break
             row["stable"] = bool(stable)
             row["recent_drift"] = drift

@@ -105,7 +105,7 @@ class WeightedBootstrap:
 
 
 def _weighted_refit_additive(
-    resp: np.ndarray, expo: np.ndarray, dur0: np.ndarray, coh0: np.ndarray,
+    response: np.ndarray, exposure: np.ndarray, dur0: np.ndarray, coh0: np.ndarray,
     W: np.ndarray, mechanism: str, psi: float | str, n_cohorts: int, n_links: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Batched weighted refit -> ``(g[B,nL], u[B,nC], phi[B,nL])``.
@@ -119,18 +119,18 @@ def _weighted_refit_additive(
     Cind[np.arange(J), coh0] = 1.0
 
     # weighted saturated g_k
-    den = (W * expo) @ Dind
-    num = (W * resp) @ Dind
+    den = (W * exposure) @ Dind
+    num = (W * response) @ Dind
     with np.errstate(invalid="ignore", divide="ignore"):
         g = np.where(den > 0, num / np.where(den == 0, 1.0, den), np.nan)
     g_cell = g[:, dur0]                                   # (B, J)
-    m0 = g_cell * expo[None, :]
+    m0 = g_cell * exposure[None, :]
     okm = np.isfinite(m0) & (m0 > 0)
     Wm = W * okm
 
     # weighted Pearson phi_k (weighted df = weighted count - 1), locf over k
     with np.errstate(invalid="ignore", divide="ignore"):
-        terms = np.where(okm, (resp[None, :] - m0) ** 2 / np.where(okm, m0, 1.0), 0.0)
+        terms = np.where(okm, (response[None, :] - m0) ** 2 / np.where(okm, m0, 1.0), 0.0)
     phi_num = (Wm * terms) @ Dind
     df = (Wm @ Dind) - 1.0
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -150,7 +150,7 @@ def _weighted_refit_additive(
         return g, np.ones((B, n_cohorts)), phi
 
     m0z = np.where(okm, m0, 0.0)
-    respB = resp[None, :]
+    respB = response[None, :]
     # weighted Buhlmann-Straub psi (per replicate, cross-cohort over axis 1)
     sm = (Wm * m0z) @ Cind
     sy = (Wm * respB) @ Cind
@@ -288,8 +288,8 @@ def bootstrap_segment_weighted_additive(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
-    resp, expo, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, loss_mask)
-    J = resp.size
+    response, exposure, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, loss_mask)
+    J = response.size
     obs_mask = ~np.isnan(loss_obs)
     if J == 0:
         nan = np.full((n_cohorts, n_durations), np.nan)
@@ -297,7 +297,7 @@ def bootstrap_segment_weighted_additive(
                 "ci_lo": nan.copy(), "ci_hi": nan.copy()}
 
     # point fit -> centering projection + calendar-drift SE (scheme-independent)
-    g_pt = engine_fast.saturated_intensity(resp, expo, dur0, n_links)
+    g_pt = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
     if mechanism == "credible":
         from .credible import _credible_levels
         u_pt = _credible_levels(loss_obs, premium_obs, g_pt, sigma_method, psi,
@@ -320,7 +320,7 @@ def bootstrap_segment_weighted_additive(
     B = spec.n_replicates
     W = rng.gamma(1.0, 1.0, size=(B, J))
     g, u, phi = _weighted_refit_additive(
-        resp, expo, dur0, coh0, W, mechanism, psi, n_cohorts, n_links
+        response, exposure, dur0, coh0, W, mechanism, psi, n_cohorts, n_links
     )
     if donor is None:
         param_draws = _project_additive_batched(loss_obs, premium_proj, g, u)

@@ -167,7 +167,7 @@ def _fit_segment_additive(
     premium matrices.
 
     ``g_override`` (the covariate path) supplies the per-cohort effective
-    intensity ``g_eff`` (2-D, premium-marginalized over the covariate cells) in
+    intensity ``g_marginal`` (2-D, premium-marginalized over the covariate cells) in
     place of the pooled saturated ``g_k``. The projection is the additive
     recursion at ``u = 1`` (no credibility level -- ``PooledLoss``); the
     analytical SE is left null (the covariate estimation variance is not in the
@@ -192,7 +192,7 @@ def _fit_segment_additive(
     premium_mask = recent_link_mask(premium_obs, recent)
 
     if g_override is not None:
-        # covariate path: project the effective intensity at u = 1, SE null.
+        # covariate path: project the marginal intensity at u = 1, SE null.
         premium_proj = _segment_premium_proj(
             premium_obs, sigma_method, premium_mask, premium_donor
         )
@@ -213,8 +213,8 @@ def _fit_segment_additive(
         }
 
     # 1. engine intensity g_k (keyed by from-duration 1..n_links)
-    resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
-    g_map = engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+    response, exposure, duration = _segment_factor_links(loss_obs, premium_obs, loss_mask)
+    g_map = engine.saturated_intensity(response=response, exposure=exposure, duration=duration)
     g_k = np.array([g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
 
     # 2. dispersion sigma2_g_k + parameter-variance denominator (shared kernel)
@@ -365,9 +365,9 @@ def _fit_segment_multiplicative(
     # cumulates the incremental response, so pass per-cell increments; the
     # recent wedge gates which source cells (i, k) feed the f_k sums via
     # `include` (keyed on the link's source duration, like `loss_mask[:, k]`).
-    resp: list[float] = []
+    response: list[float] = []
     coh: list[int] = []
-    dur: list[int] = []
+    duration: list[int] = []
     include: list[bool] = []
     for i in range(n_cohorts):
         prev = 0.0
@@ -375,15 +375,15 @@ def _fit_segment_multiplicative(
             c = loss_obs[i, k]
             if np.isnan(c):
                 continue
-            resp.append(float(c - prev))
+            response.append(float(c - prev))
             coh.append(i)
-            dur.append(k + 1)
+            duration.append(k + 1)
             # source of the outgoing link k -> k+1; last column has none.
             include.append(True if loss_mask is None or k >= n_links
                            else bool(loss_mask[i, k]))
             prev = c
     f_map = engine.link_ratios(
-        response=resp, cohort=coh, duration=dur,
+        response=response, cohort=coh, duration=duration,
         include=None if loss_mask is None else include,
     )
     f_k = np.array([f_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
@@ -542,13 +542,13 @@ def _fit_segment_credible(
     premium_mask = recent_link_mask(premium_obs, recent)
 
     # 1. intensity g_k (keyed by from-duration 1..n_links). The covariate path
-    # supplies the per-cohort effective intensity g_eff (2-D, premium-marginalized
+    # supplies the per-cohort marginal intensity g_marginal (2-D, premium-marginalized
     # over the covariate cells); otherwise the pooled saturated mode.
     if g_override is not None:
         g_k = g_override
     else:
-        resp, expo, dur = _segment_factor_links(loss_obs, premium_obs, loss_mask)
-        g_map = engine.saturated_intensity(response=resp, exposure=expo, duration=dur)
+        response, exposure, duration = _segment_factor_links(loss_obs, premium_obs, loss_mask)
+        g_map = engine.saturated_intensity(response=response, exposure=exposure, duration=duration)
         g_k = np.array(
             [g_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64
         )
@@ -632,16 +632,16 @@ def _fit_segment_smooth(
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
 
-    covfit = None
+    cov_fit = None
     if cov_data is not None:
         assert covariates is not None  # supplied whenever cov_data is
         bf = _smooth_backfit_covariate(
             loss_obs, premium_obs, cov_data, list(covariates), sigma_method,
             psi=psi, n_basis=n_basis, lam=lam, lam_cov=lam_cov, link_mask=loss_mask,
         )
-        g_k = bf["g_eff"]
+        g_k = bf["g_marginal"]
         bf = {**bf, "lam": float("nan"), "edf": float("nan")}
-        covfit = bf["covfit"]
+        cov_fit = bf["cov_fit"]
     else:
         bf = _smooth_backfit(
             loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
@@ -684,7 +684,7 @@ def _fit_segment_smooth(
         "edf": bf["edf"],
         "representable": bf["representable"],
         "smooth_converged": bf["converged"],
-        "covfit": covfit,
+        "cov_fit": cov_fit,
     }
 
 
@@ -774,7 +774,7 @@ def _segment_long_df(
 
 
 def _segment_coefficients_df(
-    covfit: Any,
+    cov_fit: Any,
     groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
@@ -788,11 +788,11 @@ def _segment_coefficients_df(
     cov_col: list[str] = []
     level_col: list[Any] = []
     beta_col: list[float] = []
-    for name, levels in covfit.levels.items():
+    for name, levels in cov_fit.levels.items():
         for lv in levels:
             cov_col.append(name)
             level_col.append(lv)
-            beta_col.append(covfit.beta.get((name, lv), 0.0))   # reference -> 0
+            beta_col.append(cov_fit.beta.get((name, lv), 0.0))   # reference -> 0
     n = len(cov_col)
     data: dict[str, Any] = {}
     if groups is not None:
@@ -813,7 +813,7 @@ def _segment_covariate_surface(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     cov_data: Any,
-    covfit: Any,
+    cov_fit: Any,
     covariates: list[str],
     groups: str | list[str] | None,
     group_value: Any | None,
@@ -829,23 +829,23 @@ def _segment_covariate_surface(
     the reporting-grain cohort x duration ``loss_proj`` and ``premium_proj``
     EXACTLY -- robust to a duration-varying mix, premium-only cells, and
     left-truncated cohorts. The per-cell ratio is
-    ``report_ratio * g_d(x) / g_eff``. Returns a long frame
+    ``report_ratio * g_d(x) / g_marginal``. Returns a long frame
     ``[groups?, cohort, duration, *covariates, loss_proj, incr_loss_proj,
     premium_proj, ratio_proj, source]``.
     """
     n_cohorts, n_dur = loss_proj.shape
-    by_cd = cov_data.by_cd
+    by_cohort_duration = cov_data.by_cohort_duration
     parts: list[dict] = []
     for i, coh in enumerate(cov_data.cohorts):
-        durs = sorted(d for (c, d) in by_cd if c == coh)
-        if not durs:
+        durations = sorted(d for (c, d) in by_cohort_duration if c == coh)
+        if not durations:
             continue
-        last_obs_d = durs[-1]
+        last_obs_d = durations[-1]
         cp: dict[int, dict] = {}
         cells: dict[tuple, dict] = {}
-        for d in durs:
+        for d in durations:
             cp[d] = {}
-            for cell_dict, c_cp in by_cd[(coh, d)]:
+            for cell_dict, c_cp in by_cohort_duration[(coh, d)]:
                 ck = tuple(cell_dict[c] for c in covariates)
                 cells[ck] = cell_dict
                 cp[d][ck] = float(c_cp)
@@ -866,7 +866,7 @@ def _segment_covariate_surface(
                 if c_cp <= 0:
                     w[ck] = 0.0
                     continue
-                gi = covfit.intensity(d, cells[ck])
+                gi = cov_fit.intensity(d, cells[ck])
                 w[ck] = (gi * c_cp) if (np.isfinite(gi) and gi > 0) else c_cp
             tot_w = sum(w.values())
             tot_p = sum(v for v in src.values() if v > 0)
@@ -1351,7 +1351,7 @@ def _fit_loss(
         premium_donor = None
 
         cov_data = None
-        covfit: Any = None  # CovariateFit (precomputed) or pulled from the fit dict
+        cov_fit: Any = None  # CovariateFit (precomputed) or pulled from the fit dict
         if mechanism == "credible":
             extra = {"psi": psi}
         elif mechanism == "smooth":
@@ -1361,7 +1361,7 @@ def _fit_loss(
         if cov_cells is not None:
             assert covariates is not None  # covariates drive the cov_cells path
             from .._kernels.covariate import (
-                _build_g_eff,
+                _build_g_marginal,
                 _covariate_segment_data,
                 fit_covariate_intensity,
             )
@@ -1382,18 +1382,18 @@ def _fit_loss(
             )
             if mechanism == "smooth":
                 # the smooth shape co-evolves with u in a backfit -> the fitter
-                # runs the covariate-smooth backfit and returns its covfit.
+                # runs the covariate-smooth backfit and returns its cov_fit.
                 extra["cov_data"] = cov_data
                 extra["covariates"] = list(covariates)
                 extra["lam_cov"] = lam_cov
             else:
                 # pooled / credible: the saturated covariate intensity is
-                # u-independent, so g_eff is precomputed here as g_override.
-                covfit = fit_covariate_intensity(
-                    cov_data.resp, cov_data.expo, cov_data.dur, cov_data.codes,
+                # u-independent, so g_marginal is precomputed here as g_override.
+                cov_fit = fit_covariate_intensity(
+                    cov_data.response, cov_data.exposure, cov_data.duration, cov_data.codes,
                     lam=lam_cov,
                 )
-                extra["g_override"] = _build_g_eff(covfit, cov_data)
+                extra["g_override"] = _build_g_marginal(cov_fit, cov_data)
         fit = fit_segment(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor,
             premium_donor=premium_donor, **extra
@@ -1404,18 +1404,18 @@ def _fit_loss(
 
         if cov_data is not None:
             assert covariates is not None  # covariates drive the cov_data path
-            # smooth's covfit comes out of the backfit; pooled / credible
+            # smooth's cov_fit comes out of the backfit; pooled / credible
             # precomputed it above. pooled keeps u = 1 (no credibility level).
-            if covfit is None:
-                covfit = fit.get("covfit")
-            if covfit is not None:
+            if cov_fit is None:
+                cov_fit = fit.get("cov_fit")
+            if cov_fit is not None:
                 coef_parts.append(
-                    _segment_coefficients_df(covfit, groups, group_value)
+                    _segment_coefficients_df(cov_fit, groups, group_value)
                 )
                 surface_parts.append(
                     _segment_covariate_surface(
                         fit["loss_proj"], fit["loss_obs"], fit["premium_proj"],
-                        cov_data, covfit, list(covariates), groups, group_value,
+                        cov_data, cov_fit, list(covariates), groups, group_value,
                     )
                 )
 
@@ -1523,8 +1523,8 @@ def _fit_loss(
         last_obs = np.where(
             has_obs, n_dur - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
         )
-        dur_idx = np.arange(n_dur)[None, :]
-        should_proj = (dur_idx > last_obs[:, None]) & has_obs[:, None]
+        duration_idx = np.arange(n_dur)[None, :]
+        should_proj = (duration_idx > last_obs[:, None]) & has_obs[:, None]
         n_unfittable += int((should_proj & np.isnan(fit["loss_proj"])).sum())
         n_borrowed += int(fit["borrowed"].sum())
 
