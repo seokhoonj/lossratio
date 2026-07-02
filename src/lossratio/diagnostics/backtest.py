@@ -61,12 +61,12 @@ def _build_masked_df(
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Mask the most recent ``holdout`` calendar diagonals.
 
-    Returns ``(masked_df, mask_df)``:
+    Returns ``(masked_df, annotated_df)``:
 
     * ``masked_df`` has ``loss``, ``incr_loss``, ``premium``,
       ``incr_premium``, ``ratio``, ``incr_ratio`` set to ``None`` for
       cells whose calendar diagonal is among the top ``holdout``.
-    * ``mask_df`` has the same shape with the original cell values
+    * ``annotated_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
     """
     df = _add_cal_idx(tri_df, groups)
@@ -224,15 +224,6 @@ class _FoldBacktest:
     target
         Which projection to score: ``"ratio"`` (default), ``"loss"``, or
         ``"premium"`` -- every estimator carries all three.
-
-    Examples
-    --------
-    >>> import lossratio as lr
-    >>> tri = lr.Triangle(df, groups="coverage")
-    >>> bt = lr._FoldBacktest(estimator=lr.CredibleLoss(), holdout=6, target="loss").fit(tri)
-    >>> bt.ae_err
-    >>> bt.col_summary
-    >>> bt.diag_summary
     """
 
     def __init__(
@@ -692,14 +683,11 @@ class _FoldFit:
         """Extract the regime from `self.estimator`, if any.
 
         Reads the estimator's ``regime`` (``None`` / a :class:`Regime` / a
-        :class:`RegimeDetector`). A legacy ``loss_regime`` slot is honoured
-        first if present. The value is resolved on the masked fold triangle by
+        :class:`RegimeDetector`). The value is resolved on the masked fold triangle by
         the caller, so a deferred :class:`RegimeDetector` is detected
         leakage-safely.
         """
         est = self.estimator
-        if hasattr(est, "loss_regime"):
-            return est.loss_regime
         return getattr(est, "regime", None)
 
     def __repr__(self) -> str:
@@ -1594,8 +1582,6 @@ class BacktestFit:
     def _infer_regime(self):
         """Extract the regime from `self.estimator`, if any."""
         est = self.estimator
-        if hasattr(est, "loss_regime"):
-            return est.loss_regime
         return getattr(est, "regime", None)
 
     def __repr__(self) -> str:

@@ -41,19 +41,19 @@ def _segment_matrices(sub: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, np.nda
     """cohort x duration cumulative loss / premium matrices + duration axis."""
     durations = sorted(sub.get_column("duration").unique().to_list())
     cohorts = sub.get_column("cohort").unique().sort().to_list()
-    ci = {c: i for i, c in enumerate(cohorts)}
-    di = {d: j for j, d in enumerate(durations)}
+    cohort_idx = {c: i for i, c in enumerate(cohorts)}
+    duration_idx = {d: j for j, d in enumerate(durations)}
     L = np.full((len(cohorts), len(durations)), np.nan)
     P = np.full((len(cohorts), len(durations)), np.nan)
-    for c, d, lo, pr in zip(
+    for c, d, loss_val, premium_val in zip(
         sub.get_column("cohort").to_list(),
         sub.get_column("duration").to_list(),
         sub.get_column("loss").to_list(),
         sub.get_column("premium").to_list(),
         strict=False,
     ):
-        L[ci[c], di[d]] = lo
-        P[ci[c], di[d]] = pr
+        L[cohort_idx[c], duration_idx[d]] = loss_val
+        P[cohort_idx[c], duration_idx[d]] = premium_val
     return L, P, np.asarray(durations)
 
 

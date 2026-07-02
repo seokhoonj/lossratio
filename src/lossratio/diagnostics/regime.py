@@ -148,8 +148,8 @@ def _kneedle_elbow(
         return None
 
     k_norm = (window - x_min) / (x_max - x_min)
-    bc_norm = (change_count - y_min) / (y_max - y_min)
-    deficit = (1.0 - k_norm) - bc_norm
+    count_norm = (change_count - y_min) / (y_max - y_min)
+    deficit = (1.0 - k_norm) - count_norm
     idx = int(np.argmax(deficit))
     return int(window[idx])
 
@@ -746,11 +746,11 @@ def _detect_regime_optimal_window(
 def _build_feature_matrix(
     tri_df: pl.DataFrame,
     target: str,
-    K: int,
+    window: int,
 ) -> tuple[np.ndarray, list, list]:
-    """Pivot the long-format Triangle into a (n_cohorts, K) feature matrix.
+    """Pivot the long-format Triangle into a (n_cohorts, window) feature matrix.
 
-    Cohorts with fewer than K observed durations are dropped
+    Cohorts with fewer than window observed durations are dropped
     and returned in the ``dropped`` list. Cohorts are returned ordered
     by cohort value.
     """
@@ -760,7 +760,7 @@ def _build_feature_matrix(
             f"{tri_df.columns}"
         )
 
-    df = tri_df.filter(pl.col("duration") <= K)
+    df = tri_df.filter(pl.col("duration") <= window)
 
     # Count *distinct duration values* with a non-null target per cohort.
     # When the input frame carries multiple rows per (cohort, duration)
@@ -773,7 +773,7 @@ def _build_feature_matrix(
         .agg(pl.col("duration").n_unique().alias("n"))
         .sort("cohort")
     )
-    eligible = counts.filter(pl.col("n") >= K)["cohort"].to_list()
+    eligible = counts.filter(pl.col("n") >= window)["cohort"].to_list()
     eligible_set = set(eligible)
     # ``all_cohorts`` from the unfiltered frame: includes cohorts with
     # zero non-null target cells (which the filter above would drop).
@@ -784,11 +784,11 @@ def _build_feature_matrix(
 
     if not eligible:
         raise ValueError(
-            f"No cohorts have >= K={K} observed durations. "
-            f"Reduce K."
+            f"No cohorts have >= window={window} observed durations. "
+            f"Reduce window."
         )
 
-    # Pivot to wide form: rows = cohort, cols = duration 1..K. Use mean as
+    # Pivot to wide form: rows = cohort, cols = duration 1..window. Use mean as
     # aggregator so pooled detection on a multi-group triangle (where
     # each (cohort, duration) cell has one row per group) collapses to a
     # single value per (cohort, duration), averaging over the groups while
@@ -1344,8 +1344,8 @@ def _regime_ids_from_changes(n: int, change_idxs: list[int]) -> np.ndarray:
     Cohort ``i`` gets ``1 + (number of change indices <= i)`` -- a
     right-side searchsorted over the sorted unique change indices.
     """
-    bk = np.array(sorted(set(change_idxs)), dtype=np.int64)
-    return (1 + np.searchsorted(bk, np.arange(n), side="right")).astype(
+    sorted_changes = np.array(sorted(set(change_idxs)), dtype=np.int64)
+    return (1 + np.searchsorted(sorted_changes, np.arange(n), side="right")).astype(
         np.int64
     )
 
