@@ -166,14 +166,14 @@ reg = tri.detect_regime(target="ratio", window=12)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
-# 6b. Read the split straight from the data. With `regime=`, each regime's
-#     cohorts are tinted separately and get their own Mean / Median / Weighted
-#     summary, so the post-2024-07 band (~0.9) reads apart from the pre-regime
-#     band (~1.5) instead of a single summary line threading between them.
-tri.plot(metric="ratio", summary=True, regime=reg)
+# 6b. Plot the experience, one line per cohort coloured by inception (the
+#     colourbar reads 23.01, 23.07, ... period labels). The detected 2024-07
+#     split shows up as two bands: recent (dark) cohorts settle near 0.9,
+#     older (light) cohorts near 1.5.
+tri.plot(metric="ratio")
 ```
 
-![Cumulative loss ratio for SURGERY split by the detected 2024-07 regime: an upper band of pre-regime cohorts settling near 1.5 and a lower band of post-regime cohorts near 0.9, each with its own Mean / Median / Weighted summary over faint per-regime cohort trajectories.](assets/quickstart_ratio.png)
+![Cumulative loss ratio for SURGERY, one line per cohort coloured by inception (dark = recent, light = 2023, colourbar in 23.01 period labels). The detected 2024-07 regime appears as two bands: recent cohorts settle near 0.9, older cohorts near 1.5.](assets/quickstart_ratio.png)
 
 ```python
 # 6c. Project respecting that regime (segment_wise: each regime's cohorts
