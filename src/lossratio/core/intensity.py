@@ -84,9 +84,9 @@ def _compute_intensity(
     sum_premium_k = np.zeros(n_links, dtype=np.float64)
 
     for k in range(n_links):
-        ck = premium_obs[:, k]
+        premium_k = premium_obs[:, k]
         delta_loss = loss_obs[:, k + 1] - loss_obs[:, k]
-        mask = ~np.isnan(ck) & ~np.isnan(delta_loss) & (ck > 0)
+        mask = ~np.isnan(premium_k) & ~np.isnan(delta_loss) & (premium_k > 0)
         # Recent-diagonal wedge: keep only links inside the wedge.
         if link_mask is not None:
             mask = mask & link_mask[:, k]
@@ -96,9 +96,9 @@ def _compute_intensity(
         if n_k == 0:
             continue
 
-        ck_eff = ck[mask]
+        premium_k_eff = premium_k[mask]
         dl_eff = delta_loss[mask]
-        sum_premium = float(ck_eff.sum())
+        sum_premium = float(premium_k_eff.sum())
         sum_premium_k[k] = sum_premium
         sum_loss = float(dl_eff.sum())
 
@@ -112,7 +112,7 @@ def _compute_intensity(
         g_k[k] = g
 
         if n_k >= 2:
-            sigma2 = _wls_sigma2(dl_eff, ck_eff, g, n_k)
+            sigma2 = _wls_sigma2(dl_eff, premium_k_eff, g, n_k)
             sigma2_k[k] = sigma2
             g_se_k[k] = float(np.sqrt(sigma2 / sum_premium)) if sigma2 > 0 else 0.0
         else:

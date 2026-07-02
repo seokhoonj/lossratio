@@ -2,7 +2,7 @@
 
 ``LossFit`` is the engine-backed result of the saturated-mode intensity fit
 (``PooledLoss``). It carries no method-dispatch and no tail / bootstrap machinery -- one
-estimator (complete-pooling intensity) wired straight through ``ModelFrame``
+estimator (complete-pooling intensity) wired straight through ``_ModelFrame``
 -> ``_engine`` -> projection.
 
 The intensity point estimate ``g_k`` comes from
@@ -53,7 +53,7 @@ from .._kernels.recursion import (
     _wls_sigma2,
 )
 from .._kernels.sigma import extrapolate_tail_sigma2
-from ..core.model_frame import ModelFrame
+from ..core.model_frame import _ModelFrame
 from ._cascade import (
     _cohort_subset_donor,
     _pad_cols,
@@ -1125,7 +1125,7 @@ def _fit_loss(
     assembly, and the :class:`LossFit` schema. ``regime`` is ``None`` / a
     :class:`Regime` / a :class:`RegimeDetector` (resolved to a concrete Regime
     at entry, then carried as the cohort treatment / cut through
-    :class:`ModelFrame`). ``recent`` (calendar-diagonal window) is the data-intact
+    :class:`_ModelFrame`). ``recent`` (calendar-diagonal window) is the data-intact
     fit mask -- only the most-recent ``N`` diagonals feed each segment's factor
     estimation, the projection seed stays full.
     """
@@ -1186,7 +1186,7 @@ def _fit_loss(
                 "column, but the triangle already has a group column named "
                 "'regime'; rename it."
             )
-    # the ModelFrame cohort cut: None under segment_wise / covariate (keep every
+    # the _ModelFrame cohort cut: None under segment_wise / covariate (keep every
     # cohort); the resolved latest-change cut otherwise. The Regime object is
     # still stored on the LossFit unchanged.
     mf_regime = None if (segment_wise or regime_covariate) else regime
@@ -1276,12 +1276,12 @@ def _fit_loss(
         boot_spec = uncertainty
 
 
-    mf = ModelFrame.from_triangle(fit_triangle, regime=mf_regime)
+    mf = _ModelFrame._from_triangle(fit_triangle, regime=mf_regime)
     frame = mf.df
     group_cols = normalize_groups(groups)
     if frame.is_empty():
         raise ValueError(
-            "ModelFrame has no cells to fit (an empty triangle, or a regime "
+            "_ModelFrame has no cells to fit (an empty triangle, or a regime "
             "cut that removed every cohort)."
         )
 

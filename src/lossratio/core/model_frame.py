@@ -1,8 +1,8 @@
 """Internal design-matrix frame for the intensity engine.
 
-``ModelFrame`` is the tidy long-format cell table closest to the design
+``_ModelFrame`` is the tidy long-format cell table closest to the design
 matrix: one row per (segment, cohort, duration) cell. Built ONLY via
-:meth:`from_triangle` -- there is no raw -> ModelFrame path (a second
+:meth:`_from_triangle` -- there is no raw -> _ModelFrame path (a second
 validation route is deliberately closed).
 
 Engine-facing contract: the engine consumes generic ``response`` / ``exposure``
@@ -42,7 +42,7 @@ _FRAME_ORDER = ["cohort", "duration", "calendar",
 _GRAIN_MONTHS = {"M": 1, "Q": 3, "H": 6, "Y": 12}
 
 
-class ModelFrame:
+class _ModelFrame:
     """Long-format (segment x cohort x duration) cell table feeding the engine.
 
     Attributes
@@ -60,9 +60,9 @@ class ModelFrame:
         self._segments = segments
 
     @classmethod
-    def from_triangle(
+    def _from_triangle(
         cls, triangle: Triangle, *, regime: date | dict | None = None,
-    ) -> ModelFrame:
+    ) -> _ModelFrame:
         """Build the design-matrix frame from a :class:`Triangle`.
 
         ``exposure`` (= cumulative ``premium``) is the from-anchor offset the
@@ -76,11 +76,11 @@ class ModelFrame:
         future duration x calendar surface.
 
         A ``recent`` (calendar-diagonal) window is deliberately NOT a
-        ModelFrame concern: for a cumulative triangle ``recent`` is a
+        _ModelFrame concern: for a cumulative triangle ``recent`` is a
         FIT-level link-mask (factors estimated from the recent diagonals, the
         full data kept for the projection seed) -- the same data-intact
         diagonal mask as a backtest ``holdout``. That shared mask lands in the
-        validation layer; ModelFrame never drops cells for it
+        validation layer; _ModelFrame never drops cells for it
         (a cell-drop would corrupt the per-cohort cumulative reconstruction).
 
         Parameters
@@ -90,7 +90,7 @@ class ModelFrame:
             ``cohort < change``. ``None`` (no cut); a ``date`` applied to every
             segment; or a ``dict`` mapping a segment value (scalar for a single
             segment column, tuple for several) to its change ``date`` (segments
-            absent from the dict are uncut). ModelFrame stays a pure shaper --
+            absent from the dict are uncut). _ModelFrame stays a pure shaper --
             resolving a ``Regime`` / ``RegimeDetector`` to date(s) is the
             caller's job.
         """
@@ -173,5 +173,5 @@ class ModelFrame:
         return self._df.height
 
     def __repr__(self) -> str:
-        return (f"ModelFrame(rows={self._df.height}, "
+        return (f"_ModelFrame(rows={self._df.height}, "
                 f"segments={self._segments or None})")

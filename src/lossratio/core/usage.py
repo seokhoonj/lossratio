@@ -31,7 +31,7 @@ def _regime_cut_frames(
     ``None`` (no cut), a ``date`` (one change for every segment), or a
     ``dict[segment -> date]`` (a change per segment). The per-group frame has
     columns ``[*group_cols, "_change"]`` for a left-join onto the cell grid;
-    the scalar form needs no join. Mirrors ``ModelFrame._apply_regime`` so the
+    the scalar form needs no join. Mirrors ``_ModelFrame._apply_regime`` so the
     usage view cuts exactly where the fit does.
     """
     if regime_cut is None:

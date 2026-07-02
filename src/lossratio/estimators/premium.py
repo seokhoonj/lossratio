@@ -50,7 +50,7 @@ from .._kernels.io import (
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
-from ..core.model_frame import ModelFrame
+from ..core.model_frame import _ModelFrame
 from ._cascade import (
     _cohort_subset_donor,
     _pad_cols,
@@ -435,7 +435,7 @@ def _fit_premium(
     of ``CredibleLoss``); ``"smooth"`` replaces the saturated ``h_k`` with a
     smooth P-spline shape. ``regime`` is ``None`` / a :class:`Regime` / a
     :class:`RegimeDetector` (resolved to a concrete Regime at entry, then
-    applied as a cohort cut through :class:`ModelFrame` -- the premium ladder
+    applied as a cohort cut through :class:`_ModelFrame` -- the premium ladder
     treats every regime treatment as a latest-change cut). ``recent`` (all
     mechanisms) is the calendar-diagonal fit mask (most-recent ``N`` diagonals
     feed the link-ratio estimation, the projection seed stays full). Credible /
@@ -466,12 +466,12 @@ def _fit_premium(
     groups = triangle.groups
 
     # segment_wise keeps every regime (the cascade); otherwise the resolved
-    # latest-change cohort cut applies through the ModelFrame.
-    mf = ModelFrame.from_triangle(triangle, regime=None if segment_wise else regime)
+    # latest-change cohort cut applies through the _ModelFrame.
+    mf = _ModelFrame._from_triangle(triangle, regime=None if segment_wise else regime)
     frame = mf.df
     if frame.is_empty():
         raise ValueError(
-            "ModelFrame has no cells to fit (an empty triangle, or a regime "
+            "_ModelFrame has no cells to fit (an empty triangle, or a regime "
             "cut that removed every cohort)."
         )
     group_cols = normalize_groups(groups)

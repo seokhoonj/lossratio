@@ -271,8 +271,8 @@ def test_usage_never_marks_absent_cells_used_in_gappy_groups():
     """Gappy per-group cohorts (a multi-group split skipping periods) compress
     the dense per-group cohort rank, so a genuinely-future cell could fall inside
     the rank envelope. Every 'used'/'holdout' cell must be DATA-PRESENT, and the
-    'used'/'holdout' set must equal the fit's ModelFrame cells exactly."""
-    from lossratio.core.model_frame import ModelFrame
+    'used'/'holdout' set must equal the fit's _ModelFrame cells exactly."""
+    from lossratio.core.model_frame import _ModelFrame
 
     df = lr.make_experience(seed=1).with_columns(
         pl.when(pl.col("uy_m").dt.year() % 2 == 0)
@@ -285,7 +285,7 @@ def test_usage_never_marks_absent_cells_used_in_gappy_groups():
     used = usage.filter(pl.col("status").is_in(["used", "holdout"])).select(keys)
 
     assert used.join(present, on=keys, how="anti").height == 0  # no absent cell used
-    mf = ModelFrame.from_triangle(tri).df.select(keys)
+    mf = _ModelFrame._from_triangle(tri).df.select(keys)
     assert used.join(mf, on=keys, how="anti").height == 0       # used subset of fit
     assert mf.join(used, on=keys, how="anti").height == 0       # fit subset of used
 
