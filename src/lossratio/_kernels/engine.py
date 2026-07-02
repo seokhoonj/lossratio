@@ -37,7 +37,17 @@ def _sum_by(values: Sequence[float], keys: Sequence) -> dict:
 def saturated_intensity(*, response, exposure, duration) -> dict:
     """Pooled (u=1) intensity ``g_k = sum response / sum exposure`` per
     duration. ``sum exposure <= 0`` -> ``g_k = 0.0`` (degeneracy
-    policy); response sign is unconstrained (recoveries allowed)."""
+    policy); response sign is unconstrained (recoveries allowed).
+
+    ``g_k`` is the additive-form development rate (expected incremental loss per
+    unit cumulative premium) -- the rate parameter of the premium-offset ODP
+    (Tweedie p=1) loss model, paired with Mack's multiplicative link factor
+    ``f_k``. ``g`` is a house symbol: this quantity has no standard notation
+    (chainladder-python coins ``zeta`` for the same additive factor). It is a
+    *rate*, not a multiplicative factor -- read in the physical "amount per unit
+    exposure" sense, not the point-process count rate lambda. (Tweedie p>1 was
+    rejected on real-data out-of-sample error; p=1 is chain-ladder-consistent.)
+    """
     num = _sum_by(response, duration)
     den = _sum_by(exposure, duration)
     return {k: (num[k] / den[k] if den[k] != 0.0 else 0.0) for k in num}

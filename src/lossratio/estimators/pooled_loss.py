@@ -58,6 +58,16 @@ class PooledLoss(_LossEstimatorBase):
         factor toward the reference); or a fixed ridge (a scalar, or a
         ``{covariate: "auto" or lam}`` dict). GLM + credibility for multi-level
         factors (Ohlsson 2008).
+    balance
+        Apply the Ohlsson (2008) balance-property calibration: rescale each
+        segment's projection so the in-sample fitted-increment total matches the
+        observed total (default ``False``). A structural no-op for ``PooledLoss``
+        (saturated ``g_k`` already balances per duration); it matters for the
+        credibility / smooth rungs, whose re-weighting breaks aggregate balance.
+    uncertainty
+        ``None`` (default, analytical CI only) or a :class:`ResidualBootstrap` /
+        :class:`WeightedBootstrap` to fill the bootstrap SE / CI columns from the
+        full-refit replicate spread.
     """
 
     balance: bool = False
