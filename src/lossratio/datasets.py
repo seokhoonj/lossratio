@@ -82,7 +82,7 @@ _CHAN_RATIO: tuple[float, ...] = (0.90, 1.15, 1.05, 0.95)  # GA least-curated ->
 
 _DEFAULT_SEED = 20260501
 _N_COHORTS = 36
-_K = 36
+_N_DURATIONS = 36
 _MAX_CYM_IDX = _N_COHORTS - 1
 
 
@@ -101,7 +101,7 @@ _CHAN_RATIO_N = _normalised(_CHAN_W, _CHAN_RATIO)
 def _make_weights() -> np.ndarray:
     """Constant per-duration weights with a small duration-1 dampening that
     mimics the waiting-period dip in real long-term health data."""
-    weights = np.ones(_K)
+    weights = np.ones(_N_DURATIONS)
     weights[0] = 0.2
     return weights / weights.sum()
 
@@ -150,7 +150,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
 
     records: list[dict] = []
     for coverage, target_ratio, premium_mean, premium_cv, cell_cv in _CALIB:
-        premium_mean_per_duration = premium_mean / _K
+        premium_mean_per_duration = premium_mean / _N_DURATIONS
         shift = _SHIFTS.get(coverage)
         shift_at = shift[0] if shift else None
         shift_scale = shift[1] if shift else 1.0
@@ -173,7 +173,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                     seg_premium_base = premium_base * _AGE_W[ai] * _CHAN_W[chi]
                     seg_ratio = eff_target * _AGE_RATIO_N[ai] * _CHAN_RATIO_N[chi]
 
-                    for k in range(_K):
+                    for k in range(_N_DURATIONS):
                         if ci + k > _MAX_CYM_IDX:
                             break
                         cy_c, cm_c = divmod(ci + k, 12)
@@ -188,7 +188,7 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                             rng.normal(0.0, math.log(1.0 + cell_cv))
                         )
                         incr_loss = (
-                            incr_premium * seg_ratio * weights[k] * _K * noise
+                            incr_premium * seg_ratio * weights[k] * _N_DURATIONS * noise
                         )
 
                         # Real-world premium / loss are recorded in won
