@@ -457,7 +457,7 @@ class RatioFit:
         )
         if amounts:
             steps = (pl.col("duration") - pl.col("freeze_dur")).cast(pl.Float64)
-            premium = pl.col("freeze_premium") * pl.col("_gP").pow(steps)
+            premium = pl.col("freeze_premium") * pl.col("_premium_growth_factor").pow(steps)
             ext = ext.with_columns(
                 premium=pl.when(pl.col("is_stable")).then(premium).otherwise(None),
             ).with_columns(
@@ -474,7 +474,7 @@ class RatioFit:
         return mirror_output(out, self._output_type)
 
     def _premium_growth(self, group_cols: list[str], window: int) -> pl.DataFrame:
-        """Per-segment recent premium growth factor (``_gP``) for amount
+        """Per-segment recent premium growth factor (``_premium_growth_factor``) for amount
         extension."""
         # Only reached from `extend`, which has already guarded `_triangle`.
         assert self._triangle is not None
@@ -493,7 +493,9 @@ class RatioFit:
             else:
                 sub = df_tri
             g = _segment_premium_growth(sub, window)
-            rows.append({**{c: v for c, v in zip(group_cols, key, strict=False)}, "_gP": g})
+            row = {c: v for c, v in zip(group_cols, key, strict=False)}
+            row["_premium_growth_factor"] = g
+            rows.append(row)
         return pl.DataFrame(rows)
 
     def __repr__(self) -> str:

@@ -273,9 +273,9 @@ def _valid_cells(
     the engine, kept index-aligned so residuals can be placed back.
     """
     n_links = loss_obs.shape[1] - 1
-    ck = premium_obs[:, :n_links]
+    c_k = premium_obs[:, :n_links]
     dl = loss_obs[:, 1:] - loss_obs[:, :n_links]
-    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+    mask = ~np.isnan(c_k) & ~np.isnan(dl) & (c_k > 0)
     if link_mask is not None:
         mask = mask & link_mask[:, :n_links]
     # k-major, cohort-minor (matches the original k-outer / cohort-inner loop).
@@ -284,7 +284,7 @@ def _valid_cells(
         ii.astype(np.int64),
         kk.astype(np.int64),
         dl[ii, kk].astype(np.float64),
-        ck[ii, kk].astype(np.float64),
+        c_k[ii, kk].astype(np.float64),
     )
 
 
@@ -759,10 +759,10 @@ def _project_multiplicative_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.nda
     last = np.where(has, n_dur - 1 - obs[:, ::-1].argmax(axis=1), -1)
     for k in range(n_links):
         active = has & (last >= 0) & (last <= k)
-        ck = proj[:, k]
-        pos = active & ~np.isnan(ck) & (ck > 0)
+        c_k = proj[:, k]
+        pos = active & ~np.isnan(c_k) & (c_k > 0)
         if pos.any() and np.isfinite(f_k[k]):
-            proj[pos, k + 1] = f_k[k] * ck[pos]
+            proj[pos, k + 1] = f_k[k] * c_k[pos]
     return proj
 
 

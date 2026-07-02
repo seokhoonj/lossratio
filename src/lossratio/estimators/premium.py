@@ -166,10 +166,10 @@ def _project_self_exposure(
         active = eligible & (last_obs <= k)
         if not active.any():
             continue
-        pk = proj[:, k]
-        pos = active & ~np.isnan(pk) & (pk > 0)
+        p_k = proj[:, k]
+        pos = active & ~np.isnan(p_k) & (p_k > 0)
         if pos.any() and np.isfinite(h_k[k]):
-            proj[pos, k + 1] = pk[pos] * (1.0 + u_vec[pos] * h_k[k])
+            proj[pos, k + 1] = p_k[pos] * (1.0 + u_vec[pos] * h_k[k])
     return proj
 
 

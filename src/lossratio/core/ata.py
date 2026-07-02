@@ -65,11 +65,11 @@ def _compute_cv_rse(
         # Cross-cohort CV of individual link factors (needs n_k >= 2,
         # and the denominator C^L_{i,k} > 0 for each contributing cohort).
         if n_k >= 2:
-            ck = col_k[mask]
-            ck1 = col_k1[mask]
-            ck_pos = ck > 0
+            c_k = col_k[mask]
+            c_k1 = col_k1[mask]
+            ck_pos = c_k > 0
             if ck_pos.sum() >= 2:
-                indiv = ck1[ck_pos] / ck[ck_pos]
+                indiv = c_k1[ck_pos] / c_k[ck_pos]
                 f_mean = float(indiv.mean())
                 f_sd = float(indiv.std(ddof=1))
                 if f_mean != 0:

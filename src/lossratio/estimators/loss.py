@@ -107,15 +107,15 @@ def _segment_factor_links(
     here is exactly dropping the masked-out cells from the feed.
     """
     n_links = loss_obs.shape[1] - 1
-    ck = premium_obs[:, :n_links]                     # (N, n_links) from-premium
+    c_k = premium_obs[:, :n_links]                     # (N, n_links) from-premium
     dl = loss_obs[:, 1:] - loss_obs[:, :n_links]      # (N, n_links) increments
-    mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+    mask = ~np.isnan(c_k) & ~np.isnan(dl) & (c_k > 0)
     if link_mask is not None:
         mask = mask & link_mask[:, :n_links]
     # k-major, i-minor order (matches the nested k-outer / cohort-inner loops):
     # nonzero on the transpose walks rows (link k) outer, columns (cohort) inner.
     kk, ii = np.nonzero(mask.T)
-    return dl[ii, kk].tolist(), ck[ii, kk].tolist(), (kk + 1).tolist()
+    return dl[ii, kk].tolist(), c_k[ii, kk].tolist(), (kk + 1).tolist()
 
 
 def _segment_premium_proj(
@@ -153,7 +153,7 @@ def _segment_premium_proj(
     return proj
 
 
-def _fit_segment_additive(
+def _fit_segment_pooled(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -221,18 +221,18 @@ def _fit_segment_additive(
     sigma2_g_k = np.full(n_links, np.nan, dtype=np.float64)
     sum_premium_k = np.zeros(n_links, dtype=np.float64)
     for k in range(n_links):
-        ck = premium_obs[:, k]
+        c_k = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
-        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        mask = ~np.isnan(c_k) & ~np.isnan(dl) & (c_k > 0)
         if loss_mask is not None:
             mask = mask & loss_mask[:, k]
         n_k = int(mask.sum())
         if n_k == 0:
             continue                                  # g_k already NaN here
-        ck_eff = ck[mask]
-        sum_premium_k[k] = ck_eff.sum()
+        c_k_eff = c_k[mask]
+        sum_premium_k[k] = c_k_eff.sum()
         if n_k >= 2 and np.isfinite(g_k[k]):
-            sigma2_g_k[k] = _wls_sigma2(dl[mask], ck_eff, g_k[k], n_k)
+            sigma2_g_k[k] = _wls_sigma2(dl[mask], c_k_eff, g_k[k], n_k)
         else:
             sigma2_g_k[k] = 0.0
     sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
@@ -311,15 +311,15 @@ def _project_additive(
         active = eligible & (last_obs <= k)
         if not active.any():
             continue
-        ck = loss_proj[:, k]
-        pk = premium_proj[:, k]
-        pos = active & ~np.isnan(pk) & (pk > 0)
+        c_k = loss_proj[:, k]
+        p_k = premium_proj[:, k]
+        pos = active & ~np.isnan(p_k) & (p_k > 0)
         if pos.any():
             if np.isfinite(g_k[k]):
-                loss_proj[pos, k + 1] = ck[pos] + g_k[k] * pk[pos]
-            _step_additive(proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], pk)
-        ck1 = loss_proj[:, k + 1]
-        sp = active & ~np.isnan(ck1)
+                loss_proj[pos, k + 1] = c_k[pos] + g_k[k] * p_k[pos]
+            _step_additive(proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], p_k)
+        c_k1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(c_k1)
         proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
         param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
         total_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp] + param_acc[sp], 0))
@@ -330,7 +330,7 @@ def _project_additive(
     return loss_proj, proc_se, param_se, total_se
 
 
-def _fit_segment_multiplicative(
+def _fit_segment_chain_ladder(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -392,18 +392,18 @@ def _fit_segment_multiplicative(
     sigma2_f_k = np.full(n_links, np.nan, dtype=np.float64)
     sum_loss_k = np.zeros(n_links, dtype=np.float64)
     for k in range(n_links):
-        ck = loss_obs[:, k]
-        ck1 = loss_obs[:, k + 1]
-        mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
+        c_k = loss_obs[:, k]
+        c_k1 = loss_obs[:, k + 1]
+        mask = ~np.isnan(c_k) & ~np.isnan(c_k1) & (c_k > 0)
         if loss_mask is not None:
             mask = mask & loss_mask[:, k]
         n_k = int(mask.sum())
         if n_k == 0:
             continue                                  # f_k already NaN here
-        ck_eff = ck[mask]
-        sum_loss_k[k] = ck_eff.sum()
+        c_k_eff = c_k[mask]
+        sum_loss_k[k] = c_k_eff.sum()
         if n_k >= 2 and np.isfinite(f_k[k]) and f_k[k] != 0:
-            sigma2_f_k[k] = _wls_sigma2(ck1[mask], ck_eff, f_k[k], n_k)
+            sigma2_f_k[k] = _wls_sigma2(c_k1[mask], c_k_eff, f_k[k], n_k)
         else:
             sigma2_f_k[k] = 0.0
     sigma2_f_k = extrapolate_tail_sigma2(sigma2_f_k, sigma_method)
@@ -479,15 +479,15 @@ def _project_multiplicative(
         active = eligible & (last_obs <= k)
         if not active.any():
             continue
-        ck = loss_proj[:, k]
-        pos = active & ~np.isnan(ck) & (ck > 0)
+        c_k = loss_proj[:, k]
+        pos = active & ~np.isnan(c_k) & (c_k > 0)
         if pos.any():
             if np.isfinite(f_k[k]):
-                loss_proj[pos, k + 1] = f_k[k] * ck[pos]
+                loss_proj[pos, k + 1] = f_k[k] * c_k[pos]
             _step_multiplicative(proc_acc, param_acc, pos, f_k[k],
-                          sigma2_f_k[k], var_f_k[k], ck)
-        ck1 = loss_proj[:, k + 1]
-        sp = active & ~np.isnan(ck1)
+                          sigma2_f_k[k], var_f_k[k], c_k)
+        c_k1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(c_k1)
         proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
         param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
         total_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp] + param_acc[sp], 0))
@@ -846,42 +846,42 @@ def _segment_covariate_surface(
         for d in durations:
             cp[d] = {}
             for cell_dict, c_cp in by_cohort_duration[(coh, d)]:
-                ck = tuple(cell_dict[c] for c in covariates)
-                cells[ck] = cell_dict
-                cp[d][ck] = float(c_cp)
+                cell_key = tuple(cell_dict[c] for c in covariates)
+                cells[cell_key] = cell_dict
+                cp[d][cell_key] = float(c_cp)
         obs_cols = np.flatnonzero(~np.isnan(loss_obs[i, :]))
         last_col = int(obs_cols.max()) if obs_cols.size else -1
 
         for col in range(n_dur):
-            H = loss_proj[i, col]
-            if not np.isfinite(H):
+            loss_proj_cell = loss_proj[i, col]
+            if not np.isfinite(loss_proj_cell):
                 continue
             d = col + 1                              # 1-based duration of this cell
             src = cp.get(d if (d in cp and d <= last_obs_d) else last_obs_d, {})
             # relativity-weighted allocation weight per cell (premium share where
             # the intensity is not estimable at this duration)
             w = {}
-            for ck in cells:
-                c_cp = src.get(ck, 0.0)
+            for cell_key in cells:
+                c_cp = src.get(cell_key, 0.0)
                 if c_cp <= 0:
-                    w[ck] = 0.0
+                    w[cell_key] = 0.0
                     continue
-                gi = cov_fit.intensity(d, cells[ck])
-                w[ck] = (gi * c_cp) if (np.isfinite(gi) and gi > 0) else c_cp
+                gi = cov_fit.intensity(d, cells[cell_key])
+                w[cell_key] = (gi * c_cp) if (np.isfinite(gi) and gi > 0) else c_cp
             tot_w = sum(w.values())
             tot_p = sum(v for v in src.values() if v > 0)
             if tot_w <= 0:
                 continue
-            pk = premium_proj[i, col]
-            for ck in cells:
-                if w[ck] <= 0:
+            p_k = premium_proj[i, col]
+            for cell_key in cells:
+                if w[cell_key] <= 0:
                     continue
-                lp = H * (w[ck] / tot_w)
-                share_p = (src.get(ck, 0.0) / tot_p) if tot_p > 0 else 0.0
-                ps = share_p * pk
+                lp = loss_proj_cell * (w[cell_key] / tot_w)
+                share_p = (src.get(cell_key, 0.0) / tot_p) if tot_p > 0 else 0.0
+                ps = share_p * p_k
                 row: dict[str, Any] = {"cohort": coh, "duration": d}
                 for c in covariates:
-                    row[c] = cells[ck][c]
+                    row[c] = cells[cell_key][c]
                 row["loss_proj"] = float(lp)
                 row["premium_proj"] = float(ps) if np.isfinite(ps) else None
                 row["ratio_proj"] = (
@@ -907,12 +907,12 @@ def _segment_covariate_surface(
     return df.select(order)
 
 
-# mechanism -> (per-segment fitter, method label, public model name)
+# mechanism -> (per-segment fitter, public model name); the method label IS the key
 _MECHANISMS = {
-    "pooled": (_fit_segment_additive, "pooled", "pooled_loss"),
-    "chain_ladder": (_fit_segment_multiplicative, "chain_ladder", "chain_ladder"),
-    "credible": (_fit_segment_credible, "credible", "credible_loss"),
-    "smooth": (_fit_segment_smooth, "smooth", "smooth_loss"),
+    "pooled": (_fit_segment_pooled, "pooled_loss"),
+    "chain_ladder": (_fit_segment_chain_ladder, "chain_ladder"),
+    "credible": (_fit_segment_credible, "credible_loss"),
+    "smooth": (_fit_segment_smooth, "smooth_loss"),
 }
 
 
@@ -1050,12 +1050,12 @@ def _apply_balance(
     for k in range(g_k.shape[0]):
         if not np.isfinite(g_k[k]):
             continue
-        pk = premium_obs[:, k]
+        p_k = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
         col_mask = mask[:, k] if mask is not None else np.ones(n_cohorts, dtype=bool)
-        ok = col_mask & np.isfinite(pk) & (pk > 0) & np.isfinite(dl)
+        ok = col_mask & np.isfinite(p_k) & (p_k > 0) & np.isfinite(dl)
         if ok.any():
-            s_fit += float(np.sum(u[ok] * g_k[k] * pk[ok]))
+            s_fit += float(np.sum(u[ok] * g_k[k] * p_k[ok]))
             s_act += float(np.sum(dl[ok]))
     alpha = s_act / s_fit if s_fit > 0 else 1.0
     # No-op unless alpha is a well-defined positive rescale: a non-positive
@@ -1129,7 +1129,8 @@ def _fit_loss(
     fit mask -- only the most-recent ``N`` diagonals feed each segment's factor
     estimation, the projection seed stays full.
     """
-    fit_segment, method, model = _MECHANISMS[mechanism]
+    fit_segment, model = _MECHANISMS[mechanism]
+    method = mechanism
 
     # Resolve the regime to a concrete Regime FIRST -- a RegimeDetector detects
     # on `triangle` (in backtest the masked fold triangle, so leakage-safe),

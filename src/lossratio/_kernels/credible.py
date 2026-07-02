@@ -135,19 +135,19 @@ def _project_credible(
         active = eligible & (last_obs <= k)
         if not active.any():
             continue
-        ck = loss_proj[:, k]
-        pk = premium_proj[:, k]
-        pos = active & ~np.isnan(pk) & (pk > 0)
+        c_k = loss_proj[:, k]
+        p_k = premium_proj[:, k]
+        pos = active & ~np.isnan(p_k) & (p_k > 0)
         if g_k.ndim == 1:
             if not np.isfinite(g_k[k]):
                 continue
             if pos.any():
-                loss_proj[pos, k + 1] = ck[pos] + u_vec[pos] * g_k[k] * pk[pos]
+                loss_proj[pos, k + 1] = c_k[pos] + u_vec[pos] * g_k[k] * p_k[pos]
         else:
             gk = g_k[:, k]
             pos = pos & np.isfinite(gk)
             if pos.any():
-                loss_proj[pos, k + 1] = ck[pos] + u_vec[pos] * gk[pos] * pk[pos]
+                loss_proj[pos, k + 1] = c_k[pos] + u_vec[pos] * gk[pos] * p_k[pos]
     return loss_proj
 
 def _smooth_backfit(
@@ -189,14 +189,14 @@ def _smooth_backfit(
     duration: list[int] = []
     coh: list[int] = []
     for k in range(n_links):
-        ck = premium_obs[:, k]
+        c_k = premium_obs[:, k]
         dl = loss_obs[:, k + 1] - loss_obs[:, k]
-        mask = ~np.isnan(ck) & ~np.isnan(dl) & (ck > 0)
+        mask = ~np.isnan(c_k) & ~np.isnan(dl) & (c_k > 0)
         if link_mask is not None:
             mask = mask & link_mask[:, k]
         for i in np.flatnonzero(mask):
             response.append(float(dl[i]))
-            exposure.append(float(ck[i]))
+            exposure.append(float(c_k[i]))
             duration.append(k + 1)
             coh.append(int(i))
     response_arr = np.array(response, dtype=np.float64)
@@ -468,8 +468,8 @@ def _project_borrow(
         active = eligible & (last_obs <= k)
         if not active.any():
             continue
-        ck = loss_proj[:, k]
-        pk = premium_proj[:, k]
+        c_k = loss_proj[:, k]
+        p_k = premium_proj[:, k]
         # the own factor for this body at link k (LOCF-filled above, so an
         # interior gap carries forward; a leading gap stays NaN -> donor tail).
         if body == "additive":
@@ -481,36 +481,36 @@ def _project_borrow(
             own_k = own_f[k]
         if k <= own_boundary and np.isfinite(own_k):      # own body
             if body == "additive":
-                pos = active & ~np.isnan(pk) & (pk > 0)
+                pos = active & ~np.isnan(p_k) & (p_k > 0)
                 if pos.any():
-                    loss_proj[pos, k + 1] = ck[pos] + u_body[pos] * own_g[k] * pk[pos]
+                    loss_proj[pos, k + 1] = c_k[pos] + u_body[pos] * own_g[k] * p_k[pos]
                     _step_additive(proc_acc, param_acc, pos,
-                                  own_sig_g[k], own_var_g[k], pk)
+                                  own_sig_g[k], own_var_g[k], p_k)
             elif body == "self_exposure":
                 # premium self-exposure growth: P_{k+1} = P_k * (1 + u_i * h_k).
                 # point-only -> no variance step (the premium fitter discards the
                 # SE arms and writes nan_se).
                 assert own_h is not None
-                pos = active & ~np.isnan(ck) & (ck > 0)
+                pos = active & ~np.isnan(c_k) & (c_k > 0)
                 if pos.any():
-                    loss_proj[pos, k + 1] = ck[pos] * (1.0 + u_body[pos] * own_h[k])
+                    loss_proj[pos, k + 1] = c_k[pos] * (1.0 + u_body[pos] * own_h[k])
             else:
-                pos = active & ~np.isnan(ck) & (ck > 0)
+                pos = active & ~np.isnan(c_k) & (c_k > 0)
                 if pos.any():
-                    loss_proj[pos, k + 1] = own_f[k] * ck[pos]
+                    loss_proj[pos, k + 1] = own_f[k] * c_k[pos]
                     _step_multiplicative(proc_acc, param_acc, pos, own_f[k],
-                                  own_sig_f[k], own_var_f[k], ck)
+                                  own_sig_f[k], own_var_f[k], c_k)
         elif np.isfinite(donor_f[k]):                     # borrowed link-ratio tail
-            pos = active & ~np.isnan(ck) & (ck > 0)
+            pos = active & ~np.isnan(c_k) & (c_k > 0)
             if pos.any():
-                loss_proj[pos, k + 1] = donor_f[k] * ck[pos]
+                loss_proj[pos, k + 1] = donor_f[k] * c_k[pos]
                 _step_multiplicative(proc_acc, param_acc, pos, donor_f[k],
-                              donor_sig_f[k], donor_var_f[k], ck)
+                              donor_sig_f[k], donor_var_f[k], c_k)
                 borrowed[pos, k + 1] = True
         else:
             continue
-        ck1 = loss_proj[:, k + 1]
-        sp = active & ~np.isnan(ck1)
+        c_k1 = loss_proj[:, k + 1]
+        sp = active & ~np.isnan(c_k1)
         proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
         param_se[sp, k + 1] = np.sqrt(np.maximum(param_acc[sp], 0))
         total_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp] + param_acc[sp], 0))

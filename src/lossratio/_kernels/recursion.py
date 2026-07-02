@@ -277,11 +277,11 @@ def _fit_multiplicative(
     # ATA factors (volume-weighted) + sigma^2_k
     sum_value_k = np.zeros(n_links, dtype=np.float64)  # cached for parameter variance
     for k in range(n_links):
-        ck = value_obs[:, k]
-        ck1 = value_obs[:, k + 1]
-        # Drop cohorts with ck <= 0 (otherwise the volume-weighted
+        c_k = value_obs[:, k]
+        c_k1 = value_obs[:, k + 1]
+        # Drop cohorts with c_k <= 0 (otherwise the volume-weighted
         # accumulation includes 0/positive cohorts that bias f upward).
-        mask = ~np.isnan(ck) & ~np.isnan(ck1) & (ck > 0)
+        mask = ~np.isnan(c_k) & ~np.isnan(c_k1) & (c_k > 0)
         # Recent-diagonal wedge: keep only links inside the wedge.
         if link_mask is not None:
             mask = mask & link_mask[:, k]
@@ -296,16 +296,16 @@ def _fit_multiplicative(
             sigma2_k[k] = np.nan
             continue
 
-        ck_eff = ck[mask]
-        ck1_eff = ck1[mask]
-        sum_k = ck_eff.sum()
+        c_k_eff = c_k[mask]
+        ck1_eff = c_k1[mask]
+        sum_k = c_k_eff.sum()
         sum_k1 = ck1_eff.sum()
         sum_value_k[k] = sum_k
 
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else np.nan
 
         if n_k >= 2 and f_k[k] != 0:
-            sigma2_k[k] = _wls_sigma2(ck1_eff, ck_eff, f_k[k], n_k)
+            sigma2_k[k] = _wls_sigma2(ck1_eff, c_k_eff, f_k[k], n_k)
         else:
             sigma2_k[k] = 0.0
 

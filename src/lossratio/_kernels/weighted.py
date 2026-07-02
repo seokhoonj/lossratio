@@ -200,12 +200,12 @@ def _project_additive_batched(
     elig = (last_obs >= 0) & (last_obs < n_links)
     for k in range(n_links):
         active = elig & (last_obs <= k)
-        pk = premium_proj[:, k]
-        pos = active & ~np.isnan(pk) & (pk > 0)
+        p_k = premium_proj[:, k]
+        pos = active & ~np.isnan(p_k) & (p_k > 0)
         if not pos.any():
             continue
         gk = g[:, k][:, None]                            # (B, 1)
-        add = u[:, pos] * gk * pk[None, pos]
+        add = u[:, pos] * gk * p_k[None, pos]
         valid = np.isfinite(gk) & np.isfinite(add)
         nxt = proj[:, pos, k] + add
         proj[:, pos, k + 1] = np.where(valid, nxt, proj[:, pos, k + 1])
@@ -407,10 +407,10 @@ def _project_multiplicative_batched(loss_obs: np.ndarray, f: np.ndarray) -> np.n
         active = has & (last >= 0) & (last <= k)
         if not active.any():
             continue
-        ck = proj[:, :, k]
-        pos = active[None, :] & ~np.isnan(ck) & (ck > 0)
+        c_k = proj[:, :, k]
+        pos = active[None, :] & ~np.isnan(c_k) & (c_k > 0)
         fk = f[:, k][:, None]
-        nxt = fk * ck
+        nxt = fk * c_k
         valid = pos & np.isfinite(fk) & np.isfinite(nxt)
         proj[:, :, k + 1] = np.where(valid, nxt, proj[:, :, k + 1])
     return proj
@@ -571,18 +571,18 @@ def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
     param = np.broadcast_to(loss_obs, (B, n_cohorts, n_durations)).copy()
     for k in range(n_links):
         active = elig & (last <= k)
-        ck = param[:, :, k]
+        c_k = param[:, :, k]
         if k <= bnd and body == "additive":
             gk = own[:, k][:, None]
-            pk = premium_proj[:, k]
-            add = u_body * gk * pk[None, :]
-            pos = active[None, :] & ~np.isnan(pk)[None, :] & (pk > 0)[None, :] \
+            p_k = premium_proj[:, k]
+            add = u_body * gk * p_k[None, :]
+            pos = active[None, :] & ~np.isnan(p_k)[None, :] & (p_k > 0)[None, :] \
                 & np.isfinite(gk) & np.isfinite(add)
-            param[:, :, k + 1] = np.where(pos, ck + add, param[:, :, k + 1])
+            param[:, :, k + 1] = np.where(pos, c_k + add, param[:, :, k + 1])
         else:
             fk = (own[:, k] if k <= bnd else fdon[:, k])[:, None]
-            pos = active[None, :] & ~np.isnan(ck) & (ck > 0) & np.isfinite(fk)
-            param[:, :, k + 1] = np.where(pos, fk * ck, param[:, :, k + 1])
+            pos = active[None, :] & ~np.isnan(c_k) & (c_k > 0) & np.isfinite(fk)
+            param[:, :, k + 1] = np.where(pos, fk * c_k, param[:, :, k + 1])
 
     if process == "none":
         return param, param
