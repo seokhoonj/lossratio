@@ -108,3 +108,52 @@ def test_summary_warns_and_falls_back_on_nonratio(tri_with_groups):
         assert not fig.legends
     finally:
         plt.close(fig)
+
+
+def _summary_line_counts(fig):
+    """Mean/Median/Weighted lines per facet (unique linewidth 1.7)."""
+    return {
+        ax.get_title(): sum(
+            1 for ln in ax.get_lines() if abs(ln.get_linewidth() - 1.7) < 1e-9
+        )
+        for ax in fig.get_axes()
+        if ax.get_lines()
+    }
+
+
+def test_regime_split_draws_a_summary_trio_per_regime(tri_with_groups):
+    # SURGERY carries a 2024-07 regime change -> two summary trios (6 lines);
+    # a single-regime coverage keeps one trio (3 lines).
+    reg = lr.Regime.at(
+        change="2024-07-01",
+        groups={"coverage": ["SURGERY"]},
+        treatment="segment_wise",
+    )
+    fig = tri_with_groups.plot(summary=True, regime=reg)
+    try:
+        counts = _summary_line_counts(fig)
+        assert counts["SURGERY"] == 6
+        assert counts["CANCER"] == 3
+    finally:
+        plt.close(fig)
+
+
+def test_regime_split_accepts_detector(tri_with_groups):
+    fig = tri_with_groups.plot(summary=True, regime=lr.RegimeDetector())
+    try:
+        assert isinstance(fig, Figure)
+    finally:
+        plt.close(fig)
+
+
+def test_no_regime_keeps_single_pooled_trio(tri_with_groups):
+    fig = tri_with_groups.plot(summary=True)
+    try:
+        assert set(_summary_line_counts(fig).values()) == {3}
+    finally:
+        plt.close(fig)
+
+
+def test_regime_requires_regime_or_detector(tri_with_groups):
+    with pytest.raises(TypeError):
+        tri_with_groups.plot(summary=True, regime="2024-07-01")

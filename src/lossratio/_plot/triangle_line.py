@@ -24,10 +24,10 @@ from .metric import (
     metric_style,
 )
 from .theme import (
+    REGIME_FAINT_COLORS,
     STAT_COLORS,
     add_cohort_colorbar,
     cohort_gradient,
-    draw_facet_strip,
     finalize_figure,
     period_label_fn,
 )
@@ -36,29 +36,41 @@ if TYPE_CHECKING:
     from ..core.triangle import Triangle
 
 
-def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
-                       hline):
-    """Per-cohort trajectories (+ optional summary overlay) on one facet."""
-    for g in sub.partition_by("cohort", maintain_order=True):
-        gg = g.sort("duration")
-        x = gg["duration"].to_list()
-        y = gg[metric].to_list()
-        if summary:
-            ax.plot(x, y, color="0.7", alpha=0.5, linewidth=0.6, zorder=1)
-        else:
-            ax.plot(x, y, color=coh_color(gg["cohort"][0]), linewidth=1.1,
-                    zorder=2)
+def _regime_faint_color(regime_id: int) -> str:
+    """Muted tint for a regime segment's faint cohort lines (cycled)."""
+    return REGIME_FAINT_COLORS[(int(regime_id) - 1) % len(REGIME_FAINT_COLORS)]
 
-    if hline is not None:
-        ax.axhline(hline, linestyle="--", color="red", linewidth=0.8, zorder=1)
 
-    if not summary:
-        return
+def _regime_label_frame(triangle, resolved, grp):
+    """Per-cohort ``regime_id`` derived from the regime's change points.
 
-    # Mean / Median / Weighted summary lines, masked where too few cohorts.
+    Uniform for auto-detected and manual (``Regime.at``) regimes: a cohort's
+    id is ``1 + (number of the group's change points at or before it)``. This
+    covers every triangle cohort (a manual ``Regime.at`` carries only change
+    points, not a per-cohort label frame). Returns ``[groups..., cohort,
+    regime_id]`` or ``None`` when the regime has no change points.
+    """
+    changes = resolved._changes_df
+    if "change" not in changes.columns or changes.height == 0:
+        return None
+    grp_cols = ([grp] if isinstance(grp, str)
+                else list(grp) if grp else [])
+    coh = triangle.to_polars().select([*grp_cols, "cohort"]).unique()
+    ch = changes.select([*grp_cols, "change"])
+    joined = (coh.join(ch, on=grp_cols, how="left") if grp_cols
+              else coh.join(ch, how="cross"))
+    return (
+        joined.group_by([*grp_cols, "cohort"])
+        .agg(regime_id=((pl.col("change") <= pl.col("cohort")).sum() + 1)
+             .cast(pl.Int64))
+    )
+
+
+def _draw_summary_lines(ax, seg, metric, summary_min_n, draw_vline):
+    """One Mean / Median / Weighted trio for a single (sub)set of cohorts."""
     lcol, pcol = (("loss", "premium") if metric == "ratio"
                   else ("incr_loss", "incr_premium"))
-    agg = (sub.group_by("duration")
+    agg = (seg.group_by("duration")
               .agg(mean=pl.col(metric).mean(),
                    median=pl.col(metric).median(),
                    _loss_sum=pl.col(lcol).sum(),
@@ -70,17 +82,58 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
     n = np.asarray(agg["n"].to_list())
     masked = summary_min_n is not None and np.isfinite(summary_min_n)
     mask = n < summary_min_n if masked else np.zeros(len(n), dtype=bool)
-    for col, lbl in (("mean", "Mean"), ("median", "Median"),
-                     ("weighted", "Weighted")):
+    for col in ("mean", "median", "weighted"):
         yv = np.asarray(agg[col].to_list(), dtype=float).copy()
         yv[mask] = np.nan
-        ax.plot(xd, yv, color=STAT_COLORS[col], linewidth=1.7, label=lbl,
-                marker="o", markersize=3, zorder=3)
-    if masked:
+        ax.plot(xd, yv, color=STAT_COLORS[col], linewidth=1.7, zorder=3)
+    if masked and draw_vline:
         le = n <= summary_min_n
         if le.any():
             ax.axvline(xd[int(np.argmax(le))], linestyle=":", color="0.4",
                        linewidth=1.0, zorder=1)
+
+
+def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
+                       hline, regime_labels=None):
+    """Per-cohort trajectories (+ optional summary overlay) on one facet.
+
+    With ``regime_labels`` (a ``cohort -> regime_id`` frame for this facet's
+    group) the faint cohort lines are tinted per regime and a separate
+    Mean / Median / Weighted trio is drawn within each regime segment -- so a
+    regime-shifted book shows one summary per level instead of a single line
+    threading between the bands. Without it the summary pools every cohort.
+    """
+    if summary and regime_labels is not None:
+        sub = (sub.join(regime_labels, on="cohort", how="left")
+                  .with_columns(pl.col("regime_id").fill_null(1)))
+        regime_ids = sorted(sub["regime_id"].unique().to_list())
+    else:
+        regime_ids = [1]
+    multi = len(regime_ids) > 1
+
+    for g in sub.partition_by("cohort", maintain_order=True):
+        gg = g.sort("duration")
+        x = gg["duration"].to_list()
+        y = gg[metric].to_list()
+        if summary:
+            color = _regime_faint_color(gg["regime_id"][0]) if multi else "0.7"
+            ax.plot(x, y, color=color, alpha=0.5, linewidth=0.6, zorder=1)
+        else:
+            ax.plot(x, y, color=coh_color(gg["cohort"][0]), linewidth=1.1,
+                    zorder=2)
+
+    if hline is not None:
+        ax.axhline(hline, linestyle="--", color="red", linewidth=0.8, zorder=1)
+
+    if not summary:
+        return
+
+    # A Mean / Median / Weighted trio per regime (a single pooled trio when no
+    # regime is supplied). The masking vline is drawn only in the single-regime
+    # case to keep multi-regime panels uncluttered.
+    for rid in regime_ids:
+        seg = sub.filter(pl.col("regime_id") == rid) if multi else sub
+        _draw_summary_lines(ax, seg, metric, summary_min_n, draw_vline=not multi)
 
 
 def plot(
@@ -88,6 +141,7 @@ def plot(
     metric: str = "ratio",
     summary: bool = False,
     summary_min_n: int = 5,
+    regime: Any = None,
     amount_divisor: float | str = "auto",
     nrow: int | None = None,
     ncol: int | None = None,
@@ -99,6 +153,12 @@ def plot(
     ``groups``. ``summary=True`` (ratio metrics only) fades cohort lines to
     grey and overlays Mean / Median / Weighted lines, masked where fewer
     than ``summary_min_n`` cohorts contribute.
+
+    ``regime`` (a :class:`~lossratio.Regime` / :class:`~lossratio.RegimeDetector`,
+    used only with ``summary=True``) splits the summary by regime: each facet's
+    cohorts are tinted per regime and get their own Mean / Median / Weighted
+    trio, so a regime-shifted book shows one summary per level instead of a
+    single line threading between the bands.
     """
     import warnings
 
@@ -139,6 +199,24 @@ def plot(
         )
         summary = False
 
+    # Per-facet cohort -> regime_id map, so each regime gets its own summary
+    # trio. Resolved only when a regime is supplied for a ratio summary.
+    regime_label_map: dict[Any, pl.DataFrame] = {}
+    if summary and regime is not None:
+        from ..diagnostics.regime import Regime, _resolve_to_regime
+
+        resolved = _resolve_to_regime(regime, triangle)
+        if not isinstance(resolved, Regime):
+            raise TypeError(
+                "Triangle.plot(regime=...) accepts a Regime or RegimeDetector; "
+                f"got {type(resolved).__name__}. Wrap a manual cut with "
+                "Regime.at(...)."
+            )
+        labels = _regime_label_frame(triangle, resolved, grp)
+        if labels is not None:
+            for gv, lab in iter_group_frames(labels, grp):
+                regime_label_map[gv] = lab.select(["cohort", "regime_id"])
+
     facets: list[tuple[Any, pl.DataFrame]] = list(
         iter_group_frames(df, grp)
     )
@@ -148,7 +226,6 @@ def plot(
 
     if figsize is None:
         figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
-    panel_h_in = max((figsize[1] - 1.0) / max(nrow, 1), 0.5)
 
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
@@ -174,10 +251,11 @@ def plot(
         r, c = divmod(idx, ncol)
         ax = axes[r][c]
         _draw_cohort_lines(ax, sub, metric, _coh_color, summary,
-                           summary_min_n, hline)
+                           summary_min_n, hline,
+                           regime_labels=regime_label_map.get(group_value))
         ax.yaxis.set_major_formatter(fmt)
         if group_value is not None:
-            draw_facet_strip(ax, format_group_value(group_value), panel_h_in)
+            ax.set_title(format_group_value(group_value), fontsize=9)
 
     hide_unused(axes, n_facets, nrow, ncol)
 

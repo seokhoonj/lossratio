@@ -30,6 +30,10 @@ CAPTION_COLOR = "#4d4d4d"  # ggplot2 plot.caption grey30
 STAT_COLORS = {"mean": "black", "median": BLUE, "weighted": RED}
 STAT_COLORS_HUE = {"mean": "#F8766D", "median": "#00BA38", "weighted": "#619CFF"}
 
+# Muted per-regime tints for the faint cohort lines when the ratio summary
+# is split by regime (`Triangle.plot(regime=...)`); cycled by regime index.
+REGIME_FAINT_COLORS = ["#9ecae1", "#fdae6b", "#a1d99b", "#c9a9d4", "#f4a6b8"]
+
 # ggplot2 facet-strip chrome (grey85 fill, grey10 label).
 STRIP_FILL = "#d9d9d9"
 STRIP_EDGE = "black"

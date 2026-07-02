@@ -950,6 +950,7 @@ class Triangle:
         metric: str = "ratio",
         summary: bool = False,
         summary_min_n: int = 5,
+        regime: Any = None,
         amount_divisor: float | str = "auto",
         nrow: int | None = None,
         ncol: int | None = None,
@@ -965,6 +966,12 @@ class Triangle:
         ``summary_min_n`` cohorts contribute (a dotted vline marks the
         first such period).
 
+        ``regime`` (a :class:`~lossratio.Regime` / :class:`~lossratio.RegimeDetector`,
+        used only with ``summary=True``) splits the summary by regime: each
+        facet's cohorts are tinted per regime and get their own Mean / Median /
+        Weighted trio, so a regime-shifted book shows one summary per level
+        instead of a single line threading between the bands.
+
         For the cell-value heatmap (the aligned cohort x duration triangle),
         use :meth:`plot_triangle` instead.
 
@@ -978,6 +985,7 @@ class Triangle:
             metric=metric,
             summary=summary,
             summary_min_n=summary_min_n,
+            regime=regime,
             amount_divisor=amount_divisor,
             nrow=nrow,
             ncol=ncol,

@@ -166,20 +166,34 @@ reg = tri.detect_regime(target="ratio", window=12)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
-# 6b. Project respecting the detected regime (segment_wise: each regime's
-#     cohorts develop along their own shape). The post-2024-07 cohorts now
-#     project along their own ~0.9 level instead of being dragged up toward the
-#     pre-regime ~1.5 -- observed solid, projected dashed, coloured by cohort.
+# 6b. Read the split straight from the data. With `regime=`, each regime's
+#     cohorts are tinted separately and get their own Mean / Median / Weighted
+#     summary, so the post-2024-07 band (~0.9) reads apart from the pre-regime
+#     band (~1.5) instead of a single summary line threading between them.
+tri.plot(metric="ratio", summary=True, regime=reg)
+```
+
+![Cumulative loss ratio for SURGERY split by the detected 2024-07 regime: an upper band of pre-regime cohorts settling near 1.5 and a lower band of post-regime cohorts near 0.9, each with its own Mean / Median / Weighted summary over faint per-regime cohort trajectories.](assets/quickstart_ratio.png)
+
+```python
+# 6c. Project respecting that regime (segment_wise: each regime's cohorts
+#     develop along their own shape), so the post-2024-07 cohorts settle near
+#     their own ~0.9 level instead of being dragged toward the pre-regime ~1.5.
 reg_fit = lr.Ratio(
     loss=lr.PooledLoss(regime=lr.RegimeDetector(treatment="segment_wise")),
     premium=lr.PooledPremium(),
 ).fit(tri)
-reg_fit.plot()
-```
+reg_fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se"]).tail(3)
+#> shape: (3, 4)
+#> ┌──────────┬────────────┬────────────┬──────────┐
+#> │ coverage ┆ cohort     ┆ ratio_proj ┆ ratio_se │
+#> │ str      ┆ date       ┆ f64        ┆ f64      │
+#> ╞══════════╪════════════╪════════════╪══════════╡
+#> │ SURGERY  ┆ 2025-10-01 ┆ 0.888065   ┆ 0.024503 │
+#> │ SURGERY  ┆ 2025-11-01 ┆ 0.889223   ┆ 0.035054 │
+#> │ SURGERY  ┆ 2025-12-01 ┆ 0.899192   ┆ 0.033865 │
+#> └──────────┴────────────┴────────────┴──────────┘
 
-![Regime-aware loss-ratio projection for SURGERY: two bands -- pre-2024-07 cohorts settle near 1.5, post-regime cohorts near 0.9 -- each projected along its own regime's shape (observed solid, projected dashed, coloured by cohort).](assets/quickstart_ratio.png)
-
-```python
 # 7. Out-of-sample validation. A sequence of holdouts runs a rolling-origin
 #    backtest; reliable_horizon() reports how many durations ahead the
 #    projection stays within tolerance.
