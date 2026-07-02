@@ -191,9 +191,9 @@ def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:
     fp: list[float] = []
     for k in range(P.shape[1] - 1):
         both = ~np.isnan(P[:, k]) & ~np.isnan(P[:, k + 1])
-        sk = np.nansum(P[both, k])
-        if both.sum() >= 1 and sk > 0:
-            r = np.nansum(P[both, k + 1]) / sk
+        sum_p_k = np.nansum(P[both, k])
+        if both.sum() >= 1 and sum_p_k > 0:
+            r = np.nansum(P[both, k + 1]) / sum_p_k
             if np.isfinite(r) and r > 0:
                 fp.append(r)
     if not fp:

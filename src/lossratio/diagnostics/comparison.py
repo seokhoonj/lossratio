@@ -1316,11 +1316,11 @@ class EstimatorComparisonFit:
         skipped = {
             label: s for label, s in self.skipped_holdouts.items() if s
         }
-        sk = f", skipped={skipped}" if skipped else ""
+        skipped_suffix = f", skipped={skipped}" if skipped else ""
         return (
             f"<EstimatorComparisonFit: estimators={self._labels}, "
             f"baseline={self.baseline!r}, "
             f"holdouts={list(self._common_holdouts)}, "
             f"target={self.target!r}, "
-            f"n_matched_cells={self._n_matched}{sk}>"
+            f"n_matched_cells={self._n_matched}{skipped_suffix}>"
         )

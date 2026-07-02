@@ -144,10 +144,10 @@ def project_credible(
             if pos.any():
                 loss_proj[pos, k + 1] = c_k[pos] + u_vec[pos] * g_k[k] * p_k[pos]
         else:
-            gk = g_k[:, k]
-            pos = pos & np.isfinite(gk)
+            g_col = g_k[:, k]
+            pos = pos & np.isfinite(g_col)
             if pos.any():
-                loss_proj[pos, k + 1] = c_k[pos] + u_vec[pos] * gk[pos] * p_k[pos]
+                loss_proj[pos, k + 1] = c_k[pos] + u_vec[pos] * g_col[pos] * p_k[pos]
     return loss_proj
 
 def smooth_backfit(
@@ -220,10 +220,10 @@ def smooth_backfit(
             response=response_arr.tolist(), exposure=adj, duration=duration_list,
             n_basis=n_basis, lam=lam_use,
         )
-        gk = np.array(
+        g_arr = np.array(
             [sm.g.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64
         )
-        return sm, gk
+        return sm, g_arr
 
     # lambda is GCV-selected ONCE on the first (pooled) s-step, then held fixed
     # through the backfitting: the shape smoothness is a pipeline choice, and

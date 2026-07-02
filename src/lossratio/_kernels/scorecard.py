@@ -117,7 +117,7 @@ def _lane_metrics(deviance: bool) -> list[pl.Expr]:
 
 
 def _attach_coverage(
-    g: pl.DataFrame, sub: pl.DataFrame, gk: list[str],
+    g: pl.DataFrame, sub: pl.DataFrame, group_keys: list[str],
     cov_cols: list[str], cov_zs: list[float], measured: bool,
 ) -> pl.DataFrame:
     """Add the coverage column(s) to a lane's aggregated frame ``g``.
@@ -135,19 +135,19 @@ def _attach_coverage(
         return g.with_columns(
             [pl.lit(None, dtype=pl.Float64).alias(c) for c in cov_cols]
         )
-    cf = sub.select([*gk, "actual", "expected", "expected_se"]).filter(
+    cf = sub.select([*group_keys, "actual", "expected", "expected_se"]).filter(
         pl.col("expected_se").is_finite() & (pl.col("expected_se") > 0)
     )
     aggs = _coverage_aggs(cov_cols, cov_zs)
-    cov = cf.group_by(gk).agg(aggs) if gk else cf.select(aggs)
-    if gk:
+    cov = cf.group_by(group_keys).agg(aggs) if group_keys else cf.select(aggs)
+    if group_keys:
         # full join, not left: a group whose held cells are all expected==0
         # (no defined ae_err -> dropped from the scored `g`) still carries
         # usable-SE coverage, and the docstring intent is that it counts. A
         # left join would silently drop such a coverage-only group. On normal
         # data every coverage group is also a scored group, so this is
         # byte-identical there.
-        return g.join(cov, on=gk, how="full", coalesce=True)
+        return g.join(cov, on=group_keys, how="full", coalesce=True)
     return pl.concat([g, cov], how="horizontal")
 
 
@@ -199,7 +199,7 @@ def score_cells(
     """
     df = ae_err if isinstance(ae_err, pl.DataFrame) else pl.from_pandas(ae_err)
     keys = normalize_groups(groups)
-    gk = keys + (["holdout"] if "holdout" in df.columns else [])
+    group_keys = keys + (["holdout"] if "holdout" in df.columns else [])
 
     lanes = [_CUM_LANE]
     if all(c in df.columns for c in _INCR_LANE[1:]):
@@ -235,9 +235,9 @@ def score_cells(
             raise ValueError(
                 f"terminal must be None or a positive integer, got {terminal!r}"
             )
-        if gk:
-            maxdur = df.group_by(gk).agg(pl.col("duration").max().alias("_maxdur"))
-            df = df.join(maxdur, on=gk, how="left")
+        if group_keys:
+            maxdur = df.group_by(group_keys).agg(pl.col("duration").max().alias("_maxdur"))
+            df = df.join(maxdur, on=group_keys, how="left")
         else:
             df = df.with_columns(_maxdur=pl.col("duration").max())
         pops.append(("terminal", pl.col("duration") > pl.col("_maxdur") - terminal))
@@ -246,19 +246,20 @@ def score_cells(
     for pop_label, pop_filter in pops:
         sub = df.filter(pop_filter)
         for lane_label, err_c, aeg_c, exp_c, act_c in lanes:
-            f = (sub.select([*gk, err_c, aeg_c, exp_c, act_c])
+            f = (sub.select([*group_keys, err_c, aeg_c, exp_c, act_c])
                  .rename({err_c: "_err", aeg_c: "_aeg", exp_c: "_exp", act_c: "_act"})
                  .drop_nulls("_err"))                 # scored cells only
             deviance = lane_label in _DEVIANCE_LANES
             if deviance:
                 f = f.with_columns(_dev=_deviance_contrib(pl.col("_act"), pl.col("_exp")))
             aggs = _lane_metrics(deviance)
-            g = f.group_by(gk).agg(aggs) if gk else f.select(aggs)
+            g = f.group_by(group_keys).agg(aggs) if group_keys else f.select(aggs)
             # coverage is a cumulative-projection property, measured over the
             # usable-SE cells in a SEPARATE pass (not gated by _err) -- measured on
             # the cum lane, null elsewhere.
             g = _attach_coverage(
-                g, sub, gk, cov_cols, cov_zs, measured=(has_se and lane_label == "cumulative")
+                g, sub, group_keys, cov_cols, cov_zs,
+                measured=(has_se and lane_label == "cumulative"),
             )
             g = g.with_columns(
                 population=pl.lit(pop_label), lane=pl.lit(lane_label)
@@ -269,7 +270,7 @@ def score_cells(
             # cancels the anchor (_aeg == cum _aeg) but the relative error and
             # bias_wt denominator measure the emergence since origin. Null
             # anchor (a cohort with no origin baseline) is dropped.
-            f = (sub.select([*gk, "actual", "expected", "anchor_value"])
+            f = (sub.select([*group_keys, "actual", "expected", "anchor_value"])
                  .drop_nulls("anchor_value")
                  .with_columns(
                      (pl.col("actual") - pl.col("anchor_value")).alias("_act"),
@@ -284,14 +285,14 @@ def score_cells(
                  )
                  .drop_nulls("_err"))
             aggs = _lane_metrics(deviance=False)
-            g = f.group_by(gk).agg(aggs) if gk else f.select(aggs)
-            g = _attach_coverage(g, sub, gk, cov_cols, cov_zs, measured=False)
+            g = f.group_by(group_keys).agg(aggs) if group_keys else f.select(aggs)
+            g = _attach_coverage(g, sub, group_keys, cov_cols, cov_zs, measured=False)
             g = g.with_columns(
                 population=pl.lit(pop_label), lane=pl.lit("anchored")
             )
             parts.append(g)
 
     report = pl.concat(parts, how="vertical")
-    order = [*gk, "population", "lane", *_REPORT_METRICS, *cov_cols]
-    report = report.select(order).sort([*gk, "population", "lane"])
+    order = [*group_keys, "population", "lane", *_REPORT_METRICS, *cov_cols]
+    report = report.select(order).sort([*group_keys, "population", "lane"])
     return mirror_output(report, "pandas" if not isinstance(ae_err, pl.DataFrame) else "polars")
