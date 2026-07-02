@@ -17,8 +17,8 @@ from .._kernels.io import _iter_group_frames, format_group_value
 from .base import _get_period_type, _hide_unused, _pretty_var_label, _resolve_grid
 from .metric import (
     _AMOUNT_METRICS,
-    _PROP_METRICS,
     _RATIO_METRICS,
+    _SHARE_METRICS,
     _VALID_METRICS,
     _auto_divisor,
     _metric_style,
@@ -61,11 +61,11 @@ def _draw_cohort_lines(ax, sub, metric, coh_color, summary, summary_min_n,
     agg = (sub.group_by("duration")
               .agg(mean=pl.col(metric).mean(),
                    median=pl.col(metric).median(),
-                   wl=pl.col(lcol).sum(),
-                   wp=pl.col(pcol).sum(),
+                   _loss_sum=pl.col(lcol).sum(),
+                   _premium_sum=pl.col(pcol).sum(),
                    n=pl.len())
               .sort("duration")
-              .with_columns(weighted=pl.col("wl") / pl.col("wp")))
+              .with_columns(weighted=pl.col("_loss_sum") / pl.col("_premium_sum")))
     xd = np.asarray(agg["duration"].to_list(), dtype=float)
     n = np.asarray(agg["n"].to_list())
     masked = summary_min_n is not None and np.isfinite(summary_min_n)
@@ -131,7 +131,7 @@ def plot(
     meta = _metric_style(metric, amount_divisor)
 
     is_ratio = metric in _RATIO_METRICS
-    is_prop = metric in _PROP_METRICS
+    is_share = metric in _SHARE_METRICS
     if summary and not is_ratio:
         warnings.warn(
             "Summary overlay is only supported for `ratio` and `incr_ratio`.",
@@ -167,7 +167,7 @@ def plot(
     else:
         hline = None
 
-    scale = 100.0 if (is_ratio or is_prop) else (1.0 / amount_divisor)
+    scale = 100.0 if (is_ratio or is_share) else (1.0 / amount_divisor)
     fmt = FuncFormatter(lambda v, _p, s=scale: f"{v * s:,.0f}")
 
     for idx, (group_value, sub) in enumerate(facets):

@@ -107,8 +107,8 @@ def plot_regime(
 
         # Change-point vlines
         change_vals = sub_changes["change"].to_numpy() if sub_changes.height else np.array([])
-        for cv in change_vals:
-            ax.axvline(cv, color="black", linestyle="--", linewidth=0.7)
+        for change_val in change_vals:
+            ax.axvline(change_val, color="black", linestyle="--", linewidth=0.7)
 
         ax.set_ylim(0.0, 1.0)
         ax.set_yticks([])

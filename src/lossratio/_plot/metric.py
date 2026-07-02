@@ -29,7 +29,7 @@ _AMOUNT_METRICS = {
     "premium", "incr_premium",
     "margin", "incr_margin",
 }
-_PROP_METRICS = {
+_SHARE_METRICS = {
     "loss_share", "incr_loss_share",
     "premium_share", "incr_premium_share",
 }
@@ -83,7 +83,7 @@ def _get_amount_unit(divisor: float) -> str:
 @dataclass
 class MetricStyle:
     metric: str
-    kind: str            # "ratio" | "amount" | "prop"
+    kind: str            # "ratio" | "amount" | "share"
     title: str
     caption: str
     threshold: float
@@ -108,4 +108,4 @@ def _metric_style(metric: str, amount_divisor: float) -> MetricStyle:
         caption = f"Unit: {unit}" if unit else "Unit:"
         return MetricStyle(metric, "amount", title, caption, 0.0, "<")
     # prop
-    return MetricStyle(metric, "prop", title, "Unit: %", 0.05, ">")
+    return MetricStyle(metric, "share", title, "Unit: %", 0.05, ">")

@@ -95,10 +95,10 @@ def plot_fit(
     # the same cohort keeps its colour across facets.
     cohorts = sorted({c for c in df["cohort"].to_list()})
     n_coh = len(cohorts)
-    _coh_color = cohort_gradient(cohorts)
+    coh_color = cohort_gradient(cohorts)
 
     for _, group_value, sub, ax in grid:
-        _draw_fit_cohort(ax, sub, value_col, _coh_color)
+        _draw_fit_cohort(ax, sub, value_col, coh_color)
         if hline is not None:
             ax.axhline(hline, linestyle=":", color="0.5", linewidth=0.8, zorder=1)
         grid.title(ax, group_value)
@@ -111,7 +111,7 @@ def plot_fit(
     vis_axes = [grid.axes[divmod(i, grid.ncol)[0]][divmod(i, grid.ncol)[1]]
                 for i in range(n_facets)]
     if n_coh > 1:
-        add_cohort_colorbar(grid.fig, vis_axes, cohorts, _coh_color)
+        add_cohort_colorbar(grid.fig, vis_axes, cohorts, coh_color)
 
     return grid.fig
 

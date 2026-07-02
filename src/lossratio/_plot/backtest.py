@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from ..diagnostics.backtest import _FoldFit
 
 
-_VALID_TYPES = ("col", "diag", "cell")
+_VALID_KINDS = ("col", "diag", "cell")
 _VALID_BASIS = ("cumulative", "incremental")
 _STAT_COLUMNS = (
     ("Mean",     "ae_err_mean", "incr_ae_err_mean"),
@@ -47,9 +47,9 @@ def plot_backtest(
     figsize: tuple[float, float] | None = None,
 ) -> Any:
     """Backtest plot dispatcher."""
-    if kind not in _VALID_TYPES:
+    if kind not in _VALID_KINDS:
         raise ValueError(
-            f"`kind` must be one of {_VALID_TYPES!r}; got {kind!r}."
+            f"`kind` must be one of {_VALID_KINDS!r}; got {kind!r}."
         )
     if basis not in _VALID_BASIS:
         raise ValueError(

@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from ..core.link import Link
 
 
-_VALID_ATA_TYPES = ("cv", "rse", "summary", "box", "point")
-_VALID_ED_TYPES = ("summary", "box", "point")
+_VALID_ATA_KINDS = ("cv", "rse", "summary", "box", "point")
+_VALID_INTENSITY_KINDS = ("summary", "box", "point")
 _SUMMARY_STATS = ("mean", "median", "weighted")
 
 
@@ -152,9 +152,9 @@ def _plot_link_ata(
     recent: int | None = None,
 ) -> Any:
     """ATA-mode link diagnostic plot -- 5 kind variants."""
-    if kind not in _VALID_ATA_TYPES:
+    if kind not in _VALID_ATA_KINDS:
         raise ValueError(
-            f"`kind` must be one of {_VALID_ATA_TYPES!r}; got {kind!r}."
+            f"`kind` must be one of {_VALID_ATA_KINDS!r}; got {kind!r}."
         )
 
     groups = link._groups
@@ -207,9 +207,9 @@ def _plot_link_intensity(
     recent: int | None = None,
 ) -> Any:
     """Intensity-mode link diagnostic plot -- 3 kind variants."""
-    if kind not in _VALID_ED_TYPES:
+    if kind not in _VALID_INTENSITY_KINDS:
         raise ValueError(
-            f"`kind` must be one of {_VALID_ED_TYPES!r}; got {kind!r}."
+            f"`kind` must be one of {_VALID_INTENSITY_KINDS!r}; got {kind!r}."
         )
     if link._premium is None:
         raise ValueError(

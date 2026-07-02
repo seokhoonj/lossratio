@@ -115,7 +115,7 @@ def _percent_formatter():
     return FuncFormatter(lambda v, _pos: f"{round(v * 100)}%")
 
 
-_PRETTY_VAR_LABEL: dict[str, str] = {
+_PRETTY_AXIS_LABEL: dict[str, str] = {
     "duration_m": "duration (months)",
     "duration_q": "duration (quarters)",
     "duration_h": "duration (halves)",
@@ -134,7 +134,7 @@ _GRAIN_TO_TYPE: dict[str, str] = {
     "M": "month", "Q": "quarter", "H": "half", "Y": "year",
 }
 
-_VAR_TO_TYPE: dict[str, str] = {
+_AXIS_COL_TO_TYPE: dict[str, str] = {
     "uy_m": "month", "cy_m": "month",
     "uy_q": "quarter", "cy_q": "quarter",
     "uy_h": "half", "cy_h": "half",
@@ -142,7 +142,7 @@ _VAR_TO_TYPE: dict[str, str] = {
 }
 
 
-def _get_period_type(var: str | None, grain: str | None = None) -> str | None:
+def _get_period_type(axis_col: str | None, grain: str | None = None) -> str | None:
     """Resolve the period type of an axis.
 
     The view ``grain`` is authoritative when given: the axis values have been
@@ -154,22 +154,22 @@ def _get_period_type(var: str | None, grain: str | None = None) -> str | None:
         t = _GRAIN_TO_TYPE.get(grain)
         if t is not None:
             return t
-    if var is None:
+    if axis_col is None:
         return None
-    return _VAR_TO_TYPE.get(var)
+    return _AXIS_COL_TO_TYPE.get(axis_col)
 
 
-def _pretty_var_label(var: str | None) -> str:
-    if var is None:
+def _pretty_var_label(axis_col: str | None) -> str:
+    if axis_col is None:
         return ""
-    return _PRETTY_VAR_LABEL.get(var, var)
+    return _PRETTY_AXIS_LABEL.get(axis_col, axis_col)
 
 
-def _cohort_label(var: str | None, grain: str | None = None) -> str:
+def _cohort_label(axis_col: str | None, grain: str | None = None) -> str:
     """Build a cohort axis label -- e.g. `"cohort (monthly)"`."""
-    if var is None:
+    if axis_col is None:
         return "cohort"
-    t = _get_period_type(var, grain=grain)
+    t = _get_period_type(axis_col, grain=grain)
     if t is None:
         return "cohort"
     # -ly adverb family (M/Q/H/Y = Monthly/Quarterly/Half-yearly/Yearly).

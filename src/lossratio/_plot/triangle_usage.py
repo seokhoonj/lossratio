@@ -164,8 +164,8 @@ def _plot_triangle_usage(
 
     # Regime hline routing: a scalar cut draws one hline on every facet; a
     # per-segment dict (keyed by group value) draws each facet on its own cut.
-    per_group_cd: dict | None = regime_cut if isinstance(regime_cut, dict) else None
-    cd_scalar: Any = regime_cut if isinstance(regime_cut, date) else None
+    per_group_change: dict | None = regime_cut if isinstance(regime_cut, dict) else None
+    scalar_change: Any = regime_cut if isinstance(regime_cut, date) else None
 
     x_idx = {d: i for i, d in enumerate(x_levels)}
     y_idx = {lbl: i for i, lbl in enumerate(y_levels)}
@@ -197,17 +197,17 @@ def _plot_triangle_usage(
         ax.set_yticklabels(y_levels, fontsize=8)
 
         # Regime hline: the cohort cut between dropped (older) and kept cohorts.
-        if per_group_cd is not None and group_value is not None:
-            cd_g = per_group_cd.get(group_value)
-            if cd_g is not None:
-                hidx = _first_post_change_idx(cohort_values_desc, cd_g)
+        if per_group_change is not None and group_value is not None:
+            group_change = per_group_change.get(group_value)
+            if group_change is not None:
+                hidx = _first_post_change_idx(cohort_values_desc, group_change)
                 if hidx is not None:
                     ax.axhline(
                         hidx + 0.5,
                         linestyle="--", color="black", linewidth=0.6,
                     )
-        elif cd_scalar is not None:
-            hidx = _first_post_change_idx(cohort_values_desc, cd_scalar)
+        elif scalar_change is not None:
+            hidx = _first_post_change_idx(cohort_values_desc, scalar_change)
             if hidx is not None:
                 ax.axhline(
                     hidx + 0.5,
@@ -228,12 +228,12 @@ def _plot_triangle_usage(
     parts: list[str] = []
     if recent is not None:
         parts.append(f"recent={int(recent)}")
-    if cd_scalar is not None:
-        parts.append(f"regime={cd_scalar}")
-    elif per_group_cd is not None:
-        unique_cd = sorted({str(v) for v in per_group_cd.values() if v is not None})
-        if unique_cd:
-            parts.append("regime=" + ",".join(unique_cd))
+    if scalar_change is not None:
+        parts.append(f"regime={scalar_change}")
+    elif per_group_change is not None:
+        unique_changes = sorted({str(v) for v in per_group_change.values() if v is not None})
+        if unique_changes:
+            parts.append("regime=" + ",".join(unique_changes))
     if holdout is not None:
         parts.append(f"holdout={int(holdout)}")
     title_txt = (

@@ -65,8 +65,8 @@ def plot_backtest_reliability(
     }[by]
     xcol = _BY_XCOL[by]
     cum_col = "ae_err_mean" if metric == "ae_err" else "abs_err_mean"
-    inc_col = "incr_" + cum_col
-    has_inc = inc_col in summary.columns
+    incr_col = "incr_" + cum_col
+    has_incr = incr_col in summary.columns
 
     grid = open_facets(
         _iter_group_frames(summary, fit._groups),
@@ -81,9 +81,9 @@ def plot_backtest_reliability(
             marker="o", markersize=3, linewidth=1.2,
             color=BLUE, label="cumulative",
         )
-        if has_inc:
+        if has_incr:
             ax.plot(
-                xs, sub[inc_col].to_list(),
+                xs, sub[incr_col].to_list(),
                 marker="s", markersize=3, linewidth=1.2,
                 color=RED, label="incremental",
             )

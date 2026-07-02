@@ -292,11 +292,11 @@ def _draw_calendar_panel(
         all_cals.update(cal_series)
 
     sorted_cals = sorted(all_cals)
-    cal_idx = {c: i for i, c in enumerate(sorted_cals)}
+    cal_pos = {c: i for i, c in enumerate(sorted_cals)}
 
     for row_idx, pairs in per_row_cells:
         for cal_val, is_miss in pairs:
-            xi = cal_idx[cal_val]
+            xi = cal_pos[cal_val]
             color = miss_color if is_miss else obs_color
             ax.add_patch(Rectangle(
                 (xi - 0.5, row_idx - 0.5), 1.0, 1.0,
