@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .._kernels.io import _iter_group_frames
+from .._kernels.io import iter_group_frames
 from .base import open_facets
 from .theme import BLUE, RED, faint_grid, finalize_figure
 
@@ -69,7 +69,7 @@ def plot_backtest_reliability(
     has_incr = incr_col in summary.columns
 
     grid = open_facets(
-        _iter_group_frames(summary, fit._groups),
+        iter_group_frames(summary, fit._groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
     )

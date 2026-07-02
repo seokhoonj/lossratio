@@ -16,7 +16,7 @@ here once:
     factor_var = sigma2 / Sum denom                         = Var(factor_hat)
 
 This module also hosts the matrix-form whole-triangle multiplicative fit built
-on those primitives -- ``_fit_multiplicative`` (the chain-ladder ``f_k``
+on those primitives -- ``fit_multiplicative`` (the chain-ladder ``f_k``
 recursion), plus the tail-factor helpers -- consumed by the loss-projection
 engine and the ATA / Intensity
 diagnostics. Other callers (``intensity._compute_intensity``,
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     pass
 
 
-def _wls_sigma2(
+def wls_sigma2(
     num_eff: np.ndarray,
     denom_eff: np.ndarray,
     factor: float,
@@ -65,7 +65,7 @@ def _wls_sigma2(
     return float((resid ** 2 / denom_eff).sum() / (n - 1))
 
 
-def _wls_factor_var(
+def wls_factor_var(
     sigma2: np.ndarray,
     sum_denom: np.ndarray,
 ) -> np.ndarray:
@@ -86,7 +86,7 @@ def _wls_factor_var(
     return out
 
 
-def _step_multiplicative(
+def step_multiplicative(
     proc_acc: np.ndarray,
     param_acc: np.ndarray,
     pos: np.ndarray,
@@ -106,7 +106,7 @@ def _step_multiplicative(
     ``c`` is the full-length cumulative-loss-at-duration-k vector (only
     ``c[pos]`` is read). Each term is applied only when its scalar is
     finite, matching the standard per-link guards. This is the
-    1D-accumulator form of the matrix recursion in :func:`_fit_multiplicative`; the
+    1D-accumulator form of the matrix recursion in :func:`fit_multiplicative`; the
     loss / premium projection loops call it so they cannot drift from the
     canonical formula.
     """
@@ -120,7 +120,7 @@ def _step_multiplicative(
         param_acc[pos] = param_acc[pos] + (c[pos] ** 2) * f_var
 
 
-def _step_additive(
+def step_additive(
     proc_acc: np.ndarray,
     param_acc: np.ndarray,
     pos: np.ndarray,
@@ -130,7 +130,7 @@ def _step_additive(
 ) -> None:
     """Advance the additive (intensity) variance recursion one link.
 
-    In-place counterpart to :func:`_step_multiplicative` for the intensity link::
+    In-place counterpart to :func:`step_multiplicative` for the intensity link::
 
         proc'  = proc  + sigma2_g * P
         param' = param + P^2 * Var(g_hat)
@@ -171,18 +171,18 @@ class _MultiplicativeResult:
     sum_value_k: np.ndarray
 
 
-def _multiplicative_var(result: _MultiplicativeResult) -> np.ndarray:
+def multiplicative_var(result: _MultiplicativeResult) -> np.ndarray:
     """WLS variance of the link-ratio factor f_k.
 
-    Thin wrapper over :func:`lossratio._kernels.recursion._wls_factor_var`: returns the
+    Thin wrapper over :func:`lossratio._kernels.recursion.wls_factor_var`: returns the
     per-link `sigma^2_k / sum_j C^L_{j,k}` estimator (alpha = 1).
     NaN where the denom is zero (unfittable link); caller decides how to
     handle.
     """
-    return _wls_factor_var(result.sigma2_k, result.sum_value_k)
+    return wls_factor_var(result.sigma2_k, result.sum_value_k)
 
 
-def _build_value_matrix(
+def build_value_matrix(
     df: pl.DataFrame, value_col: str = "loss"
 ) -> tuple[np.ndarray, list, int]:
     """Convert a single-group Triangle subset into a value matrix.
@@ -213,12 +213,12 @@ def _build_value_matrix(
     return mat, cohorts, max_duration
 
 
-def _build_value_matrices(
+def build_value_matrices(
     df: pl.DataFrame, value_cols: tuple[str, ...] = ("loss", "premium")
 ) -> tuple[tuple[np.ndarray, ...], list, int]:
     """Build several value matrices from a single-group Triangle subset.
 
-    Identical to calling :func:`_build_value_matrix` once per column, but the
+    Identical to calling :func:`build_value_matrix` once per column, but the
     sort + cohort-unique + cohort x duration cross-join + observed-cell left-join is
     done a single time and each requested column is reshaped from the shared
     filled grid. Returns ``(matrices, cohorts, max_duration)`` where ``matrices`` is
@@ -248,12 +248,12 @@ def _build_value_matrices(
 def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
     """Build the loss value matrix for a single-group Triangle subset.
 
-    Role-specific helper over :func:`_build_value_matrix`.
+    Role-specific helper over :func:`build_value_matrix`.
     """
-    return _build_value_matrix(df, value_col="loss")
+    return build_value_matrix(df, value_col="loss")
 
 
-def _fit_multiplicative(
+def fit_multiplicative(
     value_obs: np.ndarray,
     sigma_method: str = "locf",
     link_mask: np.ndarray | None = None,
@@ -305,7 +305,7 @@ def _fit_multiplicative(
         f_k[k] = sum_k1 / sum_k if sum_k > 0 else np.nan
 
         if n_k >= 2 and f_k[k] != 0:
-            sigma2_k[k] = _wls_sigma2(ck1_eff, c_k_eff, f_k[k], n_k)
+            sigma2_k[k] = wls_sigma2(ck1_eff, c_k_eff, f_k[k], n_k)
         else:
             sigma2_k[k] = 0.0
 
@@ -331,7 +331,7 @@ def _fit_multiplicative(
     #   proc_{i, k+1}  = f_k^2 * proc_{i, k}  + sigma^2_k * C_{i,k}^alpha
     #   param_{i, k+1} = f_k^2 * param_{i, k} + C_{i,k}^2  * Var(f_k)
     #
-    # This is the whole-triangle matrix form; :func:`_step_multiplicative` is the
+    # This is the whole-triangle matrix form; :func:`step_multiplicative` is the
     # per-link 1D form used by the loss / premium projection loops -- keep
     # the two in sync if the formula ever changes.
     # with Var(f_k) = sigma^2_k / sum_value_k[k]. Observed cells report 0
@@ -348,7 +348,7 @@ def _fit_multiplicative(
     )
     alpha = 1.0  # only alpha = 1 is supported in this worker
     # f_var_k = sigma^2_k / sum_value_k -- the link-ratio factor variance Var(f_hat_k).
-    f_var_k = _wls_factor_var(sigma2_k, sum_value_k)
+    f_var_k = wls_factor_var(sigma2_k, sum_value_k)
 
     # Sequential along duration, vectorised across cohorts. Each cohort starts
     # accumulating at its first projected duration (last_obs + 1); cohorts not

@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 import pytest
 
 import lossratio as lr
-from lossratio._plot.base import _format_period_series, _get_period_type
-from lossratio._plot.metric import _auto_divisor
+from lossratio._plot.base import format_period_series, get_period_type
+from lossratio._plot.metric import auto_divisor
 
 
 @pytest.fixture
@@ -253,40 +253,40 @@ def test_returns_matplotlib_figure(tri_with_groups):
 
 
 def test_auto_divisor_picks_million_for_mid_seven_digits():
-    assert _auto_divisor([5e6, 6e6, 7e6]) == 1e6
+    assert auto_divisor([5e6, 6e6, 7e6]) == 1e6
 
 
 def test_auto_divisor_falls_back_to_one():
-    assert _auto_divisor([]) == 1.0
-    assert _auto_divisor([float("nan"), 0.0, -3.0]) == 1.0
+    assert auto_divisor([]) == 1.0
+    assert auto_divisor([float("nan"), 0.0, -3.0]) == 1.0
 
 
 def test_auto_divisor_thousand_when_appropriate():
     # median = 5e3 -> 5e3/1e6 = 0.005 < threshold; 5e3/1e3 = 5 >= threshold
-    assert _auto_divisor([3e3, 5e3, 7e3]) == 1e3
+    assert auto_divisor([3e3, 5e3, 7e3]) == 1e3
 
 
 def test_get_period_type_from_var():
-    assert _get_period_type("uy_m") == "month"
-    assert _get_period_type("cy_q") == "quarter"
-    assert _get_period_type("uy_h") == "half"
-    assert _get_period_type("cy") == "year"
+    assert get_period_type("uy_m") == "month"
+    assert get_period_type("cy_q") == "quarter"
+    assert get_period_type("uy_h") == "half"
+    assert get_period_type("cy") == "year"
     # duration_* are integer columns -- no period type.
-    assert _get_period_type("duration_m") is None
+    assert get_period_type("duration_m") is None
 
 
 def test_get_period_type_grain_fallback():
-    assert _get_period_type("custom_cohort", grain="Q") == "quarter"
-    assert _get_period_type("custom_cohort", grain=None) is None
+    assert get_period_type("custom_cohort", grain="Q") == "quarter"
+    assert get_period_type("custom_cohort", grain=None) is None
 
 
 def test_get_period_type_grain_overrides_var():
     # A monthly source column (uy_m) viewed at a coarser grain is at the VIEW
     # grain: the binned cohort axis is quarterly, not monthly.
-    assert _get_period_type("uy_m", grain="Q") == "quarter"
-    assert _get_period_type("cy_m", grain="H") == "half"
+    assert get_period_type("uy_m", grain="Q") == "quarter"
+    assert get_period_type("cy_m", grain="H") == "half"
     # with no grain the column-name convention still applies
-    assert _get_period_type("uy_m") == "month"
+    assert get_period_type("uy_m") == "month"
 
 
 def test_format_period_series_month():
@@ -294,7 +294,7 @@ def test_format_period_series_month():
 
     import polars as pl
     s = pl.Series("c", [date(2024, 1, 1), date(2025, 6, 1)])
-    assert _format_period_series(s, "month") == ["24.01", "25.06"]
+    assert format_period_series(s, "month") == ["24.01", "25.06"]
 
 
 def test_format_period_series_quarter():
@@ -302,7 +302,7 @@ def test_format_period_series_quarter():
 
     import polars as pl
     s = pl.Series("c", [date(2024, 1, 1), date(2024, 4, 1), date(2024, 12, 1)])
-    assert _format_period_series(s, "quarter") == ["24.1Q", "24.2Q", "24.4Q"]
+    assert format_period_series(s, "quarter") == ["24.1Q", "24.2Q", "24.4Q"]
 
 
 def test_format_period_series_half():
@@ -310,7 +310,7 @@ def test_format_period_series_half():
 
     import polars as pl
     s = pl.Series("c", [date(2024, 3, 1), date(2024, 9, 1)])
-    assert _format_period_series(s, "half") == ["24.1H", "24.2H"]
+    assert format_period_series(s, "half") == ["24.1H", "24.2H"]
 
 
 def test_format_period_series_year():
@@ -318,4 +318,4 @@ def test_format_period_series_year():
 
     import polars as pl
     s = pl.Series("c", [date(2024, 6, 1), date(2025, 6, 1)])
-    assert _format_period_series(s, "year") == ["24", "25"]
+    assert format_period_series(s, "year") == ["24", "25"]

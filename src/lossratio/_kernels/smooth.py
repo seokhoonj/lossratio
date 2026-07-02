@@ -12,7 +12,7 @@ shape ``s(k)`` by log-link quasi-Poisson IRLS so the duration curve
 This module is the SHAPE BLOCK of the GLMM: it takes the
 pooled increments (``u = 1``) and returns the smooth ``g_k``; the per-cohort
 credibility level ``u_i`` rides the same dispersion-scaled conjugate the
-saturated rung already uses (``loss_fit._credible_levels``). Segment random
+saturated rung already uses (``loss_fit.credible_levels``). Segment random
 levels and exogenous covariates are out of v1 scope, so the only thing
 distinguishing the smooth rung from
 the credible rung is this shape.
@@ -72,7 +72,7 @@ def bspline_design(
     return B, D2.T @ D2
 
 
-def onehot_design(duration: np.ndarray) -> tuple[np.ndarray, np.ndarray, list[int]]:
+def _onehot_design(duration: np.ndarray) -> tuple[np.ndarray, np.ndarray, list[int]]:
     """One-hot (saturated) basis over the distinct durations + zero penalty.
 
     Returns ``(B, P, durations)`` where ``B[c, j] = 1`` iff cell ``c`` is at the

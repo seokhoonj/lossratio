@@ -17,17 +17,17 @@ import numpy as np
 import polars as pl
 
 from .._kernels.io import (
-    _iter_group_frames,
     format_group_value,
     group_eq,
+    iter_group_frames,
     normalize_groups,
 )
 from .base import (
-    _cohort_label,
-    _format_period_series,
-    _get_period_type,
-    _hide_unused,
-    _resolve_grid,
+    cohort_label,
+    format_period_series,
+    get_period_type,
+    hide_unused,
+    resolve_grid,
 )
 from .theme import finalize_figure
 
@@ -55,7 +55,7 @@ def plot_regime(
     groups = regime.groups
     coh = regime.cohort
     grain = None  # not stored on Regime; falls back to coh-name lookup
-    coh_type = _get_period_type(coh, grain=grain)
+    coh_type = get_period_type(coh, grain=grain)
 
     if groups is None:
         facets = [(None, labels, changes)]
@@ -71,11 +71,11 @@ def plot_regime(
                 if changes_has_groups
                 else changes,
             )
-            for g, sub_labels in _iter_group_frames(labels, groups)
+            for g, sub_labels in iter_group_frames(labels, groups)
         ]
 
     n = len(facets)
-    nrow, ncol = _resolve_grid(n, nrow, ncol, default_ncol=1)
+    nrow, ncol = resolve_grid(n, nrow, ncol, default_ncol=1)
 
     if figsize is None:
         figsize = (max(6.0, 3.5 * ncol), max(2.0, 1.5 * nrow))
@@ -115,7 +115,7 @@ def plot_regime(
 
         # x-axis: format cohort labels
         if coh_type is not None:
-            tick_labels = _format_period_series(
+            tick_labels = format_period_series(
                 pl.Series("c", coh_vals), coh_type
             )
         else:
@@ -137,7 +137,7 @@ def plot_regime(
             title_parts.append(format_group_value(group_value))
         if change_vals.size:
             if coh_type is not None:
-                change_labels = _format_period_series(
+                change_labels = format_period_series(
                     pl.Series("c", change_vals), coh_type
                 )
             else:
@@ -148,11 +148,11 @@ def plot_regime(
         ax.set_title(" | ".join(title_parts), fontsize=9)
         ax.legend(loc="upper right", fontsize=7, frameon=False, ncol=4)
 
-    _hide_unused(axes, n, nrow, ncol)
+    hide_unused(axes, n, nrow, ncol)
 
     finalize_figure(
         fig,
         title=f"Cohort regime detection ({regime.method})",
-        xlabel=_cohort_label(coh, grain=grain),
+        xlabel=cohort_label(coh, grain=grain),
     )
     return fig

@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
+from .._kernels.io import arrays_to_long_df, iter_group_frames, mirror_output, normalize_groups
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
-from .._kernels.recursion import _build_value_matrices, _wls_sigma2
+from .._kernels.recursion import build_value_matrices, wls_sigma2
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
@@ -112,7 +112,7 @@ def _compute_intensity(
         g_k[k] = g
 
         if n_k >= 2:
-            sigma2 = _wls_sigma2(dl_eff, premium_k_eff, g, n_k)
+            sigma2 = wls_sigma2(dl_eff, premium_k_eff, g, n_k)
             sigma2_k[k] = sigma2
             g_se_k[k] = float(np.sqrt(sigma2 / sum_premium)) if sigma2 > 0 else 0.0
         else:
@@ -164,7 +164,7 @@ def _diagnostic_to_df(
 ) -> pl.DataFrame:
     """Convert an intensity result into a long-format diagnostic DataFrame."""
     n = len(result.g_k)
-    return _arrays_to_long_df(
+    return arrays_to_long_df(
         {
             "duration": np.arange(1, n + 1, dtype=np.int64),
             "intensity": result.g_k,
@@ -248,7 +248,7 @@ class Intensity:
             )
 
         if groups is None:
-            (loss_obs, premium_obs), _, _ = _build_value_matrices(
+            (loss_obs, premium_obs), _, _ = build_value_matrices(
                 tri_df, (loss_col, premium_col)
             )
             result = _compute_intensity(
@@ -262,8 +262,8 @@ class Intensity:
             )
         else:
             diag_parts: list[pl.DataFrame] = []
-            for g, sub in _iter_group_frames(tri_df, groups):
-                (loss_obs, premium_obs), _, _ = _build_value_matrices(
+            for g, sub in iter_group_frames(tri_df, groups):
+                (loss_obs, premium_obs), _, _ = build_value_matrices(
                     sub, (loss_col, premium_col)
                 )
                 result = _compute_intensity(

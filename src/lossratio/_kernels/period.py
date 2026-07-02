@@ -229,7 +229,7 @@ def infer_grain(col: pl.Series) -> str:
     return "M"
 
 
-def validate_grain(input_grain: str, requested: str) -> None:
+def _validate_grain(input_grain: str, requested: str) -> None:
     """Requested view grain must be at least as coarse as input.
 
     Raises ``ValueError`` if ``requested`` is finer than ``input_grain``,
@@ -264,7 +264,7 @@ def resolve_grain(input_grain: str, requested: str) -> str:
     """
     if requested == "auto":
         return input_grain
-    validate_grain(input_grain, requested)
+    _validate_grain(input_grain, requested)
     return requested
 
 

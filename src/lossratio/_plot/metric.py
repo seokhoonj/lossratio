@@ -50,7 +50,7 @@ _TITLES: dict[str, str] = {
 }
 
 
-def _auto_divisor(values: np.ndarray | pl.Series | list[float]) -> float:
+def auto_divisor(values: np.ndarray | pl.Series | list[float]) -> float:
     """Pick the largest divisor in {1, 1e3, 1e6, 1e9, 1e12} such that
     the median formats as a non-zero label at `%.1f`.
     """
@@ -81,7 +81,7 @@ def _get_amount_unit(divisor: float) -> str:
 
 
 @dataclass
-class MetricStyle:
+class _MetricStyle:
     metric: str
     kind: str            # "ratio" | "amount" | "share"
     title: str
@@ -90,7 +90,7 @@ class MetricStyle:
     when: str            # ">" | "<"
 
 
-def _metric_style(metric: str, amount_divisor: float) -> MetricStyle:
+def metric_style(metric: str, amount_divisor: float) -> _MetricStyle:
     """Combine metric metadata (title / threshold / when) with the
     resolved divisor to build the caption string.
     """
@@ -102,10 +102,10 @@ def _metric_style(metric: str, amount_divisor: float) -> MetricStyle:
     title = _TITLES[metric]
 
     if metric in _RATIO_METRICS:
-        return MetricStyle(metric, "ratio", title, "Unit: %", 1.0, ">")
+        return _MetricStyle(metric, "ratio", title, "Unit: %", 1.0, ">")
     if metric in _AMOUNT_METRICS:
         unit = _get_amount_unit(amount_divisor)
         caption = f"Unit: {unit}" if unit else "Unit:"
-        return MetricStyle(metric, "amount", title, caption, 0.0, "<")
+        return _MetricStyle(metric, "amount", title, caption, 0.0, "<")
     # prop
-    return MetricStyle(metric, "share", title, "Unit: %", 0.05, ">")
+    return _MetricStyle(metric, "share", title, "Unit: %", 0.05, ">")

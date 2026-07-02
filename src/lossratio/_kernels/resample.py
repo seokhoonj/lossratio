@@ -52,16 +52,16 @@ import numpy as np
 
 from . import engine, engine_fast
 from .credible import (
-    _credible_levels,
-    _project_borrow,
-    _project_credible,
-    _smooth_backfit,
+    credible_levels,
+    project_borrow,
+    project_credible,
+    smooth_backfit,
 )
 from .recent import recent_link_mask
-from .recursion import _fit_multiplicative
+from .recursion import fit_multiplicative
 
 
-def _project_borrow_cum(
+def project_borrow_cum(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     body: str,
@@ -78,13 +78,13 @@ def _project_borrow_cum(
     own boundary. ``own_u`` carries the replicate's per-cohort credibility level
     on the additive body (``CredibleLoss`` / ``SmoothLoss``), matching the point
     fit; ``None`` keeps ``u = 1`` (pooled / link-ratio body). Returns only the
-    projection (the analytical SE arms of :func:`_project_borrow` are unused here
+    projection (the analytical SE arms of :func:`project_borrow` are unused here
     -- the spread is the empirical bootstrap)."""
     z = np.zeros_like(own)
     nan = np.full_like(own, np.nan)
     own_g, own_f = (own, nan) if body == "additive" else (nan, own)
     dz = np.zeros_like(donor[0])
-    return _project_borrow(
+    return project_borrow(
         loss_obs, premium_proj, body=body,
         own_g=own_g, own_sig_g=z, own_var_g=z,
         own_f=own_f, own_sig_f=z, own_var_f=z,
@@ -244,7 +244,7 @@ def _refit_additive(
     the lambda / shape selection rides inside the bootstrap loop.
     """
     if mechanism == "smooth":
-        bf = _smooth_backfit(
+        bf = smooth_backfit(
             loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
             link_mask=link_mask,
         )
@@ -253,7 +253,7 @@ def _refit_additive(
     response, exposure, dur0, _coh = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
     g_k = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
     if mechanism == "credible":
-        u_vec = _credible_levels(
+        u_vec = credible_levels(
             loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
         )[0]
     else:
@@ -261,7 +261,7 @@ def _refit_additive(
     return g_k, u_vec
 
 
-def _valid_cells(
+def valid_cells(
     loss_obs: np.ndarray, premium_obs: np.ndarray,
     link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -288,7 +288,7 @@ def _valid_cells(
     )
 
 
-def _calendar_drift_se(
+def calendar_drift_se(
     resid: np.ndarray, ii: np.ndarray, kk: np.ndarray, res_ok: np.ndarray
 ) -> float:
     """SE of the RW-with-drift on the calendar-diagonal mean-residual series.
@@ -316,7 +316,7 @@ def _calendar_drift_se(
     return sigma / np.sqrt(dd.size)              # sigma / sqrt(n - 1)
 
 
-def bootstrap_segment_additive(
+def _bootstrap_segment_additive(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     *,
@@ -346,20 +346,20 @@ def bootstrap_segment_additive(
     premium_mask = recent_link_mask(premium_obs, recent)
 
     # premium projection is deterministic (premium is not bootstrapped in v1)
-    premium_proj = _fit_multiplicative(
+    premium_proj = fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
     # --- point quantities: fitted mean, dispersion, standardized residuals ---
-    ii, kk, y, p = _valid_cells(loss_obs, premium_obs)
+    ii, kk, y, p = valid_cells(loss_obs, premium_obs)
     g_k, u_vec = _refit_additive(
         loss_obs, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
         link_mask=loss_mask,
     )
     if donor is None:
-        point_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+        point_proj = project_credible(loss_obs, premium_proj, g_k, u_vec)
     else:
-        point_proj = _project_borrow_cum(
+        point_proj = project_borrow_cum(
             loss_obs, premium_proj, "additive", g_k, donor, own_u=u_vec
         )
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
@@ -427,7 +427,7 @@ def bootstrap_segment_additive(
     # calendar-diagonal mean-residual series, and the observed calendar
     # frontier (last antidiagonal). A projected cell at antidiagonal `a` is
     # `a - frontier` calendar steps into the future.
-    drift_se = _calendar_drift_se(resid, ii, kk, res_ok) if spec.drift else 0.0
+    drift_se = calendar_drift_se(resid, ii, kk, res_ok) if spec.drift else 0.0
     oi, ok_ = np.where(obs_mask)
     frontier = int((oi + ok_).max()) if oi.size else 0
     rows = np.arange(n_cohorts)
@@ -466,9 +466,9 @@ def bootstrap_segment_additive(
         #    With a borrow donor the own body rides the replicate's g_b, the tail
         #    rides the FIXED donor shape (donor held at its point estimate).
         if donor is None:
-            param_cum = _project_credible(loss_obs, premium_proj, g_b, u_b)
+            param_cum = project_credible(loss_obs, premium_proj, g_b, u_b)
         else:
-            param_cum = _project_borrow_cum(
+            param_cum = project_borrow_cum(
                 loss_obs, premium_proj, "additive", g_b,
                 _perturb_donor(donor, rng), own_u=u_b,
             )
@@ -511,10 +511,10 @@ def bootstrap_segment_additive(
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
+    return summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
-def bootstrap_segment_covariate(
+def _bootstrap_segment_covariate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     data: Any,
@@ -540,16 +540,16 @@ def bootstrap_segment_covariate(
     not just the level. The aggregate pseudo cumulative (sub-cell increments
     summed per cohort x duration) feeds the conjugate; the predictive band adds
     the over-dispersed process draw + calendar drift on the aggregate residuals,
-    matching :func:`bootstrap_segment_additive`. Premium projection is
+    matching :func:`_bootstrap_segment_additive`. Premium projection is
     deterministic (v1). ``data`` is the segment's :class:`SegmentCovariateData`.
     """
     from dataclasses import replace
 
-    from .covariate import _build_g_marginal, fit_covariate_intensity
+    from .covariate import build_g_marginal, fit_covariate_intensity
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
-    premium_proj = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
+    premium_proj = fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
 
     def _refit_covariate(response_arr: np.ndarray, loss_mat: np.ndarray):
         """Re-fit the covariate pipeline (-> g_marginal, u, cov_fit) on a response
@@ -559,11 +559,11 @@ def bootstrap_segment_covariate(
             cov_fit = fit_covariate_intensity(
                 response_arr, data.exposure, data.duration, data.codes, lam=lam_cov
             )
-            g = _build_g_marginal(cov_fit, data)
-            u, _z, _p = _credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
+            g = build_g_marginal(cov_fit, data)
+            u, _z, _p = credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
             return g, u, cov_fit
-        from .credible import _smooth_backfit_covariate
-        bf = _smooth_backfit_covariate(
+        from .credible import smooth_backfit_covariate
+        bf = smooth_backfit_covariate(
             loss_mat, premium_obs, replace(data, response=response_arr), covariates,
             sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam_cov,
         )
@@ -571,7 +571,7 @@ def bootstrap_segment_covariate(
 
     # --- point fit: g_marginal, u, projection ---
     g_marginal, u_vec, cov_fit = _refit_covariate(data.response, loss_obs)
-    point_proj = _project_credible(loss_obs, premium_proj, g_marginal, u_vec)
+    point_proj = project_credible(loss_obs, premium_proj, g_marginal, u_vec)
 
     # --- sub-cell fitted mean, dispersion, standardized residuals ---
     duration = data.duration.astype(np.int64)
@@ -614,7 +614,7 @@ def bootstrap_segment_covariate(
         has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
     )
     # calendar drift on the AGGREGATE-cell residuals (mu_agg = u * g_marginal * P)
-    aii, akk, ay, ap = _valid_cells(loss_obs, premium_obs)
+    aii, akk, ay, ap = valid_cells(loss_obs, premium_obs)
     amu = u_vec[aii] * g_marginal[aii, akk] * ap
     a_ok = np.isfinite(amu) & (amu > 0.0)
     aphi = np.array(
@@ -625,7 +625,7 @@ def bootstrap_segment_covariate(
     a_ok = a_ok & np.isfinite(ascale) & (ascale > 0.0)
     aresid = np.full(amu.shape, np.nan, dtype=np.float64)
     aresid[a_ok] = (ay[a_ok] - amu[a_ok]) / ascale[a_ok]
-    drift_se = _calendar_drift_se(aresid, aii, akk, a_ok) if spec.drift else 0.0
+    drift_se = calendar_drift_se(aresid, aii, akk, a_ok) if spec.drift else 0.0
     oi, ok_ = np.where(obs_mask)
     frontier = int((oi + ok_).max()) if oi.size else 0
     rows = np.arange(n_cohorts)
@@ -658,7 +658,7 @@ def bootstrap_segment_covariate(
         # re-fit the whole covariate pipeline on the pseudo data (g on the
         # sub-cell links, u on the aggregate pseudo cumulative)
         g_marginal_b, u_b, _cf = _refit_covariate(ystar, cum)
-        param_cum = _project_credible(loss_obs, premium_proj, g_marginal_b, u_b)
+        param_cum = project_credible(loss_obs, premium_proj, g_marginal_b, u_b)
         param_draws[b] = param_cum
 
         if spec.process == "none":
@@ -681,7 +681,7 @@ def bootstrap_segment_covariate(
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
+    return summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +697,7 @@ def bootstrap_segment_covariate(
 # shared.
 
 
-def _multiplicative_increments(loss_obs: np.ndarray):
+def multiplicative_increments(loss_obs: np.ndarray):
     """Observed incremental cells of a cumulative-loss triangle.
 
     Returns parallel ``(ii, jj, y)``: cohort row, 0-based duration, and the
@@ -722,7 +722,7 @@ def _multiplicative_increments(loss_obs: np.ndarray):
             np.array(yy, dtype=np.float64))
 
 
-def _ev_fitted_increments(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
+def ev_fitted_increments(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
     """England-Verrall / ODP fitted incrementals ``m_ij`` (link-ratio fitted).
 
     The link-ratio fitted cumulative is the back-recursion from each cohort's
@@ -748,7 +748,7 @@ def _ev_fitted_increments(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
     return m
 
 
-def _project_multiplicative_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
+def project_multiplicative_cum(loss_obs: np.ndarray, f_k: np.ndarray) -> np.ndarray:
     """Multiplicative link-ratio cumulative projection from each cohort's last
     observed cell (``C_{k+1} = f_k C_k``); no variance recursion."""
     n_cohorts, n_dur = loss_obs.shape
@@ -789,17 +789,17 @@ def bootstrap_segment_multiplicative(
     n_links = n_durations - 1
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
-    premium_proj = _fit_multiplicative(
+    premium_proj = fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
-    f_k = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
+    f_k = fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
     if donor is None:
-        point_proj = _project_multiplicative_cum(loss_obs, f_k)
+        point_proj = project_multiplicative_cum(loss_obs, f_k)
     else:
-        point_proj = _project_borrow_cum(loss_obs, premium_proj, "multiplicative", f_k, donor)
-    m_mat = _ev_fitted_increments(loss_obs, f_k)
-    ii, jj, y = _multiplicative_increments(loss_obs)
+        point_proj = project_borrow_cum(loss_obs, premium_proj, "multiplicative", f_k, donor)
+    m_mat = ev_fitted_increments(loss_obs, f_k)
+    ii, jj, y = multiplicative_increments(loss_obs)
     m = m_mat[ii, jj]
     dur1 = (jj + 1).tolist()
 
@@ -853,7 +853,7 @@ def bootstrap_segment_multiplicative(
     last_obs = np.where(
         has_obs, n_durations - 1 - obs_mask[:, ::-1].argmax(axis=1), -1
     )
-    drift_se = _calendar_drift_se(resid, ii, jj, res_ok) if spec.drift else 0.0
+    drift_se = calendar_drift_se(resid, ii, jj, res_ok) if spec.drift else 0.0
     oi, ok_ = np.where(obs_mask)
     frontier = int((oi + ok_).max()) if oi.size else 0
     rows = np.arange(n_cohorts)
@@ -880,11 +880,11 @@ def bootstrap_segment_multiplicative(
             run[i] += ystar[t]
             cum[i, j] = run[i]
             seen[i] = True
-        f_b = _fit_multiplicative(cum, sigma_method=sigma_method, link_mask=loss_mask).f_k
+        f_b = fit_multiplicative(cum, sigma_method=sigma_method, link_mask=loss_mask).f_k
         if donor is None:
-            param_cum = _project_multiplicative_cum(loss_obs, f_b)
+            param_cum = project_multiplicative_cum(loss_obs, f_b)
         else:
-            param_cum = _project_borrow_cum(
+            param_cum = project_borrow_cum(
                 loss_obs, premium_proj, "multiplicative", f_b, _perturb_donor(donor, rng)
             )
         param_draws[b] = param_cum
@@ -919,7 +919,7 @@ def bootstrap_segment_multiplicative(
             pred_cum[active, k + 1] = pred_cum[active, k] + draw[active]
         pred_draws[b] = pred_cum
 
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
+    return summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 def _phi_at_dur(phi_cell: np.ndarray, jj: np.ndarray, dur0: int) -> float:
@@ -943,7 +943,7 @@ def _refit_phi(
     link_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per-duration dispersion of the refit fitted mean (process-noise scale)."""
-    ii, kk, y, p = _valid_cells(cum, premium_obs, link_mask)
+    ii, kk, y, p = valid_cells(cum, premium_obs, link_mask)
     if ii.size == 0:
         return np.full(n_links, np.nan, dtype=np.float64)
     # g_b is the per-duration pooled intensity (1-D) or the per-cohort effective
@@ -953,7 +953,7 @@ def _refit_phi(
     ok = np.isfinite(mu) & (mu > 0.0)
     if not ok.any():
         return np.full(n_links, np.nan, dtype=np.float64)
-    # kk is k-major (from _valid_cells), so kk[ok] stays non-decreasing -- the
+    # kk is k-major (from valid_cells), so kk[ok] stays non-decreasing -- the
     # contiguous-run precondition the vectorized pearson needs.
     return engine_fast.pearson_dispersion(y[ok], mu[ok], kk[ok], n_links, sigma_method)
 
@@ -974,7 +974,7 @@ def _process_draw(
     return out
 
 
-def _summarize(
+def summarize(
     param_draws: np.ndarray,
     pred_draws: np.ndarray,
     point_proj: np.ndarray,
@@ -1049,7 +1049,7 @@ def _summarize(
 # SeedSequence so nothing stateful crosses the process boundary.
 
 
-def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
+def _run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
     """Run one segment's bootstrap from a self-contained task dict.
 
     Module-level (picklable) so a ``ProcessPoolExecutor`` worker can call it.
@@ -1084,14 +1084,14 @@ def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
             recent=task["recent"], donor=task["donor"],
         )
     if kind == "covariate":
-        return bootstrap_segment_covariate(
+        return _bootstrap_segment_covariate(
             task["loss_obs"], task["premium_obs"], task["cov_data"],
             task["covariates"], sigma_method=task["sigma_method"],
             psi=task["psi"], lam_cov=task["lam"], spec=task["spec"],
             confidence_level=task["confidence_level"], rng=rng,
             n_basis=task["n_basis"], lam_smooth=task["lam_smooth"],
         )
-    return bootstrap_segment_additive(
+    return _bootstrap_segment_additive(
         task["loss_obs"], task["premium_obs"],
         mechanism=task["mechanism"], sigma_method=task["sigma_method"],
         psi=task["psi"], spec=task["spec"],
@@ -1111,7 +1111,7 @@ def map_segment_bootstraps(tasks: list[dict], n_jobs: int) -> list[dict]:
     if not tasks:
         return []
     if n_jobs == 1 or len(tasks) == 1:
-        return [run_segment_bootstrap(t) for t in tasks]
+        return [_run_segment_bootstrap(t) for t in tasks]
     import multiprocessing as mp
     import os
     from concurrent.futures import ProcessPoolExecutor
@@ -1119,7 +1119,7 @@ def map_segment_bootstraps(tasks: list[dict], n_jobs: int) -> list[dict]:
     workers = (os.cpu_count() or 1) if n_jobs < 0 else n_jobs
     workers = max(1, min(workers, len(tasks)))
     if workers == 1:
-        return [run_segment_bootstrap(t) for t in tasks]
+        return [_run_segment_bootstrap(t) for t in tasks]
     # "spawn", not the Linux default "fork": the parent holds a live polars
     # thread pool, and forking a multi-threaded process risks a child deadlock
     # if a lock is held at fork time (Python 3.12 warns about exactly this). The
@@ -1127,4 +1127,4 @@ def map_segment_bootstraps(tasks: list[dict], n_jobs: int) -> list[dict]:
     # against a per-segment bootstrap.
     ctx = mp.get_context("spawn")
     with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as ex:
-        return list(ex.map(run_segment_bootstrap, tasks))
+        return list(ex.map(_run_segment_bootstrap, tasks))

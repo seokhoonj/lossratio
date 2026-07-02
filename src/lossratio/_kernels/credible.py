@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 
 from . import engine, engine_fast
-from .recursion import _step_additive, _step_multiplicative
+from .recursion import step_additive, step_multiplicative
 from .smooth import smooth_intensity
 
 _BACKFIT_RELAX = 0.7  # damping for the smooth backfitting (anti-oscillation)
@@ -32,7 +32,7 @@ def _locf_forward(arr: np.ndarray) -> np.ndarray:
             out[i] = last
     return out
 
-def _credible_levels(
+def credible_levels(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     g_k: np.ndarray,
@@ -103,7 +103,7 @@ def _credible_levels(
             z_vec[present] = z_arr[present]
     return u_vec, z_vec, psi_hat
 
-def _project_credible(
+def project_credible(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     g_k: np.ndarray,
@@ -150,7 +150,7 @@ def _project_credible(
                 loss_proj[pos, k + 1] = c_k[pos] + u_vec[pos] * gk[pos] * p_k[pos]
     return loss_proj
 
-def _smooth_backfit(
+def smooth_backfit(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -245,7 +245,7 @@ def _smooth_backfit(
                     [g_map.get(k + 1, np.nan) for k in range(n_links)],
                     dtype=np.float64,
                 )
-                u_vec, z_vec, psi_hat = _credible_levels(
+                u_vec, z_vec, psi_hat = credible_levels(
                     loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
                 )
                 backfit_converged = True          # fell back deterministically
@@ -256,7 +256,7 @@ def _smooth_backfit(
             # g_k here was fit with the current u_vec; the convergence test is on
             # the UNDAMPED fixed-point residual so g_k stays consistent with the
             # stored u at the break.
-            u_conj, z_vec, psi_hat = _credible_levels(
+            u_conj, z_vec, psi_hat = credible_levels(
                 loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
             )
             resid = float(np.max(np.abs(u_conj - u_vec)))
@@ -283,7 +283,7 @@ def _smooth_backfit(
                     lam_used, edf, inner_converged = sm.lam, sm.edf, sm.converged
                     # resync the credibility diagnostics to the final g_k (the
                     # u level stays the backfitting's final; only z / psi follow)
-                    _, z_vec, psi_hat = _credible_levels(
+                    _, z_vec, psi_hat = credible_levels(
                         loss_obs, premium_obs, g_k, sigma_method, psi,
                         link_mask=link_mask,
                     )
@@ -296,7 +296,7 @@ def _smooth_backfit(
         "representable": representable, "converged": smooth_converged,
     }
 
-def _smooth_backfit_covariate(
+def smooth_backfit_covariate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     cov_data: Any,
@@ -311,7 +311,7 @@ def _smooth_backfit_covariate(
     tol: float = 1e-4,
     link_mask: np.ndarray | None = None,
 ) -> dict:
-    """Covariate variant of :func:`_smooth_backfit` (SmoothLoss covariates=).
+    """Covariate variant of :func:`smooth_backfit` (SmoothLoss covariates=).
 
     The s-step fits the SMOOTH covariate kernel (P-spline duration shape + ridge
     covariate level) on the ``u``-adjusted sub-cell exposure ``u_i * P`` and
@@ -320,7 +320,7 @@ def _smooth_backfit_covariate(
     convergence, mirroring the pooled smooth backfit. Returns ``g_marginal`` / ``u`` /
     ``Z`` / ``psi`` / ``cov_fit`` / ``representable`` / ``converged``.
     """
-    from .covariate import _build_g_marginal, fit_covariate_intensity
+    from .covariate import build_g_marginal, fit_covariate_intensity
 
     n_cohorts = loss_obs.shape[0]
     u_vec = np.ones(n_cohorts, dtype=np.float64)
@@ -333,7 +333,7 @@ def _smooth_backfit_covariate(
             cov_data.response, adj, cov_data.duration, cov_data.codes,
             lam=lam_cov, n_basis=n_basis, lam_smooth=lam,
         )
-        return cov_fit, _build_g_marginal(cov_fit, cov_data)
+        return cov_fit, build_g_marginal(cov_fit, cov_data)
 
     if cov_data.response.size == 0:
         return {"g_marginal": np.full((n_cohorts, loss_obs.shape[1] - 1), np.nan),
@@ -346,7 +346,7 @@ def _smooth_backfit_covariate(
     for _ in range(max_outer):
         cov_fit, g_marginal = _step(u_vec)
         inner_converged = cov_fit.converged
-        u_conj, z_vec, psi_hat = _credible_levels(
+        u_conj, z_vec, psi_hat = credible_levels(
             loss_obs, premium_obs, g_marginal, sigma_method, psi, link_mask=link_mask
         )
         resid = float(np.max(np.abs(u_conj - u_vec)))
@@ -356,7 +356,7 @@ def _smooth_backfit_covariate(
             break
     else:
         cov_fit, g_marginal = _step(u_vec)            # final consistency refit at u
-        _, z_vec, psi_hat = _credible_levels(
+        _, z_vec, psi_hat = credible_levels(
             loss_obs, premium_obs, g_marginal, sigma_method, psi, link_mask=link_mask
         )
     return {
@@ -364,7 +364,7 @@ def _smooth_backfit_covariate(
         "representable": True, "converged": inner_converged and backfit_converged,
     }
 
-def _project_borrow(
+def project_borrow(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     *,
@@ -484,7 +484,7 @@ def _project_borrow(
                 pos = active & ~np.isnan(p_k) & (p_k > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = c_k[pos] + u_body[pos] * own_g[k] * p_k[pos]
-                    _step_additive(proc_acc, param_acc, pos,
+                    step_additive(proc_acc, param_acc, pos,
                                   own_sig_g[k], own_var_g[k], p_k)
             elif body == "self_exposure":
                 # premium self-exposure growth: P_{k+1} = P_k * (1 + u_i * h_k).
@@ -498,13 +498,13 @@ def _project_borrow(
                 pos = active & ~np.isnan(c_k) & (c_k > 0)
                 if pos.any():
                     loss_proj[pos, k + 1] = own_f[k] * c_k[pos]
-                    _step_multiplicative(proc_acc, param_acc, pos, own_f[k],
+                    step_multiplicative(proc_acc, param_acc, pos, own_f[k],
                                   own_sig_f[k], own_var_f[k], c_k)
         elif np.isfinite(donor_f[k]):                     # borrowed link-ratio tail
             pos = active & ~np.isnan(c_k) & (c_k > 0)
             if pos.any():
                 loss_proj[pos, k + 1] = donor_f[k] * c_k[pos]
-                _step_multiplicative(proc_acc, param_acc, pos, donor_f[k],
+                step_multiplicative(proc_acc, param_acc, pos, donor_f[k],
                               donor_sig_f[k], donor_var_f[k], c_k)
                 borrowed[pos, k + 1] = True
         else:

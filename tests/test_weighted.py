@@ -85,14 +85,14 @@ def test_weighted_chain_ladder_fills_se(tri):
 
 
 def test_weighted_multiplicative_w1_is_point():
-    from lossratio._kernels.recursion import _fit_multiplicative
+    from lossratio._kernels.recursion import fit_multiplicative
     from lossratio._kernels.weighted import _weighted_refit_multiplicative
     rng = np.random.default_rng(0)
     nC = nD = 8
     L = np.full((nC, nD), np.nan)
     for i in range(nC):
         L[i, : nD - i] = np.cumsum(np.abs(rng.normal(50, 10, nD - i)))
-    f_pt = _fit_multiplicative(L).f_k
+    f_pt = fit_multiplicative(L).f_k
     f = _weighted_refit_multiplicative(L, np.ones((1, nC)), ~np.isnan(L), None, nD - 1)
     assert np.allclose(f[0], f_pt, rtol=1e-12, atol=0.0, equal_nan=True)
 

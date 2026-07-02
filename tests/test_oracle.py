@@ -264,7 +264,7 @@ def test_engine_pearson_dispersion():
     response, exposure, cohort, duration = _long_arrays()
     g = _engine.saturated_intensity(response=response, exposure=exposure,
                                     duration=duration)
-    fitted = _engine.fitted_mean(g=g, exposure=exposure, duration=duration)
+    fitted = _engine._fitted_mean(g=g, exposure=exposure, duration=duration)
     phi = _engine.pearson_dispersion(response=response, fitted=fitted,
                                      duration=duration, sigma_method="locf")
     for k in DURATIONS:
@@ -276,7 +276,7 @@ def test_engine_psi_and_conjugate():
     response, exposure, cohort, duration = _long_arrays()
     g = _engine.saturated_intensity(response=response, exposure=exposure,
                                     duration=duration)
-    fitted = _engine.fitted_mean(g=g, exposure=exposure, duration=duration)
+    fitted = _engine._fitted_mean(g=g, exposure=exposure, duration=duration)
     phi = _engine.pearson_dispersion(response=response, fitted=fitted,
                                      duration=duration, sigma_method="locf")
     psi = _engine.buhlmann_straub_psi(response=response, fitted=fitted, phi=phi,
@@ -294,6 +294,6 @@ def test_engine_deviance():
     response, exposure, cohort, duration = _long_arrays()
     g = _engine.saturated_intensity(response=response, exposure=exposure,
                                     duration=duration)
-    fitted = _engine.fitted_mean(g=g, exposure=exposure, duration=duration)
-    dev = _engine.quasi_poisson_deviance(response=response, fitted=fitted)
+    fitted = _engine._fitted_mean(g=g, exposure=exposure, duration=duration)
+    dev = _engine._quasi_poisson_deviance(response=response, fitted=fitted)
     assert dev == pytest.approx(DEVIANCE_TOTAL, abs=1e-9)

@@ -14,25 +14,25 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
+from .._kernels.io import format_group_value, iter_group_frames
 from .base import (
-    _cohort_label,
-    _format_axis,
-    _get_period_type,
-    _hide_unused,
-    _pretty_var_label,
-    _resolve_grid,
+    cohort_label,
+    format_axis,
+    get_period_type,
+    hide_unused,
+    pretty_var_label,
+    resolve_grid,
 )
 from .metric import (
     _AMOUNT_METRICS,
     _RATIO_METRICS,
     _VALID_METRICS,
-    _auto_divisor,
-    _metric_style,
+    auto_divisor,
+    metric_style,
 )
 from .theme import draw_facet_strip, finalize_figure
 from .triangle_line import plot
-from .triangle_usage import _plot_triangle_usage
+from .triangle_usage import plot_triangle_usage
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -81,7 +81,7 @@ def plot_triangle(
         )
 
     if kind == "usage":
-        return _plot_triangle_usage(
+        return plot_triangle_usage(
             triangle,
             recent=recent,
             regime=regime,
@@ -125,18 +125,18 @@ def plot_triangle(
                 f"`amount_divisor` must be numeric or 'auto', got "
                 f"{amount_divisor!r}."
             )
-        amount_divisor = _auto_divisor(div_vals)
+        amount_divisor = auto_divisor(div_vals)
     amount_divisor = float(amount_divisor)
 
-    meta = _metric_style(metric, amount_divisor)
+    meta = metric_style(metric, amount_divisor)
 
     # Determine cell labels (cohort -> string, x -> string) once,
     # using consistent ordering across facets so the axes are stable.
     # The x-axis is either the duration index (default, aligned
     # right-triangle layout) or the calendar period of each cell
     # (staircase layout: each cohort shifted to its own diagonal).
-    coh_type = _get_period_type(coh, grain=grain)
-    cohort_labels = _format_axis(df["cohort"], coh_type)
+    coh_type = get_period_type(coh, grain=grain)
+    cohort_labels = format_axis(df["cohort"], coh_type)
     coh_pairs = sorted(
         set(zip(df["cohort"].to_list(), cohort_labels, strict=False)),
         key=lambda p: p[0],
@@ -152,17 +152,17 @@ def plot_triangle(
             .alias("_x_cal")
         )["_x_cal"]
         x_values = cal_series.to_list()
-        x_labels = _format_axis(cal_series, coh_type)
+        x_labels = format_axis(cal_series, coh_type)
         x_axis_label = (
-            _pretty_var_label(triangle.calendar)
+            pretty_var_label(triangle.calendar)
             if triangle.calendar is not None
             else "calendar"
         )
     else:
-        duration_type = _get_period_type(duration)  # duration_m / duration_q / ... aren't dates
+        duration_type = get_period_type(duration)  # duration_m / duration_q / ... aren't dates
         x_values = df["duration"].to_list()
-        x_labels = _format_axis(df["duration"], duration_type)
-        x_axis_label = _pretty_var_label(duration)
+        x_labels = format_axis(df["duration"], duration_type)
+        x_axis_label = pretty_var_label(duration)
 
     # Ordered unique levels.
     x_pairs = sorted(set(zip(x_values, x_labels, strict=False)), key=lambda p: p[0])
@@ -175,10 +175,10 @@ def plot_triangle(
     )
 
     # Faceting setup.
-    facets = list(_iter_group_frames(df, grp))
+    facets = list(iter_group_frames(df, grp))
 
     n_facets = len(facets)
-    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
+    nrow, ncol = resolve_grid(n_facets, nrow, ncol)
 
     cell_w = 0.45 + (0.18 if label_style == "detail" else 0.0)
     cell_h = 0.30 + (0.18 if label_style == "detail" else 0.0)
@@ -210,11 +210,11 @@ def plot_triangle(
             draw_facet_strip(ax, title, panel_h_in)
 
     # Hide unused axes.
-    _hide_unused(axes, n_facets, nrow, ncol)
+    hide_unused(axes, n_facets, nrow, ncol)
 
     finalize_figure(
         fig, title=meta.title, xlabel=x_axis_label,
-        ylabel=_cohort_label(coh, grain=grain), caption=meta.caption,
+        ylabel=cohort_label(coh, grain=grain), caption=meta.caption,
     )
 
     return fig

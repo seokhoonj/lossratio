@@ -656,7 +656,7 @@ class _FoldFit:
         # inherited from `self.estimator` (overridable via kwargs).
         # A RegimeDetector inherited from the estimator is resolved on the
         # masked fold triangle just below before being passed on.
-        from .._plot.triangle_usage import _plot_triangle_usage
+        from .._plot.triangle_usage import plot_triangle_usage
         from .regime import _resolve_to_regime
         eff_recent = recent if recent is not None else self._infer_recent()
         eff_regime = regime if regime is not None else self._infer_regime()
@@ -667,7 +667,7 @@ class _FoldFit:
         # the usage view colours donor cells under segment_wise. An
         # already-concrete Regime passes through unchanged.
         eff_regime = _resolve_to_regime(eff_regime, self._triangle.mask(self.holdout))
-        return _plot_triangle_usage(
+        return plot_triangle_usage(
             self._triangle,
             recent=eff_recent,
             regime=eff_regime,

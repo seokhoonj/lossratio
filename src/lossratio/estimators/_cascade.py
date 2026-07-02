@@ -18,9 +18,9 @@ import numpy as np
 import polars as pl
 
 from .._kernels.recursion import (
-    _build_value_matrices,
-    _fit_multiplicative,
-    _multiplicative_var,
+    build_value_matrices,
+    fit_multiplicative,
+    multiplicative_var,
 )
 
 # the loss cascade's stacked keys (the default for `_stack_cascade_fits`).
@@ -57,9 +57,9 @@ def _cohort_subset_donor(
         sub = sub.with_columns(
             pl.col("incr_loss").cum_sum().over("cohort").alias("loss")
         )
-    (mat,), _, _ = _build_value_matrices(sub, value_cols=(value,))
-    mr = _fit_multiplicative(mat, sigma_method=sigma_method)
-    return (mr.f_k, mr.sigma2_k, _multiplicative_var(mr))
+    (mat,), _, _ = build_value_matrices(sub, value_cols=(value,))
+    mr = fit_multiplicative(mat, sigma_method=sigma_method)
+    return (mr.f_k, mr.sigma2_k, multiplicative_var(mr))
 
 
 def _segment_change_dates(regime: Any, group_value: Any) -> list:

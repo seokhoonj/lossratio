@@ -13,8 +13,8 @@ import pytest
 
 from lossratio._kernels import engine as _engine
 from lossratio._kernels.smooth import (
+    _onehot_design,
     bspline_design,
-    onehot_design,
     penalized_irls,
     smooth_intensity,
 )
@@ -38,7 +38,7 @@ def cells():
 def test_onehot_lam0_reduces_to_saturated(cells):
     # the golden-anchor reduction: one-hot basis + no penalty == sum y / sum P
     dur, y, P = cells
-    B, pen, ds = onehot_design(dur)
+    B, pen, ds = _onehot_design(dur)
     fit = penalized_irls(y, np.log(P), B, pen, 0.0)
     g = {ds[j]: float(np.exp(fit.beta[j])) for j in range(len(ds))}
     sat = _engine.saturated_intensity(

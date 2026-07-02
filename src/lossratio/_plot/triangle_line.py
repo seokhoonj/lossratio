@@ -13,15 +13,15 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
-from .base import _get_period_type, _hide_unused, _pretty_var_label, _resolve_grid
+from .._kernels.io import format_group_value, iter_group_frames
+from .base import get_period_type, hide_unused, pretty_var_label, resolve_grid
 from .metric import (
     _AMOUNT_METRICS,
     _RATIO_METRICS,
     _SHARE_METRICS,
     _VALID_METRICS,
-    _auto_divisor,
-    _metric_style,
+    auto_divisor,
+    metric_style,
 )
 from .theme import (
     STAT_COLORS,
@@ -126,9 +126,9 @@ def plot(
                 f"`amount_divisor` must be numeric or 'auto', got "
                 f"{amount_divisor!r}."
             )
-        amount_divisor = _auto_divisor(div_vals)
+        amount_divisor = auto_divisor(div_vals)
     amount_divisor = float(amount_divisor)
-    meta = _metric_style(metric, amount_divisor)
+    meta = metric_style(metric, amount_divisor)
 
     is_ratio = metric in _RATIO_METRICS
     is_share = metric in _SHARE_METRICS
@@ -140,11 +140,11 @@ def plot(
         summary = False
 
     facets: list[tuple[Any, pl.DataFrame]] = list(
-        _iter_group_frames(df, grp)
+        iter_group_frames(df, grp)
     )
     n_facets = len(facets)
 
-    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
+    nrow, ncol = resolve_grid(n_facets, nrow, ncol)
 
     if figsize is None:
         figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
@@ -179,10 +179,10 @@ def plot(
         if group_value is not None:
             draw_facet_strip(ax, format_group_value(group_value), panel_h_in)
 
-    _hide_unused(axes, n_facets, nrow, ncol)
+    hide_unused(axes, n_facets, nrow, ncol)
 
     finalize_figure(
-        fig, title=meta.title, xlabel=_pretty_var_label(duration),
+        fig, title=meta.title, xlabel=pretty_var_label(duration),
         ylabel=metric, caption=meta.caption,
     )
 
@@ -198,7 +198,7 @@ def plot(
                    frameon=False)
     elif n_coh > 1:
         # Raw-mode cohort colour bar.
-        coh_type = _get_period_type(coh, grain=grain)
+        coh_type = get_period_type(coh, grain=grain)
         add_cohort_colorbar(fig, vis_axes, cohorts, _coh_color,
                             label_fn=period_label_fn(coh_type))
 

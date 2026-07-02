@@ -12,12 +12,12 @@ import polars as pl
 import pytest
 
 from lossratio._kernels.io import (
-    _arrays_to_long_df,
-    _iter_group_frames,
+    arrays_to_long_df,
     collapse_groups,
     fill_group_columns,
     format_group_value,
     group_eq,
+    iter_group_frames,
     normalize_groups,
     set_group_values,
 )
@@ -84,7 +84,7 @@ def test_group_eq_multi_col():
 
 def test_iter_group_frames_none():
     df = _df()
-    items = list(_iter_group_frames(df, None))
+    items = list(iter_group_frames(df, None))
     assert len(items) == 1
     key, sub = items[0]
     assert key is None
@@ -93,7 +93,7 @@ def test_iter_group_frames_none():
 
 def test_iter_group_frames_single_col_yields_scalar():
     df = _df()
-    items = list(_iter_group_frames(df, "coverage"))
+    items = list(iter_group_frames(df, "coverage"))
     keys = [k for k, _ in items]
     # first-seen order, scalar keys
     assert keys == ["SURGERY", "CI"]
@@ -102,14 +102,14 @@ def test_iter_group_frames_single_col_yields_scalar():
 
 def test_iter_group_frames_multi_col_yields_tuple():
     df = _df()
-    items = list(_iter_group_frames(df, ["coverage", "channel"]))
+    items = list(iter_group_frames(df, ["coverage", "channel"]))
     keys = [k for k, _ in items]
     assert keys == [("SURGERY", "TM"), ("SURGERY", "GA"), ("CI", "TM"), ("CI", "GA")]
     assert all(isinstance(k, tuple) and len(k) == 2 for k in keys)
 
 
 def test_arrays_to_long_df_single_col():
-    out = _arrays_to_long_df(
+    out = arrays_to_long_df(
         {"duration": np.array([1, 2]), "v": np.array([1.0, 2.0])},
         groups="coverage",
         group_value="SURGERY",
@@ -119,7 +119,7 @@ def test_arrays_to_long_df_single_col():
 
 
 def test_arrays_to_long_df_multi_col():
-    out = _arrays_to_long_df(
+    out = arrays_to_long_df(
         {"duration": np.array([1, 2]), "v": np.array([1.0, 2.0])},
         groups=["coverage", "channel"],
         group_value=("SURGERY", "TM"),

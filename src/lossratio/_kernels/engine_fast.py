@@ -8,7 +8,7 @@ round-trips dominate. It computes the SAME quantities, matching the engine to
 the floating-point rounding floor:
 
 * per-cell accumulation uses :func:`numpy.add.at`, which applies each index in
-  array order -- matching the engine's naive ``_sum_by`` / ``+=`` loops;
+  array order -- matching the engine's naive ``sum_by`` / ``+=`` loops;
 * the Pearson per-duration reduction calls the builtin ``sum`` over the
   duration's contiguous slice, because CPython's float ``sum`` is compensated
   (Neumaier) and the engine uses it too -- a naive numpy accumulation would

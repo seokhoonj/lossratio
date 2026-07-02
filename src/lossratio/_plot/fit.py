@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames
+from .._kernels.io import iter_group_frames
 from .base import open_facets
 from .theme import add_cohort_colorbar, cohort_gradient, finalize_figure
 
@@ -85,7 +85,7 @@ def plot_fit(
     the group column(s) when grouped) -- the result class's polars frame.
     """
     grid = open_facets(
-        _iter_group_frames(df, groups),
+        iter_group_frames(df, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.0, 2.6 * nc + 0.8),
                                    max(3.0, 2.2 * nr + 1.0)),

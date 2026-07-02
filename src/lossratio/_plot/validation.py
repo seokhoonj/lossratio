@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value, scalar_int
+from .._kernels.io import format_group_value, iter_group_frames, scalar_int
 from .._kernels.period import add_periods, infer_grain, resolve_grain
 from .base import (
-    _format_period_series,
-    _get_period_type,
-    _hide_unused,
-    _resolve_grid,
+    format_period_series,
+    get_period_type,
+    hide_unused,
+    resolve_grid,
 )
 from .theme import BLUE, RED, faint_grid, finalize_figure
 
@@ -49,12 +49,12 @@ def plot_validation(
 
     groups = tv.groups
     coh = tv.cohort
-    coh_type = _get_period_type(coh)
+    coh_type = get_period_type(coh)
 
-    facets = list(_iter_group_frames(gaps, groups))
+    facets = list(iter_group_frames(gaps, groups))
 
     n = len(facets)
-    nrow, ncol = _resolve_grid(n, nrow, ncol, default_ncol=2)
+    nrow, ncol = resolve_grid(n, nrow, ncol, default_ncol=2)
     if figsize is None:
         figsize = (max(5.5, 4.0 * ncol), max(3.0, 2.5 * nrow))
 
@@ -68,7 +68,7 @@ def plot_validation(
         sub_sorted = sub.sort(coh)
         coh_vals = sub_sorted[coh]
         if coh_type is not None:
-            lab = _format_period_series(coh_vals, coh_type)
+            lab = format_period_series(coh_vals, coh_type)
         else:
             lab = [str(v) for v in coh_vals.to_list()]
         n_duration = sub_sorted["n_duration"].to_numpy()
@@ -86,7 +86,7 @@ def plot_validation(
         ax.legend(loc="best", fontsize=7, frameon=False)
         faint_grid(ax, axis="y")
 
-    _hide_unused(axes, n, nrow, ncol)
+    hide_unused(axes, n, nrow, ncol)
 
     finalize_figure(fig, title="Cohort duration-sequence gaps",
                     ylabel="duration count")
@@ -134,7 +134,7 @@ def plot_triangle_validation(
 
     groups = tv.groups
     coh = tv.cohort
-    coh_type = _get_period_type(coh)
+    coh_type = get_period_type(coh)
 
     if x_axis == "calendar":
         if tv.calendar is None:
@@ -153,10 +153,10 @@ def plot_triangle_validation(
                 f"from {coh!r}: {e}"
             ) from e
 
-    facets = list(_iter_group_frames(gaps, groups))
+    facets = list(iter_group_frames(gaps, groups))
 
     n = len(facets)
-    nrow, ncol = _resolve_grid(n, nrow, ncol, default_ncol=2)
+    nrow, ncol = resolve_grid(n, nrow, ncol, default_ncol=2)
     if figsize is None:
         figsize = (max(6.0, 4.5 * ncol), max(3.0, 2.8 * nrow))
 
@@ -175,7 +175,7 @@ def plot_triangle_validation(
         # cohort labels (oldest at top)
         cohorts = sub_sorted[coh].to_list()
         if coh_type is not None:
-            lab = _format_period_series(sub_sorted[coh], coh_type)
+            lab = format_period_series(sub_sorted[coh], coh_type)
         else:
             lab = [str(v) for v in cohorts]
 
@@ -204,7 +204,7 @@ def plot_triangle_validation(
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
 
-    _hide_unused(axes, n, nrow, ncol)
+    hide_unused(axes, n, nrow, ncol)
 
     title = (
         "Gap positions (blue = observed, red = missing)"
@@ -314,7 +314,7 @@ def _draw_calendar_panel(
     stride = max(1, n_cals // 12)
     tick_pos = list(range(0, n_cals, stride))
     if coh_type is not None:
-        labels = _format_period_series(
+        labels = format_period_series(
             pl.Series("c", [sorted_cals[i] for i in tick_pos]), coh_type
         )
     else:

@@ -12,16 +12,16 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
+from .._kernels.io import format_group_value, iter_group_frames
 from .base import (
-    _cohort_label,
-    _format_period_series,
-    _get_period_type,
-    _hide_unused,
-    _percent_formatter,
-    _pretty_var_label,
-    _resolve_grid,
+    cohort_label,
+    format_period_series,
+    get_period_type,
+    hide_unused,
     open_facets,
+    percent_formatter,
+    pretty_var_label,
+    resolve_grid,
 )
 from .theme import BLUE, RED, STAT_COLORS, faint_grid, finalize_figure
 
@@ -67,7 +67,7 @@ def plot_backtest(
             fit._col_summary,
             groups=fit._groups,
             x_col="duration",
-            x_label=_pretty_var_label(fit._duration),
+            x_label=pretty_var_label(fit._duration),
             stat_cols=stat_cols,
             title=f"Backtest A/E Error by duration ({mode_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
@@ -87,7 +87,7 @@ def plot_backtest(
         fit._ae_err,
         groups=fit._groups,
         ae_err_col=ae_err_col,
-        x_label=_pretty_var_label(fit._duration),
+        x_label=pretty_var_label(fit._duration),
         title=f"Backtest A/E Error per held-out cell ({mode_word})",
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
@@ -141,10 +141,10 @@ def plot_triangle_backtest(
     coh = fit._cohort
     duration = fit._duration
     grain = getattr(fit._triangle, "_grain", None) if hasattr(fit, "_triangle") else None
-    coh_type = _get_period_type(coh, grain=grain)
+    coh_type = get_period_type(coh, grain=grain)
 
     if coh_type is not None:
-        coh_labels = _format_period_series(dt["cohort"], coh_type)
+        coh_labels = format_period_series(dt["cohort"], coh_type)
     else:
         coh_labels = [str(v) for v in dt["cohort"].to_list()]
 
@@ -170,7 +170,7 @@ def plot_triangle_backtest(
         )
         x_field = "_x_cal"
         x_levels = sorted(work["_x_cal"].unique().to_list())
-        x_tick_labels = _format_period_series(
+        x_tick_labels = format_period_series(
             pl.Series("_x_cal", x_levels), coh_type
         )
         x_axis_label = "calendar"
@@ -179,7 +179,7 @@ def plot_triangle_backtest(
         x_field = "duration"
         x_levels = sorted(work["duration"].unique().to_list())
         x_tick_labels = [str(d) for d in x_levels]
-        x_axis_label = _pretty_var_label(duration)
+        x_axis_label = pretty_var_label(duration)
         x_rotation = 0
     duration_levels = x_levels
     # Cohort ascending (oldest -> newest). With `invert_yaxis()` below, the
@@ -200,10 +200,10 @@ def plot_triangle_backtest(
     )
 
     # Faceting
-    facets = list(_iter_group_frames(work, groups))
+    facets = list(iter_group_frames(work, groups))
 
     n = len(facets)
-    nrow, ncol = _resolve_grid(n, nrow, ncol)
+    nrow, ncol = resolve_grid(n, nrow, ncol)
 
     if figsize is None:
         cell_w = 0.5
@@ -256,14 +256,14 @@ def plot_triangle_backtest(
             ax.set_title(format_group_value(group_value), fontsize=9)
         last_drawn = ax
 
-    _hide_unused(axes, n, nrow, ncol)
+    hide_unused(axes, n, nrow, ncol)
 
     mode_word = "incremental" if is_incr else "cumulative"
     finalize_figure(
         fig,
         title=f"Backtest A/E Error -- held-out cells ({mode_word})",
         xlabel=x_axis_label,
-        ylabel=_cohort_label(coh, grain=grain),
+        ylabel=cohort_label(coh, grain=grain),
     )
     if last_drawn is not None:
         from matplotlib.cm import ScalarMappable
@@ -272,7 +272,7 @@ def plot_triangle_backtest(
             sm, ax=axes.ravel().tolist(),
             shrink=0.6, label="A/E Error",
         )
-        cb.formatter = _percent_formatter()
+        cb.formatter = percent_formatter()
         cb.update_ticks()
     fig.text(0.99, 0.005, "Unit: %", ha="right", va="bottom", fontsize=8)
     return fig
@@ -306,7 +306,7 @@ def _plot_aggregated_lines(
 ) -> Any:
     """col / diag plot: line per stat across x_col, faceted by group."""
     grid = open_facets(
-        _iter_group_frames(summary, groups),
+        iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
     )
@@ -328,7 +328,7 @@ def _plot_aggregated_lines(
                     linewidth=0.8, marker="o", markersize=3, label=stat_label,
                 )
 
-        ax.yaxis.set_major_formatter(_percent_formatter())
+        ax.yaxis.set_major_formatter(percent_formatter())
         grid.title(ax, group_value)
         ax.legend(loc="best", fontsize=8, frameon=False)
         faint_grid(ax)
@@ -361,7 +361,7 @@ def _plot_cell_curves(
         )
 
     grid = open_facets(
-        _iter_group_frames(ae_err, groups),
+        iter_group_frames(ae_err, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
     )
@@ -388,7 +388,7 @@ def _plot_cell_curves(
             ax.plot(x[m], y[m], color=color, alpha=0.6, linewidth=0.8)
             ax.scatter(x[m], y[m], color=color, alpha=0.6, s=8)
 
-        ax.yaxis.set_major_formatter(_percent_formatter())
+        ax.yaxis.set_major_formatter(percent_formatter())
         grid.title(ax, group_value)
         faint_grid(ax)
 

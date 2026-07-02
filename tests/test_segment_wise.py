@@ -296,7 +296,7 @@ def test_project_borrow_leading_gap_and_short_donor_fill_the_tail():
     # NaN tail or index out of bounds.
     import numpy as np
 
-    from lossratio._kernels.credible import _project_borrow
+    from lossratio._kernels.credible import project_borrow
 
     own_h = np.array([np.nan, np.nan, 0.10])        # leading gap at links 0, 1
     zero, nan3 = np.zeros(3), np.full(3, np.nan)
@@ -308,7 +308,7 @@ def test_project_borrow_leading_gap_and_short_donor_fill_the_tail():
 
     def _run(donor_f):
         n = donor_f.shape[0]
-        return _project_borrow(
+        return project_borrow(
             loss_obs, prem, body="self_exposure",
             own_g=nan3, own_sig_g=nan3, own_var_g=nan3,
             own_f=nan3, own_sig_f=zero, own_var_f=zero,

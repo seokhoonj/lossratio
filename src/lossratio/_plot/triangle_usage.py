@@ -13,15 +13,15 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from .._kernels.io import _iter_group_frames, format_group_value
+from .._kernels.io import format_group_value, iter_group_frames
 from ..core.usage import _compute_triangle_usage
 from .base import (
-    _cohort_label,
-    _format_axis,
-    _get_period_type,
-    _hide_unused,
-    _pretty_var_label,
-    _resolve_grid,
+    cohort_label,
+    format_axis,
+    get_period_type,
+    hide_unused,
+    pretty_var_label,
+    resolve_grid,
 )
 from .theme import BLUE, RED, finalize_figure
 
@@ -64,7 +64,7 @@ def _first_post_change_idx(
     return None
 
 
-def _plot_triangle_usage(
+def plot_triangle_usage(
     triangle: Triangle,
     *,
     recent: int | None,
@@ -103,9 +103,9 @@ def _plot_triangle_usage(
     coh = triangle.cohort
     duration = triangle.duration
     grain = triangle.grain
-    coh_type = _get_period_type(coh, grain=grain)
+    coh_type = get_period_type(coh, grain=grain)
 
-    cohort_labels = _format_axis(usage_df["cohort"], coh_type)
+    cohort_labels = format_axis(usage_df["cohort"], coh_type)
     usage_df = usage_df.with_columns(
         pl.Series(name="_y_lab", values=cohort_labels)
     )
@@ -134,11 +134,11 @@ def _plot_triangle_usage(
         )
         xkey = "_x_cal"
         x_levels = sorted(set(usage_df["_x_cal"].to_list()))
-        x_labels = _format_axis(
+        x_labels = format_axis(
             pl.Series(name="_x", values=x_levels), coh_type
         )
         x_axis_label = (
-            _pretty_var_label(triangle.calendar)
+            pretty_var_label(triangle.calendar)
             if triangle.calendar is not None
             else "calendar"
         )
@@ -146,12 +146,12 @@ def _plot_triangle_usage(
         xkey = "duration"
         x_levels = sorted(set(usage_df["duration"].to_list()))
         x_labels = [str(d) for d in x_levels]
-        x_axis_label = _pretty_var_label(duration)
+        x_axis_label = pretty_var_label(duration)
 
-    facets = list(_iter_group_frames(usage_df, grp))
+    facets = list(iter_group_frames(usage_df, grp))
 
     n_facets = len(facets)
-    nrow, ncol = _resolve_grid(n_facets, nrow, ncol)
+    nrow, ncol = resolve_grid(n_facets, nrow, ncol)
 
     if figsize is None:
         fig_w = max(4.0, 0.4 * len(x_levels) * ncol + 1.5)
@@ -222,7 +222,7 @@ def _plot_triangle_usage(
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=10)
 
-    _hide_unused(axes, n_facets, nrow, ncol)
+    hide_unused(axes, n_facets, nrow, ncol)
 
     # Title with active filters.
     parts: list[str] = []
@@ -240,7 +240,7 @@ def _plot_triangle_usage(
         f"Data usage ({', '.join(parts)})" if parts else "Data usage (full)"
     )
     finalize_figure(fig, title=title_txt, xlabel=x_axis_label,
-                    ylabel=_cohort_label(coh, grain=grain))
+                    ylabel=cohort_label(coh, grain=grain))
 
     # Legend on the figure (categorical key).
     legend_handles = [

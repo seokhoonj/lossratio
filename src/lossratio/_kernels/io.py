@@ -55,7 +55,7 @@ def scalar_int(x: Any) -> int:
     return int(x)
 
 
-def _nan_skip_diff(arr: np.ndarray) -> np.ndarray:
+def nan_skip_diff(arr: np.ndarray) -> np.ndarray:
     """Per-row incremental: ``cur - last_finite_prev`` (prev = 0 initially).
 
     NaN cells stay NaN; the previous-value chain only advances at finite
@@ -76,7 +76,7 @@ def _nan_skip_diff(arr: np.ndarray) -> np.ndarray:
     return out
 
 
-def _nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
+def nan_to_null(df: pl.DataFrame) -> pl.DataFrame:
     """Convert ``NaN`` to ``null`` in all float columns of ``df``.
 
     Mirrors the prior row-builder semantics where ``None`` was inserted
@@ -130,7 +130,7 @@ def collapse_groups(
     the scalar ``str`` form; two or more columns stay a ``list[str]``. This is
     the single source of truth for how a Triangle stores ``groups``: the
     column COUNT (not the input notation) decides scalar-vs-list, so the
-    str/list branch in every downstream helper (``_iter_group_frames``,
+    str/list branch in every downstream helper (``iter_group_frames``,
     ``group_eq``, ``fill_group_columns``, ...) lines up -- a single group
     yields SCALAR values, multiple groups yield TUPLE values. Mirrors the
     pandas ``groupby`` key convention, except a length-1 list collapses to the
@@ -219,7 +219,7 @@ def format_group_value(value: Any) -> str:
     return str(value)
 
 
-def _iter_group_frames(
+def iter_group_frames(
     df: pl.DataFrame, groups: str | Sequence[str] | None
 ) -> Iterator[tuple[Any, pl.DataFrame]]:
     """Yield ``(group_value, sub_frame)`` pairs for a grouped fit.
@@ -245,7 +245,7 @@ def _iter_group_frames(
         yield tuple(sub.select(cols).row(0)), sub
 
 
-def _arrays_to_long_df(
+def arrays_to_long_df(
     cols: dict[str, np.ndarray],
     groups: str | Sequence[str] | None = None,
     group_value: Any = None,
@@ -271,4 +271,4 @@ def _arrays_to_long_df(
                 for col, val in zip(groups, group_value, strict=False)
             ]
         df = df.select(*group_cols, *[pl.col(c) for c in cols])
-    return _nan_to_null(df)
+    return nan_to_null(df)

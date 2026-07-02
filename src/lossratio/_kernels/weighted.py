@@ -31,14 +31,14 @@ import numpy as np
 
 from . import engine_fast
 from .recent import recent_link_mask
-from .recursion import _fit_multiplicative
+from .recursion import fit_multiplicative
 from .resample import (
-    _calendar_drift_se,
-    _ev_fitted_increments,
-    _multiplicative_increments,
-    _project_multiplicative_cum,
-    _summarize,
-    _valid_cells,
+    calendar_drift_se,
+    ev_fitted_increments,
+    multiplicative_increments,
+    project_multiplicative_cum,
+    summarize,
+    valid_cells,
 )
 
 
@@ -189,7 +189,7 @@ def _project_additive_batched(
     loss_obs: np.ndarray, premium_proj: np.ndarray, g: np.ndarray, u: np.ndarray,
 ) -> np.ndarray:
     """Batched ``loss_{k+1} = loss_k + u_i g_k P_k`` from each cohort's last
-    observed cell -- the array-over-B form of :func:`loss._project_credible`."""
+    observed cell -- the array-over-B form of :func:`loss.project_credible`."""
     B = g.shape[0]
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -278,13 +278,13 @@ def bootstrap_segment_weighted_additive(
             f"WeightedBootstrap supports 'pooled'/'credible', got {mechanism!r} "
             f"(use ResidualBootstrap)."
         )
-    from .credible import _project_credible
+    from .credible import project_credible
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
     loss_mask = recent_link_mask(loss_obs, recent)
     premium_mask = recent_link_mask(premium_obs, recent)
-    premium_proj = _fit_multiplicative(
+    premium_proj = fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
@@ -299,16 +299,16 @@ def bootstrap_segment_weighted_additive(
     # point fit -> centering projection + calendar-drift SE (scheme-independent)
     g_pt = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
     if mechanism == "credible":
-        from .credible import _credible_levels
-        u_pt = _credible_levels(loss_obs, premium_obs, g_pt, sigma_method, psi,
+        from .credible import credible_levels
+        u_pt = credible_levels(loss_obs, premium_obs, g_pt, sigma_method, psi,
                                 link_mask=loss_mask)[0]
     else:
         u_pt = np.ones(n_cohorts)
     if donor is None:
-        point_proj = _project_credible(loss_obs, premium_proj, g_pt, u_pt)
+        point_proj = project_credible(loss_obs, premium_proj, g_pt, u_pt)
     else:
-        from .resample import _project_borrow_cum
-        point_proj = _project_borrow_cum(
+        from .resample import project_borrow_cum
+        point_proj = project_borrow_cum(
             loss_obs, premium_proj, "additive", g_pt, donor, own_u=u_pt
         )
     drift_se = _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method,
@@ -333,13 +333,13 @@ def bootstrap_segment_weighted_additive(
             f_pt=g_pt, donor=donor, phi=phi, drift_se=drift_se, frontier=frontier,
             rng=rng, process=spec.process,
         )
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
+    return summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
     """Calendar drift SE from the point Pearson residuals (same as the residual
     bootstrap -- the drift band does not depend on the resampling scheme)."""
-    ii, kk, y, p = _valid_cells(loss_obs, premium_obs)
+    ii, kk, y, p = valid_cells(loss_obs, premium_obs)
     if ii.size == 0:
         return 0.0
     mu = u_pt[ii] * g_pt[kk] * p
@@ -354,7 +354,7 @@ def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
     res_ok = usable & np.isfinite(scale) & (scale > 0.0)
     resid = np.full(mu.shape, np.nan)
     resid[res_ok] = (y[res_ok] - mu[res_ok]) / scale[res_ok]
-    return _calendar_drift_se(resid, ii, kk, res_ok)
+    return calendar_drift_se(resid, ii, kk, res_ok)
 
 
 # ---------------------------------------------------------------------------
@@ -469,17 +469,17 @@ def bootstrap_segment_weighted_multiplicative(
     loss_mask = recent_link_mask(loss_obs, recent)
     obs_mask = ~np.isnan(loss_obs)
 
-    f_pt = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
+    f_pt = fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=loss_mask).f_k
     if donor is None:
-        point_proj = _project_multiplicative_cum(loss_obs, f_pt)
+        point_proj = project_multiplicative_cum(loss_obs, f_pt)
     else:
-        from .resample import _project_borrow_cum
-        premium_proj_b = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
-        point_proj = _project_borrow_cum(
+        from .resample import project_borrow_cum
+        premium_proj_b = fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
+        point_proj = project_borrow_cum(
             loss_obs, premium_proj_b, "multiplicative", f_pt, donor
         )
-    m_mat = _ev_fitted_increments(loss_obs, f_pt)
-    ii, jj, y = _multiplicative_increments(loss_obs)
+    m_mat = ev_fitted_increments(loss_obs, f_pt)
+    ii, jj, y = multiplicative_increments(loss_obs)
     if ii.size == 0:
         nan = np.full((n_cohorts, n_durations), np.nan)
         return {"proc_se": nan, "param_se": nan.copy(), "total_se": nan.copy(),
@@ -501,7 +501,7 @@ def bootstrap_segment_weighted_multiplicative(
         res_ok = usable & np.isfinite(scale) & (scale > 0.0)
         resid = np.full(m.shape, np.nan)
         resid[res_ok] = (y[res_ok] - m[res_ok]) / scale[res_ok]
-        drift_se = _calendar_drift_se(resid, ii, jj, res_ok)
+        drift_se = calendar_drift_se(resid, ii, jj, res_ok)
     oi, ok_ = np.where(obs_mask)
     frontier = int((oi + ok_).max()) if oi.size else 0
 
@@ -519,7 +519,7 @@ def bootstrap_segment_weighted_multiplicative(
             f_pt=f_pt, donor=donor, phi=np.tile(phi_link, (B, 1)),
             drift_se=drift_se, frontier=frontier, rng=rng, process=spec.process,
         )
-    return _summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
+    return summarize(param_draws, pred_draws, point_proj, obs_mask, confidence_level)
 
 
 # ---------------------------------------------------------------------------

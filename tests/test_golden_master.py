@@ -95,7 +95,7 @@ CASE_NAMES = [
 # premium_* / loss_ci_* columns the new LossFit adds, and the *_se2 /
 # proc_cv / param_cv columns the old CLFit/EDFit carried. The shared columns
 # must still match the pinned oracle bit-for-bit on PROJECTED cells (both
-# route _fit_multiplicative); the one convention change is observed-cell projection SE,
+# route fit_multiplicative); the one convention change is observed-cell projection SE,
 # which the old CLFit/EDFit wrote as 0.0 and the new LossFit leaves null --
 # normalized via fill_null(0.0) on both sides before the compare.
 _REDESIGNED_SHARED_COLS: dict[str, list[str]] = {

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from .._kernels.io import _iter_group_frames
+from .._kernels.io import iter_group_frames
 from .base import open_facets
 from .theme import faint_grid, finalize_figure
 
@@ -94,7 +94,7 @@ def plot_estimator_comparison(
         ycol = "incr_" + ycol
 
     grid = open_facets(
-        _iter_group_frames(summary, fit._groups),
+        iter_group_frames(summary, fit._groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
     )

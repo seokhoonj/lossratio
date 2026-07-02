@@ -28,9 +28,9 @@ from scipy.stats import ttest_ind
 
 from .._kernels.e_divisive import e_divisive
 from .._kernels.io import (
-    _iter_group_frames,
     collapse_groups,
     fill_group_columns,
+    iter_group_frames,
     mirror_output,
     normalize_groups,
 )
@@ -1512,12 +1512,12 @@ class Regime:
         # full-frame `filter` per combo (which was O(combos x rows)). `combos`
         # stays the authoritative ORDERED list -- only the sub-frame retrieval
         # changes -- so the per-combo result order (and thus output) is
-        # unchanged. Keys from `_iter_group_frames` match the `combos` entries
+        # unchanged. Keys from `iter_group_frames` match the `combos` entries
         # (scalar for a str group, tuple for multi-column).
         if grp is None:
             sub_by_combo: dict[Any, pl.DataFrame] = {None: tri_df}
         else:
-            sub_by_combo = dict(_iter_group_frames(tri_df, grp))
+            sub_by_combo = dict(iter_group_frames(tri_df, grp))
 
         # Resolve trajectory window per combo. ``window="auto"`` first
         # tries the ATA factor-stability point (the duration where the
@@ -1527,7 +1527,7 @@ class Regime:
         # change-count sweep; if the elbow is also undefined, falls
         # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
-            from .._kernels.recursion import _build_value_matrix
+            from .._kernels.recursion import build_value_matrix
             from ..core.ata import _detect_stability_point
 
             # Map the regime target -> a valid cumulative metric for the
@@ -1549,7 +1549,7 @@ class Regime:
             if grp is not None:
                 for combo in combos:
                     try:
-                        stab_obs, _, _ = _build_value_matrix(
+                        stab_obs, _, _ = build_value_matrix(
                             sub_by_combo[combo], value_col=stability_metric
                         )
                         stability_by_combo[combo] = _detect_stability_point(

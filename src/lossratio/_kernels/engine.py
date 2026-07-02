@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 
-def _sum_by(values: Sequence[float], keys: Sequence) -> dict:
+def sum_by(values: Sequence[float], keys: Sequence) -> dict:
     out: dict = {}
     for v, k in zip(values, keys, strict=False):
         out[k] = out.get(k, 0.0) + v
@@ -48,12 +48,12 @@ def saturated_intensity(*, response, exposure, duration) -> dict:
     exposure" sense, not the point-process count rate lambda. (Tweedie p>1 was
     rejected on real-data out-of-sample error; p=1 is chain-ladder-consistent.)
     """
-    num = _sum_by(response, duration)
-    den = _sum_by(exposure, duration)
+    num = sum_by(response, duration)
+    den = sum_by(exposure, duration)
     return {k: (num[k] / den[k] if den[k] != 0.0 else 0.0) for k in num}
 
 
-def fitted_mean(*, g, exposure, duration) -> list:
+def _fitted_mean(*, g, exposure, duration) -> list:
     """Per-cell fitted mean at ``u = 1``: ``m0 = g_k * exposure``."""
     return [g[k] * p for p, k in zip(exposure, duration, strict=False)]
 
@@ -144,8 +144,8 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
     Uses the PSI-MOMENT exposure ``m_i = (sum m0)^2 / sum(phi_k m0)`` and the
     raw per-cohort A/E ``r_i = sum y / sum m0``; floored at 0 (degeneracy = exact
     complete-pooling intensity, ``PooledLoss``)."""
-    sm = _sum_by(fitted, cohort)
-    sy = _sum_by(response, cohort)
+    sm = sum_by(fitted, cohort)
+    sy = sum_by(response, cohort)
     sphim: dict = {}
     for m0, i, k in zip(fitted, cohort, duration, strict=False):
         sphim[i] = sphim.get(i, 0.0) + phi[k] * m0
@@ -191,7 +191,7 @@ def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> _LevelR
     return _LevelResult(u=u, Z=Z)
 
 
-def quasi_poisson_deviance(*, response, fitted) -> float:
+def _quasi_poisson_deviance(*, response, fitted) -> float:
     """Total quasi-Poisson deviance ``D = 2 sum [y log(y/mu) - (y - mu)]``
     (the ``y log(y/mu)`` term is 0 at ``y = 0``)."""
     d = 0.0

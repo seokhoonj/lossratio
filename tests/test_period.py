@@ -18,10 +18,10 @@ import pytest
 from lossratio._kernels import period as _period
 from lossratio._kernels.period import (
     GRAIN_ORDER,
+    _validate_grain,
     floor_to_period,
     infer_grain,
     resolve_grain,
-    validate_grain,
 )
 
 
@@ -61,18 +61,18 @@ def test_floor_to_period(grain, expected):
 def test_validate_grain_rejects_finer_than_input():
     # Quarterly data cannot be decomposed to monthly.
     with pytest.raises(ValueError):
-        validate_grain("Q", "M")
+        _validate_grain("Q", "M")
 
 
 def test_validate_grain_rejects_unknown_grain():
     with pytest.raises(ValueError):
-        validate_grain("M", "bogus")
+        _validate_grain("M", "bogus")
 
 
 def test_validate_grain_allows_equal_or_coarser():
-    validate_grain("M", "M")
-    validate_grain("M", "Q")
-    validate_grain("Q", "Y")
+    _validate_grain("M", "M")
+    _validate_grain("M", "Q")
+    _validate_grain("Q", "Y")
 
 
 def test_resolve_grain_auto_returns_input():

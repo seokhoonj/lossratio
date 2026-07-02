@@ -18,8 +18,8 @@ import numpy as np
 import polars as pl
 
 from .._kernels.io import (
-    _iter_group_frames,
     group_eq,
+    iter_group_frames,
     normalize_groups,
     set_group_values,
 )
@@ -319,7 +319,7 @@ def _detect_factor_stability_overlay(
     group, with columns ``[groups?, duration_from, duration_to, cv, rse]``.
     """
     out_rows: list[dict[str, Any]] = []
-    for value, sub in _iter_group_frames(summary, groups):
+    for value, sub in iter_group_frames(summary, groups):
         sub = sub.sort("duration_from")
         cv = sub["cv"].to_numpy()
         rse = sub["rse"].to_numpy()
@@ -368,7 +368,7 @@ def _plot_per_link_scalar(
 ) -> Any:
     """Per-link line+point plot of a single scalar column (cv / rse)."""
     grid = open_facets(
-        _iter_group_frames(summary, groups),
+        iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
@@ -412,7 +412,7 @@ def _plot_summary_lines(
 ) -> Any:
     """Per-link summary: mean / median / weighted lines."""
     grid = open_facets(
-        _iter_group_frames(summary, groups),
+        iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )
@@ -460,7 +460,7 @@ def _plot_per_link_distribution(
 ) -> Any:
     """Per-link box-plot or scatter of a cell-level column (ata / intensity)."""
     grid = open_facets(
-        _iter_group_frames(cells, groups),
+        iter_group_frames(cells, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
     )

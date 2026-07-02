@@ -199,7 +199,7 @@ def test_backtest_usage_resolves_regime_on_masked_fold(monkeypatch):
         captured["regime"] = regime
         return plt.figure()
 
-    monkeypatch.setattr(tv, "_plot_triangle_usage", _fake)
+    monkeypatch.setattr(tv, "plot_triangle_usage", _fake)
     fig = bt.plot_triangle(kind="usage")
     _close(fig)
 

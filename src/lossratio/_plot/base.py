@@ -16,7 +16,7 @@ import polars as pl
 from .._kernels.io import format_group_value
 
 
-def _resolve_grid(
+def resolve_grid(
     n: int,
     nrow: int | None,
     ncol: int | None,
@@ -44,7 +44,7 @@ def _resolve_grid(
     return nrow, ncol
 
 
-def _hide_unused(axes: Any, n_used: int, nrow: int, ncol: int) -> None:
+def hide_unused(axes: Any, n_used: int, nrow: int, ncol: int) -> None:
     """Hide the trailing axes of a ``squeeze=False`` grid past ``n_used``."""
     for idx in range(n_used, nrow * ncol):
         r, c = divmod(idx, ncol)
@@ -52,7 +52,7 @@ def _hide_unused(axes: Any, n_used: int, nrow: int, ncol: int) -> None:
 
 
 @dataclass
-class FacetGrid:
+class _FacetGrid:
     """A resolved facet grid: the figure, its ``squeeze=False`` axes matrix,
     and the per-facet ``(group_value, frame)`` list.
 
@@ -79,7 +79,7 @@ class FacetGrid:
             ax.set_title(format_group_value(group_value), fontsize=fontsize)
 
     def hide_unused(self) -> None:
-        _hide_unused(self.axes, len(self.facets), self.nrow, self.ncol)
+        hide_unused(self.axes, len(self.facets), self.nrow, self.ncol)
 
 
 def open_facets(
@@ -90,7 +90,7 @@ def open_facets(
     figsize: tuple[float, float] | None,
     figsize_fn: Any,
     default_ncol: int = 3,
-) -> FacetGrid:
+) -> _FacetGrid:
     """Open a faceted figure: resolve the grid, size it, build the axes.
 
     ``figsize_fn(nrow, ncol) -> (w, h)`` supplies the per-module default size
@@ -100,16 +100,16 @@ def open_facets(
     import matplotlib.pyplot as plt
 
     facets = list(facets)
-    nrow, ncol = _resolve_grid(len(facets), nrow, ncol, default_ncol=default_ncol)
+    nrow, ncol = resolve_grid(len(facets), nrow, ncol, default_ncol=default_ncol)
     if figsize is None:
         figsize = figsize_fn(nrow, ncol)
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
-    return FacetGrid(fig, axes, facets, nrow, ncol)
+    return _FacetGrid(fig, axes, facets, nrow, ncol)
 
 
-def _percent_formatter():
+def percent_formatter():
     """A matplotlib tick formatter rendering a 0-1 fraction as ``NN%``."""
     from matplotlib.ticker import FuncFormatter
     return FuncFormatter(lambda v, _pos: f"{round(v * 100)}%")
@@ -142,7 +142,7 @@ _AXIS_COL_TO_TYPE: dict[str, str] = {
 }
 
 
-def _get_period_type(axis_col: str | None, grain: str | None = None) -> str | None:
+def get_period_type(axis_col: str | None, grain: str | None = None) -> str | None:
     """Resolve the period type of an axis.
 
     The view ``grain`` is authoritative when given: the axis values have been
@@ -159,17 +159,17 @@ def _get_period_type(axis_col: str | None, grain: str | None = None) -> str | No
     return _AXIS_COL_TO_TYPE.get(axis_col)
 
 
-def _pretty_var_label(axis_col: str | None) -> str:
+def pretty_var_label(axis_col: str | None) -> str:
     if axis_col is None:
         return ""
     return _PRETTY_AXIS_LABEL.get(axis_col, axis_col)
 
 
-def _cohort_label(axis_col: str | None, grain: str | None = None) -> str:
+def cohort_label(axis_col: str | None, grain: str | None = None) -> str:
     """Build a cohort axis label -- e.g. `"cohort (monthly)"`."""
     if axis_col is None:
         return "cohort"
-    t = _get_period_type(axis_col, grain=grain)
+    t = get_period_type(axis_col, grain=grain)
     if t is None:
         return "cohort"
     # -ly adverb family (M/Q/H/Y = Monthly/Quarterly/Half-yearly/Yearly).
@@ -184,7 +184,7 @@ def _cohort_label(axis_col: str | None, grain: str | None = None) -> str:
     return f"cohort ({qualifier})"
 
 
-def _format_period_series(
+def format_period_series(
     values: pl.Series,
     period_type: str,
     sep: str = ".",
@@ -212,9 +212,9 @@ def _format_period_series(
     raise ValueError(f"Invalid period_type: {period_type!r}")
 
 
-def _format_axis(values: pl.Series, period_type: str | None) -> list[str]:
+def format_axis(values: pl.Series, period_type: str | None) -> list[str]:
     """Axis tick labels: period-formatted when ``period_type`` is known, else
     plain ``str`` of each value. Shared by the value and usage heatmaps."""
     if period_type is None:
         return [str(v) for v in values.to_list()]
-    return _format_period_series(values, period_type)
+    return format_period_series(values, period_type)

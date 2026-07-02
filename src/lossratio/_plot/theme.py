@@ -150,9 +150,9 @@ def period_label_fn(coh_type: str | None) -> Callable[[Any], str]:
     """
     if coh_type is None:
         return str
-    from .base import _format_period_series
+    from .base import format_period_series
 
     def fmt(c) -> str:
-        return _format_period_series(pl.Series([c]), coh_type)[0]
+        return format_period_series(pl.Series([c]), coh_type)[0]
 
     return fmt

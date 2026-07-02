@@ -38,18 +38,18 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from .._kernels.credible import _credible_levels, _project_borrow, _smooth_backfit
+from .._kernels.credible import credible_levels, project_borrow, smooth_backfit
 from .._kernels.io import (
-    _nan_skip_diff,
-    _nan_to_null,
     collapse_groups,
     fill_group_columns,
     mirror_output,
+    nan_skip_diff,
+    nan_to_null,
     normalize_groups,
     scalar_int,
 )
 from .._kernels.recent import recent_link_mask
-from .._kernels.recursion import _build_value_matrices, _fit_multiplicative
+from .._kernels.recursion import build_value_matrices, fit_multiplicative
 from ..core.model_frame import _ModelFrame
 from ._cascade import (
     _cohort_subset_donor,
@@ -93,7 +93,7 @@ def _segment_premium_df(
     z = float(norm.ppf((1 + confidence_level) / 2))
     n_cohorts, n_durations = premium_proj.shape
 
-    incr_premium_proj = _nan_skip_diff(premium_proj)
+    incr_premium_proj = nan_skip_diff(premium_proj)
     safe_pp = np.where(np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj)
     with np.errstate(divide="ignore", invalid="ignore"):
         total_cv = total_se / np.abs(safe_pp)
@@ -131,7 +131,7 @@ def _segment_premium_df(
     data["premium_ci_hi"] = ci_hi.flatten()
     data["source"] = source.flatten().tolist()
 
-    df = _nan_to_null(pl.DataFrame(data))
+    df = nan_to_null(pl.DataFrame(data))
     order = (
         _PREMIUM_COLUMNS
         if groups is None
@@ -191,7 +191,7 @@ def _premium_borrow_proj(
     n_links = premium_obs.shape[1] - 1
     nan = np.full(n_links, np.nan)
     zero = np.zeros(n_links, dtype=np.float64)
-    proj, _, _, _, borrowed = _project_borrow(
+    proj, _, _, _, borrowed = project_borrow(
         premium_obs, np.full_like(premium_obs, np.nan), body=body,
         own_g=nan, own_sig_g=nan, own_var_g=nan,
         own_f=(own_f if own_f is not None else nan),
@@ -215,7 +215,7 @@ def _fit_segment_pooled_premium(
     pooled ``f^P_k`` over the borrow region. Point-only (SE null).
     """
     mask = recent_link_mask(premium_obs, recent)
-    mr = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
+    mr = fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
     if donor is None:
         premium_proj = mr.value_proj
         borrowed = np.zeros(premium_obs.shape, dtype=bool)
@@ -252,10 +252,10 @@ def _fit_segment_credible_premium(
     recursion, like the loss side); coverage rides a later ResidualBootstrap.
     """
     premium_mask = recent_link_mask(premium_obs, recent)
-    mr = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=premium_mask)
+    mr = fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=premium_mask)
     h_k = mr.f_k - 1.0
 
-    u_vec, z_vec, psi_hat = _credible_levels(
+    u_vec, z_vec, psi_hat = credible_levels(
         premium_obs, premium_obs, h_k, sigma_method, psi, link_mask=premium_mask
     )
 
@@ -311,7 +311,7 @@ def _fit_segment_smooth_premium(
     boundary, then the older regimes' f^P_k over the borrow region.
     Point-only (SE null, like the loss smooth rung).
     """
-    bf = _smooth_backfit(
+    bf = smooth_backfit(
         premium_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
         link_mask=recent_link_mask(premium_obs, recent),
     )
@@ -377,7 +377,7 @@ def _fit_premium_segment_cascade(
         own = seg_sub.filter(cond)
         if own.is_empty():
             continue
-        (prem_r,), cohorts_r, _ = _build_value_matrices(own, value_cols=("premium",))
+        (prem_r,), cohorts_r, _ = build_value_matrices(own, value_cols=("premium",))
         donor = None
         if start is not None:
             older = seg_sub.filter(pl.col("cohort") < start)
@@ -514,13 +514,13 @@ def _fit_premium(
                 converged = converged and bool(res["smooth_converged"])
         else:
             # the frame carries cumulative premium directly (no per-cohort cumsum).
-            (premium_obs,), cohorts, _ = _build_value_matrices(
+            (premium_obs,), cohorts, _ = build_value_matrices(
                 sub, value_cols=("premium",)
             )
             borrowed = np.zeros(premium_obs.shape, dtype=bool)
             if mechanism == "pooled":
                 mask = recent_link_mask(premium_obs, recent)
-                mr = _fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
+                mr = fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
                 premium_proj = mr.value_proj
                 # Point-only, uniform with the credible / smooth rungs. The risk
                 # premium is a known allocated exposure (rate x in-force), so its

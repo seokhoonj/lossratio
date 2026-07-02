@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import _arrays_to_long_df, _iter_group_frames, mirror_output, normalize_groups
+from .._kernels.io import arrays_to_long_df, iter_group_frames, mirror_output, normalize_groups
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
-from .._kernels.recursion import _build_value_matrix, _fit_multiplicative
+from .._kernels.recursion import build_value_matrix, fit_multiplicative
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
@@ -116,7 +116,7 @@ def _detect_stability_point(
     diagnostic (no projection); used by the
     ``detect_regime(window="auto")`` trajectory-window resolver.
     """
-    mack = _fit_multiplicative(loss_obs, link_mask=link_mask)
+    mack = fit_multiplicative(loss_obs, link_mask=link_mask)
     cv_k, rse_k = _compute_cv_rse(
         loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
     )
@@ -183,7 +183,7 @@ def _compute_ata_factor(
     recent wedge. ``None`` (default) is the byte-identical no-filter
     path.
     """
-    mack = _fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=link_mask)
+    mack = fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=link_mask)
     cv_k, rse_k = _compute_cv_rse(
         loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
     )
@@ -205,7 +205,7 @@ def _diagnostic_to_df(
 ) -> pl.DataFrame:
     """Convert an ATA factor result into a long-format diagnostic DataFrame."""
     n = len(result.f_k)
-    return _arrays_to_long_df(
+    return arrays_to_long_df(
         {
             "duration": np.arange(1, n + 1, dtype=np.int64),
             "ata": result.f_k,
@@ -232,7 +232,7 @@ class ATA:
     relative standard error, residual sigma^2, and the per-link cohort
     count. Parallel to :class:`Intensity` for the additive side;
     builds on the volume-weighted pooled factor
-    (:func:`lossratio._kernels.recursion._fit_multiplicative`).
+    (:func:`lossratio._kernels.recursion.fit_multiplicative`).
 
     The CV / RSE columns are what the
     ``link.plot(model="ata", show_factor_stability=...)`` overlay shades
@@ -287,7 +287,7 @@ class ATA:
         groups = link._groups
 
         if groups is None:
-            loss_obs, _, _ = _build_value_matrix(tri_df, link._target)
+            loss_obs, _, _ = build_value_matrix(tri_df, link._target)
             result = _compute_ata_factor(
                 loss_obs,
                 sigma_method=sigma_method,
@@ -298,8 +298,8 @@ class ATA:
             )
         else:
             diag_parts: list[pl.DataFrame] = []
-            for g, sub in _iter_group_frames(tri_df, groups):
-                loss_obs, _, _ = _build_value_matrix(sub, link._target)
+            for g, sub in iter_group_frames(tri_df, groups):
+                loss_obs, _, _ = build_value_matrix(sub, link._target)
                 result = _compute_ata_factor(
                     loss_obs,
                     sigma_method=sigma_method,

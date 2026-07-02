@@ -29,29 +29,29 @@ from scipy.stats import norm
 
 from .._kernels import engine
 from .._kernels.credible import (
-    _credible_levels,
-    _project_borrow,
-    _project_credible,
-    _smooth_backfit,
-    _smooth_backfit_covariate,
+    credible_levels,
+    project_borrow,
+    project_credible,
+    smooth_backfit,
+    smooth_backfit_covariate,
 )
 from .._kernels.io import (
-    _nan_skip_diff,
-    _nan_to_null,
     collapse_groups,
     fill_group_columns,
     mirror_output,
+    nan_skip_diff,
+    nan_to_null,
     normalize_groups,
     scalar_int,
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
-    _build_value_matrices,
-    _fit_multiplicative,
-    _step_additive,
-    _step_multiplicative,
-    _wls_factor_var,
-    _wls_sigma2,
+    build_value_matrices,
+    fit_multiplicative,
+    step_additive,
+    step_multiplicative,
+    wls_factor_var,
+    wls_sigma2,
 )
 from .._kernels.sigma import extrapolate_tail_sigma2
 from ..core.model_frame import _ModelFrame
@@ -137,7 +137,7 @@ def _segment_premium_proj(
     the loss body only consumes premium within the own boundary, so extending
     the premium tail never changes the loss projection.
     """
-    mr = _fit_multiplicative(
+    mr = fit_multiplicative(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     )
     if premium_donor is None:
@@ -145,7 +145,7 @@ def _segment_premium_proj(
     n_links = premium_obs.shape[1] - 1
     nan = np.full(n_links, np.nan)
     zero = np.zeros(n_links, dtype=np.float64)
-    proj = _project_borrow(
+    proj = project_borrow(
         premium_obs, np.full_like(premium_obs, np.nan), body="multiplicative",
         own_g=nan, own_sig_g=nan, own_var_g=nan,
         own_f=mr.f_k, own_sig_f=zero, own_var_f=zero,
@@ -197,7 +197,7 @@ def _fit_segment_pooled(
         premium_proj = _segment_premium_proj(
             premium_obs, sigma_method, premium_mask, premium_donor
         )
-        loss_proj = _project_credible(
+        loss_proj = project_credible(
             loss_obs, premium_proj, g_override, np.ones(n_cohorts)
         )
         nan_se = np.full(loss_obs.shape, np.nan, dtype=np.float64)
@@ -233,11 +233,11 @@ def _fit_segment_pooled(
         c_k_eff = c_k[mask]
         sum_premium_k[k] = c_k_eff.sum()
         if n_k >= 2 and np.isfinite(g_k[k]):
-            sigma2_g_k[k] = _wls_sigma2(dl[mask], c_k_eff, g_k[k], n_k)
+            sigma2_g_k[k] = wls_sigma2(dl[mask], c_k_eff, g_k[k], n_k)
         else:
             sigma2_g_k[k] = 0.0
     sigma2_g_k = extrapolate_tail_sigma2(sigma2_g_k, sigma_method)
-    var_g_k = _wls_factor_var(sigma2_g_k, sum_premium_k)
+    var_g_k = wls_factor_var(sigma2_g_k, sum_premium_k)
 
     # 3. premium link-ratio projection (kept recursion kernel) for the exposure
     premium_proj = _segment_premium_proj(
@@ -254,7 +254,7 @@ def _fit_segment_pooled(
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
-        loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
+        loss_proj, proc_se, param_se, total_se, borrowed = project_borrow(
             loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=sigma2_g_k, own_var_g=var_g_k,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
@@ -285,7 +285,7 @@ def _project_additive(
 
     The additive recursion ``loss_{k+1} = loss_k + g_k * P_k`` seeded from
     each cohort's last observed cell, with the process / parameter variance
-    accumulated by :func:`lossratio._kernels.recursion._step_additive`. SE is reported on
+    accumulated by :func:`lossratio._kernels.recursion.step_additive`. SE is reported on
     projected cells only (observed cells carry no projection uncertainty --
     left null). The complete-pooling intensity projection path, with no
     link-ratio branch to carry.
@@ -318,7 +318,7 @@ def _project_additive(
         if pos.any():
             if np.isfinite(g_k[k]):
                 loss_proj[pos, k + 1] = c_k[pos] + g_k[k] * p_k[pos]
-            _step_additive(proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], p_k)
+            step_additive(proc_acc, param_acc, pos, sigma2_g_k[k], var_g_k[k], p_k)
         c_k1 = loss_proj[:, k + 1]
         sp = active & ~np.isnan(c_k1)
         proc_se[sp, k + 1] = np.sqrt(np.maximum(proc_acc[sp], 0))
@@ -341,7 +341,7 @@ def _project_multiplicative(
 
     ``loss_{k+1} = f_k * loss_k`` seeded from each cohort's last observed
     cell, with process / parameter variance via
-    :func:`lossratio._kernels.recursion._step_multiplicative`. The ``ChainLadder`` projection path,
+    :func:`lossratio._kernels.recursion.step_multiplicative`. The ``ChainLadder`` projection path,
     isolated here.
     """
     n_cohorts, n_durations = loss_obs.shape
@@ -371,7 +371,7 @@ def _project_multiplicative(
         if pos.any():
             if np.isfinite(f_k[k]):
                 loss_proj[pos, k + 1] = f_k[k] * c_k[pos]
-            _step_multiplicative(proc_acc, param_acc, pos, f_k[k],
+            step_multiplicative(proc_acc, param_acc, pos, f_k[k],
                           sigma2_f_k[k], var_f_k[k], c_k)
         c_k1 = loss_proj[:, k + 1]
         sp = active & ~np.isnan(c_k1)
@@ -441,7 +441,7 @@ def _fit_segment_credible(
         )
 
     # 2. credibility level u_i / weight Z_i / between-cohort variance psi_hat
-    u_vec, z_vec, psi_hat = _credible_levels(
+    u_vec, z_vec, psi_hat = credible_levels(
         loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=loss_mask
     )
 
@@ -455,12 +455,12 @@ def _fit_segment_credible(
     # shape beyond the boundary; the analytical SE arms stay null (coverage
     # rides the ResidualBootstrap).
     if donor is None:
-        loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+        loss_proj = project_credible(loss_obs, premium_proj, g_k, u_vec)
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
         zero = np.zeros(g_k.shape, dtype=np.float64)
-        loss_proj, _proc, _param, _total, borrowed = _project_borrow(
+        loss_proj, _proc, _param, _total, borrowed = project_borrow(
             loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=zero, own_var_g=zero,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
@@ -506,7 +506,7 @@ def _fit_segment_smooth(
 
     The credible rung with the saturated per-duration ``g_k`` replaced by the
     smooth shape ``g_k = exp(s(k))``, fit by the backfitting core
-    :func:`_smooth_backfit` (the shared source of truth with the bootstrap).
+    :func:`smooth_backfit` (the shared source of truth with the bootstrap).
     The projection is the credibility-scaled additive recursion. SE / CI are
     null unless a ResidualBootstrap is attached (the smooth shape + credibility
     estimation variance breaks the analytical recursion). ``recent``
@@ -522,7 +522,7 @@ def _fit_segment_smooth(
     cov_fit = None
     if cov_data is not None:
         assert covariates is not None  # supplied whenever cov_data is
-        bf = _smooth_backfit_covariate(
+        bf = smooth_backfit_covariate(
             loss_obs, premium_obs, cov_data, list(covariates), sigma_method,
             psi=psi, n_basis=n_basis, lam=lam, lam_cov=lam_cov, link_mask=loss_mask,
         )
@@ -530,7 +530,7 @@ def _fit_segment_smooth(
         bf = {**bf, "lam": float("nan"), "edf": float("nan")}
         cov_fit = bf["cov_fit"]
     else:
-        bf = _smooth_backfit(
+        bf = smooth_backfit(
             loss_obs, premium_obs, sigma_method, psi=psi, n_basis=n_basis, lam=lam,
             link_mask=loss_mask,
         )
@@ -540,12 +540,12 @@ def _fit_segment_smooth(
         premium_obs, sigma_method, premium_mask, premium_donor
     )
     if donor is None:
-        loss_proj = _project_credible(loss_obs, premium_proj, g_k, u_vec)
+        loss_proj = project_credible(loss_obs, premium_proj, g_k, u_vec)
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
         zero = np.zeros(g_k.shape, dtype=np.float64)
-        loss_proj, _proc, _param, _total, borrowed = _project_borrow(
+        loss_proj, _proc, _param, _total, borrowed = project_borrow(
             loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=zero, own_var_g=zero,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
@@ -648,11 +648,11 @@ def _fit_segment_chain_ladder(
         c_k_eff = c_k[mask]
         sum_loss_k[k] = c_k_eff.sum()
         if n_k >= 2 and np.isfinite(f_k[k]) and f_k[k] != 0:
-            sigma2_f_k[k] = _wls_sigma2(c_k1[mask], c_k_eff, f_k[k], n_k)
+            sigma2_f_k[k] = wls_sigma2(c_k1[mask], c_k_eff, f_k[k], n_k)
         else:
             sigma2_f_k[k] = 0.0
     sigma2_f_k = extrapolate_tail_sigma2(sigma2_f_k, sigma_method)
-    var_f_k = _wls_factor_var(sigma2_f_k, sum_loss_k)
+    var_f_k = wls_factor_var(sigma2_f_k, sum_loss_k)
 
     # 3. premium link-ratio projection (kept recursion kernel) for the exposure
     premium_proj = _segment_premium_proj(
@@ -669,7 +669,7 @@ def _fit_segment_chain_ladder(
         borrowed = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(f_k.shape, np.nan)
-        loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
+        loss_proj, proc_se, param_se, total_se, borrowed = project_borrow(
             loss_obs, premium_proj, body="multiplicative",
             own_g=nan, own_sig_g=nan, own_var_g=nan,
             own_f=f_k, own_sig_f=sigma2_f_k, own_var_f=var_f_k,
@@ -709,8 +709,8 @@ def _segment_long_df(
     total_se = fit["total_se"]
     n_cohorts, n_durations = loss_proj.shape
 
-    incr_loss_proj = _nan_skip_diff(loss_proj)
-    incr_premium_proj = _nan_skip_diff(premium_proj)
+    incr_loss_proj = nan_skip_diff(loss_proj)
+    incr_premium_proj = nan_skip_diff(premium_proj)
 
     safe_lp = np.where(np.isnan(loss_proj) | (loss_proj == 0.0), np.nan, loss_proj)
     safe_pp = np.where(
@@ -769,7 +769,7 @@ def _segment_long_df(
     data["ratio_ci_hi"] = ratio_ci_hi.flatten()
     data["source"] = source.flatten().tolist()
 
-    df = _nan_to_null(pl.DataFrame(data))
+    df = nan_to_null(pl.DataFrame(data))
     order = _LOSS_COLUMNS if groups is None else [*normalize_groups(groups), *_LOSS_COLUMNS]
     return df.select(order)
 
@@ -981,7 +981,7 @@ def _fit_segment_cascade(
         own = seg_sub.filter(cond)
         if own.is_empty():
             continue
-        (loss_r, prem_r), cohorts_r, _ = _build_value_matrices(
+        (loss_r, prem_r), cohorts_r, _ = build_value_matrices(
             own, value_cols=("loss", "premium")
         )
         donor = premium_donor = None
@@ -1346,7 +1346,7 @@ def _fit_loss(
             seg_states.append((fit, cohorts, group_value))
             boot_tasks.append(None)
             continue
-        (loss_obs, premium_obs), cohorts, _ = _build_value_matrices(
+        (loss_obs, premium_obs), cohorts, _ = build_value_matrices(
             sub, value_cols=("loss", "premium")
         )
         donor = None
@@ -1363,8 +1363,8 @@ def _fit_loss(
         if cov_cells is not None:
             assert covariates is not None  # covariates drive the cov_cells path
             from .._kernels.covariate import (
-                _build_g_marginal,
-                _covariate_segment_data,
+                build_g_marginal,
+                covariate_segment_data,
                 fit_covariate_intensity,
             )
             seg_cov = cov_cells
@@ -1379,7 +1379,7 @@ def _fit_loss(
             seg_cov = seg_cov.filter(pl.col("cohort").is_in(cohorts)).select(
                 ["cohort", "duration", *covariates, "incr_loss", "incr_premium"]
             )
-            cov_data = _covariate_segment_data(
+            cov_data = covariate_segment_data(
                 seg_cov, list(covariates), cohorts, loss_obs.shape[1] - 1,
             )
             if mechanism == "smooth":
@@ -1395,7 +1395,7 @@ def _fit_loss(
                     cov_data.response, cov_data.exposure, cov_data.duration, cov_data.codes,
                     lam=lam_cov,
                 )
-                extra["g_override"] = _build_g_marginal(cov_fit, cov_data)
+                extra["g_override"] = build_g_marginal(cov_fit, cov_data)
         fit = fit_segment(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor,
             premium_donor=premium_donor, **extra
