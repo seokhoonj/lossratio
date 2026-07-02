@@ -46,11 +46,13 @@ def extrapolate_tail_sigma2(
     sigma2_k: np.ndarray,
     sigma_method: str = "locf",
 ) -> np.ndarray:
-    """Fill every unestimated entry of ``sigma2_k``.
+    """Fill the unestimated TAIL entries of ``sigma2_k``.
 
     An entry "needs filling" iff it is ``<= 0`` or non-finite
-    (``NaN`` / ``inf``). All such entries are filled (not just the
-    last) using the requested method, on a copy of the input.
+    (``NaN`` / ``inf``). Only the trailing block after the last valid
+    entry is filled using the requested method -- interior gaps are left
+    untouched (a genuine zero-variance link must keep its ``0``, not inherit
+    a later link's sigma). Applied on a copy of the input.
 
     Parameters
     ----------
