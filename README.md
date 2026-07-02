@@ -59,8 +59,8 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
   `ResidualBootstrap` is attached.
 - `Triangle.link()` — builds the long-format `Link` table (one row per cohort x
   adjacent duration pair). `tri.link().ata()` / `tri.link().intensity()` return
-  paired factor-level diagnostics (multiplicative ATA factors with per-link `f`
-  / `cv` / `rse`, additive intensities).
+  paired factor-level diagnostics (multiplicative ATA factors with per-link
+  `ata` / `cv` / `rse`, additive intensities with `intensity` / `intensity_se`).
 - `Triangle.detect_regime()` — detects structural shifts across the cohort
   sequence via E-Divisive or Ward hierarchical clustering (returns a `Regime`).
 - `Backtest` — calendar-diagonal hold-out backtest of any estimator. A single
@@ -152,7 +152,7 @@ fit.summary().head(3)
 fit.plot()
 ```
 
-![Loss-ratio projection for SURGERY: per-cohort trajectories, observed (solid) vs projected (dashed), coloured by cohort. Older cohorts settle near 1.5; the 2024-07 regime shift pulls newer cohorts lower.](docs/_static/quickstart_ratio.png)
+![Loss-ratio projection for SURGERY: per-cohort trajectories, observed (solid) vs projected (dashed), coloured by cohort. Older cohorts settle near 1.5; the 2024-07 regime shift pulls newer cohorts lower.](assets/quickstart_ratio.png)
 
 ```python
 # 5. Add an uncertainty band with a residual bootstrap, and read the per-cohort
