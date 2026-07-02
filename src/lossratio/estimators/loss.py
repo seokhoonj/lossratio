@@ -20,6 +20,7 @@ count, so a degraded fit reports WHY in a field rather than a printed warning.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -330,120 +331,6 @@ def _project_additive(
     return loss_proj, proc_se, param_se, total_se
 
 
-def _fit_segment_chain_ladder(
-    loss_obs: np.ndarray,
-    premium_obs: np.ndarray,
-    sigma_method: str,
-    *,
-    recent: int | None = None,
-    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
-    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
-) -> dict[str, np.ndarray]:
-    """Link-ratio (``ChainLadder``) fit for one segment.
-
-    ``f_k`` is the engine's link ratio (``engine.link_ratios``, fed the
-    incremental loss it cumulates internally); the dispersion / parameter
-    variance reuse the shared kernel and the projection is the
-    multiplicative recursion. Premium is projected by the same link-ratio
-    projection so ``ratio_proj`` and the premium columns stay populated,
-    matching the ``PooledLoss`` schema. ``ChainLadder`` is own-loss-anchored --
-    it does not read premium for the loss projection.
-
-    ``recent`` (calendar-diagonal window) restricts factor estimation to the
-    most-recent ``N`` diagonals: the loss-link wedge gates ``f_k`` (via the
-    engine ``include`` flag, since the link ratio cumulates internally) and its
-    dispersion, and the premium link-ratio projection masks its own links; the
-    projection stays seeded from the full matrices.
-    """
-    n_cohorts, n_durations = loss_obs.shape
-    n_links = n_durations - 1
-
-    loss_mask = recent_link_mask(loss_obs, recent)
-    premium_mask = recent_link_mask(premium_obs, recent)
-
-    # 1. engine link ratio f_k (keyed by from-duration 1..n_links). The engine
-    # cumulates the incremental response, so pass per-cell increments; the
-    # recent wedge gates which source cells (i, k) feed the f_k sums via
-    # `include` (keyed on the link's source duration, like `loss_mask[:, k]`).
-    response: list[float] = []
-    coh: list[int] = []
-    duration: list[int] = []
-    include: list[bool] = []
-    for i in range(n_cohorts):
-        prev = 0.0
-        for k in range(n_durations):
-            c = loss_obs[i, k]
-            if np.isnan(c):
-                continue
-            response.append(float(c - prev))
-            coh.append(i)
-            duration.append(k + 1)
-            # source of the outgoing link k -> k+1; last column has none.
-            include.append(True if loss_mask is None or k >= n_links
-                           else bool(loss_mask[i, k]))
-            prev = c
-    f_map = engine.link_ratios(
-        response=response, cohort=coh, duration=duration,
-        include=None if loss_mask is None else include,
-    )
-    f_k = np.array([f_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
-
-    # 2. dispersion sigma2_f_k + parameter-variance denominator (shared kernel)
-    sigma2_f_k = np.full(n_links, np.nan, dtype=np.float64)
-    sum_loss_k = np.zeros(n_links, dtype=np.float64)
-    for k in range(n_links):
-        c_k = loss_obs[:, k]
-        c_k1 = loss_obs[:, k + 1]
-        mask = ~np.isnan(c_k) & ~np.isnan(c_k1) & (c_k > 0)
-        if loss_mask is not None:
-            mask = mask & loss_mask[:, k]
-        n_k = int(mask.sum())
-        if n_k == 0:
-            continue                                  # f_k already NaN here
-        c_k_eff = c_k[mask]
-        sum_loss_k[k] = c_k_eff.sum()
-        if n_k >= 2 and np.isfinite(f_k[k]) and f_k[k] != 0:
-            sigma2_f_k[k] = _wls_sigma2(c_k1[mask], c_k_eff, f_k[k], n_k)
-        else:
-            sigma2_f_k[k] = 0.0
-    sigma2_f_k = extrapolate_tail_sigma2(sigma2_f_k, sigma_method)
-    var_f_k = _wls_factor_var(sigma2_f_k, sum_loss_k)
-
-    # 3. premium link-ratio projection (kept recursion kernel) for the exposure
-    premium_proj = _segment_premium_proj(
-        premium_obs, sigma_method, premium_mask, premium_donor
-    )
-
-    # 4. loss projection + analytical variance recursion (link-ratio multiplicative).
-    # With a borrow donor, the tail beyond the segment's own f_k switches to the
-    # donor link ratio.
-    if donor is None:
-        loss_proj, proc_se, param_se, total_se = _project_multiplicative(
-            loss_obs, f_k, sigma2_f_k, var_f_k
-        )
-        borrowed = np.zeros(loss_obs.shape, dtype=bool)
-    else:
-        nan = np.full(f_k.shape, np.nan)
-        loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
-            loss_obs, premium_proj, body="multiplicative",
-            own_g=nan, own_sig_g=nan, own_var_g=nan,
-            own_f=f_k, own_sig_f=sigma2_f_k, own_var_f=var_f_k,
-            donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
-        )
-
-    return {
-        "loss_obs": loss_obs,
-        "loss_proj": loss_proj,
-        "premium_obs": premium_obs,
-        "premium_proj": premium_proj,
-        "proc_se": proc_se,
-        "param_se": param_se,
-        "total_se": total_se,
-        "borrowed": borrowed,
-        "f_k": f_k,
-    }
-
-
 def _project_multiplicative(
     loss_obs: np.ndarray,
     f_k: np.ndarray,
@@ -688,6 +575,120 @@ def _fit_segment_smooth(
     }
 
 
+def _fit_segment_chain_ladder(
+    loss_obs: np.ndarray,
+    premium_obs: np.ndarray,
+    sigma_method: str,
+    *,
+    recent: int | None = None,
+    donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    premium_donor: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+) -> dict[str, np.ndarray]:
+    """Link-ratio (``ChainLadder``) fit for one segment.
+
+    ``f_k`` is the engine's link ratio (``engine.link_ratios``, fed the
+    incremental loss it cumulates internally); the dispersion / parameter
+    variance reuse the shared kernel and the projection is the
+    multiplicative recursion. Premium is projected by the same link-ratio
+    projection so ``ratio_proj`` and the premium columns stay populated,
+    matching the ``PooledLoss`` schema. ``ChainLadder`` is own-loss-anchored --
+    it does not read premium for the loss projection.
+
+    ``recent`` (calendar-diagonal window) restricts factor estimation to the
+    most-recent ``N`` diagonals: the loss-link wedge gates ``f_k`` (via the
+    engine ``include`` flag, since the link ratio cumulates internally) and its
+    dispersion, and the premium link-ratio projection masks its own links; the
+    projection stays seeded from the full matrices.
+    """
+    n_cohorts, n_durations = loss_obs.shape
+    n_links = n_durations - 1
+
+    loss_mask = recent_link_mask(loss_obs, recent)
+    premium_mask = recent_link_mask(premium_obs, recent)
+
+    # 1. engine link ratio f_k (keyed by from-duration 1..n_links). The engine
+    # cumulates the incremental response, so pass per-cell increments; the
+    # recent wedge gates which source cells (i, k) feed the f_k sums via
+    # `include` (keyed on the link's source duration, like `loss_mask[:, k]`).
+    response: list[float] = []
+    coh: list[int] = []
+    duration: list[int] = []
+    include: list[bool] = []
+    for i in range(n_cohorts):
+        prev = 0.0
+        for k in range(n_durations):
+            c = loss_obs[i, k]
+            if np.isnan(c):
+                continue
+            response.append(float(c - prev))
+            coh.append(i)
+            duration.append(k + 1)
+            # source of the outgoing link k -> k+1; last column has none.
+            include.append(True if loss_mask is None or k >= n_links
+                           else bool(loss_mask[i, k]))
+            prev = c
+    f_map = engine.link_ratios(
+        response=response, cohort=coh, duration=duration,
+        include=None if loss_mask is None else include,
+    )
+    f_k = np.array([f_map.get(k + 1, np.nan) for k in range(n_links)], dtype=np.float64)
+
+    # 2. dispersion sigma2_f_k + parameter-variance denominator (shared kernel)
+    sigma2_f_k = np.full(n_links, np.nan, dtype=np.float64)
+    sum_loss_k = np.zeros(n_links, dtype=np.float64)
+    for k in range(n_links):
+        c_k = loss_obs[:, k]
+        c_k1 = loss_obs[:, k + 1]
+        mask = ~np.isnan(c_k) & ~np.isnan(c_k1) & (c_k > 0)
+        if loss_mask is not None:
+            mask = mask & loss_mask[:, k]
+        n_k = int(mask.sum())
+        if n_k == 0:
+            continue                                  # f_k already NaN here
+        c_k_eff = c_k[mask]
+        sum_loss_k[k] = c_k_eff.sum()
+        if n_k >= 2 and np.isfinite(f_k[k]) and f_k[k] != 0:
+            sigma2_f_k[k] = _wls_sigma2(c_k1[mask], c_k_eff, f_k[k], n_k)
+        else:
+            sigma2_f_k[k] = 0.0
+    sigma2_f_k = extrapolate_tail_sigma2(sigma2_f_k, sigma_method)
+    var_f_k = _wls_factor_var(sigma2_f_k, sum_loss_k)
+
+    # 3. premium link-ratio projection (kept recursion kernel) for the exposure
+    premium_proj = _segment_premium_proj(
+        premium_obs, sigma_method, premium_mask, premium_donor
+    )
+
+    # 4. loss projection + analytical variance recursion (link-ratio multiplicative).
+    # With a borrow donor, the tail beyond the segment's own f_k switches to the
+    # donor link ratio.
+    if donor is None:
+        loss_proj, proc_se, param_se, total_se = _project_multiplicative(
+            loss_obs, f_k, sigma2_f_k, var_f_k
+        )
+        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+    else:
+        nan = np.full(f_k.shape, np.nan)
+        loss_proj, proc_se, param_se, total_se, borrowed = _project_borrow(
+            loss_obs, premium_proj, body="multiplicative",
+            own_g=nan, own_sig_g=nan, own_var_g=nan,
+            own_f=f_k, own_sig_f=sigma2_f_k, own_var_f=var_f_k,
+            donor_f=donor[0], donor_sig_f=donor[1], donor_var_f=donor[2],
+        )
+
+    return {
+        "loss_obs": loss_obs,
+        "loss_proj": loss_proj,
+        "premium_obs": premium_obs,
+        "premium_proj": premium_proj,
+        "proc_se": proc_se,
+        "param_se": param_se,
+        "total_se": total_se,
+        "borrowed": borrowed,
+        "f_k": f_k,
+    }
+
+
 def _segment_long_df(
     fit: dict[str, np.ndarray],
     cohorts: list,
@@ -908,11 +909,11 @@ def _segment_covariate_surface(
 
 
 # mechanism -> (per-segment fitter, public model name); the method label IS the key
-_MECHANISMS = {
+_MECHANISMS: dict[str, tuple[Callable[..., dict[str, np.ndarray]], str]] = {
     "pooled": (_fit_segment_pooled, "pooled_loss"),
-    "chain_ladder": (_fit_segment_chain_ladder, "chain_ladder"),
     "credible": (_fit_segment_credible, "credible_loss"),
     "smooth": (_fit_segment_smooth, "smooth_loss"),
+    "chain_ladder": (_fit_segment_chain_ladder, "chain_ladder"),
 }
 
 
