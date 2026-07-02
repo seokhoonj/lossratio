@@ -147,6 +147,14 @@ fit.summary().head(3)
 #> │ SURGERY  ┆ 2023-03-01 ┆ 8.8364e8  ┆ 5.8066e8     ┆ 1.521789   ┆ 0.007969 │
 #> └──────────┴────────────┴───────────┴──────────────┴────────────┴──────────┘
 
+# 4b. Plot the per-cohort loss-ratio trajectories (observed solid, projected
+#     dashed), coloured by cohort.
+fit.plot()
+```
+
+![Loss-ratio projection for SURGERY: per-cohort trajectories, observed (solid) vs projected (dashed), coloured by cohort. Older cohorts settle near 1.5; the 2024-07 regime shift pulls newer cohorts lower.](docs/_static/quickstart_ratio.png)
+
+```python
 # 5. Add an uncertainty band with a residual bootstrap, and read the per-cohort
 #    credibility (u = level, Z = credibility weight, psi = between-cohort var).
 cred = lr.CredibleLoss(uncertainty=lr.ResidualBootstrap(n_replicates=200, seed=1)).fit(tri)
