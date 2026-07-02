@@ -63,6 +63,16 @@ class CredibleLoss(_LossEstimatorBase):
         factor toward the reference); or a fixed ridge (a scalar, or a
         ``{covariate: "auto" or lam}`` dict). GLM + credibility for multi-level
         factors (Ohlsson 2008).
+    balance
+        Apply the Ohlsson (2008) balance-property calibration: rescale each
+        segment's projection so the in-sample fitted-increment total matches the
+        observed total (default ``False``). It matters here because the
+        credibility re-weighting breaks the aggregate balance a saturated fit has.
+    uncertainty
+        ``None`` (default) or a :class:`ResidualBootstrap` / :class:`WeightedBootstrap`.
+        This is ``CredibleLoss``'s only interval -- the credibility-level
+        estimation variance breaks the analytical recursion, so there is no
+        analytical SE; the bootstrap SE / CI come from the full-refit spread.
     """
 
     psi: float | str = "auto"

@@ -50,6 +50,11 @@ class ChainLadder(_LossEstimatorBase):
         the projection stays seeded from the full triangle.
     confidence_level
         Two-sided confidence level for the analytical CI columns.
+    uncertainty
+        ``None`` (default, analytical CI only) or a bootstrap config (e.g.
+        :class:`ResidualBootstrap`) filling the bootstrap SE / CI columns; the
+        `ChainLadder` benchmark resamples own-loss (England-Verrall ODP)
+        residuals rather than the premium-anchored intensity ones.
     """
 
     def fit(self, triangle: Triangle) -> LossFit:

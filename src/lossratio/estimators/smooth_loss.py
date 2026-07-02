@@ -79,6 +79,12 @@ class SmoothLoss(_LossEstimatorBase):
         factor toward the reference); or a fixed ridge (a scalar, or a
         ``{covariate: "auto" or lam}`` dict). GLM + credibility for multi-level
         factors (Ohlsson 2008).
+    balance
+        Apply the Ohlsson (2008) balance-property calibration: rescale each
+        segment's projection so the in-sample fitted-increment total matches the
+        observed total (default ``False``). It matters here because the smooth
+        shape + credibility re-weighting breaks the aggregate balance a saturated
+        fit has.
     """
 
     psi: float | str = "auto"
