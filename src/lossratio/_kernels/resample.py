@@ -225,7 +225,7 @@ def _quiet_nan_reduce():
         yield
 
 
-def _estimate(
+def _refit_additive(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
     sigma_method: str,
@@ -339,7 +339,6 @@ def bootstrap_segment_additive(
     fewer than two finite replicates stays NaN. ``n_basis`` / ``lam`` are the
     smooth-shape controls (used only for ``mechanism="smooth"``).
     """
-    credible = mechanism == "credible"
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
@@ -353,7 +352,7 @@ def bootstrap_segment_additive(
 
     # --- point quantities: fitted mean, dispersion, standardized residuals ---
     ii, kk, y, p = _valid_cells(loss_obs, premium_obs)
-    g_k, u_vec = _estimate(
+    g_k, u_vec = _refit_additive(
         loss_obs, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
         link_mask=loss_mask,
     )
@@ -459,7 +458,7 @@ def bootstrap_segment_additive(
             inc = np.where(np.isnan(dY[:, k]), orig_incr[:, k], dY[:, k])
             cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
         # 4. refit the full pipeline on the pseudo triangle
-        g_b, u_b = _estimate(
+        g_b, u_b = _refit_additive(
             cum, premium_obs, sigma_method, psi, mechanism, n_basis, lam,
             link_mask=loss_mask,
         )
@@ -481,7 +480,7 @@ def bootstrap_segment_additive(
             continue
         pred_cum = loss_obs.copy()
         phi_b = _refit_phi(
-            cum, premium_obs, g_b, u_b, sigma_method, credible, n_links,
+            cum, premium_obs, g_b, u_b, sigma_method, n_links,
             link_mask=loss_mask,
         )
         # one drift draw per replicate (parameter uncertainty), centred at 0 so
@@ -523,7 +522,7 @@ def bootstrap_segment_covariate(
     *,
     sigma_method: str,
     psi: float | str,
-    lam: float,
+    lam_cov: float,
     spec: ResidualBootstrap,
     confidence_level: float,
     rng: np.random.Generator,
@@ -552,26 +551,26 @@ def bootstrap_segment_covariate(
     n_links = n_durations - 1
     premium_proj = _fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
 
-    def _cov_estimate(response_arr: np.ndarray, loss_mat: np.ndarray):
+    def _refit_covariate(response_arr: np.ndarray, loss_mat: np.ndarray):
         """Re-fit the covariate pipeline (-> g_marginal, u, cov_fit) on a response
         vector + loss matrix. Smooth re-runs the backfit; pooled / credible fit
         the saturated kernel once + the conjugate (psi=0 pins u=1 for pooled)."""
         if n_basis is None:
-            cf = fit_covariate_intensity(
-                response_arr, data.exposure, data.duration, data.codes, lam=lam
+            cov_fit = fit_covariate_intensity(
+                response_arr, data.exposure, data.duration, data.codes, lam=lam_cov
             )
-            g = _build_g_marginal(cf, data)
+            g = _build_g_marginal(cov_fit, data)
             u, _z, _p = _credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
-            return g, u, cf
+            return g, u, cov_fit
         from .credible import _smooth_backfit_covariate
         bf = _smooth_backfit_covariate(
             loss_mat, premium_obs, replace(data, response=response_arr), covariates,
-            sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam,
+            sigma_method, psi=psi, n_basis=n_basis, lam=lam_smooth, lam_cov=lam_cov,
         )
         return bf["g_marginal"], bf["u"], bf["cov_fit"]
 
     # --- point fit: g_marginal, u, projection ---
-    g_marginal, u_vec, cov_fit = _cov_estimate(data.response, loss_obs)
+    g_marginal, u_vec, cov_fit = _refit_covariate(data.response, loss_obs)
     point_proj = _project_credible(loss_obs, premium_proj, g_marginal, u_vec)
 
     # --- sub-cell fitted mean, dispersion, standardized residuals ---
@@ -658,7 +657,7 @@ def bootstrap_segment_covariate(
             cum[nxt, k + 1] = cum[nxt, k] + inc[nxt]
         # re-fit the whole covariate pipeline on the pseudo data (g on the
         # sub-cell links, u on the aggregate pseudo cumulative)
-        g_marginal_b, u_b, _cf = _cov_estimate(ystar, cum)
+        g_marginal_b, u_b, _cf = _refit_covariate(ystar, cum)
         param_cum = _project_credible(loss_obs, premium_proj, g_marginal_b, u_b)
         param_draws[b] = param_cum
 
@@ -666,7 +665,7 @@ def bootstrap_segment_covariate(
             pred_draws[b] = param_cum
             continue
         pred_cum = loss_obs.copy()
-        phi_b = _refit_phi(cum, premium_obs, g_marginal_b, u_b, sigma_method, True, n_links)
+        phi_b = _refit_phi(cum, premium_obs, g_marginal_b, u_b, sigma_method, n_links)
         eps_b = rng.normal(0.0, drift_se) if drift_se > 0.0 else 0.0
         for k in range(n_links):
             active = has_obs & (last_obs <= k) & ~np.isnan(param_cum[:, k + 1]) \
@@ -940,7 +939,6 @@ def _refit_phi(
     g_b: np.ndarray,
     u_b: np.ndarray,
     sigma_method: str,
-    credible: bool,
     n_links: int,
     link_mask: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -1089,7 +1087,7 @@ def run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
         return bootstrap_segment_covariate(
             task["loss_obs"], task["premium_obs"], task["cov_data"],
             task["covariates"], sigma_method=task["sigma_method"],
-            psi=task["psi"], lam=task["lam"], spec=task["spec"],
+            psi=task["psi"], lam_cov=task["lam"], spec=task["spec"],
             confidence_level=task["confidence_level"], rng=rng,
             n_basis=task["n_basis"], lam_smooth=task["lam_smooth"],
         )

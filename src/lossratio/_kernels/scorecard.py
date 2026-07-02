@@ -118,11 +118,11 @@ def _lane_metrics(deviance: bool) -> list[pl.Expr]:
 
 def _attach_coverage(
     g: pl.DataFrame, sub: pl.DataFrame, gk: list[str],
-    cov_cols: list[str], cov_zs: list[float], real: bool,
+    cov_cols: list[str], cov_zs: list[float], measured: bool,
 ) -> pl.DataFrame:
     """Add the coverage column(s) to a lane's aggregated frame ``g``.
 
-    On the cumulative lane (``real=True``) coverage is measured over the
+    On the cumulative lane (``measured=True``) coverage is measured over the
     usable-SE cells of ``sub`` -- a SEPARATE pass from the relative-error
     metrics so an ``expected == 0`` cell (no defined ``ae_err``) with a finite
     SE still counts toward coverage. On the other lanes (and when the SE is
@@ -131,7 +131,7 @@ def _attach_coverage(
     """
     if not cov_cols:
         return g
-    if not real:
+    if not measured:
         return g.with_columns(
             [pl.lit(None, dtype=pl.Float64).alias(c) for c in cov_cols]
         )
@@ -255,10 +255,10 @@ def score_cells(
             aggs = _lane_metrics(deviance)
             g = f.group_by(gk).agg(aggs) if gk else f.select(aggs)
             # coverage is a cumulative-projection property, measured over the
-            # usable-SE cells in a SEPARATE pass (not gated by _err) -- real on
+            # usable-SE cells in a SEPARATE pass (not gated by _err) -- measured on
             # the cum lane, null elsewhere.
             g = _attach_coverage(
-                g, sub, gk, cov_cols, cov_zs, real=(has_se and lane_label == "cumulative")
+                g, sub, gk, cov_cols, cov_zs, measured=(has_se and lane_label == "cumulative")
             )
             g = g.with_columns(
                 population=pl.lit(pop_label), lane=pl.lit(lane_label)
@@ -285,7 +285,7 @@ def score_cells(
                  .drop_nulls("_err"))
             aggs = _lane_metrics(deviance=False)
             g = f.group_by(gk).agg(aggs) if gk else f.select(aggs)
-            g = _attach_coverage(g, sub, gk, cov_cols, cov_zs, real=False)
+            g = _attach_coverage(g, sub, gk, cov_cols, cov_zs, measured=False)
             g = g.with_columns(
                 population=pl.lit(pop_label), lane=pl.lit("anchored")
             )

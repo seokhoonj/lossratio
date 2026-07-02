@@ -199,10 +199,10 @@ def _smooth_backfit(
             exposure.append(float(ck[i]))
             duration.append(k + 1)
             coh.append(int(i))
-    response_a = np.array(response, dtype=np.float64)
-    exposure_a = np.array(exposure, dtype=np.float64)
-    duration_l = duration
-    coh_a = np.array(coh, dtype=np.int64)
+    response_arr = np.array(response, dtype=np.float64)
+    exposure_arr = np.array(exposure, dtype=np.float64)
+    duration_list = duration
+    coh_arr = np.array(coh, dtype=np.int64)
 
     u_vec = np.ones(n_cohorts, dtype=np.float64)
     z_vec = np.zeros(n_cohorts, dtype=np.float64)
@@ -215,9 +215,9 @@ def _smooth_backfit(
     backfit_converged = True            # trivially so for no cells / single pass
 
     def _smooth_g(u: np.ndarray, lam_use):
-        adj = (u[coh_a] * exposure_a).tolist()       # divide u out -> shape on u*P
+        adj = (u[coh_arr] * exposure_arr).tolist()       # divide u out -> shape on u*P
         sm = smooth_intensity(
-            response=response_a.tolist(), exposure=adj, duration=duration_l,
+            response=response_arr.tolist(), exposure=adj, duration=duration_list,
             n_basis=n_basis, lam=lam_use,
         )
         gk = np.array(
@@ -229,7 +229,7 @@ def _smooth_backfit(
     # through the backfitting: the shape smoothness is a pipeline choice, and
     # re-selecting it each pass adds cost and can stall the alternation.
     cur_lam: float | str = lam
-    if response_a.size:
+    if response_arr.size:
         backfit_converged = False
         for _ in range(max_outer):
             # s-step: smooth shape on the u-adjusted exposure
@@ -238,8 +238,8 @@ def _smooth_backfit(
                 # boundary -> fallback (saturated g_k on raw exposure)
                 representable = False
                 g_map = engine.saturated_intensity(
-                    response=response_a.tolist(), exposure=exposure_a.tolist(),
-                    duration=duration_l,
+                    response=response_arr.tolist(), exposure=exposure_arr.tolist(),
+                    duration=duration_list,
                 )
                 g_k = np.array(
                     [g_map.get(k + 1, np.nan) for k in range(n_links)],
