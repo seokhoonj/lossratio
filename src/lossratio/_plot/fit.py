@@ -2,8 +2,9 @@
 
 Per-cohort cumulative-projection trajectories for ``LossFit`` /
 ``PremiumFit`` / ``RatioFit``: x = duration, y = the projected metric, the
-observed portion drawn solid and the projected tail dashed (split on the
-``source`` column), faceted by group. The cohort colour gradient mirrors
+observed portion drawn solid and the projected tail as a translucent
+continuation with a frontier dot (split on the ``source`` column), faceted by
+group. The cohort colour gradient mirrors
 ``Triangle.plot`` so a cohort keeps its colour across facets.
 """
 
@@ -49,7 +50,13 @@ def resolve_fit_metric(
 
 def _draw_fit_cohort(ax: Any, sub: pl.DataFrame, value_col: str, coh_color) -> None:
     """One facet: per-cohort cumulative trajectory, observed solid + projected
-    dashed (joined at the last observed cell)."""
+    as a translucent same-colour continuation, with a small dot marking the
+    observation frontier (where data ends and the projection begins).
+
+    The projected tail is drawn faded rather than dashed: with many overlapping
+    cohorts the dashed tails pile into a busy texture, whereas an alpha-faded
+    continuation ghosts forward cleanly while the frontier dot keeps the
+    observed/projected boundary legible."""
     for g in sub.partition_by("cohort", maintain_order=True):
         gg = g.sort("duration")
         x = gg["duration"].to_numpy()
@@ -59,18 +66,25 @@ def _draw_fit_cohort(ax: Any, sub: pl.DataFrame, value_col: str, coh_color) -> N
 
         obs = np.array([s == "observed" for s in src])
         # Solid over the observed cells (gaps become NaN, which matplotlib skips).
-        ax.plot(x, np.where(obs, y, np.nan), color=color, linewidth=1.1, zorder=2)
+        ax.plot(x, np.where(obs, y, np.nan), color=color, linewidth=1.0,
+                alpha=0.85, zorder=2, solid_capstyle="round")
 
-        # Dashed projected tail, started at the last observed cell so the two
-        # segments join visually.
+        # Faded projected tail, started at the last observed cell so the two
+        # segments join visually; a frontier dot marks the handoff.
         proj = ~obs & np.isfinite(y)
         if proj.any():
             obs_idx = np.where(obs)[0]
             start = int(obs_idx[-1]) if obs_idx.size else int(np.where(proj)[0][0])
             ax.plot(
-                x[start:], y[start:], color=color, linewidth=1.1,
-                linestyle="--", zorder=2,
+                x[start:], y[start:], color=color, linewidth=1.4,
+                alpha=0.32, zorder=1, solid_capstyle="round",
             )
+            if obs_idx.size:
+                ax.plot(
+                    x[obs_idx[-1]], y[obs_idx[-1]], marker="o", markersize=2.4,
+                    color=color, alpha=0.9, zorder=3,
+                    markeredgecolor="white", markeredgewidth=0.3,
+                )
 
 
 def plot_fit(

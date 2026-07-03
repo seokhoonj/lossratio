@@ -1840,7 +1840,8 @@ class LossFit:
         figsize: tuple[float, float] | None = None,
     ) -> Any:
         """Per-cohort cumulative-projection trajectories, faceted by group --
-        the observed portion solid, the projected tail dashed. ``metric`` is
+        the observed portion solid, the projected tail a translucent
+        continuation with a frontier dot. ``metric`` is
         ``"loss"`` (default; cumulative projected loss) or ``"ratio"`` (the
         projected loss ratio)."""
         from .._plot.fit import plot_fit, resolve_fit_metric

@@ -3,7 +3,8 @@
 
 ``.predict()`` is a focused projection surface (cohort x duration cells with
 the projected metric(s) + ``source``); ``.plot()`` renders the per-cohort
-cumulative-projection trajectories (observed solid, projected dashed). Visual
+cumulative-projection trajectories (observed solid, projected a faded
+continuation). Visual
 parity is out of scope -- these assert the data contract and that the figure
 renders for each rung / metric / grouping.
 """
