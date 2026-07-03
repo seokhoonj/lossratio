@@ -15,8 +15,14 @@ import numpy as np
 import polars as pl
 
 from .._kernels.io import iter_group_frames
-from .base import open_facets
-from .theme import add_cohort_colorbar, cohort_gradient, finalize_figure
+from .._kernels.period import infer_grain
+from .base import get_period_type, open_facets
+from .theme import (
+    add_cohort_colorbar,
+    cohort_gradient,
+    finalize_figure,
+    period_label_fn,
+)
 
 if TYPE_CHECKING:
     pass
@@ -111,7 +117,9 @@ def plot_fit(
     vis_axes = [grid.axes[divmod(i, grid.ncol)[0]][divmod(i, grid.ncol)[1]]
                 for i in range(n_facets)]
     if n_coh > 1:
-        add_cohort_colorbar(grid.fig, vis_axes, cohorts, coh_color)
+        coh_type = get_period_type(None, grain=infer_grain(df["cohort"]))
+        add_cohort_colorbar(grid.fig, vis_axes, cohorts, coh_color,
+                            label_fn=period_label_fn(coh_type))
 
     return grid.fig
 

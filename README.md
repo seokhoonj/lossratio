@@ -166,23 +166,23 @@ reg = tri.detect_regime(target="ratio", window=12)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
-# 6b. Plot the experience, one line per cohort coloured by inception (the
-#     colourbar reads 23.01, 23.07, ... period labels). The detected 2024-07
-#     split shows up as two bands: recent (dark) cohorts settle near 0.9,
-#     older (light) cohorts near 1.5.
-tri.plot(metric="ratio")
-```
-
-![Cumulative loss ratio for SURGERY, one line per cohort coloured by inception (dark = recent, light = 2023, colourbar in 23.01 period labels). The detected 2024-07 regime appears as two bands: recent cohorts settle near 0.9, older cohorts near 1.5.](assets/quickstart_ratio.png)
-
-```python
-# 6c. Project respecting that regime (segment_wise: each regime's cohorts
-#     develop along their own shape), so the post-2024-07 cohorts settle near
-#     their own ~0.9 level instead of being dragged toward the pre-regime ~1.5.
+# 6b. Project respecting the detected regime (segment_wise: each regime's
+#     cohorts develop along their own shape), so the post-2024-07 cohorts
+#     project along their own ~0.9 level instead of being dragged toward the
+#     pre-regime ~1.5. Observed solid, projected dashed, coloured by cohort
+#     (the colourbar reads 23.01, 23.10, ... period labels).
 reg_fit = lr.Ratio(
     loss=lr.PooledLoss(regime=lr.RegimeDetector(treatment="segment_wise")),
     premium=lr.PooledPremium(),
 ).fit(tri)
+reg_fit.plot()
+```
+
+![Segment-wise loss-ratio projection for SURGERY: two bands each developed along its own regime shape -- pre-2024-07 cohorts settling near 1.5, post-regime cohorts near 0.9 -- observed solid, projected dashed, coloured by cohort with the colourbar in 23.01 period labels.](assets/quickstart_ratio.png)
+
+```python
+# 6c. The tail of that projection: the post-2024-07 cohorts settle near their
+#     own ~0.9 level, not the pre-regime ~1.5.
 reg_fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se"]).tail(3)
 #> shape: (3, 4)
 #> ┌──────────┬────────────┬────────────┬──────────┐

@@ -138,12 +138,17 @@ def add_cohort_colorbar(
     n_coh = len(cohorts)
     lc = ListedColormap([coh_color(c) for c in cohorts])
     sm = ScalarMappable(norm=Normalize(vmin=0, vmax=n_coh), cmap=lc)
-    cbar = fig.colorbar(sm, ax=vis_axes, fraction=0.025, pad=0.01)
-    ticks = list(range(0, n_coh, max(1, n_coh // 6)))
+    cbar = fig.colorbar(sm, ax=vis_axes, fraction=0.032, pad=0.02)
+    # Up to five evenly spaced ticks including the first and last cohort, so
+    # the labels stay legible (and uncrowded) when the figure is scaled down.
+    n_ticks = min(5, n_coh)
+    ticks = (sorted({round(i * (n_coh - 1) / (n_ticks - 1))
+                     for i in range(n_ticks)})
+             if n_ticks > 1 else [0])
     cbar.set_ticks([t + 0.5 for t in ticks])
     cbar.set_ticklabels([label_fn(cohorts[t]) for t in ticks])
-    cbar.ax.tick_params(labelsize=7)
-    cbar.ax.set_title("cohort", fontsize=8)
+    cbar.ax.tick_params(labelsize=9, length=3)
+    cbar.ax.set_title("cohort", fontsize=9, pad=6)
     return cbar
 
 

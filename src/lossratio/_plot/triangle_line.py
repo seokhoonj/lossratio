@@ -272,8 +272,8 @@ def plot(
             plt.Line2D([], [], color=STAT_COLORS["median"], label="Median"),
             plt.Line2D([], [], color=STAT_COLORS["weighted"], label="Weighted"),
         ]
-        fig.legend(handles=handles, loc="upper right", fontsize=8,
-                   frameon=False)
+        fig.legend(handles=handles, loc="outside upper right", ncol=3,
+                   fontsize=8, frameon=False)
     elif n_coh > 1:
         # Raw-mode cohort colour bar.
         coh_type = get_period_type(coh, grain=grain)
