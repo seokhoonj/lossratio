@@ -209,11 +209,11 @@ cred.credibility.head(3)
 
 ## 구조 변화 탐지하기
 
-`detect_regime`은 코호트 손해율 경로에서 구조 변화 시점을 찾습니다.
+`RegimeDetector`는 코호트 손해율 경로에서 구조 변화 시점을 찾습니다.
 수술담보에 심어 둔 2024년 7월 변화가 검출됩니다.
 
 ```python
-reg = tri.detect_regime(target="ratio", window=12)
+reg = lr.RegimeDetector(target="ratio", window=12).detect(tri)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 ```

@@ -67,8 +67,10 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
 - `Triangle.link()` — the long-format `Link` table (one row per cohort x
   adjacent duration pair); `.ata()` / `.intensity()` give factor-level
   diagnostics (multiplicative `ata` / `cv` / `rse`, additive `intensity`).
-- `Triangle.detect_regime()` — structural cohort-sequence shifts via E-Divisive
-  or Ward hierarchical clustering (a `Regime`).
+- `RegimeDetector` — change-point detector config; `RegimeDetector(...).detect(tri)`
+  returns a `Regime` (structural cohort-sequence shifts via E-Divisive or Ward
+  hierarchical clustering). Pass it as `regime=` to re-detect on each backtest
+  fold's own data.
 - `Backtest` — calendar-diagonal hold-out backtest of any estimator; a sequence
   `holdouts=(6, 12, ...)` runs a rolling-origin backtest with
   `reliable_horizon()`. `EstimatorComparison` scores estimators head-to-head.
@@ -106,7 +108,7 @@ fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se"]).head(3)
 #> └──────────┴────────────┴────────────┴──────────┘
 
 # Detect cohort regime shifts (E-Divisive over the cohort ratio path).
-reg = tri.detect_regime(target="ratio", window=12)
+reg = lr.RegimeDetector(target="ratio", window=12).detect(tri)
 reg.change_points
 #> [datetime.date(2024, 7, 1)]
 
@@ -119,8 +121,9 @@ tri.plot(metric="ratio", summary=True, regime=reg)
 
 ```python
 # Project the loss ratio respecting that regime (segment_wise: each regime's
-# cohorts develop along their own shape). Observed solid, projected dashed,
-# coloured by cohort (the colourbar reads 23.01, 23.10, ... period labels).
+# cohorts develop along their own shape). Observed solid, the projection a
+# faded continuation past the frontier dot, coloured by cohort (the colourbar
+# reads 23.01, 23.10, ... period labels).
 reg_fit = lr.Ratio(
     loss=lr.PooledLoss(regime=lr.RegimeDetector(treatment="segment_wise")),
     premium=lr.PooledPremium(),
@@ -128,7 +131,7 @@ reg_fit = lr.Ratio(
 reg_fit.plot()
 ```
 
-![Segment-wise loss-ratio projection across the four coverages (observed solid, projected dashed, coloured by cohort with the colourbar in 23.01 period labels); SURGERY's two regimes each develop along their own shape -- pre-2024-07 near 150%, post-regime near 90%.](assets/quickstart_projection.png)
+![Segment-wise loss-ratio projection across the four coverages (observed solid, the projection a faded continuation past each cohort's frontier dot, coloured by cohort with the colourbar in 23.01 period labels); SURGERY's two regimes each develop along their own shape -- pre-2024-07 near 150%, post-regime near 90%.](assets/quickstart_projection.png)
 
 ```python
 # Out-of-sample: a rolling-origin backtest reports how many duration months

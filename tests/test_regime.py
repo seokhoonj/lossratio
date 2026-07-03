@@ -1,14 +1,14 @@
 
 
 def test_detect_regime_output_is_usable_in_a_fit():
-    # the detect_regime() -> fit workflow: passing the Regime object (or a
+    # the RegimeDetector().detect() -> fit workflow: passing the Regime object (or a
     # RegimeDetector) to an estimator must resolve to the same cut as the
     # manual dict.
     import lossratio as lr
     from lossratio.diagnostics.regime import _resolve_regime
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
-    reg = tri.detect_regime(target="ratio")
+    reg = lr.RegimeDetector(target="ratio").detect(tri)
 
     resolved = _resolve_regime(reg, tri)
     assert isinstance(resolved, dict) and resolved   # {coverage: date}

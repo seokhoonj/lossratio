@@ -69,7 +69,7 @@ def test_renders_holdout_only(tri_with_groups):
 
 
 def test_renders_regime_only(tri_with_groups):
-    r = tri_with_groups.detect_regime()
+    r = lr.RegimeDetector().detect(tri_with_groups)
     fig = tri_with_groups.plot_triangle(kind="usage", regime=r)
     try:
         assert "regime=" in fig._suptitle.get_text()
@@ -78,7 +78,7 @@ def test_renders_regime_only(tri_with_groups):
 
 
 def test_renders_full_filters(tri_with_groups):
-    r = tri_with_groups.detect_regime()
+    r = lr.RegimeDetector().detect(tri_with_groups)
     fig = tri_with_groups.plot_triangle(
         kind="usage", recent=18, regime=r, holdout=6
     )
@@ -189,7 +189,7 @@ def test_regime_cut_affects_only_changed_groups(tri_with_groups):
     """A regime is a per-segment cohort cut: groups with a detected change
     drop their pre-change cohorts to "unused"; groups with no change stay
     fully "used"."""
-    reg = tri_with_groups.detect_regime(window=12)
+    reg = lr.RegimeDetector(window=12).detect(tri_with_groups)
     changed_groups = set(reg.changes["coverage"].unique().to_list())
     if not changed_groups:
         pytest.skip("no change points detected for this fixture")
@@ -209,7 +209,7 @@ def test_regime_cut_affects_only_changed_groups(tri_with_groups):
 
 
 def test_regime_cut_renders(tri_with_groups):
-    reg = tri_with_groups.detect_regime(window=12)
+    reg = lr.RegimeDetector(window=12).detect(tri_with_groups)
     fig = tri_with_groups.plot_triangle(kind="usage", regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
@@ -219,7 +219,7 @@ def test_regime_cut_renders(tri_with_groups):
 
 def test_regime_cut_pooled_render(tri_single):
     """Pooled (single-group) Triangle + regime cohort cut."""
-    reg = tri_single.detect_regime(window=12)
+    reg = lr.RegimeDetector(window=12).detect(tri_single)
     if reg.changes.height == 0:
         pytest.skip("no change points detected for this fixture")
     fig = tri_single.plot_triangle(kind="usage", regime=reg)
@@ -296,7 +296,7 @@ def test_usage_never_marks_absent_cells_used_in_gappy_groups():
 def test_usage_uses_classic_vocabulary(tri_with_groups):
     """The usage view colours only data cells -- the classic
     used/unused/holdout/future vocabulary; projection cells stay 'future'."""
-    r = tri_with_groups.detect_regime(window=12)
+    r = lr.RegimeDetector(window=12).detect(tri_with_groups)
     seen = set(tri_with_groups.usage(regime=r)["status"].unique().to_list())
     assert seen <= {"used", "unused", "holdout", "future"}
     assert "donor" not in seen and "borrowed" not in seen
@@ -327,7 +327,7 @@ def test_usage_holdout_marks_holdout_cells(tri_with_groups):
 
 
 def test_usage_regime_marks_unused(tri_with_groups):
-    reg = tri_with_groups.detect_regime(window=12)
+    reg = lr.RegimeDetector(window=12).detect(tri_with_groups)
     if reg.changes.height == 0:
         pytest.skip("no change points detected for this fixture")
     out = tri_with_groups.usage(regime=reg)

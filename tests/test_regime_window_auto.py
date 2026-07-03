@@ -7,7 +7,7 @@
    derived trajectories.
 
 The tests exercise ``Regime._from_triangle`` directly because the
-public ``Triangle.detect_regime`` wiring for ``window="auto"`` and
+public ``RegimeDetector`` wiring for ``window="auto"`` and
 ``by=`` is handled by a separate (Round 2) agent and may still carry
 the previous default of ``window=12`` at the time these tests run.
 """
@@ -253,7 +253,7 @@ def test_by_multi_column_detects_per_combination():
 def test_by_none_uses_stored_multi_column_groups():
     """``by=None`` defers to the Triangle's stored multi-column ``groups``."""
     tri = _two_col_triangle()
-    reg = tri.detect_regime(target="ratio", seed=20260524)
+    reg = lr.RegimeDetector(target="ratio", seed=20260524).detect(tri)
     assert reg.groups == ["coverage", "block"]
     assert reg._changes_df.select(["coverage", "block"]).unique().height >= 1
 
@@ -264,7 +264,7 @@ def test_derived_target_multi_column_per_combination():
     column, not the nested list `[groups, "cohort"]` (regression for B4). The
     label table should carry both group columns for all 8 combinations."""
     tri = _two_col_triangle()
-    reg = tri.detect_regime(target="loss_ata", seed=20260524)
+    reg = lr.RegimeDetector(target="loss_ata", seed=20260524).detect(tri)
     assert reg.groups == ["coverage", "block"]
     for col in ("coverage", "block"):
         assert col in reg._labels_df.columns

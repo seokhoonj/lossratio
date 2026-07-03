@@ -17,7 +17,7 @@ CHANGE = "2024-07-01"
 
 def test_covariate_treatment_validates(tri):
     assert lr.Regime.at(change=CHANGE, treatment="covariate").treatment == "covariate"
-    reg = tri.detect_regime(target="ratio", treatment="covariate")
+    reg = lr.RegimeDetector(target="ratio", treatment="covariate").detect(tri)
     assert reg.treatment == "covariate"
 
 
@@ -110,7 +110,7 @@ def test_covariate_treatment_rejects_chain_ladder(tri):
 
 
 def test_covariate_treatment_detect_path_runs(tri):
-    reg = tri.detect_regime(target="ratio", treatment="covariate")
+    reg = lr.RegimeDetector(target="ratio", treatment="covariate").detect(tri)
     fit = lr.CredibleLoss(regime=reg).fit(tri)
     assert fit.status in ("valid", "degraded")
     assert fit.to_polars().height > 0

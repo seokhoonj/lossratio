@@ -25,7 +25,6 @@ from .._kernels.period import (
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
     from .._types import RegimeArg
-    from ..diagnostics.regime import Regime
     from .calendar import Calendar
     from .link import Link
     from .total import Total
@@ -611,123 +610,6 @@ class Triangle:
             min_denom=min_denom,
             drop_invalid=drop_invalid,
         )
-
-    def detect_regime(
-        self,
-        target: str = "ratio",
-        window: int | str = "auto",
-        by: str | Sequence[str] | None = None,
-        method: str = "e_divisive",
-        n_regimes: int | None = None,
-        sig_level: float = 0.05,
-        n_permutations: int = 999,
-        min_size: int = 3,
-        seed: int | None = None,
-        window_floor: int | None = None,
-        fdr: bool = False,
-        edge_scan: bool = False,
-        edge_threshold: float = 10.0,
-        window_sweep: Sequence[int] | None = None,
-        grain_sweep: Sequence[str] | None = None,
-        treatment: str = "latest_only",
-    ) -> Regime:
-        """Detect structural regime shifts across underwriting cohorts.
-
-        The default ``window="auto"`` resolves each group's trajectory
-        window via the ATA factor-stability point (where the age-to-age
-        factors become CV/RSE-stable), falling back to the elbow
-        heuristic and finally to a fixed default (``6``) when neither
-        signal is available.
-
-        Parameters
-        ----------
-        target
-            Metric to drive change-point detection. Native cumulative
-            (``"loss"``, ``"premium"``, ``"ratio"``) or derived
-            (``"loss_ata"``, ``"premium_ata"``, ``"loss_intensity"``,
-            ``"premium_intensity"``). Default ``"ratio"``.
-        window
-            Trajectory window. Integer (e.g. ``12``) for a fixed
-            window, or ``"auto"`` (default) for the factor-stability-first
-            elbow-fallback resolver.
-        by
-            Optional override for the per-group dispatch. ``None``
-            (default) uses the Triangle's stored ``groups``; an empty
-            string (or empty sequence) forces pooled detection; a string
-            names a single group column; a sequence of column names
-            (e.g. ``["coverage", "channel"]``) runs detection per
-            group COMBINATION.
-        method, n_regimes, sig_level, n_permutations, min_size, seed
-            See :class:`Regime` for full description.
-        window_floor
-            Optional minimum for the ``window="auto"`` resolution. The
-            Kneedle elbow can resolve to a degenerate ``window=2`` on the
-            pooled / stability-unavailable path, starving E-Divisive; a
-            floor (e.g. ``4``) restores detection. ``None`` (default)
-            leaves auto resolution unchanged. Ignored for an explicit
-            integer ``window``.
-        fdr
-            Apply a Benjamini-Hochberg FDR correction across every
-            permutation break in the call, with the multiplicity equal to
-            the number of coverages tested. Controls the spurious breaks
-            expected by chance when many coverages are screened at once.
-            Edge-scan breaks are exempt. E-Divisive only. Default
-            ``False``.
-        edge_scan
-            Augment E-Divisive with a 1-vs-rest effect-size scan that
-            detects a boundary regime occupying only the first / last
-            1..``min_size``-1 cohorts -- which E-Divisive structurally
-            cannot separate (it needs >= 2 cohorts per side). Robust to
-            volatility by construction. Default ``False``.
-        edge_threshold
-            Effect-size (robust-z, noise units) an edge cohort must
-            exceed for ``edge_scan`` to flag it. Default ``10.0``.
-        window_sweep
-            Optional sequence of trajectory windows (e.g. ``range(4, 13)``).
-            When set, :attr:`Regime.candidates` is built from a sweep over
-            these windows, adding ``window_stability`` (the fraction of
-            windows that detect each change -- a change recurring across
-            many windows is robust) and ``n_windows``. ``changes`` still
-            comes from the single resolved ``window``. Default ``None``.
-        grain_sweep
-            Optional sequence of cohort grains (e.g. ``["M", "Q", "H"]``).
-            When set, :attr:`Regime.candidates` is built by coarsening the
-            triangle to each grain and re-detecting, then merging by change
-            date -- adding ``grain`` and ``grain_stability`` (how many
-            grains detect each change). A coarser grain averages
-            cohort-level noise, so a noisy coverage can surface at Q / H
-            even when invisible at M. Grains finer than the triangle's own
-            grain are skipped. Combines with ``window_sweep``. Default
-            ``None``.
-        treatment
-            How a fit consumes the detected regime. ``"latest_only"``
-            (default) keeps only the newest regime; ``"segment_wise"`` keeps
-            every regime, fitting each on its own cohorts and borrowing the
-            deep tail from the older regimes (see :class:`Regime`). Default
-            ``"latest_only"``.
-        """
-        # eager sugar for RegimeDetector(...).detect(self) -- the detector
-        # config object is the single source of detection parameters.
-        from ..diagnostics.regime import RegimeDetector
-
-        return RegimeDetector(
-            target=target,
-            window=window,
-            by=by,
-            method=method,
-            n_regimes=n_regimes,
-            sig_level=sig_level,
-            n_permutations=n_permutations,
-            min_size=min_size,
-            seed=seed,
-            window_floor=window_floor,
-            fdr=fdr,
-            edge_scan=edge_scan,
-            edge_threshold=edge_threshold,
-            window_sweep=window_sweep,
-            grain_sweep=grain_sweep,
-            treatment=treatment,
-        ).detect(self)
 
     def mask(self, holdout: int = 0) -> Triangle:
         """Drop the most-recent ``holdout`` calendar diagonals.

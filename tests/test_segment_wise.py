@@ -25,10 +25,10 @@ def test_treatment_default_and_validation(tri):
         lr.Regime.at(change=CHANGE, treatment="bogus")
     # detect path carries it too -- and survives .accepted() (the evidence-
     # gated regime that actually drives a fit), for every treatment.
-    reg = tri.detect_regime(target="ratio", treatment="segment_wise")
+    reg = lr.RegimeDetector(target="ratio", treatment="segment_wise").detect(tri)
     assert reg.treatment == "segment_wise"
     for t in ("latest_only", "segment_wise", "covariate"):
-        assert tri.detect_regime(target="ratio", treatment=t).accepted().treatment == t
+        assert lr.RegimeDetector(target="ratio", treatment=t).detect(tri).accepted().treatment == t
 
 
 def test_default_treatment_is_byte_identical_to_plain_latest_only(tri):

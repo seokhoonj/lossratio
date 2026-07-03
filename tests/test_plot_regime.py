@@ -20,14 +20,14 @@ import lossratio as lr
 @pytest.fixture
 def reg_multi():
     tri = lr.Triangle(lr.make_experience(seed=1), groups="coverage")
-    return tri.detect_regime(window=12)
+    return lr.RegimeDetector(window=12).detect(tri)
 
 
 @pytest.fixture
 def reg_single():
     df = lr.make_experience(seed=1).filter(pl.col("coverage") == "CANCER")
     tri = lr.Triangle(df)
-    return tri.detect_regime(window=12)
+    return lr.RegimeDetector(window=12).detect(tri)
 
 
 def _close(fig):

@@ -114,7 +114,7 @@ def _detect_stability_point(
     sustained stable run. The returned ``point`` marks where the per-link
     factors settle into a stable run. An internal factor-stability
     diagnostic (no projection); used by the
-    ``detect_regime(window="auto")`` trajectory-window resolver.
+    ``RegimeDetector(window="auto")`` trajectory-window resolver.
     """
     mack = fit_multiplicative(loss_obs, link_mask=link_mask)
     cv_k, rse_k = _compute_cv_rse(

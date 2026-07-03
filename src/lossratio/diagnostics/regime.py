@@ -1353,7 +1353,8 @@ def _regime_ids_from_changes(n: int, change_idxs: list[int]) -> np.ndarray:
 class Regime:
     """Detected cohort regime structure.
 
-    Use :meth:`Triangle.detect_regime` to construct.
+    Use :meth:`RegimeDetector.detect` (auto) or :meth:`Regime.at` (manual) to
+    construct.
 
     Attributes
     ----------
@@ -1411,9 +1412,8 @@ class Regime:
 
     def __init__(self) -> None:
         raise TypeError(
-            "Regime is produced by `triangle.detect_regime()` / "
-            "`RegimeDetector(...).detect(triangle)` / `Regime.at()`, not a "
-            "direct constructor."
+            "Regime is produced by `RegimeDetector(...).detect(triangle)` / "
+            "`Regime.at()`, not a direct constructor."
         )
 
     @classmethod
@@ -2072,7 +2072,9 @@ class Regime:
 
         Examples
         --------
-        >>> reg = tri.detect_regime(grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10))
+        >>> reg = lr.RegimeDetector(
+        ...     grain_sweep=["M", "Q", "H"], window_sweep=range(4, 10)
+        ... ).detect(tri)
         >>> fit = lr.CredibleLoss(regime=reg.accepted()).fit(tri)
         """
         ev = self.evaluate(**evaluate_kwargs)
@@ -2252,24 +2254,81 @@ def _coerce_to_date(value: Any) -> date:
 
 @dataclass(kw_only=True)
 class RegimeDetector:
-    """Deferred regime-detection config: parameters now, detection later.
+    """Regime-detection config: parameters now, detection later.
 
-    A config object (parameters only) whose :meth:`detect` runs E-Divisive
-    change-point detection on a triangle and returns a :class:`Regime`. The
-    same object plays two roles, like every other estimator in the package:
+    A config object (parameters only) whose :meth:`detect` runs E-Divisive (or
+    Ward hierarchical) change-point detection on a triangle and returns a
+    :class:`Regime`. It plays two roles, like every other estimator in the
+    package:
 
-    * **eager** -- call ``RegimeDetector(...).detect(tri)`` to detect now;
+    * **eager** -- ``RegimeDetector(...).detect(tri)`` detects now; this is how
+      you get a :class:`Regime` from data (:meth:`Regime.at` is the manual
+      alternative), parallel to ``PooledLoss().fit(tri)``.
     * **deferred** -- pass the detector itself as a ``regime=`` value
       (``CredibleLoss(regime=RegimeDetector(...))``). Fit / backtest call
       ``.detect`` on their own internal triangle -- inside backtest that is the
-      **masked** training triangle of each fold, so change points never peek
-      at held-out cells.
+      **masked** training triangle of each fold, so change points never peek at
+      held-out cells. This deferral is why the parameters live on a passable
+      config object rather than on a triangle method.
 
-    All fields mirror :meth:`Triangle.detect_regime`; in particular
-    ``treatment`` (``"latest_only"`` / ``"segment_wise"`` / ``"covariate"``)
-    is carried here, so the projection treatment survives the deferred path.
-    ``Triangle.detect_regime(...)`` is the eager sugar ``RegimeDetector(
-    ...).detect(self)``.
+    The default ``window="auto"`` resolves each group's trajectory window via
+    the ATA factor-stability point (where the age-to-age factors become
+    CV/RSE-stable), falling back to the elbow heuristic and finally to a fixed
+    default (``6``).
+
+    Parameters
+    ----------
+    target
+        Metric driving change-point detection. Native cumulative (``"loss"``,
+        ``"premium"``, ``"ratio"``) or derived (``"loss_ata"``,
+        ``"premium_ata"``, ``"loss_intensity"``, ``"premium_intensity"``).
+        Default ``"ratio"``.
+    window
+        Trajectory window: an integer (e.g. ``12``) for a fixed window, or
+        ``"auto"`` (default) for the factor-stability-first, elbow-fallback
+        resolver.
+    by
+        Per-group dispatch override. ``None`` (default) uses the Triangle's
+        stored ``groups``; ``""`` / an empty sequence forces pooled detection;
+        a string names one group column; a sequence runs detection per group
+        COMBINATION.
+    method, n_regimes, sig_level, n_permutations, min_size, seed
+        Change-point algorithm controls (see :class:`Regime`).
+    window_floor
+        Minimum for ``window="auto"`` resolution -- the Kneedle elbow can
+        resolve to a degenerate ``window=2`` on the pooled path, starving
+        E-Divisive; a floor (e.g. ``4``) restores detection. ``None`` (default)
+        leaves auto resolution unchanged; ignored for an explicit integer
+        window.
+    fdr
+        Benjamini-Hochberg FDR correction across every permutation break in the
+        call (multiplicity = number of coverages tested), controlling spurious
+        breaks when many coverages are screened at once. Edge-scan breaks are
+        exempt. E-Divisive only. Default ``False``.
+    edge_scan
+        Augment E-Divisive with a 1-vs-rest effect-size scan for a boundary
+        regime occupying only the first / last 1..``min_size``-1 cohorts, which
+        E-Divisive structurally cannot separate. Default ``False``.
+    edge_threshold
+        Effect-size (robust-z, noise units) an edge cohort must exceed for
+        ``edge_scan`` to flag it. Default ``10.0``.
+    window_sweep
+        Optional sequence of trajectory windows (e.g. ``range(4, 13)``). When
+        set, :attr:`Regime.candidates` is built from a sweep, adding
+        ``window_stability`` and ``n_windows``; ``changes`` still comes from
+        the single resolved ``window``. Default ``None``.
+    grain_sweep
+        Optional sequence of cohort grains (e.g. ``["M", "Q", "H"]``). When
+        set, :attr:`Regime.candidates` is built by coarsening the triangle to
+        each grain and re-detecting, then merging by change date -- adding
+        ``grain`` and ``grain_stability``. Grains finer than the triangle's own
+        are skipped. Combines with ``window_sweep``. Default ``None``.
+    treatment
+        How a fit consumes the detected regime. ``"latest_only"`` (default)
+        keeps only the newest regime; ``"segment_wise"`` keeps every regime,
+        fitting each on its own cohorts and borrowing the deep tail from older
+        regimes; ``"covariate"`` keeps all regimes as a treatment-coded level
+        (see :class:`Regime`).
     """
 
     target: str = "ratio"
