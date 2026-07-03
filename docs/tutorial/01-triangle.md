@@ -10,25 +10,13 @@
 - 누적값과 증분값, 그리고 삼각형을 들여다보는 법
 ```
 
-이 장은 전체 흐름의 **첫 단계**, 경험 데이터를 삼각형으로 정리하는
-자리입니다.
+이 튜토리얼의 **첫 단계**입니다 — 경험 데이터를 코호트 × 경과 삼각형으로
+정리해, 지금 손해율이 경과에 따라 어디에 서 있는지 봅니다. 이후 장들이 이
+삼각형 위에서 예측·검증을 얹습니다(전체 지도는 튜토리얼 index 참조).
 
-```{mermaid}
-flowchart LR
-  A["경험 데이터"] --> B["Triangle<br/>삼각형 (이번 장)"]
-  B --> C["link 진단"]
-  C --> D["예측"]
-  D --> E["불확실성"]
-  E --> F["regime · 백테스트"]
-  classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
-  classDef estimate fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
-  classDef validate fill:#e3f0e9,stroke:#5a9b86,color:#1c3a2e
-  classDef current fill:#ffe3a0,stroke:#cf9b00,color:#4a3800,stroke-width:2.5px
-  class A data
-  class B,C,D estimate
-  class E,F validate
-  class B current
-```
+이 장의 개념과 산술은 **암(CANCER) 담보** 하나를 주인공으로 삼각형 하나에서
+짚습니다. 데이터에는 4개 담보가 들어 있고 `groups`로 한꺼번에 다루지만(1.4절),
+구조를 눈에 익히기엔 담보 하나가 깔끔합니다.
 
 ## 1.1 손해율이란
 
@@ -92,14 +80,14 @@ $$
 
 | 경과월 | 누적 손해 | 누적 보험료 | 누적 손해율 |
 |---|---|---|---|
-| 1 | 0.11억 | 0.31억 | 0.34 |
-| 2 | 0.61억 | 0.63억 | 0.96 |
-| 3 | 1.14억 | 0.93억 | 1.21 |
-| 5 | 1.98억 | 1.55억 | 1.28 |
-| 6 | 2.51억 | 1.86억 | 1.35 |
+| 1 | 0.79백만 | 4.84백만 | 0.16 |
+| 2 | 5.02백만 | 9.51백만 | 0.53 |
+| 3 | 8.29백만 | 14.26백만 | 0.58 |
+| 5 | 15.47백만 | 23.72백만 | 0.65 |
+| 6 | 20.44백만 | 28.38백만 | 0.72 |
 
 위 표의 숫자가 실제 데이터에서 그대로 나오는지 바로 확인합니다. 내장
-데이터의 2023년 1월 수술담보 코호트를 같은 경과월에서 끊어 봅니다
+데이터의 2023년 1월 암담보 코호트를 같은 경과월에서 끊어 봅니다
 (데이터 구조는 1.3절, `Triangle`은 1.4절에서 자세히 다룹니다).
 
 ```python
@@ -107,35 +95,35 @@ import polars as pl
 import lossratio as lr
 
 df = lr.load_experience()
-tri = lr.Triangle(df.filter(pl.col("coverage") == "SURGERY"), groups="coverage")
+tri = lr.Triangle(df.filter(pl.col("coverage") == "CANCER"), groups="coverage")
 
 (tri.df
     .filter(pl.col("cohort") == pl.date(2023, 1, 1))
     .filter(pl.col("duration").is_in([1, 2, 3, 5, 6]))
     .select(
         "duration",
-        (pl.col("loss") / 1e8).round(2).alias("누적손해_억"),
-        (pl.col("premium") / 1e8).round(2).alias("누적보험료_억"),
+        (pl.col("loss") / 1e6).round(2).alias("누적손해_백만"),
+        (pl.col("premium") / 1e6).round(2).alias("누적보험료_백만"),
         pl.col("ratio").round(2).alias("누적손해율"),
     ))
 #> shape: (5, 4)
-#> ┌──────────┬─────────────┬───────────────┬────────────┐
-#> │ duration ┆ 누적손해_억 ┆ 누적보험료_억 ┆ 누적손해율 │
-#> │ ---      ┆ ---         ┆ ---           ┆ ---        │
-#> │ i64      ┆ f64         ┆ f64           ┆ f64        │
-#> ╞══════════╪═════════════╪═══════════════╪════════════╡
-#> │ 1        ┆ 0.11        ┆ 0.31          ┆ 0.34       │
-#> │ 2        ┆ 0.61        ┆ 0.63          ┆ 0.96       │
-#> │ 3        ┆ 1.14        ┆ 0.93          ┆ 1.21       │
-#> │ 5        ┆ 1.98        ┆ 1.55          ┆ 1.28       │
-#> │ 6        ┆ 2.51        ┆ 1.86          ┆ 1.35       │
-#> └──────────┴─────────────┴───────────────┴────────────┘
+#> ┌──────────┬───────────────┬─────────────────┬────────────┐
+#> │ duration ┆ 누적손해_백만 ┆ 누적보험료_백만 ┆ 누적손해율 │
+#> │ ---      ┆ ---           ┆ ---             ┆ ---        │
+#> │ i64      ┆ f64           ┆ f64             ┆ f64        │
+#> ╞══════════╪═══════════════╪═════════════════╪════════════╡
+#> │ 1        ┆ 0.79          ┆ 4.84            ┆ 0.16       │
+#> │ 2        ┆ 5.02          ┆ 9.51            ┆ 0.53       │
+#> │ 3        ┆ 8.29          ┆ 14.26           ┆ 0.58       │
+#> │ 5        ┆ 15.47         ┆ 23.72           ┆ 0.65       │
+#> │ 6        ┆ 20.44         ┆ 28.38           ┆ 0.72       │
+#> └──────────┴───────────────┴─────────────────┴────────────┘
 ```
 
-위 손으로 옮긴 표와 한 칸씩 그대로 맞습니다 — 손해율이 0.34에서 1.35로
+위 손으로 옮긴 표와 한 칸씩 그대로 맞습니다 — 손해율이 0.16에서 0.72로
 오른 것은 꾸며 낸 예시가 아니라 데이터에 실재하는 궤적입니다.
 
-같은 코호트인데도 누적 손해율이 0.34에서 1.35로 계속 올라갑니다. 이는
+같은 코호트인데도 누적 손해율이 0.16에서 0.72로 계속 올라갑니다. 이는
 실제로 위험이 나빠져서가 아니라, **분자(손해)와 분모(보험료)가 서로
 다른 속도로 쌓이기 때문**입니다. 장기 건강보험은 보장 초기에 손해가
 몰리는 경우가 많아, 초기에는 손해율이 빠르게 오르다 차차 완만해집니다.
@@ -220,17 +208,25 @@ df.select(["coverage", "uy_m", "cy_m", "duration_m", "incr_loss", "incr_premium"
 삼각형으로 집계합니다. 생성자가 스키마를 검증하고, 누적값과 파생
 열을 자동으로 더합니다.
 
-이번 튜토리얼은 구조 변화가 한 번 심어져 있는 수술담보에 집중하겠습니다.
+데이터에는 4개 담보가 들어 있습니다. `groups`에 담보 열을 넘기면 네 담보가
+한꺼번에 삼각형으로 올라가고, 이후 모든 추정·탐지가 담보별로 따로
+수행됩니다.
 
 ```python
-df_sur = df.filter(pl.col("coverage") == "SURGERY")
-tri = lr.Triangle(df_sur, groups="coverage")
+lr.Triangle(df, groups="coverage")
+#> <Triangle: 2,664 rows, 4 groups, 36 cohorts x 36 durations (M)>
+```
+
+이 장의 나머지는 그중 **암(CANCER) 담보** 하나에 초점을 맞춰 삼각형 구조를
+익힙니다(담보 하나면 칸을 짚어 보기 깔끔합니다). 담보가 여럿일 때의 이야기 —
+세그먼트별 손해율(6장), 구조 변화(5장) — 는 뒤 장에서 나머지 담보로
+확장합니다.
+
+```python
+tri = lr.Triangle(df.filter(pl.col("coverage") == "CANCER"), groups="coverage")
 tri
 #> <Triangle: 666 rows, 1 groups, 36 cohorts x 36 durations (M)>
 ```
-
-`groups` 인자에는 그룹을 나누는 열을 넘깁니다. 여러 담보를 한꺼번에
-넣으면 이후 모든 추정·탐지가 그룹별로 따로 수행됩니다.
 
 ```{admonition} 왜 월 단위가 기본인가 — 집계 주기의 목적
 :class: note
@@ -264,10 +260,10 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]
 #> │ ---        ┆ ---      ┆ ---         ┆ ---          ┆ ---      ┆ ---        │
 #> │ date       ┆ i64      ┆ f64         ┆ f64          ┆ f64      ┆ f64        │
 #> ╞════════════╪══════════╪═════════════╪══════════════╪══════════╪════════════╡
-#> │ 2023-01-01 ┆ 1        ┆ 1.0548252e7 ┆ 1.0548252e7  ┆ 0.336916 ┆ 0.336916   │
-#> │ 2023-01-01 ┆ 2        ┆ 5.0194064e7 ┆ 6.0742316e7  ┆ 0.961682 ┆ 1.575738   │
-#> │ 2023-01-01 ┆ 3        ┆ 5.2758793e7 ┆ 1.13501109e8 ┆ 1.214421 ┆ 1.741297   │
-#> │ 2023-01-01 ┆ 4        ┆ 3.8939539e7 ┆ 1.52440648e8 ┆ 1.224456 ┆ 1.254679   │
+#> │ 2023-01-01 ┆ 1        ┆ 791665.0    ┆ 791665.0     ┆ 0.163547 ┆ 0.163547   │
+#> │ 2023-01-01 ┆ 2        ┆ 4.230722e6  ┆ 5.022387e6   ┆ 0.528016 ┆ 0.905701   │
+#> │ 2023-01-01 ┆ 3        ┆ 3.266464e6  ┆ 8.288851e6   ┆ 0.581098 ┆ 0.687344   │
+#> │ 2023-01-01 ┆ 4        ┆ 3.954623e6  ┆ 1.2243474e7  ┆ 0.646468 ┆ 0.845927   │
 #> └────────────┴──────────┴─────────────┴──────────────┴──────────┴────────────┘
 ```
 
@@ -334,8 +330,7 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]
    import lossratio as lr
 
    df = lr.load_experience()
-   df_sur = df.filter(pl.col("coverage") == "SURGERY")
-   tri = lr.Triangle(df_sur, groups="coverage", grain="Q")
+   tri = lr.Triangle(df.filter(pl.col("coverage") == "CANCER"), groups="coverage", grain="Q")
 
 .. plot::
    :context: close-figs
@@ -418,9 +413,9 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "incr_premium", "premi
 import polars as pl
 import lossratio as lr
 
-df_sur = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
+df_cancer = lr.load_experience().filter(pl.col("coverage") == "CANCER")
 
-v = lr.TriangleValidation(df_sur, groups="coverage")
+v = lr.TriangleValidation(df_cancer, groups="coverage")
 print(v.is_clean)
 #> True
 
@@ -459,7 +454,7 @@ v.summary()
 import polars as pl
 import lossratio as lr
 
-tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "SURGERY"),
+tri = lr.Triangle(lr.load_experience().filter(pl.col("coverage") == "CANCER"),
                   groups="coverage")
 
 tri.total_agg()
@@ -470,9 +465,9 @@ tri.mask(holdout=6)
 
 ## 1.10 함께 보기
 
-- {doc}`2장 — 손해의 진전 <02-ata>`: 이웃한 경과를 이어
-  손해의 진전(ATA 인자)를 손으로 구하고, 경과별로 읽으며, ATA 인자가
-  코호트 간에 안정되는 구간을 진단합니다.
+- {doc}`손해율 예측 <04-projection>`: 완성한 삼각형의 빈 오른쪽 아래를
+  손해 모델과 보험료 모델로 채워, `Ratio` 합성으로 예측 손해율을 산출합니다.
+  (발전 인자 자체의 진단 — ATA·강도 — 는 부록에서 다룹니다.)
 - {doc}`API 레퍼런스 <../api>`의 `Triangle`, `TriangleValidation`,
   `load_experience`, `make_experience`, `validate_experience`,
   `derive_grain_columns`, `Total`, `Calendar`
