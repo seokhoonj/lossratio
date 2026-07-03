@@ -101,7 +101,7 @@ $$C_{i,k+1} = C_{i,k}\, f_k.$$
 ## 6. segment_wise — regime 간 borrow
 
 구조 변화(regime change)가 있으면 코호트를 regime별로 나눠 각자 적합한다
-([6장 — 구조 변화 탐지](../tutorial/06-regime)). 각 regime은 자기 코호트로
+([5장 — 구조 변화 탐지](../tutorial/06-regime)). 각 regime은 자기 코호트로
 **own depth**(자기 관측 최대 경과)까지 자기 레벨·형상으로 적합한다.
 
 최신(얇은) regime이 아직 도달하지 못한 후기 경과를 **borrow 구간**이라 한다 —
@@ -127,7 +127,7 @@ $u$ 무관).
 
 ## 7. 함께 보기
 
-- {doc}`3장 — 강도 <../tutorial/03-intensity>`: 강도 $g_k$의 정의와 진단.
-- {doc}`4장 — 손해율 예측 <../tutorial/04-projection>`: 사다리 사용법과 예측 표.
-- {doc}`6장 — 구조 변화 탐지 <../tutorial/06-regime>`: regime과 세 treatment.
-- {doc}`9장 — 공변량 <../tutorial/09-covariates>`: 공변량으로 속성별 분해.
+- {doc}`부록 — 강도 <../tutorial/03-intensity>`: 강도 $g_k$의 정의와 진단.
+- {doc}`2장 — 손해율 예측 <../tutorial/02-projection>`: 손해·보험료 모델과 예측 표.
+- {doc}`5장 — 구조 변화 탐지 <../tutorial/06-regime>`: regime과 세 treatment.
+- {doc}`6장 — 공변량 <../tutorial/09-covariates>`: 공변량으로 속성별 분해.

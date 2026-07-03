@@ -42,7 +42,7 @@ flowchart TB
   R --> RF["<b>RatioFit</b><br/>예측 손해율"]
   OPT["<b>옵션 (추정기 인자)</b><br/>불확실성 4장 · 구조 변화 5장 · 공변량 6장"] -. 끼움 .-> LM
   T -. 진단 (선택) .-> DIAG["ATA · 강도 · ChainLadder<br/>부록"]
-  RF --> V["<b>검증 (직교)</b><br/>백테스트 · 안정성 · 7장"]
+  RF --> V["<b>검증 (직교)</b><br/>백테스트 7장 · 안정성 8장"]
   classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
   classDef model fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
   classDef result fill:#ffe3a0,stroke:#cf9b00,color:#4a3800
@@ -64,7 +64,7 @@ flowchart TB
 - **3-6장은 예측을 더 낫게·강건하게** 만드는 것들입니다 — 코호트 보정, 불확실성
   밴드, 구조 변화, 세그먼트. regime·불확실성·공변량은 *별도 단계가 아니라 추정기를
   만들 때 끼우는 인자*입니다.
-- **7장은 그 결과를 검증**합니다 (백테스트·안정성) — 앞 흐름의 "다음 단계"가
+- **7-8장은 그 결과를 검증**합니다 (백테스트·안정성) — 앞 흐름의 "다음 단계"가
   아니라 완성된 추정기를 통째로 평가하는 별도 축입니다.
 - **인자(ATA·강도)와 벤치마크(ChainLadder)** 는 예측이 이상할 때 속을 들여다보는
   **부록**입니다 — 예측의 전제가 아니라 진단 도구입니다.
@@ -97,16 +97,14 @@ flowchart TB
   - 세그먼트별 손해율 — 분리(groups)와 공변량(covariates)
   - 세그먼트를 쪼개 따로 적합(`groups`, 완전 분리) vs 형상 공유 + 수준 회귀(`covariates`, 부분 풀링), `.coefficients`와 `predict(by=)`
 * - 7
-  - 표본 외 검증 — 백테스트와 안정성
-  - 달력 대각선 hold-out, A/E Error, rolling-origin 신뢰도 곡선과 방법 비교, go-forward 안정성과 freeze 게이트
+  - 표본 외 검증 — 백테스트
+  - 달력 대각선 hold-out, A/E Error, rolling-origin 신뢰도 곡선과 방법 비교(`EstimatorComparison`)
+* - 8
+  - 예측 안정성 — 언제부터 믿을까
+  - go-forward 안정성 진단(`Stability`), freeze 게이트, `extend`로 관측 최대 경과 너머 이어 보기
 * - 부록
   - 발전 인자 진단 — ATA·강도와 ChainLadder 벤치마크
   - 예측이 이상할 때 속 들여다보기: ATA `f_k`(곱셈, 차용 도너·벤치마크 엔진), 강도 `g_k`(덧셈, 본류 재료), 고전 `ChainLadder`
-```
-
-```{note}
-이 튜토리얼은 위 목차로 재구성 중입니다. 아래 차례의 파일 이름·순서는 각 장을
-개편하며 순차적으로 정리됩니다.
 ```
 
 ```{toctree}
