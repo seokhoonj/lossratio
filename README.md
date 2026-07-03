@@ -1,7 +1,7 @@
 # lossratio
 
 Loss ratio analytics for long-term health insurance — cohort experience
-analysis, a ladder of loss-side projection models, a denominator (premium)
+analysis, a family of loss-side projection models, a denominator (premium)
 model, loss-ratio composition with an uncertainty band, regime detection, and
 out-of-sample backtest validation on long-format experience data.
 
@@ -35,7 +35,7 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
   from `uy_m` and `cy_m` if absent). Cumulative is the unmarked default
   (`loss`, `premium`, `ratio`); per-period values carry an `incr_` prefix.
 
-**Loss-side ladder** — sklearn-style estimators, each returning a `LossFit`:
+**Loss models** — sklearn-style estimators, each returning a `LossFit`:
 
 - `PooledLoss` — complete pooling: one shared duration shape (incremental loss
   intensity per unit premium), premium-anchored additive projection. The safe
