@@ -114,12 +114,13 @@ flowchart TB
 :caption: 차례
 
 01-triangle
-02-ata
-03-intensity
+02-projection
 04-projection
 05-uncertainty
 06-regime
+09-covariates
 07-backtest
 08-stability
-09-covariates
+02-ata
+03-intensity
 ```
