@@ -300,24 +300,24 @@ tri.df.select(["cohort", "duration", "incr_loss", "loss", "ratio", "incr_ratio"]
 `.` = 미관측 = 예측 대상):
 
 ```text
-  calendar layout (staggered)
-   cy ->  1   2   3   4
- uy +----------------+
-  1 | X   X   X   X  |
-  2 |     X   X   X  |
-  3 |         X   X  |
-  4 |             X  |
-    +----------------+
-        |   realign by  duration = cy - uy
-        v
-  duration-aligned (right triangle)
-   duration -> 1   2   3   4
- uy +----------------+
-  1 | X   X   X   X  |
-  2 | X   X   X   .  |
-  3 | X   X   .   .  |
-  4 | X   .   .   .  |
-    +----------------+
+  달력(cy) 배치 — 코호트마다 출발이 어긋난 계단
+  cy    1   2   3   4
+      +---------------+
+  uy1 | X   X   X   X |
+  uy2 |     X   X   X |
+  uy3 |         X   X |
+  uy4 |             X |
+      +---------------+
+              │  duration = cy - uy 로 재정렬
+              ▼
+  경과(duration) 정렬 — 출발을 경과 1로 모은 직각삼각형
+  dur   1   2   3   4
+      +---------------+
+  uy1 | X   X   X   X |
+  uy2 | X   X   X   . |
+  uy3 | X   X   .   . |
+  uy4 | X   .   .   . |
+      +---------------+
 ```
 
 ```{eval-rst}
