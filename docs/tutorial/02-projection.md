@@ -15,7 +15,7 @@
 채웁니다. 손해율은 손해를 보험료로 나눈 값이니, **손해와 보험료를 각각 미래
 경과로 예측한 뒤 나눕니다**.
 
-이 장의 주인공은 **2025년 6월 암(CANCER) 코호트**입니다. 인수된 지 얼마 안 돼
+이 장의 예시는 **2025년 6월 암(CANCER) 코호트**입니다. 인수된 지 얼마 안 돼
 경과 7까지만 관측됐습니다.
 
 ## 2.1 무엇을 예측하는가
@@ -169,38 +169,22 @@ rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
 올라 경과 36에서 0.848에 닿습니다. **관측 끝의 값이 최종이 아니라**, 분모효과가
 마저 풀리며 더 오른다는 것을 예측이 보여 줍니다.
 
+궤적을 그림으로 보려면 손으로 matplotlib을 짤 필요 없이 결과 객체의
+`.plot()` 한 줄이면 됩니다 — 그룹의 **모든 코호트**를 관측(실선)·예측(점선)으로
+한 번에 그립니다.
+
 ```{eval-rst}
 .. plot::
    :context: close-figs
-   :caption: 2025-06 암담보 코호트(경과 1-7만 관측)의 누적 손해율. 점선 오른쪽이 예측 구간이다. 관측 끝의 0.78이 최종이 아니라 경과 36에서 약 0.85까지 오른다.
+   :caption: CANCER 담보의 코호트별 누적 손해율 예측. 관측 구간은 실선, 예측 구간은 점선(끝점은 프런티어)이다. 최근 코호트일수록 관측이 짧아 예측 구간이 길다.
 
    import polars as pl
    import lossratio as lr
-   import matplotlib.pyplot as plt
 
-   df = lr.load_experience().filter(pl.col("coverage") == "CANCER")
-   tri = lr.Triangle(df, groups="coverage")
-   COH = pl.lit("2025-06-01").str.to_date()
-
-   fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
-   traj = fit.df.filter(pl.col("cohort") == COH).sort("duration")
-   dur = traj["duration"].to_list()
-   ratio = traj["ratio_proj"].to_list()
-   src = traj["source"].to_list()
-   last = max(d for d, s in zip(dur, src) if s == "observed")
-
-   obs = [(d, r) for d, r in zip(dur, ratio) if d <= last]
-   proj = [(d, r) for d, r in zip(dur, ratio) if d >= last]
-
-   fig, ax = plt.subplots(figsize=(6.2, 3.6))
-   ax.plot([d for d, r in obs], [r for d, r in obs], "-o", color="black",
-           ms=4, label="observed")
-   ax.plot([d for d, r in proj], [r for d, r in proj], "--", color="#1f6fb2",
-           label="projected")
-   ax.axvline(last + 0.5, color="gray", ls=":", lw=1)
-   ax.set_xlabel("duration (months)")
-   ax.set_ylabel("cumulative loss ratio")
-   ax.legend()
+   tri = lr.Triangle(
+       lr.load_experience().filter(pl.col("coverage") == "CANCER"),
+       groups="coverage")
+   lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).plot(metric="ratio")
 ```
 
 ## 2.5 결과 읽기 — summary · predict · plot
