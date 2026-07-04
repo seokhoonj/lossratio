@@ -99,12 +99,12 @@ exp(-1.61) = 0.20      70+ 는 0.20 배
 fit.predict()               # 전체 예측: 코호트 x 경과 (coverage 단위)
 fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 #> coverage cohort     duration age_band loss_proj   ratio_proj source
-#> CANCER   2023-01-01 1        20s      248097.05   0.284      observed
-#> CANCER   2023-01-01 1        30s      231168.33   0.212      observed
-#> CANCER   2023-01-01 1        40s      160962.81   0.144      observed
-#> CANCER   2023-01-01 1        50s       83324.38   0.106      observed
-#> CANCER   2023-01-01 1        60s       49269.00   0.076      observed
-#> CANCER   2023-01-01 1        70+       18843.43   0.057      observed
+#> CANCER   2023-01-01 1        20s        2481.55   0.285      observed
+#> CANCER   2023-01-01 1        30s        2311.91   0.212      observed
+#> CANCER   2023-01-01 1        40s        1609.85   0.144      observed
+#> CANCER   2023-01-01 1        50s         833.35   0.106      observed
+#> CANCER   2023-01-01 1        60s         492.84   0.076      observed
+#> CANCER   2023-01-01 1        70+         188.49   0.057      observed
 ```
 
 각 (코호트, 경과)의 전체 예측을 연령대 셀로 나눠 담은 표다 — 연령대별
@@ -116,8 +116,8 @@ fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 `loss_proj` 를 더하면 전체 예측의 한 셀 값과 셀 단위로 정확히 일치한다:
 
 ```text
-248097.05 + 231168.33 + 160962.81 + 83324.38 + 49269.00 + 18843.43
-  = 791665.00     # = predict() 의 CANCER 2023-01-01 경과 1 loss_proj
+2481.55 + 2311.91 + 1609.85 + 833.35 + 492.84 + 188.49
+  = 7918.00     # = predict() 의 CANCER 2023-01-01 경과 1 loss_proj
 ```
 
 ```python
@@ -129,9 +129,9 @@ by   = fit.predict(by="age_band")
 cell = dict(coverage="CANCER", cohort=date(2023, 1, 1), duration=1)
 # CANCER 2023-01-01, 경과 1 한 셀
 full.filter(**{k: pl.lit(v) for k, v in cell.items()})["loss_proj"][0]
-#> 791665.0
+#> 7918.0
 round(by.filter(**{k: pl.lit(v) for k, v in cell.items()})["loss_proj"].sum(), 2)
-#> 791665.0     # 부동소수점 잔차(~1e-9)만 빼면 셀 단위로 일치
+#> 7918.0     # 부동소수점 잔차(~1e-9)만 빼면 셀 단위로 일치
 ```
 
 같은 항등식이 좌측 절단 코호트·미관측 셀·경과에 따라 변하는 보험료 믹스가
@@ -225,12 +225,12 @@ lr.CredibleLoss(covariates=["age_band", "channel"],
 fit = lr.CredibleLoss(covariates=["age_band", "channel"]).fit(tri)
 fit.predict(by=["age_band", "channel"])
 #> coverage cohort     duration age_band channel loss_proj    ratio_proj
-#> CANCER   2023-01-01 1        20s      FC      92366.41     0.252
-#> CANCER   2023-01-01 1        20s      GA      77926.11     0.316
-#> CANCER   2023-01-01 1        20s      ON      22355.79     0.257
-#> CANCER   2023-01-01 1        20s      TM      54678.98     0.317
+#> CANCER   2023-01-01 1        20s      FC        923.86     0.252
+#> CANCER   2023-01-01 1        20s      GA        779.52     0.316
+#> CANCER   2023-01-01 1        20s      ON        223.65     0.257
+#> CANCER   2023-01-01 1        20s      TM        546.83     0.317
 #> ...                                                          (24행 = 6 x 4)
-# 한 셀의 24행을 더하면 -> 791665.0 (= predict() 의 같은 셀)
+# 한 셀의 24행을 더하면 -> 7918.0 (= predict() 의 같은 셀)
 ```
 
 ## 6.6 전체 예측은 (거의) 안 바뀐다

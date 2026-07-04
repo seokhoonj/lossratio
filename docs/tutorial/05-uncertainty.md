@@ -49,7 +49,7 @@ own = lr.PooledLoss().fit(tri).to_polars().filter(pl.col("source") == "own")
 own.select(
     ["cohort", "duration", "loss_proc_se", "loss_param_se", "loss_total_se"]
 ).tail(2)
-#> 최근 코호트의 한 셀:  proc_se 1.34e8,  param_se 4.39e7,  total_se 1.41e8
+#> 최근 코호트의 한 셀:  proc_se 1.34e6,  param_se 4.39e5,  total_se 1.41e6
 ```
 
 두 오차가 정말 직각으로 합쳐지는지는 그 셀에서 곧장 확인된다 — 과정오차와
@@ -60,14 +60,14 @@ cell = own.tail(1)
 proc = cell["loss_proc_se"][0]
 param = cell["loss_param_se"][0]
 total = cell["loss_total_se"][0]
-print(f"proc={proc:.4e}  param={param:.4e}")          #> proc=1.3353e+08  param=4.3900e+07
-print(f"sqrt(proc^2 + param^2) = {(proc**2 + param**2) ** 0.5:.4e}")  #> sqrt(proc^2 + param^2) = 1.4056e+08
-print(f"loss_total_se          = {total:.4e}")        #> loss_total_se          = 1.4056e+08
+print(f"proc={proc:.4e}  param={param:.4e}")          #> proc=1.3353e+06  param=4.3900e+05
+print(f"sqrt(proc^2 + param^2) = {(proc**2 + param**2) ** 0.5:.4e}")  #> sqrt(proc^2 + param^2) = 1.4056e+06
+print(f"loss_total_se          = {total:.4e}")        #> loss_total_se          = 1.4056e+06
 ```
 
 ## 4.2 표준오차와 변동계수
 
-**표준오차**(standard error, SE)는 예측의 흔들림을 절대 단위(원)로
+**표준오차**(standard error, SE)는 예측의 흔들림을 절대 단위(달러)로
 나타낸다. 그런데 손해 규모가 큰 코호트는 SE도 자연히 크기 마련이라,
 코호트끼리 비교하려면 크기를 정규화해야 한다. 그것이 **변동계수**
 (coefficient of variation, CV)다.
@@ -337,9 +337,9 @@ def se_last(fit):
     return (fit.to_polars().filter(pl.col("source") == "own")
             .select("loss_total_se").tail(1).item())
 
-print(f"analytical        {se_last(base):.3e}")   #> analytical        1.406e+08
-print(f"residual boot     {se_last(boot):.3e}")   #> residual boot     2.013e+08
-print(f"weighted  boot    {se_last(wboot):.3e}")  #> weighted  boot    1.812e+08
+print(f"analytical        {se_last(base):.3e}")   #> analytical        1.406e+06
+print(f"residual boot     {se_last(boot):.3e}")   #> residual boot     2.013e+06
+print(f"weighted  boot    {se_last(wboot):.3e}")  #> weighted  boot    1.807e+06
 ```
 
 부트스트랩은 분포가 비대칭이거나(꼬리가 한쪽으로 길거나) 정규 가정이
@@ -372,9 +372,9 @@ first = (
     .with_columns((pl.col("boot_se") / pl.col("loss_total_se")).alias("boot/ana"))
 )
 first.select(["cohort", "duration", "loss_total_se", "boot_se", "boot/ana"]).tail(3)
-#> 2025-04-01  dur 4   analytical 5.682e7   boot 5.693e7   boot/ana 1.00
-#> 2025-07-01  dur 3   analytical 6.979e7   boot 6.924e7   boot/ana 0.99
-#> 2025-10-01  dur 2   analytical 6.658e7   boot 6.773e7   boot/ana 1.02
+#> 2025-04-01  dur 4   analytical 5.682e5   boot 5.693e5   boot/ana 1.00
+#> 2025-07-01  dur 3   analytical 6.979e5   boot 6.924e5   boot/ana 0.99
+#> 2025-10-01  dur 2   analytical 6.658e5   boot 6.773e5   boot/ana 1.02
 ```
 
 닫힌형 분산 분해와 재표집이라는 *서로 다른 두 길*이 첫 예측 셀에서 같은 SE에
@@ -404,7 +404,7 @@ lr.CredibleLoss().fit(tri).to_polars()["loss_total_se"].max()
 lr.CredibleLoss(
     uncertainty=lr.ResidualBootstrap(n_replicates=999, seed=42)
 ).fit(tri).to_polars()["loss_total_se"].max()
-#> 1.72e8  (재표집으로 채워진 총 표준오차)
+#> 1.72e6  (재표집으로 채워진 총 표준오차)
 ```
 ::::
 
