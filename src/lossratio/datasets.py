@@ -85,6 +85,12 @@ _N_COHORTS = 36
 _N_DURATIONS = 36
 _MAX_CYM_IDX = _N_COHORTS - 1
 
+# Amounts are calibrated in won, then divided by this to land in a compact
+# synthetic currency unit (read as dollars) so the demo numbers stay readable.
+# The loss ratio (loss / premium) is scale-invariant, so this changes only the
+# absolute loss / premium magnitudes, never the ratios.
+_UNIT_SCALE = 100
+
 
 def _normalised(
     weights: tuple[float, ...], factors: tuple[float, ...]
@@ -191,8 +197,8 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                             incr_premium * seg_ratio * weights[k] * _N_DURATIONS * noise
                         )
 
-                        # Real-world premium / loss are recorded in won
-                        # (integer).
+                        # Scale won amounts to the compact synthetic unit
+                        # (see `_UNIT_SCALE`) and store as integers.
                         records.append(
                             {
                                 "coverage":     coverage,
@@ -201,8 +207,8 @@ def make_experience(seed: int = _DEFAULT_SEED) -> pl.DataFrame:
                                 "uy_m":         uy_m,
                                 "cy_m":         cy_m,
                                 "duration_m":        k + 1,
-                                "incr_loss":    round(incr_loss),
-                                "incr_premium": round(incr_premium),
+                                "incr_loss":    round(incr_loss / _UNIT_SCALE),
+                                "incr_premium": round(incr_premium / _UNIT_SCALE),
                             }
                         )
 
