@@ -4,23 +4,6 @@
 자리입니다. 진단 단계는 두 잣대로 나뉩니다 — 이 장의 ATA 인자(곱셈),
 그리고 부록 B의 강도(덧셈).
 
-```{mermaid}
-flowchart LR
-  A["경험 데이터"] --> B["Triangle<br/>삼각형 (1장)"]
-  B --> C["link 진단<br/>ATA 인자 (이번 장)"]
-  C --> D["예측"]
-  D --> E["불확실성"]
-  E --> F["regime · 백테스트"]
-  classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
-  classDef estimate fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
-  classDef validate fill:#e3f0e9,stroke:#5a9b86,color:#1c3a2e
-  classDef current fill:#ffe3a0,stroke:#cf9b00,color:#4a3800,stroke-width:2.5px
-  class A data
-  class B,C,D estimate
-  class E,F validate
-  class C current
-```
-
 1장에서 만든 직각삼각형은 오른쪽 아래가 비어 있었습니다. 최근에 인수된
 코호트일수록 아직 경과 기간이 짧기 때문입니다. 담당자가 실제로 던지는
 질문은 이것입니다.

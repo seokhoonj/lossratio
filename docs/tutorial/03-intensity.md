@@ -4,23 +4,6 @@
 인자가 손해를 *직전 손해*와 비교했다면, 이 장의 강도는 손해를
 *보험료(노출)*로 나눕니다.
 
-```{mermaid}
-flowchart LR
-  A["경험 데이터"] --> B["Triangle<br/>삼각형 (1장)"]
-  B --> C["link 진단<br/>강도 / 풀링 (이번 장)"]
-  C --> D["예측"]
-  D --> E["불확실성"]
-  E --> F["regime · 백테스트"]
-  classDef data fill:#dceaf6,stroke:#4a7ba6,color:#16344e
-  classDef estimate fill:#eaf1f8,stroke:#6f8ca3,color:#22313c
-  classDef validate fill:#e3f0e9,stroke:#5a9b86,color:#1c3a2e
-  classDef current fill:#ffe3a0,stroke:#cf9b00,color:#4a3800,stroke-width:2.5px
-  class A data
-  class B,C,D estimate
-  class E,F validate
-  class C current
-```
-
 부록 A에서는 한 경과에서 다음 경과로 누적 손해가 몇 배가 되는지를 ATA
 인자로 보았습니다. ATA 인자는 **직전 누적 손해**를 분모로 삼습니다. 그런데
 갓 인수된 코호트는 누적 손해가 아직 작아서, 한 기간만 손해가 조금 더 나도

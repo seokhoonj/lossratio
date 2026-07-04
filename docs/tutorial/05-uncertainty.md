@@ -203,8 +203,8 @@ tri = lr.Triangle(df, groups="coverage", grain="Q")
 fit = lr.Ratio(loss=lr.ChainLadder(), premium=lr.PooledPremium()).fit(tri)
 d = fit.to_polars().filter(pl.col("source") == "own")
 
-# 분모는 SE를 내지 않고(premium_total_se = null), 손해율 밴드는
-# 손해 SE를 분모로 나눈 것과 정확히 같다.
+# 분모는 SE를 내지 않고(premium_total_se = null),
+# 손해율 밴드는 손해 SE를 분모로 나눈 것과 정확히 같다.
 d.select(
     pl.col("premium_total_se").max().alias("premium_se"),
     (pl.col("ratio_se") - pl.col("loss_total_se") / pl.col("premium_proj"))
