@@ -147,7 +147,7 @@ tri = lr.Triangle(df, groups="coverage", grain="Q")
 
 pooled = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).summary()
 cred = lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()).fit(tri).summary()
-#> 코호트        PooledLoss ratio_proj   CredibleLoss ratio_proj
+#> cohort        PooledLoss ratio_proj   CredibleLoss ratio_proj
 #> 2025-01-01    1.299                   1.227    <- 평균보다 낮게 달려온 코호트: 아래로
 #> 2025-04-01    1.345                   1.237
 #> 2025-07-01    1.375                   1.346
@@ -192,7 +192,7 @@ lr.CredibleLoss().fit(tri).credibility.head(3)
   0에 가깝다(대부분 풀 평균으로 당겨진다).
 - `psi` — 코호트 간 분산 $\hat\psi$(모든 코호트 공통 값).
 
-```{admonition} `Z`를 "이만큼 믿을 수 있다"로 읽지 말 것
+```{admonition} Z를 "이만큼 믿을 수 있다"로 읽지 말 것
 :class: warning
 
 `Z`는 **코호트당 하나**다 — 경과 셀별로 나오는 값이 아니라, 그 코호트의 *자기

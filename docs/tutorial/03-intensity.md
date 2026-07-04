@@ -311,24 +311,24 @@ agg = (link.df
     .agg(pl.col("loss_delta").sum(), pl.col("premium_delta").sum(), pl.col("premium_from").sum())
     .with_columns(
         g=pl.col("loss_delta") / pl.col("premium_from"),
-        기간손해율=pl.col("loss_delta") / pl.col("premium_delta"),
-        보험료비중=pl.col("premium_delta") / pl.col("premium_from"),
+        incr_ratio=pl.col("loss_delta") / pl.col("premium_delta"),
+        prem_share=pl.col("premium_delta") / pl.col("premium_from"),
     )
     .sort("duration_from"))
 
 agg.filter(pl.col("duration_from").is_in([1, 6])).select(
     pl.col("duration_from").alias("duration"),
-    pl.col("g").round(4), pl.col("기간손해율").round(4), pl.col("보험료비중").round(4),
-    (pl.col("기간손해율") * pl.col("보험료비중")).round(4).alias("곱"))
+    pl.col("g").round(4), pl.col("incr_ratio").round(4), pl.col("prem_share").round(4),
+    (pl.col("incr_ratio") * pl.col("prem_share")).round(4).alias("product"))
 #> shape: (2, 5)
-#> ┌──────────┬────────┬────────────┬────────────┬────────┐
-#> │ duration ┆ g      ┆ 기간손해율 ┆ 보험료비중 ┆ 곱     │
-#> │ ---      ┆ ---    ┆ ---        ┆ ---        ┆ ---    │
-#> │ i64      ┆ f64    ┆ f64        ┆ f64        ┆ f64    │
-#> ╞══════════╪════════╪════════════╪════════════╪════════╡
-#> │ 1        ┆ 1.2548 ┆ 1.2537     ┆ 1.0009     ┆ 1.2548 │
-#> │ 6        ┆ 0.2189 ┆ 1.3128     ┆ 0.1668     ┆ 0.2189 │
-#> └──────────┴────────┴────────────┴────────────┴────────┘
+#> ┌──────────┬────────┬────────────┬────────────┬─────────┐
+#> │ duration ┆ g      ┆ incr_ratio ┆ prem_share ┆ product │
+#> │ ---      ┆ ---    ┆ ---        ┆ ---        ┆ ---     │
+#> │ i64      ┆ f64    ┆ f64        ┆ f64        ┆ f64     │
+#> ╞══════════╪════════╪════════════╪════════════╪═════════╡
+#> │ 1        ┆ 1.2548 ┆ 1.2537     ┆ 1.0009     ┆ 1.2548  │
+#> │ 6        ┆ 0.2189 ┆ 1.3128     ┆ 0.1668     ┆ 0.2189  │
+#> └──────────┴────────┴────────────┴────────────┴─────────┘
 ```
 
 강도는 경과 1의 1.25에서 경과 6의 0.22로 뚝 떨어집니다. 그런데 **기간
