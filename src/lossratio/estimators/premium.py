@@ -421,6 +421,7 @@ def _fit_premium(
     mechanism: str = "pooled",
     sigma_method: str = "locf",
     regime: Any = None,
+    treatment: str | None = None,
     recent: int | None = None,
     confidence_level: float = 0.95,
     psi: float | str = "auto",
@@ -449,9 +450,10 @@ def _fit_premium(
         )
     from ..diagnostics.regime import Regime, _resolve_to_regime
     regime = _resolve_to_regime(regime, triangle)
+    # `treatment` is the estimator's consumption knob (None -> latest_only). It
+    # only bites when a concrete Regime is present; with no regime it is a no-op.
     treatment = (
-        getattr(regime, "treatment", "latest_only")
-        if isinstance(regime, Regime) else "latest_only"
+        (treatment or "latest_only") if isinstance(regime, Regime) else "latest_only"
     )
     if treatment == "covariate":
         raise ValueError(

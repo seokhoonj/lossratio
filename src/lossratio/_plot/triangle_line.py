@@ -44,9 +44,10 @@ def _regime_faint_color(regime_id: int) -> str:
 def _regime_label_frame(triangle, resolved, grp):
     """Per-cohort ``regime_id`` derived from the regime's change points.
 
-    Uniform for auto-detected and manual (``Regime.at``) regimes: a cohort's
-    id is ``1 + (number of the group's change points at or before it)``. This
-    covers every triangle cohort (a manual ``Regime.at`` carries only change
+    Uniform for auto-detected and manual (``Regime(change=...)``) regimes: a
+    cohort's id is ``1 + (number of the group's change points at or before
+    it)``. This covers every triangle cohort (a manual ``Regime(...)`` carries
+    only change
     points, not a per-cohort label frame). Returns ``[groups..., cohort,
     regime_id]`` or ``None`` when the regime has no change points.
     """
@@ -209,8 +210,8 @@ def plot(
         if not isinstance(resolved, Regime):
             raise TypeError(
                 "Triangle.plot(regime=...) accepts a Regime or RegimeDetector; "
-                f"got {type(resolved).__name__}. Wrap a manual cut with "
-                "Regime.at(...)."
+                f"got {type(resolved).__name__}. Build a manual cut with "
+                "Regime(change=...)."
             )
         labels = _regime_label_frame(triangle, resolved, grp)
         if labels is not None:

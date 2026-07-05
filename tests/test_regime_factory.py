@@ -1,4 +1,4 @@
-"""Tests for the regime entry points: ``Regime.at`` (eager manual) and
+"""Tests for the regime entry points: ``Regime`` (eager manual) and
 ``RegimeDetector`` (deferred detection config)."""
 
 from __future__ import annotations
@@ -22,26 +22,26 @@ def _sur_triangle() -> lr.Triangle:
 
 
 def test_regime_at_single_string_change():
-    r = lr.Regime.at(change="2024-07-01")
+    r = lr.Regime(change="2024-07-01")
     assert isinstance(r, lr.Regime)
     assert r.method == "manual"
     assert r.change_points == [date(2024, 7, 1)]
 
 
 def test_regime_at_accepts_date_and_datetime():
-    r1 = lr.Regime.at(change=date(2024, 7, 1))
-    r2 = lr.Regime.at(change=datetime(2024, 7, 1, 12, 0))
+    r1 = lr.Regime(change=date(2024, 7, 1))
+    r2 = lr.Regime(change=datetime(2024, 7, 1, 12, 0))
     assert r1.change_points == r2.change_points == [date(2024, 7, 1)]
 
 
 def test_regime_at_list_of_changes():
-    r = lr.Regime.at(change=["2024-07-01", "2024-10-01"])
+    r = lr.Regime(change=["2024-07-01", "2024-10-01"])
     assert r.change_points == [date(2024, 7, 1), date(2024, 10, 1)]
     assert r.changes.height == 2
 
 
 def test_regime_at_with_groups():
-    r = lr.Regime.at(
+    r = lr.Regime(
         change=["2024-07-01", "2024-10-01"],
         groups={"coverage": ["SURGERY", "CI"]},
     )
@@ -56,8 +56,8 @@ def test_regime_at_with_groups():
 def test_regime_at_with_multi_column_groups():
     """A multi-column groups mapping must keep ALL group columns -- both as
     the Regime's ``.groups`` (a list) and as columns of ``.changes``.
-    Regression for B3: ``Regime.at`` previously stored only the first key."""
-    r = lr.Regime.at(
+    Regression for B3: ``Regime`` previously stored only the first key."""
+    r = lr.Regime(
         change=["2024-07-01", "2025-01-01"],
         groups={"coverage": ["SURGERY", "SURGERY"], "block": ["E", "O"]},
     )
@@ -72,14 +72,14 @@ def test_regime_at_with_multi_column_groups():
 
 def test_regime_at_validation_errors():
     with pytest.raises(ValueError, match="length"):
-        lr.Regime.at(change=[])
+        lr.Regime(change=[])
     with pytest.raises(ValueError, match="equal length"):
-        lr.Regime.at(
+        lr.Regime(
             change=["2024-07-01", "2024-10-01"],
             groups={"coverage": ["SURGERY"]},
         )
     with pytest.raises(ValueError, match="ISO date"):
-        lr.Regime.at(change="not-a-date")
+        lr.Regime(change="not-a-date")
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +91,6 @@ def test_regime_detector_is_a_config_object():
     det = lr.RegimeDetector()
     assert isinstance(det, lr.RegimeDetector)
     assert det.window == "auto"            # the canonical eager default
-    assert det.treatment == "latest_only"
 
 
 def test_regime_detector_detect_yields_regime():
@@ -102,9 +101,7 @@ def test_regime_detector_detect_yields_regime():
     assert r.window == 12
 
 
-def test_regime_detector_forwards_method_and_treatment():
+def test_regime_detector_forwards_method():
     tri = _sur_triangle()
     r = lr.RegimeDetector(window=12, method="hclust", n_regimes=2).detect(tri)
     assert r.method == "hclust"
-    r2 = lr.RegimeDetector(treatment="segment_wise").detect(tri)
-    assert r2.treatment == "segment_wise"   # the field that the closure dropped

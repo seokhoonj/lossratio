@@ -1,11 +1,11 @@
 """segment_wise regime treatment: the multi-regime cascade.
 
-``Regime(treatment="segment_wise")`` keeps EVERY regime (vs ``"latest_only"``
-which drops every cohort before the latest change), fits each regime on its own
-cohorts (own level + own shape to its own observed depth), and borrows only the
-unobservable deep tail from the pooled level-invariant link ratio of the older
-(deeper) regimes. The default ``"latest_only"`` leaves all existing paths
-unchanged.
+The estimator ``treatment="segment_wise"`` knob keeps EVERY regime (vs
+``"latest_only"`` which drops every cohort before the latest change), fits each
+regime on its own cohorts (own level + own shape to its own observed depth), and
+borrows only the unobservable deep tail from the pooled level-invariant link
+ratio of the older (deeper) regimes. The default ``"latest_only"`` leaves all
+existing paths unchanged.
 """
 
 import polars as pl
@@ -17,24 +17,27 @@ CHANGE = "2024-07-01"            # a mid-span cohort (data spans 2023-01..2025-1
 
 
 def test_treatment_default_and_validation(tri):
-    assert lr.Regime.at(change=CHANGE).treatment == "latest_only"
-    assert lr.Regime.at(change=CHANGE, treatment="segment_wise").treatment == (
-        "segment_wise"
-    )
+    # treatment now lives on the ESTIMATOR (default latest_only on loss), not the
+    # Regime; the estimator validates it at construction.
+    assert lr.PooledLoss().treatment == "latest_only"
+    assert lr.PooledLoss(treatment="segment_wise").treatment == "segment_wise"
     with pytest.raises(ValueError):
-        lr.Regime.at(change=CHANGE, treatment="bogus")
-    # detect path carries it too -- and survives .accepted() (the evidence-
-    # gated regime that actually drives a fit), for every treatment.
-    reg = lr.RegimeDetector(target="ratio", treatment="segment_wise").detect(tri)
-    assert reg.treatment == "segment_wise"
+        lr.PooledLoss(treatment="bogus")
+    # the detect path still yields an evidence-gated regime (.accepted()) that a
+    # fit can consume under every treatment -- the treatment rides on the fit.
+    reg = lr.RegimeDetector(target="ratio").detect(tri)
+    assert isinstance(reg, lr.Regime)
     for t in ("latest_only", "segment_wise", "covariate"):
-        assert lr.RegimeDetector(target="ratio", treatment=t).detect(tri).accepted().treatment == t
+        assert lr.CredibleLoss(treatment=t).treatment == t
+        assert isinstance(
+            lr.RegimeDetector(target="ratio").detect(tri).accepted(), lr.Regime
+        )
 
 
 def test_default_treatment_is_byte_identical_to_plain_latest_only(tri):
     # a default-treatment Regime must fit EXACTLY as the equivalent resolved cut
     # (the latest_only path is untouched by the segment_wise wiring).
-    reg = lr.Regime.at(change=CHANGE)                 # default latest_only
+    reg = lr.Regime(change=CHANGE)                    # default latest_only
     from lossratio.diagnostics.regime import _resolve_regime
     resolved = _resolve_regime(reg, tri)
     a = lr.PooledLoss(regime=reg).fit(tri).to_polars()
@@ -44,11 +47,10 @@ def test_default_treatment_is_byte_identical_to_plain_latest_only(tri):
 
 @pytest.mark.parametrize("Est", [lr.PooledLoss, lr.CredibleLoss, lr.SmoothLoss])
 def test_segment_wise_keeps_all_regimes_and_borrows_the_tail(Est, tri):
-    reg_sw = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    reg_lo = lr.Regime.at(change=CHANGE)             # latest_only
+    reg = lr.Regime(change=CHANGE)
 
-    sw = Est(regime=reg_sw).fit(tri).to_polars()
-    lo = Est(regime=reg_lo).fit(tri).to_polars()
+    sw = Est(regime=reg, treatment="segment_wise").fit(tri).to_polars()
+    lo = Est(regime=reg).fit(tri).to_polars()        # default latest_only
 
     n_sw = sw.select(pl.col("cohort").n_unique()).item()
     n_lo = lo.select(pl.col("cohort").n_unique()).item()
@@ -67,8 +69,8 @@ def test_oldest_regime_equals_standalone_fit_on_its_own_cohorts(Est, tri):
     # so its projection must match a plain fit of just those cohorts (per-regime
     # level + shape preserved; no shrinkage toward the newest regime).
     df = lr.load_experience()
-    reg_sw = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    sw = Est(regime=reg_sw).fit(tri).to_polars()
+    reg_sw = lr.Regime(change=CHANGE)
+    sw = Est(regime=reg_sw, treatment="segment_wise").fit(tri).to_polars()
 
     cut = pl.lit(CHANGE).str.to_date()
     old = df.filter(pl.col("uy_m") < cut)
@@ -87,8 +89,8 @@ def test_oldest_regime_equals_standalone_fit_on_its_own_cohorts(Est, tri):
 
 
 def test_segment_wise_cohorts_are_globally_ascending(tri):
-    reg_sw = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    sw = lr.PooledLoss(regime=reg_sw).fit(tri).to_polars()
+    reg_sw = lr.Regime(change=CHANGE)
+    sw = lr.PooledLoss(regime=reg_sw, treatment="segment_wise").fit(tri).to_polars()
     for _cov, sub in sw.group_by("coverage"):
         # distinct cohorts must appear in ascending order (regimes are
         # date-disjoint with ascending cohorts, so the row-stack is globally
@@ -102,20 +104,18 @@ def test_thin_newest_regime_borrows_from_the_start(tri):
     # a change near the last cohort leaves the newest regime only 1-2 cohorts
     # with shallow depth -> it must borrow from (almost) duration 1 with no crash
     # and no projection gap.
-    reg = lr.Regime.at(change="2025-11-01", treatment="segment_wise")
-    fit = lr.PooledLoss(regime=reg).fit(tri)
+    reg = lr.Regime(change="2025-11-01")
+    fit = lr.PooledLoss(regime=reg, treatment="segment_wise").fit(tri)
     df = fit.to_polars()
     assert df.filter(pl.col("source") == "borrowed").height > 0
     assert fit.cell_counts["unfittable"] == 0
 
 
 def test_multi_regime_cascade_three_regimes(tri):
-    reg = lr.Regime.at(
-        change=["2024-01-01", "2024-07-01"], treatment="segment_wise"
-    )
-    sw = lr.PooledLoss(regime=reg).fit(tri).to_polars()
+    reg = lr.Regime(change=["2024-01-01", "2024-07-01"])
+    sw = lr.PooledLoss(regime=reg, treatment="segment_wise").fit(tri).to_polars()
     lo = lr.PooledLoss(
-        regime=lr.Regime.at(change=["2024-01-01", "2024-07-01"])
+        regime=lr.Regime(change=["2024-01-01", "2024-07-01"])
     ).fit(tri).to_polars()
     # all three regimes retained
     assert sw.select(pl.col("cohort").n_unique()).item() > (
@@ -125,12 +125,13 @@ def test_multi_regime_cascade_three_regimes(tri):
 
 
 def test_segment_wise_rejects_unsupported_combinations(tri):
-    reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    reg = lr.Regime(change=CHANGE)
     with pytest.raises(NotImplementedError, match="balance"):
-        lr.PooledLoss(regime=reg, balance=True).fit(tri)
+        lr.PooledLoss(regime=reg, treatment="segment_wise", balance=True).fit(tri)
     with pytest.raises(NotImplementedError, match="ResidualBootstrap"):
         lr.PooledLoss(
             regime=reg,
+            treatment="segment_wise",
             uncertainty=lr.ResidualBootstrap(n_replicates=5, seed=1),
         ).fit(tri)
     # ChainLadder segment_wise IS supported (the link-ratio f_k cascade); see
@@ -140,9 +141,11 @@ def test_segment_wise_rejects_unsupported_combinations(tri):
 def test_segment_wise_rejects_covariates():
     df = lr.load_experience()
     tri = lr.Triangle(df, groups=["coverage", "channel"])
-    reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    reg = lr.Regime(change=CHANGE)
     with pytest.raises(NotImplementedError, match="covariates"):
-        lr.CredibleLoss(regime=reg, covariates=["channel"]).fit(tri)
+        lr.CredibleLoss(
+            regime=reg, treatment="segment_wise", covariates=["channel"]
+        ).fit(tri)
 
 
 def test_treatment_survives_the_deferred_detector_path(tri):
@@ -151,11 +154,11 @@ def test_treatment_survives_the_deferred_detector_path(tri):
     # concrete Regime. Regression: the resolution used to read `.treatment` off
     # a concrete Regime only, so a deferred/auto/callable regime silently fell
     # back to latest_only (dropped the older regimes, no borrow).
-    eager = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    deferred = lr.RegimeDetector(treatment="segment_wise")
+    eager = lr.Regime(change=CHANGE)
+    deferred = lr.RegimeDetector()
 
-    a = lr.PooledLoss(regime=eager).fit(tri).to_polars()
-    b = lr.PooledLoss(regime=deferred).fit(tri).to_polars()
+    a = lr.PooledLoss(regime=eager, treatment="segment_wise").fit(tri).to_polars()
+    b = lr.PooledLoss(regime=deferred, treatment="segment_wise").fit(tri).to_polars()
 
     # the detector finds the same planted change, so the deferred path keeps the
     # same cohorts and borrows the same tail as the eager one
@@ -173,11 +176,10 @@ def test_treatment_survives_the_deferred_detector_path(tri):
     "Est", [lr.PooledPremium, lr.CrediblePremium, lr.SmoothPremium]
 )
 def test_premium_segment_wise_keeps_all_regimes_and_borrows(Est, tri):
-    reg_sw = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    reg_lo = lr.Regime.at(change=CHANGE)
+    reg = lr.Regime(change=CHANGE)
 
-    sw = Est(regime=reg_sw).fit(tri).to_polars()
-    lo = Est(regime=reg_lo).fit(tri).to_polars()
+    sw = Est(regime=reg, treatment="segment_wise").fit(tri).to_polars()
+    lo = Est(regime=reg).fit(tri).to_polars()
 
     # every regime kept (vs latest_only dropping the pre-change cohorts)
     assert sw.select(pl.col("cohort").n_unique()).item() > (
@@ -196,22 +198,23 @@ def test_both_side_segment_wise_ratio_has_no_null(Prem, tri):
     # the footgun F2: a segment_wise loss keeps every cohort; if the premium
     # could only cut, the old cohorts' ratio would be null. With premium
     # segment_wise both sides keep every cohort -> zero null ratio.
-    reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
+    reg = lr.Regime(change=CHANGE)
     rat = lr.Ratio(
-        loss=lr.CredibleLoss(regime=reg), premium=Prem(regime=reg)
+        loss=lr.CredibleLoss(regime=reg, treatment="segment_wise"),
+        premium=Prem(regime=reg, treatment="segment_wise"),
     ).fit(tri).to_polars()
     assert rat.select(pl.col("ratio_proj").is_null().sum()).item() == 0
 
 
 def test_premium_rejects_covariate_treatment(tri):
-    reg = lr.Regime.at(change=CHANGE, treatment="covariate")
+    reg = lr.Regime(change=CHANGE)
     with pytest.raises(ValueError, match="covariate"):
-        lr.PooledPremium(regime=reg).fit(tri)
+        lr.PooledPremium(regime=reg, treatment="covariate").fit(tri)
 
 
 def test_chain_ladder_segment_wise_borrows(tri):
-    reg = lr.Regime.at(change=CHANGE, treatment="segment_wise")
-    cl = lr.ChainLadder(regime=reg).fit(tri).to_polars()
+    reg = lr.Regime(change=CHANGE)
+    cl = lr.ChainLadder(regime=reg, treatment="segment_wise").fit(tri).to_polars()
     assert cl.filter(pl.col("source") == "borrowed").height > 0
     assert cl.select(pl.col("loss_proj").is_null().sum()).item() == 0
 
@@ -262,11 +265,9 @@ def test_ragged_depth_oldest_shallower_no_crash_no_null(Est):
     # regime's tail (a donor-less oldest regime stops at its own depth). Every
     # cohort must now project to the horizon with no gap.
     tri = lr.Triangle(_ragged_input(), grain="M")
-    reg = lr.Regime.at(
-        change=_RAGGED_CHANGES, treatment="segment_wise"
-    )
+    reg = lr.Regime(change=_RAGGED_CHANGES)
     proj_col = "loss_proj" if Est in (lr.ChainLadder, lr.PooledLoss) else "premium_proj"
-    out = Est(regime=reg).fit(tri).to_polars()
+    out = Est(regime=reg, treatment="segment_wise").fit(tri).to_polars()
     assert out.select(pl.col(proj_col).is_null().sum()).item() == 0
     # the oldest cohort reaches the segment horizon (duration 10) with a value
     oldest = out.filter(pl.col("cohort") == pl.lit("2023-01-01").cast(pl.Date))
@@ -280,11 +281,10 @@ def test_ragged_depth_both_side_ratio_has_no_null():
     # the end-to-end F2 guard on ragged depth: both sides segment_wise, oldest
     # regime shallowest -> zero null ratio.
     tri = lr.Triangle(_ragged_input(), grain="M")
-    reg = lr.Regime.at(
-        change=_RAGGED_CHANGES, treatment="segment_wise"
-    )
+    reg = lr.Regime(change=_RAGGED_CHANGES)
     rat = lr.Ratio(
-        loss=lr.PooledLoss(regime=reg), premium=lr.PooledPremium(regime=reg)
+        loss=lr.PooledLoss(regime=reg, treatment="segment_wise"),
+        premium=lr.PooledPremium(regime=reg, treatment="segment_wise"),
     ).fit(tri).to_polars()
     assert rat.select(pl.col("ratio_proj").is_null().sum()).item() == 0
 
@@ -328,7 +328,7 @@ def test_premium_no_change_segment_wise_equals_latest_only(Est, tri):
     # a segment with NO change date degenerates to one regime, no donor -> the
     # cascade must equal the plain (latest_only / no-regime) fit on those cohorts.
     far = "2099-01-01"   # later than any cohort -> no actual change
-    sw = Est(regime=lr.Regime.at(change=far, treatment="segment_wise")).fit(tri).to_polars()
+    sw = Est(regime=lr.Regime(change=far), treatment="segment_wise").fit(tri).to_polars()
     plain = Est().fit(tri).to_polars()
     key = ["coverage", "cohort", "duration"]
     j = sw.select([*key, "premium_proj"]).join(

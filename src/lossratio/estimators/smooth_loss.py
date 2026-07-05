@@ -134,6 +134,7 @@ class SmoothLoss(_LossEstimatorBase):
             mechanism="smooth",
             sigma_method=self.sigma_method,
             regime=self.regime,
+            treatment=self.treatment,
             recent=self.recent,
             confidence_level=self.confidence_level,
             psi=self.psi,

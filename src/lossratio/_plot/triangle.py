@@ -66,6 +66,7 @@ def plot_triangle(
     x_axis: str = "duration",
     recent: int | None = None,
     regime: Any = None,
+    treatment: str = "latest_only",
     holdout: int | None = None,
 ) -> Any:
     """Triangle heatmap dispatcher. See
@@ -85,6 +86,7 @@ def plot_triangle(
             triangle,
             recent=recent,
             regime=regime,
+            treatment=treatment,
             holdout=holdout,
             nrow=nrow,
             ncol=ncol,

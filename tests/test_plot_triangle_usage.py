@@ -250,7 +250,7 @@ def test_regime_cut_multi_column_groups_tuple_key():
         .then(pl.lit("E")).otherwise(pl.lit("O")).alias("block")
     )
     tri = lr.Triangle(df, groups=["coverage", "block"])
-    reg = lr.Regime.at(
+    reg = lr.Regime(
         change=["2024-07-01"],
         groups={"coverage": ["SURGERY"], "block": ["E"]},
     )
@@ -406,7 +406,7 @@ def test_usage_segment_wise_marks_donor_observed_cells():
     from datetime import date
     tri = _surgery_q()
     cut = date(2024, 7, 1)
-    u = tri.usage(regime=lr.Regime.at(change=cut, treatment="segment_wise"))
+    u = tri.usage(regime=lr.Regime(change=cut), treatment="segment_wise")
     seen = set(u["status"].unique().to_list())
     assert "donor" in seen
     assert "unused" not in seen                      # segment_wise keeps all regimes
@@ -424,7 +424,7 @@ def test_usage_segment_wise_marks_donor_observed_cells():
 def test_usage_covariate_keeps_all_regimes_no_donor():
     """covariate keeps every regime too, but there is no borrow donor."""
     u = _surgery_q().usage(
-        regime=lr.Regime.at(change="2024-07-01", treatment="covariate")
+        regime=lr.Regime(change="2024-07-01"), treatment="covariate"
     )
     seen = set(u["status"].unique().to_list())
     assert "donor" not in seen and "unused" not in seen
@@ -432,7 +432,7 @@ def test_usage_covariate_keeps_all_regimes_no_donor():
 
 def test_plot_usage_segment_wise_renders():
     fig = _surgery_q().plot_triangle(
-        kind="usage", regime=lr.Regime.at(change="2024-07-01", treatment="segment_wise")
+        kind="usage", regime=lr.Regime(change="2024-07-01"), treatment="segment_wise"
     )
     try:
         assert isinstance(fig, plt.Figure)

@@ -40,15 +40,6 @@ if TYPE_CHECKING:
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
-_VALID_TREATMENTS = ("latest_only", "segment_wise", "covariate")
-
-
-def _check_treatment(treatment: str) -> str:
-    if treatment not in _VALID_TREATMENTS:
-        raise ValueError(
-            f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
-        )
-    return treatment
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_intensity")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -1353,8 +1344,8 @@ def _regime_ids_from_changes(n: int, change_idxs: list[int]) -> np.ndarray:
 class Regime:
     """Detected cohort regime structure.
 
-    Use :meth:`RegimeDetector.detect` (auto) or :meth:`Regime.at` (manual) to
-    construct.
+    Use :meth:`RegimeDetector.detect` (auto) or ``Regime(change=...)`` (manual)
+    to construct.
 
     Attributes
     ----------
@@ -1375,27 +1366,14 @@ class Regime:
     dropped : list
         Cohorts excluded because they had fewer than ``window`` observed
         durations.
-    treatment : str
-        How a fit consumes this regime. ``"latest_only"`` (default) keeps
-        only the newest regime (drops every cohort before the latest change).
-        ``"segment_wise"`` keeps ALL regimes: each regime is fit on its own
-        cohorts (own level + own shape to its own observed depth) and borrows
-        only the unobservable deep tail from the pooled level-invariant link
-        ratio of the older (deeper) regimes. ``"covariate"`` keeps all regimes
-        and enters the regime as a treatment-coded covariate: one SHARED
-        duration shape with a per-regime LEVEL (a single ``g_k`` shape, a
-        ``beta_r`` level per regime), so a thin regime's level is POOLED across
-        its cohorts rather than estimated per cohort. The regime label is
-        derived from the cohort (a regime is a property of the cohort), so no
-        manual column or regrouping is needed -- ``CredibleLoss(regime=reg)``
-        with ``reg.treatment == "covariate"`` is the symmetric counterpart of
-        the segment_wise cascade.
+
+    How a fit CONSUMES a regime (latest_only / segment_wise / covariate) is the
+    ``treatment`` knob on the ESTIMATOR (e.g. ``CredibleLoss(regime=reg,
+    treatment="segment_wise")``), not a property of this structure.
     """
 
-    treatment: str = "latest_only"
-
-    # Instance attributes are set in `_from_triangle`/`_manual` (built via
-    # `cls.__new__`, not `__init__`); declared here so the type is visible.
+    # Instance attributes are set in `_from_triangle` (detection) / `__init__`
+    # (manual, via `_set_manual_attrs`); declared here so the type is visible.
     _labels_df: pl.DataFrame
     _changes_df: pl.DataFrame
     _candidates_df: pl.DataFrame
@@ -1410,11 +1388,95 @@ class Regime:
     n_regimes: int
     dropped: list[Any] | dict[Any, list[Any]]
 
-    def __init__(self) -> None:
-        raise TypeError(
-            "Regime is produced by `RegimeDetector(...).detect(triangle)` / "
-            "`Regime.at()`, not a direct constructor."
+    def __init__(
+        self,
+        change: Any,
+        *,
+        groups: Mapping[str, Sequence[Any]] | None = None,
+    ) -> None:
+        """Build a Regime by hand from explicit, user-supplied change points.
+
+        Use this when you already know where the cohort regime shifts (e.g. a
+        policy revision date). Contrast with ``RegimeDetector(...).detect(tri)``,
+        which infers the change points from data. How the regime is CONSUMED
+        (latest_only / segment_wise / covariate) is the estimator's
+        ``treatment`` knob, not an argument here.
+
+        Parameters
+        ----------
+        change
+            Cohort date(s) where a new regime starts: a single value
+            (``"YYYY-MM-DD"`` / ``date`` / ``datetime``) or a sequence.
+        groups
+            Optional ``{column_name: [values]}`` mapping aligned 1:1 with
+            ``change``, when different groups carry different change points.
+
+        Examples
+        --------
+        >>> Regime(change="2024-07-01")
+        >>> Regime(
+        ...     change=["2024-07-01", "2024-10-01"],
+        ...     groups={"coverage": ["SURGERY", "CI"]},
+        ... )
+        """
+        if isinstance(change, (str, date, datetime)) or not isinstance(
+            change, Sequence
+        ):
+            change_seq: list[Any] = [change]
+        else:
+            change_seq = list(change)
+        if not change_seq:
+            raise ValueError("`change` must have length >= 1")
+        parsed = [_coerce_to_date(v) for v in change_seq]
+        n = len(parsed)
+
+        gmap = dict(groups) if groups else {}
+        for col, vals in gmap.items():
+            if not isinstance(vals, Sequence) or isinstance(vals, str):
+                vals = [vals]
+                gmap[col] = vals
+            if len(vals) != n:
+                raise ValueError(
+                    f"All arguments must have equal length; "
+                    f"`change`={n} but `groups[{col!r}]`={len(vals)}"
+                )
+
+        columns: dict[str, Any] = dict(gmap)
+        columns["change"] = parsed
+        columns["regime_id"] = [2] * n
+        changes_df = pl.DataFrame(
+            columns,
+            schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
         )
+        group_spec = collapse_groups(list(gmap.keys())) if gmap else None
+        self._set_manual_attrs(changes_df, group_spec)
+
+    def _set_manual_attrs(
+        self, changes_df: pl.DataFrame, groups: str | list[str] | None
+    ) -> None:
+        """Populate the instance attributes of a hand-built (manual) regime.
+
+        Shared by ``__init__`` (user construction) and ``_manual`` (the
+        internal derived-cut builder). ``changes_df`` carries one row per change
+        point with at least a ``change`` (Date) column plus the group column if
+        any. A manual regime carries no detection candidates.
+        """
+        self._changes_df = changes_df
+        self._labels_df = pl.DataFrame(
+            {"cohort": [], "regime_id": []},
+            schema={"cohort": pl.Date, "regime_id": pl.Int64},
+        )
+        self._candidates_df = pl.DataFrame()
+        self._output_type = "polars"
+        self.method = "manual"
+        self.target = ""
+        self.window = 0
+        self.cohort = ""
+        self.duration = ""
+        self.groups = groups
+        self.change_points = changes_df["change"].to_list()
+        self.n_regimes = 0
+        self.dropped = []
 
     @classmethod
     def _from_triangle(
@@ -1436,13 +1498,11 @@ class Regime:
         edge_threshold: float = 10.0,
         window_sweep: Sequence[int] | None = None,
         grain_sweep: Sequence[str] | None = None,
-        treatment: str = "latest_only",
     ) -> Regime:
         if method not in _VALID_METHODS:
             raise ValueError(
                 f"method must be one of {_VALID_METHODS}, got {method!r}"
             )
-        _check_treatment(treatment)
 
         # `premium_intensity` is an alias of `premium_ata` (constant offset of 1
         # absorbed by PCA standardisation -- detection produces identical
@@ -1743,7 +1803,6 @@ class Regime:
         self.change_points = change_points
         self.n_regimes = n_regimes_total
         self.dropped = dropped
-        self.treatment = treatment
         return self
 
     @classmethod
@@ -1752,120 +1811,17 @@ class Regime:
         *,
         changes_df: pl.DataFrame,
         groups: str | list[str] | None,
-        treatment: str = "latest_only",
     ) -> Regime:
-        """Construct a Regime by hand (no auto-detection).
+        """Construct a manual Regime directly from a prepared ``changes_df``.
 
-        Used by :meth:`Regime.at` to wrap user-supplied change points.
-        ``changes_df`` carries one row per change point with at least a
-        ``change`` (Date) column plus the group column if any.
+        ``__init__`` is the public manual constructor (it parses user
+        ``change`` input); this classmethod is the internal builder used where a
+        ``changes_df`` is already assembled (e.g. materialising a resolved cut),
+        bypassing the parse step.
         """
-        _check_treatment(treatment)
         self = cls.__new__(cls)
-        self._changes_df = changes_df
-        self._labels_df = pl.DataFrame(
-            {"cohort": [], "regime_id": []},
-            schema={"cohort": pl.Date, "regime_id": pl.Int64},
-        )
-        # Hand-built regimes carry no detection candidates.
-        self._candidates_df = pl.DataFrame()
-        self._output_type = "polars"
-        self.method = "manual"
-        self.target = ""
-        self.window = 0
-        self.cohort = ""
-        self.duration = ""
-        self.groups = groups
-        self.change_points = changes_df["change"].to_list()
-        self.n_regimes = 0
-        self.dropped = []
-        self.treatment = treatment
+        self._set_manual_attrs(changes_df, groups)
         return self
-
-    @classmethod
-    def at(
-        cls,
-        change: Any,
-        *,
-        groups: Mapping[str, Sequence[Any]] | None = None,
-        treatment: str = "latest_only",
-    ) -> Regime:
-        """Build a :class:`Regime` from explicit, user-supplied change points.
-
-        Use this when you already know where the cohort regime shifts (e.g.
-        a policy revision date) and want a *fixed* regime tested across
-        backtest folds. Contrast with :meth:`detect`, which defers
-        detection to fit / backtest time so each fold uses change points
-        derived from its own masked training data.
-
-        Parameters
-        ----------
-        change
-            Cohort date(s) where a new regime starts. A single value (str
-            ``"YYYY-MM-DD"`` / ``date`` / ``datetime``) or a sequence of
-            such values.
-        groups
-            Optional mapping ``{column_name: [values]}`` of group columns
-            aligned 1:1 with ``change``. Required when the Triangle is
-            grouped and different groups carry different change points.
-        treatment
-            ``"latest_only"`` (default) keeps only the newest regime;
-            ``"segment_wise"`` fits every regime on its own cohorts and borrows
-            the deep tail from the older regimes (see :class:`Regime`).
-
-        Returns
-        -------
-        Regime
-            A manually-constructed Regime suitable for the same 4-type
-            dispatch slots that accept auto-detected Regimes.
-
-        Examples
-        --------
-        >>> Regime.at(change="2024-07-01")
-        >>> Regime.at(
-        ...     change=["2024-07-01", "2024-10-01"],
-        ...     groups={"coverage": ["SURGERY", "CI"]},
-        ... )
-        """
-        if isinstance(change, (str, date, datetime)) or not isinstance(
-            change, Sequence
-        ):
-            change_seq: list[Any] = [change]
-        else:
-            change_seq = list(change)
-        if not change_seq:
-            raise ValueError("`change` must have length >= 1")
-        parsed = [_coerce_to_date(v) for v in change_seq]
-        n = len(parsed)
-
-        groups = dict(groups) if groups else {}
-        for col, vals in groups.items():
-            if not isinstance(vals, Sequence) or isinstance(vals, str):
-                vals = [vals]
-                groups[col] = vals
-            if len(vals) != n:
-                raise ValueError(
-                    f"All arguments must have equal length; "
-                    f"`change`={n} but `groups[{col!r}]`={len(vals)}"
-                )
-
-        # `regime_id = 2` per row marks "transition into the next regime"
-        # for each change row. The id is not a segment counter --
-        # segment_wise consumers index off `change`, not the id.
-        columns: dict[str, Any] = dict(groups)
-        columns["change"] = parsed
-        columns["regime_id"] = [2] * n
-        changes_df = pl.DataFrame(
-            columns,
-            schema_overrides={"regime_id": pl.Int64, "change": pl.Date},
-        )
-
-        group_spec = collapse_groups(list(groups.keys())) if groups else None
-        return cls._manual(
-            changes_df=changes_df,
-            groups=group_spec,
-            treatment=treatment,
-        )
 
     @property
     def changes(self):
@@ -2095,7 +2051,6 @@ class Regime:
         return Regime._manual(
             changes_df=acc,
             groups=self.groups,
-            treatment=self.treatment,
         )
 
     def borrow_screen(self, triangle, target: str = "loss"):
@@ -2209,6 +2164,11 @@ class Regime:
         return self._labels_df.to_pandas()
 
     def __repr__(self) -> str:
+        # A manual regime is unbound (not yet applied to a triangle), so its
+        # cohort / regime counts are meaningless -- show the change points.
+        if self.method == "manual":
+            changes = ", ".join(str(c) for c in self.change_points)
+            return f"<Regime: manual, changes=[{changes}]>"
         n_cohorts = self._labels_df.height
         bits = [
             f"method={self.method}",
@@ -2223,7 +2183,7 @@ class Regime:
 
 
 # ---------------------------------------------------------------------------
-# Internal helper for Regime.at
+# Internal helper for manual Regime construction
 # ---------------------------------------------------------------------------
 
 
@@ -2262,7 +2222,7 @@ class RegimeDetector:
     package:
 
     * **eager** -- ``RegimeDetector(...).detect(tri)`` detects now; this is how
-      you get a :class:`Regime` from data (:meth:`Regime.at` is the manual
+      you get a :class:`Regime` from data (``Regime(change=...)`` is the manual
       alternative), parallel to ``PooledLoss().fit(tri)``.
     * **deferred** -- pass the detector itself as a ``regime=`` value
       (``CredibleLoss(regime=RegimeDetector(...))``). Fit / backtest call
@@ -2323,12 +2283,9 @@ class RegimeDetector:
         each grain and re-detecting, then merging by change date -- adding
         ``grain`` and ``grain_stability``. Grains finer than the triangle's own
         are skipped. Combines with ``window_sweep``. Default ``None``.
-    treatment
-        How a fit consumes the detected regime. ``"latest_only"`` (default)
-        keeps only the newest regime; ``"segment_wise"`` keeps every regime,
-        fitting each on its own cohorts and borrowing the deep tail from older
-        regimes; ``"covariate"`` keeps all regimes as a treatment-coded level
-        (see :class:`Regime`).
+
+    How a detected regime is CONSUMED (latest_only / segment_wise / covariate)
+    is the ``treatment`` knob on the ESTIMATOR, not on the detector.
     """
 
     target: str = "ratio"
@@ -2346,7 +2303,6 @@ class RegimeDetector:
     edge_threshold: float = 10.0
     window_sweep: Sequence[int] | None = None
     grain_sweep: Sequence[str] | None = None
-    treatment: str = "latest_only"
 
     def detect(self, triangle: Triangle) -> Regime:
         """Run detection on ``triangle`` and return a :class:`Regime`."""
@@ -2367,7 +2323,6 @@ class RegimeDetector:
             edge_threshold=self.edge_threshold,
             window_sweep=self.window_sweep,
             grain_sweep=self.grain_sweep,
-            treatment=self.treatment,
         )
 
 
@@ -2385,14 +2340,12 @@ def _resolve_to_regime(regime, triangle):
     * ``None`` -> ``None``;
     * a :class:`RegimeDetector` -> ``.detect(triangle)`` (a concrete Regime);
     * a :class:`Regime` -> unchanged;
-    * a ``date`` / ``dict[segment -> date]`` -> unchanged (a direct manual cut;
-      its treatment is implicitly ``"latest_only"``).
+    * a ``date`` / ``dict[segment -> date]`` -> unchanged (a direct manual cut).
 
     This is the single point where a deferred detector becomes a concrete
-    Regime, so the ``treatment`` it carries is available to every downstream
-    path (the segment_wise / covariate projection branches, the cohort cut, the
-    usage view). Called at each public ``regime=`` entry BEFORE any
-    ``treatment`` is read or any cut is computed.
+    Regime. Called at each public ``regime=`` entry before any cut is computed.
+    The estimator's ``treatment`` knob (read separately from the estimator)
+    then decides how the resolved regime is consumed.
     """
     if regime is None or isinstance(regime, (Regime, date, dict)):
         return regime

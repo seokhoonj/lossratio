@@ -64,6 +64,7 @@ class ChainLadder(_LossEstimatorBase):
             mechanism="chain_ladder",
             sigma_method=self.sigma_method,
             regime=self.regime,
+            treatment=self.treatment,
             recent=self.recent,
             confidence_level=self.confidence_level,
             uncertainty=self.uncertainty,

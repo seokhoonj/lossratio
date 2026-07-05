@@ -684,6 +684,7 @@ class Triangle:
         *,
         recent: int | None = None,
         regime: RegimeArg = None,
+        treatment: str = "latest_only",
         holdout: int | None = None,
     ) -> FrameLike:
         """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
@@ -704,9 +705,11 @@ class Triangle:
             recent calendar-diagonal window); cells outside drop to
             ``"unused"``. ``None`` applies no recent filter.
         regime
-            ``None``, a :class:`Regime`, or a :class:`RegimeDetector` --
-            resolved to the same cohort treatment the
-            fit uses. ``latest_only`` (default) drops the pre-change cohorts to
+            ``None``, a :class:`Regime`, or a :class:`RegimeDetector` -- the
+            cohort regime whose cut / segmentation the usage view reflects.
+        treatment
+            How the regime is consumed (the estimator's knob, mirror it here):
+            ``latest_only`` (default) drops the pre-change cohorts to
             ``"unused"``; ``segment_wise`` / ``covariate`` keep every regime, and
             under ``segment_wise`` the older regimes' observed cells past the
             newest regime's depth are flagged ``"donor"`` (the borrow donor).
@@ -724,14 +727,15 @@ class Triangle:
         from ..diagnostics.regime import Regime, _resolve_regime, _resolve_to_regime
         from .usage import _compute_triangle_usage
 
-        # resolve a RegimeDetector to a concrete Regime first, so its treatment
-        # is read here (not silently dropped to latest_only).
+        # resolve a RegimeDetector to a concrete Regime first, so the cohort cut
+        # is computed here. `treatment` is the estimator's consumption knob,
+        # supplied by the caller; it only bites when a concrete Regime is present.
         regime = _resolve_to_regime(regime, self)
         regime_cut = _resolve_regime(regime, self)
-        treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
+        eff_treatment = treatment if isinstance(regime, Regime) else "latest_only"
         usage_df = _compute_triangle_usage(
             self, recent=recent, regime_cut=regime_cut, holdout=holdout,
-            treatment=treatment,
+            treatment=eff_treatment,
         )
         return mirror_output(usage_df, self._output_type)
 
@@ -749,6 +753,7 @@ class Triangle:
         x_axis: str = "duration",
         recent: int | None = None,
         regime: RegimeArg = None,
+        treatment: str = "latest_only",
         holdout: int | None = None,
     ) -> Any:
         """Triangle heatmap (cell-value or status), backed by matplotlib.
@@ -824,6 +829,7 @@ class Triangle:
             x_axis=x_axis,
             recent=recent,
             regime=regime,
+            treatment=treatment,
             holdout=holdout,
         )
 

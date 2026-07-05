@@ -69,7 +69,7 @@ def _segment_change_dates(regime: Any, group_value: Any) -> list:
     rows matching this segment's group value (the group columns are read off the
     change frame itself). Derives the regime partition from the change DATES
     directly (not ``regime_id``), so it works the same for a hand-built
-    :meth:`Regime.at` and an auto-detected regime. A segment with no change
+    ``Regime(change=...)`` and an auto-detected regime. A segment with no change
     returns ``[]`` -- the cascade then degenerates to a single plain fit.
     """
     changes = getattr(regime, "_changes_df", None)

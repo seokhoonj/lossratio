@@ -487,7 +487,7 @@ def test_covariate_respects_regime_cut():
     df = _experience_source({"F": 1.3, "M": 1.0}, n_cohorts=6)
     cut = date(2024, 4, 1)
     with_regime = lr.CredibleLoss(
-        covariates=["sex"], lam_cov=0.0, regime=lr.Regime.at(cut)
+        covariates=["sex"], lam_cov=0.0, regime=lr.Regime(cut)
     ).fit(_tri(df))
     df_cut = df.filter(pl.col("uy_m") >= cut)
     manual = lr.CredibleLoss(covariates=["sex"], lam_cov=0.0).fit(_tri(df_cut))
@@ -496,7 +496,7 @@ def test_covariate_respects_regime_cut():
     assert np.allclose(b_reg, b_man, atol=1e-6)
     # bootstrap must not crash / wrap a -1 cohort index under a regime cut
     booted = lr.CredibleLoss(
-        covariates=["sex"], lam_cov=0.0, regime=lr.Regime.at(cut),
+        covariates=["sex"], lam_cov=0.0, regime=lr.Regime(cut),
         uncertainty=lr.ResidualBootstrap(n_replicates=15, seed=0),
     ).fit(_tri(df))
     assert booted.coefficients is not None

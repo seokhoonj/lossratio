@@ -69,6 +69,7 @@ def plot_triangle_usage(
     *,
     recent: int | None,
     regime: Any,
+    treatment: str = "latest_only",
     holdout: int | None,
     nrow: int | None,
     ncol: int | None,
@@ -81,18 +82,20 @@ def plot_triangle_usage(
 
     from ..diagnostics.regime import Regime, _resolve_regime, _resolve_to_regime
 
-    # a RegimeDetector resolves to a concrete Regime here so its treatment is
-    # read (an already-concrete Regime passes through unchanged).
+    # a RegimeDetector resolves to a concrete Regime here (an already-concrete
+    # Regime passes through unchanged). `treatment` is the estimator's
+    # consumption knob, supplied by the caller; it only bites with a concrete
+    # Regime present.
     regime = _resolve_to_regime(regime, triangle)
     regime_cut = _resolve_regime(regime, triangle)
-    treatment = regime.treatment if isinstance(regime, Regime) else "latest_only"
+    eff_treatment = treatment if isinstance(regime, Regime) else "latest_only"
 
     usage_df = _compute_triangle_usage(
         triangle,
         recent=recent,
         regime_cut=regime_cut,
         holdout=holdout,
-        treatment=treatment,
+        treatment=eff_treatment,
     )
     # legend shows only the statuses actually present (so "donor" appears only
     # under segment_wise with a real donor tail).

@@ -1108,6 +1108,7 @@ def _fit_loss(
     mechanism: str,
     sigma_method: str,
     regime: Any = None,
+    treatment: str = "latest_only",
     recent: int | None = None,
     confidence_level: float = 0.95,
     psi: float | str = "auto",
@@ -1135,19 +1136,16 @@ def _fit_loss(
 
     # Resolve the regime to a concrete Regime FIRST -- a RegimeDetector detects
     # on `triangle` (in backtest the masked fold triangle, so leakage-safe),
-    # None stays None. This is what makes the treatment survive every path: the
-    # branches below read `regime.treatment`, which only a concrete Regime
-    # carries (a deferred detector would otherwise silently fall to latest_only).
+    # None stays None. `treatment` is the estimator's consumption knob (passed
+    # in from the estimator config); it only bites when a concrete Regime is
+    # present -- with no regime the default "latest_only" is a no-op.
     from ..diagnostics.regime import Regime, _resolve_to_regime
     regime = _resolve_to_regime(regime, triangle)
 
     # segment_wise regime: keep ALL regimes (no cohort cut), fit each on its own
     # cohorts, borrow the deep tail from the older regimes (the cascade). The
     # default "latest_only" treatment leaves every path below byte-identical.
-    segment_wise = (
-        isinstance(regime, Regime)
-        and getattr(regime, "treatment", "latest_only") == "segment_wise"
-    )
+    segment_wise = isinstance(regime, Regime) and treatment == "segment_wise"
     if segment_wise:
         if mechanism not in ("pooled", "credible", "smooth", "chain_ladder"):
             raise NotImplementedError(
@@ -1172,10 +1170,7 @@ def _fit_loss(
     # label is a property of the cohort, so it is derived and injected into the
     # covariate design below -- no manual column / regroup. Symmetric to the
     # segment_wise cascade (same `regime=` slot, same `fit(triangle)`).
-    regime_covariate = (
-        isinstance(regime, Regime)
-        and getattr(regime, "treatment", "latest_only") == "covariate"
-    )
+    regime_covariate = isinstance(regime, Regime) and treatment == "covariate"
     if regime_covariate:
         if mechanism not in ("pooled", "credible", "smooth"):
             raise NotImplementedError(

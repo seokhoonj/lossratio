@@ -124,10 +124,9 @@ def _summary_line_counts(fig):
 def test_regime_split_draws_a_summary_trio_per_regime(tri_with_groups):
     # SURGERY carries a 2024-07 regime change -> two summary trios (6 lines);
     # a single-regime coverage keeps one trio (3 lines).
-    reg = lr.Regime.at(
+    reg = lr.Regime(
         change="2024-07-01",
         groups={"coverage": ["SURGERY"]},
-        treatment="segment_wise",
     )
     fig = tri_with_groups.plot(summary=True, regime=reg)
     try:

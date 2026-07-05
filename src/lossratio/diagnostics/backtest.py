@@ -671,6 +671,7 @@ class _FoldFit:
             self._triangle,
             recent=eff_recent,
             regime=eff_regime,
+            treatment=getattr(self.estimator, "treatment", "latest_only") or "latest_only",
             holdout=self.holdout,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )

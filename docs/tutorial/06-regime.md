@@ -285,11 +285,11 @@ lvl.with_columns(
 
 `regime`은 `None`, `datetime.date`(그 시점 이전 코호트를 드롭),
 `dict[담보 -> date]`(담보별 시점)에 더해, **`RegimeDetector()`이 돌려준
-`Regime` 객체**, **`Regime.at(change=...)`로 손수 지정한 변화점**, 그리고
+`Regime` 객체**, **`Regime(change=...)`로 손수 지정한 변화점**, 그리고
 **`RegimeDetector(...)` 탐지기 객체**(탐지를 적합·백테스트 시점까지 미룸)까지
 받는다 — `latest_only`에서는 모두 적합 시점에 코호트 컷으로 해소된다.
 
-`Regime.at`은 변화 시점을 *이미 알 때*(예: 약관 개정일) 즉시 고정한 `Regime`을
+`Regime(change=...)`은 변화 시점을 *이미 알 때*(예: 약관 개정일) 즉시 고정한 `Regime`을
 만든다. 반면 `RegimeDetector(...)`는 탐지 파라미터만 담은 config 객체로, 그 자체를
 `regime=`에 넘기면 *탐지를 적합·백테스트 시점까지 미룬다* — 백테스트에서는 각
 fold의 *마스킹된* 학습 데이터로 다시 탐지되어, 변화 시점이 hold-out 셀을 엿보지
@@ -298,8 +298,8 @@ fold의 *마스킹된* 학습 데이터로 다시 탐지되어, 변화 시점이
 ```
 
 ```python
-lr.Regime.at(change="2024-07-01", groups={"coverage": ["SURGERY"]})  # 수동 고정
-lr.RegimeDetector(target="ratio", window=12)                         # 지연 탐지기
+lr.Regime(change="2024-07-01", groups={"coverage": ["SURGERY"]})  # 수동 고정
+lr.RegimeDetector(target="ratio", window=12)                      # 지연 탐지기
 ```
 
 효과는 변화 이후의 최근 코호트에서 가장 크다. regime을 무시하면 가장 최근
@@ -337,8 +337,8 @@ regime은 *코호트*를 기준으로 변화 이전을 잘라 내는 필터다. 
 §5.4의 `latest_only`는 가장 단순한 선택 — 옛 regime을 통째로 버린다. 하지만
 옛 코호트는 **깊은 경과**까지 관측된 유일한 자료이기도 하다. 새 regime 코호트는
 아직 어려서 깊은 경과의 진전을 모르는데, 그 정보를 옛 regime에서 *빌려* 오면
-버리지 않고도 변화를 반영할 수 있다. `RegimeDetector(..., treatment=)`
-(또는 `Regime.at(..., treatment=)`)이 그 반영 방식을 정한다.
+버리지 않고도 변화를 반영할 수 있다. 추정기(estimator)의 `treatment=` 인자가
+그 반영 방식을 정한다.
 
 - **`"latest_only"`**(기본) — 변화 이전 코호트를 *전부 드롭*하고 새 regime의
   코호트만으로 인자를 추정한다. 가장 단순하고 보수적.
@@ -357,10 +357,10 @@ regime은 *코호트*를 기준으로 변화 이전을 잘라 내는 필터다. 
 
 ```python
 out = []
+r = lr.RegimeDetector().detect(tri)  # 탐지는 treatment과 무관 — 한 번만
 for tr in ["latest_only", "segment_wise", "covariate"]:
-    r = lr.RegimeDetector(treatment=tr).detect(tri)
     est = lr.CredibleLoss if tr == "covariate" else lr.PooledLoss
-    s = (lr.Ratio(loss=est(regime=r), premium=lr.PooledPremium()).fit(tri)
+    s = (lr.Ratio(loss=est(regime=r, treatment=tr), premium=lr.PooledPremium()).fit(tri)
          .summary().sort("cohort").tail(3)
          .select(["cohort", pl.col("ratio_proj").alias(tr)]))
     out.append(s)
@@ -407,4 +407,4 @@ lr.Ratio(
 - {doc}`7장 — 예측 검증 <07-backtest>`: regime 반영(과 세 `treatment` 방식)이
   실제로 예측을 개선하는지 과거 시점에서 되짚어 확인한다.
 - {doc}`API 레퍼런스 <../api>`의 `RegimeDetector`, `Regime`,
-  `Regime.at`, `RegimeDetector`, `Regime.evaluate`
+  `Regime.evaluate`

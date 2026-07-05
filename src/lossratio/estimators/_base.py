@@ -24,6 +24,21 @@ if TYPE_CHECKING:
     from .premium import PremiumFit
 
 
+# How a fit CONSUMES a detected/specified regime. This is a consumption knob of
+# the estimator (the segment_wise / covariate machinery lives in the fit cores),
+# not a property of the regime structure -- so it sits on the estimator, not on
+# ``Regime`` / ``RegimeDetector``.
+_VALID_TREATMENTS = ("latest_only", "segment_wise", "covariate")
+
+
+def _check_treatment(treatment: str) -> str:
+    if treatment not in _VALID_TREATMENTS:
+        raise ValueError(
+            f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
+        )
+    return treatment
+
+
 def _validate_lam_cov(lam_cov: float | str | dict) -> None:
     """Validate a covariate ridge spec: ``"auto"`` (data-estimated random-effect
     shrinkage), a non-negative scalar (fixed ridge), or a ``{covariate: "auto"
@@ -61,6 +76,7 @@ class _LossEstimatorBase:
 
     recent: int | None = None
     regime: RegimeArg = None
+    treatment: str = "latest_only"
     sigma_method: str = "locf"
     confidence_level: float = 0.95
     uncertainty: Any = None
@@ -71,6 +87,7 @@ class _LossEstimatorBase:
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
+        _check_treatment(self.treatment)
         if self.regime is not None and not isinstance(self.regime, (date, dict)):
             from ..diagnostics.regime import Regime, RegimeDetector
             if not isinstance(self.regime, (Regime, RegimeDetector)):
@@ -102,6 +119,7 @@ class _PremiumEstimatorBase:
 
     recent: int | None = None
     regime: RegimeArg = None
+    treatment: str | None = None
     sigma_method: str = "locf"
     confidence_level: float = 0.95
 
@@ -111,6 +129,8 @@ class _PremiumEstimatorBase:
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
+        if self.treatment is not None:
+            _check_treatment(self.treatment)
         if self.regime is not None and not isinstance(self.regime, (date, dict)):
             from ..diagnostics.regime import Regime, RegimeDetector
             if not isinstance(self.regime, (Regime, RegimeDetector)):

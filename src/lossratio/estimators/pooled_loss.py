@@ -96,6 +96,7 @@ class PooledLoss(_LossEstimatorBase):
             mechanism="pooled",
             sigma_method=self.sigma_method,
             regime=self.regime,
+            treatment=self.treatment,
             recent=self.recent,
             confidence_level=self.confidence_level,
             balance=self.balance,

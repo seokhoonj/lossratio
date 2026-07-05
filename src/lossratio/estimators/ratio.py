@@ -21,7 +21,7 @@ their SEs for transparency.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -84,7 +84,22 @@ class Ratio:
     def fit(self, triangle: Triangle) -> RatioFit:
         """Fit both sides on ``triangle`` and compose the loss ratio."""
         loss_fit = self.loss.fit(triangle)
-        premium_fit = self.premium.fit(triangle)
+        premium = self.premium
+        if premium.treatment is None:
+            # Premium treatment defaults to MATCH the loss side so numerator and
+            # denominator share the same cohort/regime basis -- an un-matched cut
+            # would leave premium_proj null where the loss side keeps older
+            # regimes, breaking the ratio there. "covariate" has no premium
+            # analogue (premium is a known exposure), so its cohort-keeping
+            # counterpart on the premium ladder is "segment_wise". An explicit
+            # premium treatment (not None) is honoured as-is.
+            inherited = (
+                "segment_wise"
+                if self.loss.treatment == "covariate"
+                else self.loss.treatment
+            )
+            premium = replace(premium, treatment=inherited)
+        premium_fit = premium.fit(triangle)
         # A covariate loss fit reports at the collapsed reporting grain
         # (triangle.groups - covariates): it pools the duration shape across the
         # covariate columns and reports them as level effects. Key the join on
