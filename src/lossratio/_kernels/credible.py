@@ -2,7 +2,7 @@
 
 Pure-numeric per-segment projection helpers shared by the loss estimators and
 the bootstrap kernels: the Buhlmann-Straub credible levels, the credible /
-borrow projections, and the smooth backfit. They live in ``_kernels`` so the
+graft projections, and the smooth backfit. They live in ``_kernels`` so the
 resampling kernels (``_kernels.resample`` / ``_kernels.weighted``) reuse them
 as same-layer siblings rather than importing upward from ``estimators.loss``.
 No reporting / Polars assembly here -- that stays in the estimator layer.
@@ -364,7 +364,7 @@ def smooth_backfit_covariate(
         "representable": True, "converged": inner_converged and backfit_converged,
     }
 
-def project_borrow(
+def project_graft(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     *,
@@ -375,14 +375,14 @@ def project_borrow(
     own_u: np.ndarray | None = None,
     own_h: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Projection with a level-invariant borrowed tail.
+    """Projection with a level-invariant grafted tail.
 
     The own-data boundary is the LAST link the segment can fit on its own data
     (last finite own factor). Links at or below it use the segment's OWN factor
     (``body="additive"`` -> intensity ``g_k`` additive; ``body="multiplicative"`` -> link ratio
     ``f_k`` multiplicative; ``body="self_exposure"`` -> premium growth
     ``P_{k+1} = P_k * (1 + u_i * h_k)`` with ``h_k = f^P_k - 1``, point-only so
-    no variance is accumulated on the own body); links beyond it switch to the BORROWED donor link
+    no variance is accumulated on the own body); links beyond it switch to the GRAFTED donor link
     ratio ``donor_f`` (always multiplicative -- level-invariant, so it lends
     development SHAPE on the segment's own last cumulative loss, never the
     donor's loss-ratio level). The own factors are LOCF-filled across their own
@@ -392,8 +392,8 @@ def project_borrow(
     link at or below the own boundary with no own factor even after the fill
     falls through to the donor tail. The process / parameter variance
     accumulators carry across the boundary (donor links use the donor's sigma2 /
-    Var). Returns ``(loss_proj, proc_se, param_se, total_se, borrowed)`` where
-    ``borrowed`` flags the donor cells.
+    Var). Returns ``(loss_proj, proc_se, param_se, total_se, grafted)`` where
+    ``grafted`` flags the donor cells.
 
     ``own_u`` is the per-cohort credibility level for the additive body: the
     ``CredibleLoss`` / ``SmoothLoss`` projected increment is ``u_i * g_k * P_k``,
@@ -409,7 +409,7 @@ def project_borrow(
     proc_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
     param_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
     total_se = np.full((n_cohorts, n_durations), np.nan, dtype=np.float64)
-    borrowed = np.zeros((n_cohorts, n_durations), dtype=bool)
+    grafted = np.zeros((n_cohorts, n_durations), dtype=bool)
 
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
@@ -420,7 +420,7 @@ def project_borrow(
 
     # own-data boundary = last link the segment can fit on its own (-1 if none).
     # Taken from the ORIGINAL finite own factors (before the LOCF below): it marks
-    # where the segment's own data ends and the borrowed tail begins.
+    # where the segment's own data ends and the grafted tail begins.
     if body == "additive":
         own = own_g
     elif body == "self_exposure":
@@ -449,7 +449,7 @@ def project_borrow(
     # (e.g. a `recent` window that leaves a middle link unestimated) carries the
     # last own factor forward rather than breaking the chain. A LEADING own gap
     # stays NaN and falls through to the donor tail below. own_boundary is
-    # unchanged (from the original finite mask), so the tail region still borrows.
+    # unchanged (from the original finite mask), so the tail region still grafts.
     own_g = _locf_forward(own_g)
     own_sig_g = _locf_forward(own_sig_g)
     own_var_g = _locf_forward(own_var_g)
@@ -500,13 +500,13 @@ def project_borrow(
                     loss_proj[pos, k + 1] = own_f[k] * c_k[pos]
                     step_multiplicative(proc_acc, param_acc, pos, own_f[k],
                                   own_sig_f[k], own_var_f[k], c_k)
-        elif np.isfinite(donor_f[k]):                     # borrowed link-ratio tail
+        elif np.isfinite(donor_f[k]):                     # grafted link-ratio tail
             pos = active & ~np.isnan(c_k) & (c_k > 0)
             if pos.any():
                 loss_proj[pos, k + 1] = donor_f[k] * c_k[pos]
                 step_multiplicative(proc_acc, param_acc, pos, donor_f[k],
                               donor_sig_f[k], donor_var_f[k], c_k)
-                borrowed[pos, k + 1] = True
+                grafted[pos, k + 1] = True
         else:
             continue
         c_k1 = loss_proj[:, k + 1]
@@ -518,4 +518,4 @@ def project_borrow(
     proc_se[obs_mask] = np.nan
     param_se[obs_mask] = np.nan
     total_se[obs_mask] = np.nan
-    return loss_proj, proc_se, param_se, total_se, borrowed
+    return loss_proj, proc_se, param_se, total_se, grafted

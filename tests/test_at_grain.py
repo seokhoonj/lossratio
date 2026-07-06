@@ -120,12 +120,12 @@ def test_at_grain_guards():
         fit.at_grain("M")          # finer than the Q fit
 
 
-def test_at_grain_carries_borrow_provenance():
-    """A segment_wise fit's coarse view keeps borrowed cells (the increments are
-    already borrow-filled), labelled 'borrowed' when any sub-cell is borrowed."""
+def test_at_grain_carries_graft_provenance():
+    """A segment_wise fit's coarse view keeps grafted cells (the increments are
+    already graft-filled), labelled 'grafted' when any sub-cell is grafted."""
     from datetime import date
     fit = lr.CredibleLoss(
         regime=lr.Regime(date(2024, 7, 1)), treatment="segment_wise"
     ).fit(_tri("M"))
     src = set(fit.at_grain("Q")["source"].unique().to_list())
-    assert "borrowed" in src
+    assert "grafted" in src

@@ -3,7 +3,7 @@
 The estimator ``treatment="segment_wise"`` knob keeps EVERY regime (vs
 ``"latest_only"`` which drops every cohort before the latest change), fits each
 regime on its own cohorts (own level + own shape to its own observed depth), and
-borrows only the unobservable deep tail from the pooled level-invariant link
+grafts only the unobservable deep tail from the pooled level-invariant link
 ratio of the older (deeper) regimes. The default ``"latest_only"`` leaves all
 existing paths unchanged.
 """
@@ -46,7 +46,7 @@ def test_default_treatment_is_byte_identical_to_plain_latest_only(tri):
 
 
 @pytest.mark.parametrize("Est", [lr.PooledLoss, lr.CredibleLoss, lr.SmoothLoss])
-def test_segment_wise_keeps_all_regimes_and_borrows_the_tail(Est, tri):
+def test_segment_wise_keeps_all_regimes_and_grafts_the_tail(Est, tri):
     reg = lr.Regime(change=CHANGE)
 
     sw = Est(regime=reg, treatment="segment_wise").fit(tri).to_polars()
@@ -57,9 +57,9 @@ def test_segment_wise_keeps_all_regimes_and_borrows_the_tail(Est, tri):
     # segment_wise retains the pre-change cohorts that latest_only drops
     assert n_sw > n_lo
     # the younger regime's deep tail is filled from the older regimes
-    assert sw.filter(pl.col("source") == "borrowed").height > 0
+    assert sw.filter(pl.col("source") == "grafted").height > 0
     # clean splice: no projection gaps anywhere
-    obs_proj = sw.filter(pl.col("source").is_in(["observed", "own", "borrowed"]))
+    obs_proj = sw.filter(pl.col("source").is_in(["observed", "own", "grafted"]))
     assert obs_proj.height == sw.height
 
 
@@ -100,14 +100,14 @@ def test_segment_wise_cohorts_are_globally_ascending(tri):
         assert first_seen == sorted(first_seen)
 
 
-def test_thin_newest_regime_borrows_from_the_start(tri):
+def test_thin_newest_regime_grafts_from_the_start(tri):
     # a change near the last cohort leaves the newest regime only 1-2 cohorts
-    # with shallow depth -> it must borrow from (almost) duration 1 with no crash
+    # with shallow depth -> it must graft from (almost) duration 1 with no crash
     # and no projection gap.
     reg = lr.Regime(change="2025-11-01")
     fit = lr.PooledLoss(regime=reg, treatment="segment_wise").fit(tri)
     df = fit.to_polars()
-    assert df.filter(pl.col("source") == "borrowed").height > 0
+    assert df.filter(pl.col("source") == "grafted").height > 0
     assert fit.cell_counts["unfittable"] == 0
 
 
@@ -121,7 +121,7 @@ def test_multi_regime_cascade_three_regimes(tri):
     assert sw.select(pl.col("cohort").n_unique()).item() > (
         lo.select(pl.col("cohort").n_unique()).item()
     )
-    assert sw.filter(pl.col("source") == "borrowed").height > 0
+    assert sw.filter(pl.col("source") == "grafted").height > 0
 
 
 def test_segment_wise_rejects_unsupported_combinations(tri):
@@ -135,7 +135,7 @@ def test_segment_wise_rejects_unsupported_combinations(tri):
             uncertainty=lr.ResidualBootstrap(n_replicates=5, seed=1),
         ).fit(tri)
     # ChainLadder segment_wise IS supported (the link-ratio f_k cascade); see
-    # test_chain_ladder_segment_wise_borrows.
+    # test_chain_ladder_segment_wise_grafts.
 
 
 def test_segment_wise_rejects_covariates():
@@ -150,10 +150,10 @@ def test_segment_wise_rejects_covariates():
 
 def test_treatment_survives_the_deferred_detector_path(tri):
     # a DEFERRED segment_wise regime (a RegimeDetector, resolved at fit time)
-    # must keep every regime and borrow the tail -- identical to the eager
+    # must keep every regime and graft the tail -- identical to the eager
     # concrete Regime. Regression: the resolution used to read `.treatment` off
     # a concrete Regime only, so a deferred/auto/callable regime silently fell
-    # back to latest_only (dropped the older regimes, no borrow).
+    # back to latest_only (dropped the older regimes, no graft).
     eager = lr.Regime(change=CHANGE)
     deferred = lr.RegimeDetector()
 
@@ -161,11 +161,11 @@ def test_treatment_survives_the_deferred_detector_path(tri):
     b = lr.PooledLoss(regime=deferred, treatment="segment_wise").fit(tri).to_polars()
 
     # the detector finds the same planted change, so the deferred path keeps the
-    # same cohorts and borrows the same tail as the eager one
+    # same cohorts and grafts the same tail as the eager one
     assert b.select(pl.col("cohort").n_unique()).item() == (
         a.select(pl.col("cohort").n_unique()).item()
     )
-    assert b.filter(pl.col("source") == "borrowed").height > 0
+    assert b.filter(pl.col("source") == "grafted").height > 0
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ def test_treatment_survives_the_deferred_detector_path(tri):
 @pytest.mark.parametrize(
     "Est", [lr.PooledPremium, lr.CrediblePremium, lr.SmoothPremium]
 )
-def test_premium_segment_wise_keeps_all_regimes_and_borrows(Est, tri):
+def test_premium_segment_wise_keeps_all_regimes_and_grafts(Est, tri):
     reg = lr.Regime(change=CHANGE)
 
     sw = Est(regime=reg, treatment="segment_wise").fit(tri).to_polars()
@@ -185,8 +185,8 @@ def test_premium_segment_wise_keeps_all_regimes_and_borrows(Est, tri):
     assert sw.select(pl.col("cohort").n_unique()).item() > (
         lo.select(pl.col("cohort").n_unique()).item()
     )
-    # the young regime's borrow region is filled from the donor regimes
-    assert sw.filter(pl.col("source") == "borrowed").height > 0
+    # the young regime's graft region is filled from the donor regimes
+    assert sw.filter(pl.col("source") == "grafted").height > 0
     # no projection gap -- premium is fully covered (this is what closes F2)
     assert sw.select(pl.col("premium_proj").is_null().sum()).item() == 0
 
@@ -212,10 +212,10 @@ def test_premium_rejects_covariate_treatment(tri):
         lr.PooledPremium(regime=reg, treatment="covariate").fit(tri)
 
 
-def test_chain_ladder_segment_wise_borrows(tri):
+def test_chain_ladder_segment_wise_grafts(tri):
     reg = lr.Regime(change=CHANGE)
     cl = lr.ChainLadder(regime=reg, treatment="segment_wise").fit(tri).to_polars()
-    assert cl.filter(pl.col("source") == "borrowed").height > 0
+    assert cl.filter(pl.col("source") == "grafted").height > 0
     assert cl.select(pl.col("loss_proj").is_null().sum()).item() == 0
 
 
@@ -289,14 +289,14 @@ def test_ragged_depth_both_side_ratio_has_no_null():
     assert rat.select(pl.col("ratio_proj").is_null().sum()).item() == 0
 
 
-def test_project_borrow_leading_gap_and_short_donor_fill_the_tail():
+def test_project_graft_leading_gap_and_short_donor_fill_the_tail():
     # kernel guard: a LEADING own gap (e.g. from a `recent` window that leaves the
     # early links unestimated) must fall through to the donor tail, and a donor
     # shallower than the segment horizon must LOCF-extend -- neither may leave a
     # NaN tail or index out of bounds.
     import numpy as np
 
-    from lossratio._kernels.credible import project_borrow
+    from lossratio._kernels.credible import project_graft
 
     own_h = np.array([np.nan, np.nan, 0.10])        # leading gap at links 0, 1
     zero, nan3 = np.zeros(3), np.full(3, np.nan)
@@ -308,7 +308,7 @@ def test_project_borrow_leading_gap_and_short_donor_fill_the_tail():
 
     def _run(donor_f):
         n = donor_f.shape[0]
-        return project_borrow(
+        return project_graft(
             loss_obs, prem, body="self_exposure",
             own_g=nan3, own_sig_g=nan3, own_var_g=nan3,
             own_f=nan3, own_sig_f=zero, own_var_f=zero,

@@ -35,8 +35,8 @@ _USAGE_COLORS: dict[str, str] = {
     "used":     BLUE,
     "holdout":  RED,
     "future":   "#ffffff",
-    # segment_wise borrow donor: an OBSERVED older-regime cell at duration
-    # >= the newest regime's depth -- data actually used (as the borrow donor),
+    # segment_wise graft donor: an OBSERVED older-regime cell at duration
+    # >= the newest regime's depth -- data actually used (as the graft donor),
     # so it is coloured like the other data cells (never a projection cell).
     "donor":    "#6b7075",
 }

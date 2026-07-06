@@ -38,7 +38,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from .._kernels.credible import credible_levels, project_borrow, smooth_backfit
+from .._kernels.credible import credible_levels, project_graft, smooth_backfit
 from .._kernels.io import (
     collapse_groups,
     fill_group_columns,
@@ -87,7 +87,7 @@ def _segment_premium_df(
     groups: str | list[str] | None,
     group_value: Any | None,
     confidence_level: float,
-    borrowed: np.ndarray | None = None,
+    grafted: np.ndarray | None = None,
 ) -> pl.DataFrame:
     """Assemble one segment's premium matrices into the long premium frame."""
     z = float(norm.ppf((1 + confidence_level) / 2))
@@ -103,16 +103,16 @@ def _segment_premium_df(
     ci_hi = np.where(both, premium_proj + z * total_se, np.nan)
 
     obs = ~np.isnan(premium_obs)
-    borrowed_mask = (
+    grafted_mask = (
         np.zeros((n_cohorts, n_durations), dtype=bool)
-        if borrowed is None
-        else borrowed
+        if grafted is None
+        else grafted
     )
-    proj = ~np.isnan(premium_proj) & ~obs & ~borrowed_mask
+    proj = ~np.isnan(premium_proj) & ~obs & ~grafted_mask
     source = np.full((n_cohorts, n_durations), None, dtype=object)
     source[obs] = "observed"
     source[proj] = "own"
-    source[borrowed_mask] = "borrowed"
+    source[grafted_mask] = "grafted"
 
     total = n_cohorts * n_durations
     data: dict[str, Any] = {}
@@ -173,25 +173,25 @@ def _project_self_exposure(
     return proj
 
 
-def _premium_borrow_proj(
+def _premium_graft_proj(
     premium_obs: np.ndarray, *, body: str,
     donor: tuple[np.ndarray, np.ndarray, np.ndarray],
     own_f: np.ndarray | None = None,
     own_h: np.ndarray | None = None,
     own_u: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Own premium body to the own-data boundary, then a donor f^P_k borrow tail.
+    """Own premium body to the own-data boundary, then a donor f^P_k graft tail.
 
     Mirrors the loss-side ``_segment_premium_proj`` donor path, point-only (the
     SE arms are discarded -- the donor sigma / var are passed as zeros).
     ``body="multiplicative"`` carries ``own_f`` (PooledPremium); ``"self_exposure"``
     carries the per-cohort growth ``own_h`` / level ``own_u`` (Credible /
-    SmoothPremium). Returns ``(premium_proj, borrowed)``.
+    SmoothPremium). Returns ``(premium_proj, grafted)``.
     """
     n_links = premium_obs.shape[1] - 1
     nan = np.full(n_links, np.nan)
     zero = np.zeros(n_links, dtype=np.float64)
-    proj, _, _, _, borrowed = project_borrow(
+    proj, _, _, _, grafted = project_graft(
         premium_obs, np.full_like(premium_obs, np.nan), body=body,
         own_g=nan, own_sig_g=nan, own_var_g=nan,
         own_f=(own_f if own_f is not None else nan),
@@ -199,7 +199,7 @@ def _premium_borrow_proj(
         donor_f=donor[0], donor_sig_f=zero, donor_var_f=zero,
         own_u=own_u, own_h=own_h,
     )
-    return proj, borrowed
+    return proj, grafted
 
 
 def _fit_segment_pooled_premium(
@@ -212,15 +212,15 @@ def _fit_segment_pooled_premium(
     ``donor=None`` is the oldest regime (and the non-cascade case): the pooled
     link-ratio projection on its own cohorts. With a ``donor`` (a younger
     regime): own ``f^P_k`` to the own-data boundary, then the older regimes'
-    pooled ``f^P_k`` over the borrow region. Point-only (SE null).
+    pooled ``f^P_k`` over the graft region. Point-only (SE null).
     """
     mask = recent_link_mask(premium_obs, recent)
     mr = fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
     if donor is None:
         premium_proj = mr.value_proj
-        borrowed = np.zeros(premium_obs.shape, dtype=bool)
+        grafted = np.zeros(premium_obs.shape, dtype=bool)
     else:
-        premium_proj, borrowed = _premium_borrow_proj(
+        premium_proj, grafted = _premium_graft_proj(
             premium_obs, body="multiplicative", own_f=mr.f_k, donor=donor
         )
     nan_se = np.full(premium_obs.shape, np.nan, dtype=np.float64)
@@ -230,7 +230,7 @@ def _fit_segment_pooled_premium(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": borrowed,
+        "grafted": grafted,
     }
 
 
@@ -264,15 +264,15 @@ def _fit_segment_credible_premium(
             premium_proj = mr.value_proj        # exact PooledPremium
         else:
             premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
-        borrowed = np.zeros(premium_obs.shape, dtype=bool)
+        grafted = np.zeros(premium_obs.shape, dtype=bool)
     else:
         # cascade regime: own (1 + u_i * h_k) body to the own-data boundary, then
-        # the older regimes' donor f^P_k over the borrow region. At psi <= 0 force
+        # the older regimes' donor f^P_k over the graft region. At psi <= 0 force
         # u = 1 (the own body is then exactly the pooled f^P_k); this BYPASSES the
-        # pooled early-return so the borrow tail still fills the borrow region --
+        # pooled early-return so the graft tail still fills the graft region --
         # otherwise the young regime stops at its own depth and the ratio nulls.
         u_body = u_vec if psi_hat > 0.0 else np.ones(premium_obs.shape[0])
-        premium_proj, borrowed = _premium_borrow_proj(
+        premium_proj, grafted = _premium_graft_proj(
             premium_obs, body="self_exposure", own_h=h_k, own_u=u_body, donor=donor
         )
 
@@ -283,7 +283,7 @@ def _fit_segment_credible_premium(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": borrowed,
+        "grafted": grafted,
         "u": u_vec,
         "Z": z_vec,
         "psi": psi_hat,
@@ -308,7 +308,7 @@ def _fit_segment_smooth_premium(
     conjugate level) on premium-as-its-own-exposure. The projection is the
     self-exposure multiplicative recursion ``P_{k+1} = P_k * (1 + u_i * h_k)``.
     With a ``donor`` (a younger cascade regime): own body to the own-data
-    boundary, then the older regimes' f^P_k over the borrow region.
+    boundary, then the older regimes' f^P_k over the graft region.
     Point-only (SE null, like the loss smooth rung).
     """
     bf = smooth_backfit(
@@ -318,9 +318,9 @@ def _fit_segment_smooth_premium(
     h_k, u_vec = bf["g_k"], bf["u"]
     if donor is None:
         premium_proj = _project_self_exposure(premium_obs, h_k, u_vec)
-        borrowed = np.zeros(premium_obs.shape, dtype=bool)
+        grafted = np.zeros(premium_obs.shape, dtype=bool)
     else:
-        premium_proj, borrowed = _premium_borrow_proj(
+        premium_proj, grafted = _premium_graft_proj(
             premium_obs, body="self_exposure", own_h=h_k, own_u=u_vec, donor=donor
         )
 
@@ -331,7 +331,7 @@ def _fit_segment_smooth_premium(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": borrowed,
+        "grafted": grafted,
         "u": u_vec,
         "Z": bf["Z"],
         "psi": bf["psi"],
@@ -354,7 +354,7 @@ def _fit_premium_segment_cascade(
     """segment_wise cascade for one premium segment.
 
     Each regime is fit on its OWN cohorts (own f^P_k / growth) to its own-data
-    boundary; the borrow region beyond it is filled with the older regimes'
+    boundary; the graft region beyond it is filled with the older regimes'
     pooled level-invariant f^P_k (the donor). The oldest regime has no donor and
     projects its own f^P_k to its own (deepest) depth = the segment's global
     depth. Mirrors the loss cascade (``_fit_segment_cascade``) but premium-only
@@ -400,7 +400,7 @@ def _fit_premium_segment_cascade(
             "segment_wise premium cascade produced no fittable regime in a segment."
         )
     keys = ["premium_obs", "premium_proj", "proc_se", "param_se", "total_se",
-            "borrowed"]
+            "grafted"]
     return (
         _stack_cascade_fits(parts, mechanism, keys=keys, n_rows_key="premium_obs"),
         cohorts_all,
@@ -480,7 +480,7 @@ def _fit_premium(
 
     long_parts: list[pl.DataFrame] = []
     cred_parts: list[pl.DataFrame] = []
-    n_observed = n_projected = n_unfittable = n_borrowed = 0
+    n_observed = n_projected = n_unfittable = n_grafted = 0
     converged = True
 
     for sid in frame.get_column("_segment_id").unique().sort().to_list():
@@ -492,7 +492,7 @@ def _fit_premium(
             group_value = None
 
         if segment_wise:
-            # cascade: keep every regime, own f^P_k to own depth + donor borrow.
+            # cascade: keep every regime, own f^P_k to own depth + donor graft.
             extra = (
                 {} if mechanism == "pooled"
                 else {"psi": psi} if mechanism == "credible"
@@ -504,7 +504,7 @@ def _fit_premium(
             )
             premium_obs = res["premium_obs"]
             premium_proj = res["premium_proj"]
-            borrowed = res["borrowed"]
+            grafted = res["grafted"]
             proc_se, param_se, total_se = (
                 res["proc_se"], res["param_se"], res["total_se"]
             )
@@ -519,7 +519,7 @@ def _fit_premium(
             (premium_obs,), cohorts, _ = build_value_matrices(
                 sub, value_cols=("premium",)
             )
-            borrowed = np.zeros(premium_obs.shape, dtype=bool)
+            grafted = np.zeros(premium_obs.shape, dtype=bool)
             if mechanism == "pooled":
                 mask = recent_link_mask(premium_obs, recent)
                 mr = fit_multiplicative(premium_obs, sigma_method=sigma_method, link_mask=mask)
@@ -538,7 +538,7 @@ def _fit_premium(
                     premium_obs, sigma_method, psi=psi, recent=recent,
                 )
                 premium_proj = res["premium_proj"]
-                borrowed = res["borrowed"]
+                grafted = res["grafted"]
                 proc_se, param_se, total_se = (
                     res["proc_se"], res["param_se"], res["total_se"]
                 )
@@ -551,7 +551,7 @@ def _fit_premium(
                     recent=recent,
                 )
                 premium_proj = res["premium_proj"]
-                borrowed = res["borrowed"]
+                grafted = res["grafted"]
                 proc_se, param_se, total_se = (
                     res["proc_se"], res["param_se"], res["total_se"]
                 )
@@ -561,11 +561,11 @@ def _fit_premium(
                 converged = converged and bool(res["smooth_converged"])
 
         obs_mask = ~np.isnan(premium_obs)
-        # observed / own / borrowed partition the projected cells.
-        proj_mask = ~np.isnan(premium_proj) & ~obs_mask & ~borrowed
+        # observed / own / grafted partition the projected cells.
+        proj_mask = ~np.isnan(premium_proj) & ~obs_mask & ~grafted
         n_observed += int(obs_mask.sum())
         n_projected += int(proj_mask.sum())
-        n_borrowed += int(borrowed.sum())
+        n_grafted += int(grafted.sum())
 
         n_dur = premium_proj.shape[1]
         has_obs = obs_mask.any(axis=1)
@@ -579,7 +579,7 @@ def _fit_premium(
         long_parts.append(
             _segment_premium_df(
                 premium_obs, premium_proj, proc_se, param_se, total_se,
-                cohorts, groups, group_value, confidence_level, borrowed,
+                cohorts, groups, group_value, confidence_level, grafted,
             )
         )
 
@@ -604,7 +604,7 @@ def _fit_premium(
         cell_counts={
             "observed": n_observed,
             "own": n_projected,
-            "borrowed": n_borrowed,
+            "grafted": n_grafted,
             "unfittable": n_unfittable,
         },
         credibility=credibility,

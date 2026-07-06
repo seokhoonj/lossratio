@@ -299,7 +299,7 @@ def test_usage_uses_classic_vocabulary(tri_with_groups):
     r = lr.RegimeDetector(window=12).detect(tri_with_groups)
     seen = set(tri_with_groups.usage(regime=r)["status"].unique().to_list())
     assert seen <= {"used", "unused", "holdout", "future"}
-    assert "donor" not in seen and "borrowed" not in seen
+    assert "donor" not in seen and "grafted" not in seen
 
 
 
@@ -390,7 +390,7 @@ def test_usage_rejects_bad_recent(tri_with_groups, bad):
         tri_with_groups.usage(recent=bad)
 
 
-# --- segment_wise borrow donor provenance ----------------------------
+# --- segment_wise graft donor provenance ----------------------------
 
 def _surgery_q():
     return lr.Triangle(
@@ -402,7 +402,7 @@ def _surgery_q():
 def test_usage_segment_wise_marks_donor_observed_cells():
     """segment_wise keeps every regime (no 'unused' drop) and flags the older
     regimes' OBSERVED cells past the newest regime's depth as 'donor' -- the data
-    cells used as the borrow donor. Projection cells never become 'donor'."""
+    cells used as the graft donor. Projection cells never become 'donor'."""
     from datetime import date
     tri = _surgery_q()
     cut = date(2024, 7, 1)
@@ -422,7 +422,7 @@ def test_usage_segment_wise_marks_donor_observed_cells():
 
 
 def test_usage_covariate_keeps_all_regimes_no_donor():
-    """covariate keeps every regime too, but there is no borrow donor."""
+    """covariate keeps every regime too, but there is no graft donor."""
     u = _surgery_q().usage(
         regime=lr.Regime(change="2024-07-01"), treatment="covariate"
     )

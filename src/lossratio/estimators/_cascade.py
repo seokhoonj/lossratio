@@ -26,7 +26,7 @@ from .._kernels.recursion import (
 # the loss cascade's stacked keys (the default for `_stack_cascade_fits`).
 _LOSS_CASCADE_KEYS = [
     "loss_obs", "loss_proj", "premium_obs", "premium_proj",
-    "proc_se", "param_se", "total_se", "borrowed",
+    "proc_se", "param_se", "total_se", "grafted",
 ]
 
 

@@ -11,9 +11,9 @@ from lossratio._kernels.engine import buhlmann_straub_psi, pearson_dispersion
 # phi = d^2 / 10.
 
 
-def test_locf_interior_gap_borrows_nearest_prior_not_last():
+def test_locf_interior_gap_grafts_nearest_prior_not_last():
     # durations 1,2,4 valid; 3 and 5 are edf-deficient (one cell each). n_k is
-    # NON-monotonic, so a deficient interior duration (3) must borrow the
+    # NON-monotonic, so a deficient interior duration (3) must graft the
     # nearest PRIOR valid (2), not the global last valid (4).
     response = [10, 12, 10, 14, 11, 10, 20, 13]
     fitted = [10, 10, 10, 10, 10, 10, 10, 10]
@@ -24,7 +24,7 @@ def test_locf_interior_gap_borrows_nearest_prior_not_last():
     assert phi[1] == pytest.approx(0.4)      # (2^2)/10
     assert phi[2] == pytest.approx(1.6)      # (4^2)/10
     assert phi[4] == pytest.approx(10.0)     # (10^2)/10
-    # the fix: 3 borrows from 2 (nearest prior), NOT from 4 (the last valid).
+    # the fix: 3 grafts from 2 (nearest prior), NOT from 4 (the last valid).
     assert phi[3] == pytest.approx(phi[2])
     assert phi[3] != pytest.approx(phi[4])
     # 5 is a tail gap -> nearest prior is 4.

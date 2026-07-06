@@ -46,7 +46,7 @@ def test_loss_predict_columns(tri_g):
         "coverage", "cohort", "duration",
         "loss_proj", "incr_loss_proj", "ratio_proj", "source",
     ]
-    assert set(out["source"].unique().to_list()) <= {"observed", "own", "borrowed"}
+    assert set(out["source"].unique().to_list()) <= {"observed", "own", "grafted"}
 
 
 def test_premium_predict_columns(tri_g):
@@ -81,14 +81,14 @@ def test_predict_mirrors_pandas_input():
     assert isinstance(out, pd.DataFrame)
 
 
-def test_predict_marks_borrowed_under_regime(tri_g):
+def test_predict_marks_grafted_under_regime(tri_g):
     """A segment_wise regime fit produces all three provenance states."""
     reg = lr.Regime(
         change="2024-07-01", groups={"coverage": ["SURGERY"]},
     )
     fit = lr.PooledLoss(regime=reg, treatment="segment_wise").fit(tri_g)
     seen = set(fit.predict()["source"].unique().to_list())
-    assert "borrowed" in seen
+    assert "grafted" in seen
     assert {"observed", "own"} <= seen
 
 

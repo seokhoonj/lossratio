@@ -712,7 +712,7 @@ class Triangle:
             ``latest_only`` (default) drops the pre-change cohorts to
             ``"unused"``; ``segment_wise`` / ``covariate`` keep every regime, and
             under ``segment_wise`` the older regimes' observed cells past the
-            newest regime's depth are flagged ``"donor"`` (the borrow donor).
+            newest regime's depth are flagged ``"donor"`` (the graft donor).
         holdout
             Number of trailing calendar diagonals flagged ``"holdout"`` (the
             :class:`Backtest` hold-out pattern).

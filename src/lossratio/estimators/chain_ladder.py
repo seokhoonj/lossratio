@@ -4,7 +4,7 @@
 ladder: it develops cumulative loss with its own age-to-age link ratio
 ``f_k = sum C_{k+1} / sum C_k``, with no premium exposure. The
 link ratio is level-invariant (the loss-ratio level cancels), which is why it
-is the borrow donor for thin segments -- it lends development SHAPE, not the
+is the graft donor for thin segments -- it lends development SHAPE, not the
 donor's loss-ratio level.
 
 It returns the same engine-backed :class:`~lossratio.estimators.loss.LossFit` as
@@ -42,7 +42,7 @@ class ChainLadder(_LossEstimatorBase):
         ``None`` / a :class:`~lossratio.Regime` / a
         :class:`~lossratio.RegimeDetector` (resolved at fit time). With
         ``treatment="segment_wise"`` ChainLadder keeps every regime, fitting
-        each on its own cohorts with its own link ratio ``f_k`` and borrowing
+        each on its own cohorts with its own link ratio ``f_k`` and grafting
         the deep region from the older regimes' pooled ``f_k``.
     recent
         Calendar-diagonal fit window: ``None`` (all data) or a positive integer

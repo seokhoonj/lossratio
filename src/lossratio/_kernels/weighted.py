@@ -17,7 +17,7 @@ calendar-drift band, and the summary are the SAME as the residual bootstrap
 (reused, batched), so the methodological difference is isolated to the refit.
 
 Scope: the additive ``pooled`` / ``credible`` mechanisms, the ``ChainLadder``
-benchmark (per-cohort weighted link ratio), and the ``borrow`` donor tail.
+benchmark (per-cohort weighted link ratio), and the ``graft`` donor tail.
 This is an UNVALIDATED-in-reserving method (the FRW literature is general
 statistics, not loss reserving) -- adopt only after a coverage backtest beats
 or matches the residual bootstrap on real data.
@@ -55,14 +55,14 @@ class WeightedBootstrap:
     NOTE: not yet validated for reserving -- the FRW weight scheme gives a
     SYSTEMATICALLY WIDER parameter spread than the residual bootstrap on small
     triangles; whether that is better-calibrated is a per-book coverage
-    question. Default uncertainty stays the residual bootstrap. On a BORROWED
-    tail (regime-thinned segment + ``borrow``) the own-body weight spread
-    amplifies through the multiplicative donor recursion, so the borrowed-cell
+    question. Default uncertainty stays the residual bootstrap. On a GRAFTED
+    tail (regime-thinned segment + ``graft``) the own-body weight spread
+    amplifies through the multiplicative donor recursion, so the grafted-cell
     SE runs materially wider than the residual bootstrap (own cells track it);
-    treat the borrow path as the most experimental.
+    treat the graft path as the most experimental.
 
     Supports the additive ``pooled`` / ``credible`` mechanisms, the
-    ``ChainLadder`` benchmark, and the ``borrow`` donor (``smooth`` / covariate
+    ``ChainLadder`` benchmark, and the ``graft`` donor (``smooth`` / covariate
     fits fall back to ResidualBootstrap).
 
     Parameters
@@ -307,8 +307,8 @@ def bootstrap_segment_weighted_additive(
     if donor is None:
         point_proj = project_credible(loss_obs, premium_proj, g_pt, u_pt)
     else:
-        from .resample import project_borrow_cum
-        point_proj = project_borrow_cum(
+        from .resample import project_graft_cum
+        point_proj = project_graft_cum(
             loss_obs, premium_proj, "additive", g_pt, donor, own_u=u_pt
         )
     drift_se = _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method,
@@ -328,7 +328,7 @@ def bootstrap_segment_weighted_additive(
             loss_obs, param_draws, phi, drift_se, frontier, rng, spec.process
         )
     else:
-        param_draws, pred_draws = _borrow_draws(
+        param_draws, pred_draws = _graft_draws(
             loss_obs, premium_proj=premium_proj, body="additive", own=g, own_u=u,
             f_pt=g_pt, donor=donor, phi=phi, drift_se=drift_se, frontier=frontier,
             rng=rng, process=spec.process,
@@ -473,9 +473,9 @@ def bootstrap_segment_weighted_multiplicative(
     if donor is None:
         point_proj = project_multiplicative_cum(loss_obs, f_pt)
     else:
-        from .resample import project_borrow_cum
+        from .resample import project_graft_cum
         premium_proj_b = fit_multiplicative(premium_obs, sigma_method=sigma_method).value_proj
-        point_proj = project_borrow_cum(
+        point_proj = project_graft_cum(
             loss_obs, premium_proj_b, "multiplicative", f_pt, donor
         )
     m_mat = ev_fitted_increments(loss_obs, f_pt)
@@ -514,7 +514,7 @@ def bootstrap_segment_weighted_multiplicative(
             loss_obs, param_draws, phi_link, drift_se, frontier, rng, spec.process
         )
     else:
-        param_draws, pred_draws = _borrow_draws(
+        param_draws, pred_draws = _graft_draws(
             loss_obs, premium_proj=None, body="multiplicative", own=f, own_u=None,
             f_pt=f_pt, donor=donor, phi=np.tile(phi_link, (B, 1)),
             drift_se=drift_se, frontier=frontier, rng=rng, process=spec.process,
@@ -523,7 +523,7 @@ def bootstrap_segment_weighted_multiplicative(
 
 
 # ---------------------------------------------------------------------------
-# Borrow donor (regime-thinned segments) -- batched
+# Graft donor (regime-thinned segments) -- batched
 # ---------------------------------------------------------------------------
 #
 # Own body up to the own-data boundary (refit g_k / f_k per replicate), then the
@@ -551,9 +551,9 @@ def _own_boundary(f_pt):
     return int(links.max()) if links.size else -1
 
 
-def _borrow_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
+def _graft_draws(loss_obs, *, premium_proj, body, own, own_u, f_pt, donor,
                   phi, drift_se, frontier, rng, process):
-    """Batched borrow projection (param) + predictive draw (pred)."""
+    """Batched graft projection (param) + predictive draw (pred)."""
 
     B = own.shape[0]
     n_cohorts, n_durations = loss_obs.shape

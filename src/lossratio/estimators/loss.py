@@ -30,8 +30,8 @@ from scipy.stats import norm
 from .._kernels import engine
 from .._kernels.credible import (
     credible_levels,
-    project_borrow,
     project_credible,
+    project_graft,
     smooth_backfit,
     smooth_backfit_covariate,
 )
@@ -76,6 +76,7 @@ _LOSS_COLUMNS = [
     "premium_obs", "premium_proj", "incr_premium_proj",
     "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     "loss_ci_lo", "loss_ci_hi",
+    "loss_graft_se", "loss_graft_ci_lo", "loss_graft_ci_hi",
     "ratio_proj", "ratio_se", "ratio_ci_lo", "ratio_ci_hi",
     "source",
 ]
@@ -129,10 +130,10 @@ def _segment_premium_proj(
 
     Without a donor: the kept multiplicative kernel (the self-anchored pooled
     premium link ratio ``f^P_k``). With a ``premium_donor`` (a regime-thinned
-    segment, borrow on): own ``f^P_k`` up to the segment's own-data boundary,
+    segment, graft on): own ``f^P_k`` up to the segment's own-data boundary,
     then the level-invariant full-history donor ``f^P_k`` for the tail -- so the
-    denominator reaches the same horizon as the borrowed loss and the loss ratio
-    stays defined across the borrowed tail. Premium is always link-ratio (its
+    denominator reaches the same horizon as the grafted loss and the loss ratio
+    stays defined across the grafted tail. Premium is always link-ratio (its
     own volume base), so the donor is the same kind of object as the loss donor;
     the loss body only consumes premium within the own boundary, so extending
     the premium tail never changes the loss projection.
@@ -145,7 +146,7 @@ def _segment_premium_proj(
     n_links = premium_obs.shape[1] - 1
     nan = np.full(n_links, np.nan)
     zero = np.zeros(n_links, dtype=np.float64)
-    proj = project_borrow(
+    proj = project_graft(
         premium_obs, np.full_like(premium_obs, np.nan), body="multiplicative",
         own_g=nan, own_sig_g=nan, own_var_g=nan,
         own_f=mr.f_k, own_sig_f=zero, own_var_f=zero,
@@ -209,7 +210,7 @@ def _fit_segment_pooled(
             "proc_se": nan_se,
             "param_se": nan_se.copy(),
             "total_se": nan_se.copy(),
-            "borrowed": np.zeros(loss_obs.shape, dtype=bool),
+            "grafted": np.zeros(loss_obs.shape, dtype=bool),
             "g_k": g_override,
         }
 
@@ -245,16 +246,16 @@ def _fit_segment_pooled(
     )
 
     # 4. loss projection + analytical variance recursion (intensity additive). With a
-    # borrow donor, the tail beyond the segment's own g_k switches to the
+    # graft donor, the tail beyond the segment's own g_k switches to the
     # level-invariant donor link ratio.
     if donor is None:
         loss_proj, proc_se, param_se, total_se = _project_additive(
             loss_obs, premium_proj, g_k, sigma2_g_k, var_g_k
         )
-        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+        grafted = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
-        loss_proj, proc_se, param_se, total_se, borrowed = project_borrow(
+        loss_proj, proc_se, param_se, total_se, grafted = project_graft(
             loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=sigma2_g_k, own_var_g=var_g_k,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
@@ -269,7 +270,7 @@ def _fit_segment_pooled(
         "proc_se": proc_se,
         "param_se": param_se,
         "total_se": total_se,
-        "borrowed": borrowed,
+        "grafted": grafted,
         "g_k": g_k,
     }
 
@@ -415,11 +416,11 @@ def _fit_segment_credible(
     rides the ResidualBootstrap, wired in a later step). ``recent``
     (calendar-diagonal window) masks the links feeding both the pooled ``g_k``
     and the per-cohort credibility estimation, while the projection stays seeded
-    from the full matrices. A ``donor`` (borrow) fills each cohort's tail beyond
+    from the full matrices. A ``donor`` (graft) fills each cohort's tail beyond
     its own-data boundary with the level-invariant donor link ratio: the own
-    body keeps the credibility level (``u_i * g_k`` additive), the borrowed tail
+    body keeps the credibility level (``u_i * g_k`` additive), the grafted tail
     lends only development shape. The credibility level
-    handles a level-shift regime, the borrow extends the data-thin tail horizon
+    handles a level-shift regime, the graft extends the data-thin tail horizon
     -- complementary.
     """
     n_cohorts, n_durations = loss_obs.shape
@@ -450,17 +451,17 @@ def _fit_segment_credible(
         premium_obs, sigma_method, premium_mask, premium_donor
     )
 
-    # 4. credibility-scaled additive projection (SE null in v1). A borrow donor
+    # 4. credibility-scaled additive projection (SE null in v1). A graft donor
     # keeps the credibility level on the own body and lends the level-invariant
     # shape beyond the boundary; the analytical SE arms stay null (coverage
     # rides the ResidualBootstrap).
     if donor is None:
         loss_proj = project_credible(loss_obs, premium_proj, g_k, u_vec)
-        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+        grafted = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
         zero = np.zeros(g_k.shape, dtype=np.float64)
-        loss_proj, _proc, _param, _total, borrowed = project_borrow(
+        loss_proj, _proc, _param, _total, grafted = project_graft(
             loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=zero, own_var_g=zero,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
@@ -477,7 +478,7 @@ def _fit_segment_credible(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": borrowed,
+        "grafted": grafted,
         "g_k": g_k,
         "u": u_vec,
         "Z": z_vec,
@@ -512,7 +513,7 @@ def _fit_segment_smooth(
     estimation variance breaks the analytical recursion). ``recent``
     (calendar-diagonal window) masks the links feeding the smooth shape + the
     credibility level, while the projection stays seeded from the full matrices.
-    A ``donor`` (borrow) keeps the smooth credibility body (``u_i * g_k``
+    A ``donor`` (graft) keeps the smooth credibility body (``u_i * g_k``
     additive) on the own data and lends the level-invariant donor shape beyond
     the boundary, extending a data-thin segment's tail horizon.
     """
@@ -541,11 +542,11 @@ def _fit_segment_smooth(
     )
     if donor is None:
         loss_proj = project_credible(loss_obs, premium_proj, g_k, u_vec)
-        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+        grafted = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(g_k.shape, np.nan)
         zero = np.zeros(g_k.shape, dtype=np.float64)
-        loss_proj, _proc, _param, _total, borrowed = project_borrow(
+        loss_proj, _proc, _param, _total, grafted = project_graft(
             loss_obs, premium_proj, body="additive",
             own_g=g_k, own_sig_g=zero, own_var_g=zero,
             own_f=nan, own_sig_f=nan, own_var_f=nan,
@@ -562,7 +563,7 @@ def _fit_segment_smooth(
         "proc_se": nan_se,
         "param_se": nan_se.copy(),
         "total_se": nan_se.copy(),
-        "borrowed": borrowed,
+        "grafted": grafted,
         "g_k": g_k,
         "u": u_vec,
         "Z": bf["Z"],
@@ -660,16 +661,16 @@ def _fit_segment_chain_ladder(
     )
 
     # 4. loss projection + analytical variance recursion (link-ratio multiplicative).
-    # With a borrow donor, the tail beyond the segment's own f_k switches to the
+    # With a graft donor, the tail beyond the segment's own f_k switches to the
     # donor link ratio.
     if donor is None:
         loss_proj, proc_se, param_se, total_se = _project_multiplicative(
             loss_obs, f_k, sigma2_f_k, var_f_k
         )
-        borrowed = np.zeros(loss_obs.shape, dtype=bool)
+        grafted = np.zeros(loss_obs.shape, dtype=bool)
     else:
         nan = np.full(f_k.shape, np.nan)
-        loss_proj, proc_se, param_se, total_se, borrowed = project_borrow(
+        loss_proj, proc_se, param_se, total_se, grafted = project_graft(
             loss_obs, premium_proj, body="multiplicative",
             own_g=nan, own_sig_g=nan, own_var_g=nan,
             own_f=f_k, own_sig_f=sigma2_f_k, own_var_f=var_f_k,
@@ -684,7 +685,7 @@ def _fit_segment_chain_ladder(
         "proc_se": proc_se,
         "param_se": param_se,
         "total_se": total_se,
-        "borrowed": borrowed,
+        "grafted": grafted,
         "f_k": f_k,
     }
 
@@ -706,8 +707,21 @@ def _segment_long_df(
     z = float(norm.ppf((1 + confidence_level) / 2))
     loss_proj = fit["loss_proj"]
     premium_proj = fit["premium_proj"]
-    total_se = fit["total_se"]
     n_cohorts, n_durations = loss_proj.shape
+
+    # Split the SE into DISJOINT own vs graft columns. Own cells carry a
+    # single-model band (intensity-additive `step_additive` / link-ratio
+    # recursion); grafted (donor) cells carry the donor's Mack multiplicative
+    # band (`step_multiplicative`) -- a DIFFERENT variance derivation grafted
+    # onto the young regime's level, conditional on the shape transferring. The
+    # two must NOT share a column, so the own columns are null on grafted cells
+    # and the graft columns are null on own cells.
+    grafted = fit["grafted"]
+    total_se_full = fit["total_se"]
+    own_se = np.where(grafted, np.nan, total_se_full)
+    own_proc = np.where(grafted, np.nan, fit["proc_se"])
+    own_param = np.where(grafted, np.nan, fit["param_se"])
+    graft_se = np.where(grafted, total_se_full, np.nan)
 
     incr_loss_proj = nan_skip_diff(loss_proj)
     incr_premium_proj = nan_skip_diff(premium_proj)
@@ -717,33 +731,39 @@ def _segment_long_df(
         np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
     )
     with np.errstate(divide="ignore", invalid="ignore"):
-        total_cv = total_se / np.abs(safe_lp)
+        total_cv = own_se / np.abs(safe_lp)
         ratio_proj = loss_proj / safe_pp
 
+    # Full band (analytical Gaussian from total_se, or bootstrap empirical `ci`),
+    # then split own vs graft so the grafted tail's conditional band never
+    # merges into the headline own band.
     if ci is not None:
-        ci_lo, ci_hi = ci
+        ci_lo_full, ci_hi_full = ci
     else:
-        both = np.isfinite(total_se) & np.isfinite(loss_proj)
-        ci_lo = np.where(both, np.maximum(0.0, loss_proj - z * total_se), np.nan)
-        ci_hi = np.where(both, loss_proj + z * total_se, np.nan)
+        both = np.isfinite(total_se_full) & np.isfinite(loss_proj)
+        ci_lo_full = np.where(both, np.maximum(0.0, loss_proj - z * total_se_full), np.nan)
+        ci_hi_full = np.where(both, loss_proj + z * total_se_full, np.nan)
+    ci_lo = np.where(grafted, np.nan, ci_lo_full)
+    ci_hi = np.where(grafted, np.nan, ci_hi_full)
+    graft_ci_lo = np.where(grafted, ci_lo_full, np.nan)
+    graft_ci_hi = np.where(grafted, ci_hi_full, np.nan)
 
     # ratio band: premium is a known allocated exposure (not bootstrapped), so
-    # the loss-ratio uncertainty is the loss band scaled by the projected
-    # premium denominator. Works for the analytical Gaussian band and the
-    # bootstrap empirical band alike.
+    # the loss-ratio uncertainty is the OWN loss band scaled by the projected
+    # premium denominator. The grafted tail's ratio band stays out of the
+    # headline ratio columns (conditional; the loss-side band is in loss_graft_*).
     with np.errstate(divide="ignore", invalid="ignore"):
-        ratio_se = total_se / safe_pp
+        ratio_se = own_se / safe_pp
         ratio_ci_lo = ci_lo / safe_pp
         ratio_ci_hi = ci_hi / safe_pp
 
-    # provenance: observed cell / own projection / borrowed (donor) / null gap
+    # provenance: observed cell / own projection / grafted (donor) / null gap
     obs = ~np.isnan(fit["loss_obs"])
-    borrowed = fit["borrowed"]
     proj = ~np.isnan(loss_proj) & ~obs
     source = np.full((n_cohorts, n_durations), None, dtype=object)
     source[obs] = "observed"
-    source[proj & ~borrowed] = "own"
-    source[borrowed] = "borrowed"
+    source[proj & ~grafted] = "own"
+    source[grafted] = "grafted"
 
     total = n_cohorts * n_durations
     data: dict[str, Any] = {}
@@ -757,12 +777,15 @@ def _segment_long_df(
     data["premium_obs"] = fit["premium_obs"].flatten()
     data["premium_proj"] = premium_proj.flatten()
     data["incr_premium_proj"] = incr_premium_proj.flatten()
-    data["loss_proc_se"] = fit["proc_se"].flatten()
-    data["loss_param_se"] = fit["param_se"].flatten()
-    data["loss_total_se"] = total_se.flatten()
+    data["loss_proc_se"] = own_proc.flatten()
+    data["loss_param_se"] = own_param.flatten()
+    data["loss_total_se"] = own_se.flatten()
     data["loss_total_cv"] = total_cv.flatten()
     data["loss_ci_lo"] = ci_lo.flatten()
     data["loss_ci_hi"] = ci_hi.flatten()
+    data["loss_graft_se"] = graft_se.flatten()
+    data["loss_graft_ci_lo"] = graft_ci_lo.flatten()
+    data["loss_graft_ci_hi"] = graft_ci_hi.flatten()
     data["ratio_proj"] = ratio_proj.flatten()
     data["ratio_se"] = ratio_se.flatten()
     data["ratio_ci_lo"] = ratio_ci_lo.flatten()
@@ -950,17 +973,17 @@ def _fit_segment_cascade(
     changes: list,
 ) -> tuple[dict, list]:
     """Cascade fit of one segment: each regime on its own cohorts, deep tail
-    borrowed from the pooled older regimes' level-invariant link ratio.
+    grafted from the pooled older regimes' level-invariant link ratio.
 
     ``seg_sub`` is this segment's frame (all cohorts; carries ``incr_loss``,
     cumulative ``loss`` + ``premium``). ``changes`` are the segment's sorted
     change dates: regime ``j`` owns cohorts in ``[starts[j], starts[j+1])`` and
-    borrows the tail beyond its own observation from the pooled link ratio of
+    grafts the tail beyond its own observation from the pooled link ratio of
     all strictly-older cohorts (``cohort < starts[j]``). The oldest regime has
     no older donor and projects with its own factors to its own (deepest)
     horizon. Returns ``(fit, cohorts)`` row-stacked across regimes.
 
-    ``recent`` follows the same rule as a ``borrow`` donor: it
+    ``recent`` follows the same rule as a ``graft`` donor: it
     windows each regime's OWN factor estimation (passed into ``fit_segment``),
     while the older-regime donor stays full-history -- the donor exists
     precisely to lend the data-rich older shape, so a recency window must not
@@ -1000,7 +1023,7 @@ def _fit_segment_cascade(
             if not deeper.is_empty():
                 donor = _cohort_subset_donor(deeper, sigma_method, "loss")
                 premium_donor = _cohort_subset_donor(deeper, sigma_method, "premium")
-        # widen to the segment horizon so a borrowed tail fills it (usually a
+        # widen to the segment horizon so a grafted tail fills it (usually a
         # no-op for the oldest regime, whose own depth already is the horizon).
         loss_r = _pad_cols(loss_r, global_n_dur)
         prem_r = _pad_cols(prem_r, global_n_dur)
@@ -1143,7 +1166,7 @@ def _fit_loss(
     regime = _resolve_to_regime(regime, triangle)
 
     # segment_wise regime: keep ALL regimes (no cohort cut), fit each on its own
-    # cohorts, borrow the deep tail from the older regimes (the cascade). The
+    # cohorts, graft the deep tail from the older regimes (the cascade). The
     # default "latest_only" treatment leaves every path below byte-identical.
     segment_wise = isinstance(regime, Regime) and treatment == "segment_wise"
     if segment_wise:
@@ -1293,7 +1316,7 @@ def _fit_loss(
     seg_states: list[tuple] = []
     boot_tasks: list[dict | None] = []
     reasons: list[str] = []
-    n_observed = n_projected = n_unfittable = n_borrowed = 0
+    n_observed = n_projected = n_unfittable = n_grafted = 0
     n_smooth_fallback = n_smooth_nonconv = 0
 
     # iterate segments in stable id order; ungrouped triangles are one segment
@@ -1321,7 +1344,7 @@ def _fit_loss(
             pl.col("incr_loss").cum_sum().over("cohort").alias("loss")
         )
         if segment_wise:
-            # cascade: fit each regime on its own cohorts, borrow the deep tail
+            # cascade: fit each regime on its own cohorts, graft the deep tail
             # from the pooled older regimes. balance / covariates / bootstrap are
             # rejected above, so no boot task is collected for this segment.
             extra: dict[str, Any]
@@ -1505,9 +1528,9 @@ def _fit_loss(
             )
 
         obs_mask = ~np.isnan(fit["loss_obs"])
-        # own = own projections only; borrowed is a disjoint category so
-        # observed / own / borrowed / unfittable partition the cells.
-        proj_mask = ~np.isnan(fit["loss_proj"]) & ~obs_mask & ~fit["borrowed"]
+        # own = own projections only; grafted is a disjoint category so
+        # observed / own / grafted / unfittable partition the cells.
+        proj_mask = ~np.isnan(fit["loss_proj"]) & ~obs_mask & ~fit["grafted"]
         n_observed += int(obs_mask.sum())
         n_projected += int(proj_mask.sum())
         # projection GAPS: cells past a cohort's last observation that could
@@ -1523,7 +1546,7 @@ def _fit_loss(
         duration_idx = np.arange(n_dur)[None, :]
         should_proj = (duration_idx > last_obs[:, None]) & has_obs[:, None]
         n_unfittable += int((should_proj & np.isnan(fit["loss_proj"])).sum())
-        n_borrowed += int(fit["borrowed"].sum())
+        n_grafted += int(fit["grafted"].sum())
 
         long_parts.append(
             _segment_long_df(fit, cohorts, groups, group_value, confidence_level, ci=ci)
@@ -1568,7 +1591,7 @@ def _fit_loss(
             "observed": n_observed,
             "own": n_projected,
             "unfittable": n_unfittable,
-            "borrowed": n_borrowed,
+            "grafted": n_grafted,
         },
     )
 
@@ -1638,7 +1661,7 @@ class LossFit:
         deterministic aggregation of the projected per-period increments, NOT a
         re-fit -- so the coarse numbers are exactly this fit summed up, and do
         not drift the way an independently re-binned coarse fit would. The
-        regime cut and the borrow provenance are already baked into the
+        regime cut and the graft provenance are already baked into the
         increments, so they carry through unchanged.
 
         Mechanism: each cell's calendar period (``cohort`` advanced by
@@ -1646,8 +1669,8 @@ class LossFit:
         incremental projected loss / premium are summed per coarse
         ``(group, cohort, calendar)`` cell, the coarse duration is re-derived,
         and the cumulative columns + ``ratio_proj`` are rebuilt. A coarse cell
-        is ``"observed"`` only if every finer sub-cell is observed, ``"borrowed"``
-        if any sub-cell is borrowed, else ``"own"``.
+        is ``"observed"`` only if every finer sub-cell is observed, ``"grafted"``
+        if any sub-cell is grafted, else ``"own"``.
 
         ``grain`` must be the fit's own grain (identity) or coarser
         (``"M" < "Q" < "H" < "Y"``). Returns the long projection frame
@@ -1689,7 +1712,7 @@ class LossFit:
                 pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
                 pl.col("incr_premium_proj").sum().alias("incr_premium_proj"),
                 (pl.col("source") == "observed").all().alias("_all_obs"),
-                (pl.col("source") == "borrowed").any().alias("_any_borrow"),
+                (pl.col("source") == "grafted").any().alias("_any_graft"),
             )
             .with_columns(
                 count_periods(
@@ -1708,7 +1731,7 @@ class LossFit:
             .with_columns(
                 (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
                 pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
-                  .when(pl.col("_any_borrow")).then(pl.lit("borrowed"))
+                  .when(pl.col("_any_graft")).then(pl.lit("grafted"))
                   .otherwise(pl.lit("own")).alias("source"),
             )
         )
@@ -1769,7 +1792,7 @@ class LossFit:
     def predict(self, by: str | list[str] | None = None) -> FrameLike:
         """Per-cell projection surface: cumulative + incremental projected
         loss, the projected loss ratio, and each cell's ``source`` (observed /
-        own / borrowed). A focused view of :attr:`df` without the SE / CI
+        own / grafted). A focused view of :attr:`df` without the SE / CI
         columns.
 
         ``by`` (covariate fits only) disaggregates the surface by one or more

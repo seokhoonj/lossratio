@@ -76,8 +76,8 @@ def _compute_triangle_usage(
     ``"latest_only"`` (default) drops the pre-change cohorts (``used`` ->
     ``unused``); ``"segment_wise"`` and ``"covariate"`` KEEP every regime, so no
     cohort is dropped. Under ``"segment_wise"`` the older regimes' observed cells
-    at a duration past the newest regime's own depth feed the borrowed tail, so
-    they are flagged ``"donor"`` -- data actually used as the borrow donor. Only
+    at a duration past the newest regime's own depth feed the grafted tail, so
+    they are flagged ``"donor"`` -- data actually used as the graft donor. Only
     OBSERVED cells are ever coloured; projection cells stay ``"future"``.
     """
     if recent is not None and (
@@ -205,7 +205,7 @@ def _compute_triangle_usage(
 
     # 6b. segment_wise donor cells: the newest regime (cohort >= cut) reaches its
     # own depth K_new; the OLDER cohorts' observed cells at duration >= K_new feed
-    # the borrowed tail, so they are DATA actually used (as the borrow donor).
+    # the grafted tail, so they are DATA actually used (as the graft donor).
     donor_expr = pl.lit(False)
     if treatment == "segment_wise" and has_change:
         newest_obs = pl.col("_is_observed") & change_pass_expr
@@ -235,7 +235,7 @@ def _compute_triangle_usage(
     )
 
     # 8. _is_fit_data, _is_excluded, status. Donor cells are observed data used as
-    # the borrow donor -> their own status, taking precedence over plain "used".
+    # the graft donor -> their own status, taking precedence over plain "used".
     expanded = expanded.with_columns(
         (
             pl.col("_is_observed")

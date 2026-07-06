@@ -53,15 +53,15 @@ import numpy as np
 from . import engine, engine_fast
 from .credible import (
     credible_levels,
-    project_borrow,
     project_credible,
+    project_graft,
     smooth_backfit,
 )
 from .recent import recent_link_mask
 from .recursion import fit_multiplicative
 
 
-def project_borrow_cum(
+def project_graft_cum(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     body: str,
@@ -74,17 +74,17 @@ def project_borrow_cum(
     For the bootstrap the donor (the segment's data-rich full-history link ratio)
     is held at its point estimate -- only the segment's OWN factors (``own`` =
     ``g_k`` for ``body="additive"`` or ``f_k`` for ``body="multiplicative"``) are re-estimated per
-    replicate; the borrowed tail rides the fixed donor shape on the replicate's
+    replicate; the grafted tail rides the fixed donor shape on the replicate's
     own boundary. ``own_u`` carries the replicate's per-cohort credibility level
     on the additive body (``CredibleLoss`` / ``SmoothLoss``), matching the point
     fit; ``None`` keeps ``u = 1`` (pooled / link-ratio body). Returns only the
-    projection (the analytical SE arms of :func:`project_borrow` are unused here
+    projection (the analytical SE arms of :func:`project_graft` are unused here
     -- the spread is the empirical bootstrap)."""
     z = np.zeros_like(own)
     nan = np.full_like(own, np.nan)
     own_g, own_f = (own, nan) if body == "additive" else (nan, own)
     dz = np.zeros_like(donor[0])
-    return project_borrow(
+    return project_graft(
         loss_obs, premium_proj, body=body,
         own_g=own_g, own_sig_g=z, own_var_g=z,
         own_f=own_f, own_sig_f=z, own_var_f=z,
@@ -96,14 +96,14 @@ def project_borrow_cum(
 def _perturb_donor(
     donor: tuple[np.ndarray, np.ndarray, np.ndarray], rng: np.random.Generator
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Parametric per-replicate draw of the borrowed donor link ratios:
+    """Parametric per-replicate draw of the grafted donor link ratios:
     ``f_b = f + N(0, sqrt(Var f))``.
 
-    Holding the donor fixed leaves a WHOLLY-borrowed cohort (the thinnest
+    Holding the donor fixed leaves a WHOLLY-grafted cohort (the thinnest
     post-regime cohort, whose entire tail is donor-driven) with a degenerate
-    zero-width band -- the very cohort borrow targets. Drawing the donor from
+    zero-width band -- the very cohort graft targets. Drawing the donor from
     its parameter variance restores the donor's parameter uncertainty in
-    the borrowed tail without a second residual-bootstrap stream on the donor's
+    the grafted tail without a second residual-bootstrap stream on the donor's
     own data. ``donor = (f_k, sigma2_k, Var f_k)``; only ``Var f_k`` is used."""
     f, sig, var = donor
     ok = np.isfinite(f) & np.isfinite(var) & (var > 0.0)
@@ -120,12 +120,12 @@ def _donor_process_draw(
     mean_inc: np.ndarray, sigma2_k: float, c_from: np.ndarray,
     active: np.ndarray, rng: np.random.Generator,
 ) -> np.ndarray:
-    """Process draw of a BORROWED-tail increment from the donor's
+    """Process draw of a GRAFTED-tail increment from the donor's
     dispersion: ``Var(C_{k+1} | C_k) = sigma2_donor_k * C_from`` (alpha=1).
 
     Beyond the own-data boundary the refit has no cells, so the own ODP
     dispersion is undefined (`phi` NaN) and the predictive increment would
-    otherwise be deterministic -- the borrowed tail's process variance would
+    otherwise be deterministic -- the grafted tail's process variance would
     not grow with horizon. The donor IS a link-ratio fit, so its per-link
     ``sigma2`` gives the right tail process scale on the predictive cumulative.
     """
@@ -359,7 +359,7 @@ def _bootstrap_segment_additive(
     if donor is None:
         point_proj = project_credible(loss_obs, premium_proj, g_k, u_vec)
     else:
-        point_proj = project_borrow_cum(
+        point_proj = project_graft_cum(
             loss_obs, premium_proj, "additive", g_k, donor, own_u=u_vec
         )
     mu = u_vec[ii] * g_k[kk] * p                          # fitted mean per cell
@@ -463,12 +463,12 @@ def _bootstrap_segment_additive(
             link_mask=loss_mask,
         )
         # 5. project from the REAL observed seed (existing-cohort, u_hat-cond.).
-        #    With a borrow donor the own body rides the replicate's g_b, the tail
+        #    With a graft donor the own body rides the replicate's g_b, the tail
         #    rides the FIXED donor shape (donor held at its point estimate).
         if donor is None:
             param_cum = project_credible(loss_obs, premium_proj, g_b, u_b)
         else:
-            param_cum = project_borrow_cum(
+            param_cum = project_graft_cum(
                 loss_obs, premium_proj, "additive", g_b,
                 _perturb_donor(donor, rng), own_u=u_b,
             )
@@ -495,7 +495,7 @@ def _bootstrap_segment_additive(
             if (donor is not None and not np.isfinite(phi_b[k])
                     and k < donor[1].size and np.isfinite(donor[1][k])
                     and donor[1][k] > 0.0):
-                # borrowed-tail link: own dispersion is undefined -> use the
+                # grafted-tail link: own dispersion is undefined -> use the
                 # donor's process variance so the tail band grows.
                 draw = _donor_process_draw(
                     mean_inc, donor[1][k], pred_cum[:, k], active, rng
@@ -797,7 +797,7 @@ def bootstrap_segment_multiplicative(
     if donor is None:
         point_proj = project_multiplicative_cum(loss_obs, f_k)
     else:
-        point_proj = project_borrow_cum(loss_obs, premium_proj, "multiplicative", f_k, donor)
+        point_proj = project_graft_cum(loss_obs, premium_proj, "multiplicative", f_k, donor)
     m_mat = ev_fitted_increments(loss_obs, f_k)
     ii, jj, y = multiplicative_increments(loss_obs)
     m = m_mat[ii, jj]
@@ -884,7 +884,7 @@ def bootstrap_segment_multiplicative(
         if donor is None:
             param_cum = project_multiplicative_cum(loss_obs, f_b)
         else:
-            param_cum = project_borrow_cum(
+            param_cum = project_graft_cum(
                 loss_obs, premium_proj, "multiplicative", f_b, _perturb_donor(donor, rng)
             )
         param_draws[b] = param_cum
@@ -903,7 +903,7 @@ def bootstrap_segment_multiplicative(
             if (donor is not None and not np.isfinite(phi_kp1)
                     and k < donor[1].size and np.isfinite(donor[1][k])
                     and donor[1][k] > 0.0):
-                # borrowed-tail link: no observed residual column -> use the
+                # grafted-tail link: no observed residual column -> use the
                 # donor's process variance so the tail band grows.
                 draw = _donor_process_draw(
                     mean_inc, donor[1][k], pred_cum[:, k], active, rng

@@ -993,29 +993,29 @@ def _assess_change(scalar: np.ndarray, change_idx: int) -> dict:
     return out
 
 
-# Borrow-safety / calendar-effect screen thresholds.
-_SCREEN_SHAPE = 0.10      # shape_score >= -> "shape" (borrow unsafe)
+# Graft-safety / calendar-effect screen thresholds.
+_SCREEN_SHAPE = 0.10      # shape_score >= -> "shape" (graft unsafe)
 _SCREEN_TREND = 0.05      # |shape_trend| >= -> strong shape trend
 _SCREEN_CAL = 2.0         # |calendar_score| (t-stat) >= -> "calendar" flag
 _SCREEN_F_MEANINGFUL = 1.02  # only compare links where development f >= this
 _SCREEN_MIN_OVERLAP = 2
 
 
-def _borrow_screen_group(
+def _graft_screen_group(
     loss_cum: np.ndarray,
     cohort_ranks: np.ndarray,
     seg_ids: np.ndarray,
 ) -> dict:
-    """2-axis residual screen for borrow safety + calendar effect.
+    """2-axis residual screen for graft safety + calendar effect.
 
-    Decides whether the newest segment may safely borrow late-development
+    Decides whether the newest segment may safely graft late-development
     factors from an older donor, by comparing the segments' development on
     two axes.
 
     - Axis 1 (SHAPE): per-segment volume-weighted ATA ``f[s,k]``, then the
       relative factor difference ``|f[s+1,k]/f[s,k] - 1|`` over the adjacent
       segments' overlap. A pure level (rate) change leaves f scale-invariant
-      so this is ~0 (borrow safe); a shape change makes it large (unsafe).
+      so this is ~0 (graft safe); a shape change makes it large (unsafe).
       The overlap is restricted to links with ``f >= _SCREEN_F_MEANINGFUL``
       so the f~1 late-duration relative-difference explosion does not over-fire,
       and links are weighted by the min contributing cohort count.
@@ -1026,7 +1026,7 @@ def _borrow_screen_group(
       noise-aware, so a noisy coverage's spurious slope (large SE) deflates
       while a real diagonal trend stands out. A calendar effect inflates the
       donor's late-duration factors (measured on the shocked diagonal) that the
-      young segment borrows but will not itself experience.
+      young segment grafts but will not itself experience.
 
     ``loss_cum`` is the (n_cohorts, n_duration) CUMULATIVE loss matrix (NaN where
     undeveloped, column k = duration index k); ``cohort_ranks`` the calendar
@@ -1164,7 +1164,7 @@ def _borrow_screen_group(
     # SHAPE axis (scale-invariant) gates first; then the CALENDAR axis as a
     # noise-aware t-statistic (slope / SE) -- a calendar effect contaminates
     # the donor's late-duration factors (measured on the shocked diagonal) that
-    # the young segment borrows but will not itself experience, a risk the
+    # the young segment grafts but will not itself experience, a risk the
     # shape axis structurally cannot see (the young segment has no late-duration
     # to compare).
     if n_seg < 2 or not np.isfinite(shape_score) or n_overlap_total < _SCREEN_MIN_OVERLAP:
@@ -2053,24 +2053,24 @@ class Regime:
             groups=self.groups,
         )
 
-    def borrow_screen(self, triangle, target: str = "loss"):
-        """Screen each group's borrow safety + calendar effect (2-axis).
+    def graft_screen(self, triangle, target: str = "loss"):
+        """Screen each group's graft safety + calendar effect (2-axis).
 
         For every group, splits the cumulative ``target`` triangle into
         segments at this regime's change points and runs
-        :func:`_borrow_screen_group`, returning one row per group with:
+        :func:`_graft_screen_group`, returning one row per group with:
 
         - ``verdict``: ``"level"`` (development shape unchanged AND no
-          calendar trend -> borrowing the donor's late-duration tail is SAFE),
-          ``"shape"`` (the development pattern changed -> borrowing UNSAFE,
+          calendar trend -> grafting the donor's late-duration tail is SAFE),
+          ``"shape"`` (the development pattern changed -> grafting UNSAFE,
           widen the band), ``"calendar"`` (a calendar-year effect
-          contaminates the donor's late-duration factors -> borrowing risky), or
+          contaminates the donor's late-duration factors -> grafting risky), or
           ``"insufficient"`` (too few segments / overlap to judge).
         - ``shape_score`` / ``shape_trend`` (Axis 1, segment-to-segment ATA
           discrepancy) and ``calendar_score`` (Axis 2, the t-statistic of the
           duration-detrended calendar-diagonal residual slope).
 
-        A transparent guard for the borrow path: borrow where the
+        A transparent guard for the graft path: graft where the
         verdict is ``"level"``; treat ``"shape"`` / ``"calendar"`` with
         caution.
         """
@@ -2111,7 +2111,7 @@ class Regime:
             seg_ids = np.array(
                 [sum(1 for c in change_dates if c <= ch) for ch in cohorts]
             )
-            res = _borrow_screen_group(
+            res = _graft_screen_group(
                 loss_cum, np.arange(len(cohorts)), seg_ids
             )
             row = {c: v for c, v in zip(group_cols, keyvals, strict=False)}
