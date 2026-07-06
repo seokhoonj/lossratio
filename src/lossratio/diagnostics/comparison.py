@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 import polars as pl
 
 from .._kernels.io import mirror_output, normalize_groups
-from .backtest import Backtest, BacktestFit
+from .backtest import Backtest, BacktestFit, _resolve_target
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -79,8 +79,9 @@ class EstimatorComparison:
         Sharing the depths is the by-construction comparability guarantee:
         every estimator is scored on the same as-of origins.
     target
-        Which projection to score: ``"ratio"`` (default), ``"loss"``, or
-        ``"premium"``. Same semantics as
+        Which projection to score: ``"loss"``, ``"premium"``, or ``"ratio"``.
+        Defaults to ``None`` -- inferred from the estimators (which must agree on
+        one scale). Same semantics as
         :class:`~lossratio.diagnostics.backtest.Backtest`.
     baseline
         The label every other estimator (a "challenger") is compared
@@ -107,7 +108,7 @@ class EstimatorComparison:
         self,
         estimators: Mapping[str, Any],
         holdouts: tuple[int, ...] | list[int] = (6, 12, 18, 24),
-        target: str = "ratio",
+        target: str | None = None,
         baseline: str | None = None,
     ) -> None:
         if not isinstance(estimators, Mapping):
@@ -142,10 +143,24 @@ class EstimatorComparison:
                     f"estimator labels must be non-empty; got {label!r}"
                 )
 
+        # Resolve one concrete target for the whole set so the estimators are
+        # scored on a single scale: inferred from the estimators when None
+        # (loss -> "loss", premium -> "premium", Ratio -> "ratio"), and rejected
+        # if they disagree (a mixed loss/Ratio set has no common scale). An
+        # explicit target incompatible with any estimator is rejected here too.
+        resolved = {_resolve_target(est, target) for est in estimators.values()}
+        if len(resolved) > 1:
+            raise ValueError(
+                f"the estimators resolve to different backtest targets "
+                f"{sorted(resolved)}; pass target= explicitly so they are scored "
+                "on one scale."
+            )
+        target = resolved.pop()
+
         # One inner Backtest per label: this REUSES its validation
-        # (holdout normalization, target enum, .fit presence, and the probe
-        # Backtest's estimator / target / bootstrap-leakage compatibility
-        # checks) with identical error messages -- no duplicated logic.
+        # (holdout normalization, .fit presence, and the probe Backtest's
+        # estimator / bootstrap-leakage checks) with identical error messages --
+        # no duplicated logic. The target is already the resolved concrete value.
         backtests = {
             label: Backtest(
                 estimator=est, holdouts=holdouts, target=target

@@ -101,6 +101,64 @@ def _build_masked_df(
 _VALID_TARGETS = ("ratio", "loss", "premium")
 
 
+def _resolve_target(estimator: Any, target: str | None) -> str:
+    """Resolve the backtest target, inferring it from the estimator when ``None``.
+
+    The estimator DETERMINES what can be scored: a loss estimator projects loss
+    only, a premium estimator premium only, and a ``Ratio`` composition the loss
+    ratio (and, on request, either leg). So ``target`` defaults to the
+    estimator's own headline projection, and an explicit target the estimator
+    cannot produce -- most commonly ``target="ratio"`` against a bare loss
+    estimator -- is rejected up front rather than silently yielding empty folds
+    (the rolling path swallows a fit-time column error as a skipped fold).
+
+    A custom estimator (one of neither known base) carries no static column
+    guarantee: ``None`` cannot be inferred (raise), and an explicit target is
+    passed through to the fit-time column lookup.
+    """
+    from ..estimators._base import _LossEstimatorBase, _PremiumEstimatorBase
+    from ..estimators.ratio import Ratio
+
+    is_ratio = isinstance(estimator, Ratio)
+    is_loss = isinstance(estimator, _LossEstimatorBase)
+    is_premium = isinstance(estimator, _PremiumEstimatorBase)
+
+    if target is None:
+        if is_ratio:
+            return "ratio"
+        if is_loss:
+            return "loss"
+        if is_premium:
+            return "premium"
+        raise ValueError(
+            f"cannot infer target from a {type(estimator).__name__} estimator; "
+            f"pass target= explicitly (one of {_VALID_TARGETS})."
+        )
+
+    if target not in _VALID_TARGETS:
+        raise ValueError(f"target must be one of {_VALID_TARGETS}, got {target!r}")
+
+    # Only a Ratio composition carries a premium denominator, so only it can be
+    # scored on "ratio" (or, as a leg, "loss" / "premium"). A bare loss / premium
+    # estimator is pinned to its own projection.
+    if is_ratio:
+        return target
+    if is_loss and target != "loss":
+        raise ValueError(
+            f"target={target!r} needs a premium denominator, but a bare loss "
+            f"estimator ({type(estimator).__name__}) projects loss only. Use "
+            "target='loss', or compose Ratio(loss=..., premium=...) to score the "
+            "loss ratio."
+        )
+    if is_premium and target != "premium":
+        raise ValueError(
+            f"target={target!r} is not projected by a bare premium estimator "
+            f"({type(estimator).__name__}); use target='premium'."
+        )
+    # unknown estimator kind: defer to the fit-time column lookup.
+    return target
+
+
 def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
     """Reject an estimator carrying a *pre-built* ``BootstrapTriangle``.
 
@@ -138,9 +196,10 @@ def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
 def _resolve_expected_column(target: str, fit_df_columns: list[str]) -> str:
     """Map ``target`` to the projection column on the refit output frame.
 
-    Every estimator emits a ``LossFit`` carrying ``loss_proj`` /
-    ``premium_proj`` / ``ratio_proj``, so a role-named direct lookup
-    resolves all three targets.
+    A loss estimator emits ``loss_proj``, a premium estimator ``premium_proj``,
+    and a ``Ratio`` composition all of ``loss_proj`` / ``premium_proj`` /
+    ``ratio_proj``. The target has already been validated against the estimator
+    (see :func:`_resolve_target`), so the role-named lookup resolves.
     """
     if target not in _VALID_TARGETS:
         raise ValueError(
@@ -210,9 +269,9 @@ class _FoldBacktest:
     ----------
     estimator
         A ``lr.PooledLoss`` / ``lr.CredibleLoss`` / ``lr.SmoothLoss`` /
-        ``lr.ChainLadder`` instance (or any estimator whose ``fit(triangle)``
-        returns a ``LossFit`` carrying ``loss_proj`` / ``premium_proj`` /
-        ``ratio_proj``).
+        ``lr.ChainLadder`` instance (scored on ``loss``), a premium estimator
+        (scored on ``premium``), or a ``lr.Ratio`` composition (scored on
+        ``ratio``).
 
         Attach uncertainty with ``uncertainty=lr.ResidualBootstrap(...)``:
         it is rebuilt on the masked triangle every fold, so no held-out
@@ -222,15 +281,18 @@ class _FoldBacktest:
     holdout
         Number of most recent calendar diagonals to mask.
     target
-        Which projection to score: ``"ratio"`` (default), ``"loss"``, or
-        ``"premium"`` -- every estimator carries all three.
+        Which projection to score: ``"loss"``, ``"premium"``, or ``"ratio"``.
+        Defaults to ``None`` -- inferred from the estimator (loss -> ``"loss"``,
+        premium -> ``"premium"``, ``Ratio`` -> ``"ratio"``). An explicit target
+        the estimator cannot produce (e.g. ``"ratio"`` on a bare loss estimator)
+        is rejected.
     """
 
     def __init__(
         self,
         estimator: Any,
         holdout: int = 6,
-        target: str = "ratio",
+        target: str | None = None,
     ) -> None:
         if holdout < 1:
             raise ValueError(f"holdout must be >= 1, got {holdout}")
@@ -241,16 +303,11 @@ class _FoldBacktest:
         # Reject a pre-built BootstrapTriangle on the estimator -- it would
         # leak held-out cells into every fold (see helper docstring).
         _assert_leakage_safe_bootstrap(estimator)
-        if target not in _VALID_TARGETS:
-            raise ValueError(
-                f"target must be one of {_VALID_TARGETS}, got {target!r}"
-            )
-        # Every estimator carries loss_proj / premium_proj / ratio_proj,
-        # so all three targets are resolvable from the refit frame -- no
-        # ratio-only estimator to special-case.
         self.estimator = estimator
         self.holdout = holdout
-        self.target = target
+        # Infer the target from the estimator when None; validate compatibility
+        # otherwise (a bare loss estimator cannot be scored on "ratio").
+        self.target = _resolve_target(estimator, target)
 
     def fit(self, triangle: Triangle) -> _FoldFit:
         return _FoldFit._from_triangle(triangle, self)
@@ -741,8 +798,10 @@ class Backtest:
         1-tuple. A sequence is de-duplicated, sorted ascending, and
         validated (each >= 1, no booleans). Default ``(6, 12, 18, 24)``.
     target
-        Which projection to score: ``"ratio"`` (default), ``"loss"``, or
-        ``"premium"``.
+        Which projection to score: ``"loss"``, ``"premium"``, or ``"ratio"``.
+        Defaults to ``None`` -- inferred from the estimator (loss -> ``"loss"``,
+        premium -> ``"premium"``, ``Ratio`` -> ``"ratio"``); an incompatible
+        explicit target is rejected.
 
     Examples
     --------
@@ -763,17 +822,16 @@ class Backtest:
         estimator,
         holdouts=(6, 12, 18, 24),
         *,
-        target="ratio",
+        target=None,
     ):
         if not hasattr(estimator, "fit"):
             raise TypeError(
                 f"estimator must implement .fit(triangle); got "
                 f"{type(estimator).__name__}"
             )
-        if target not in _VALID_TARGETS:
-            raise ValueError(
-                f"target must be one of {_VALID_TARGETS}, got {target!r}"
-            )
+        # Infer the target from the estimator when None, else validate it is one
+        # the estimator can produce; store the resolved concrete target.
+        target = _resolve_target(estimator, target)
         # Normalise: int -> 1-tuple, else any sequence of ints (range / generator
         # / tuple / list) -> deduplicate+sort+validate.
         if isinstance(holdouts, bool):

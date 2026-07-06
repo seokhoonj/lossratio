@@ -38,18 +38,19 @@ def test_ratio_is_loss_over_premium(tri):
     assert (df["ratio_proj"] - recomputed).abs().max() == pytest.approx(0.0, abs=1e-12)
 
 
-def test_fixed_reproduces_lossfit_internal_ratio(tri):
-    # PooledPremium == the loss fit's internal link-ratio premium, so the
-    # composed ratio band is bit-identical to the band LossFit already carries.
-    lf = lr.PooledLoss().fit(tri).to_polars().select(
-        ["coverage", "cohort", "duration", "ratio_proj", "ratio_se"]
-    ).rename({"ratio_proj": "r0", "ratio_se": "se0"})
-    rf = lr.Ratio(loss=lr.PooledLoss()).fit(tri).to_polars().select(
-        ["coverage", "cohort", "duration", "ratio_proj", "ratio_se"]
-    ).rename({"ratio_proj": "r1", "ratio_se": "se1"})
-    j = lf.join(rf, on=["coverage", "cohort", "duration"]).drop_nulls()
-    assert (j["r0"] - j["r1"]).abs().max() == pytest.approx(0.0, abs=1e-12)
-    assert (j["se0"] - j["se1"]).abs().max() == pytest.approx(0.0, abs=1e-12)
+def test_lossfit_is_loss_only_ratio_via_composition(tri):
+    # a bare LossFit is loss-only: it carries NO ratio / premium columns. The
+    # loss ratio is obtained ONLY by composing a loss and a premium estimator.
+    lf = lr.PooledLoss().fit(tri).to_polars()
+    for c in ("ratio_proj", "ratio_se", "premium_proj"):
+        assert c not in lf.columns
+    rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).to_polars()
+    for c in ("loss_proj", "premium_proj", "ratio_proj"):
+        assert c in rf.columns
+    df = rf.drop_nulls("ratio_proj")
+    assert (df["ratio_proj"] - df["loss_proj"] / df["premium_proj"]).abs().max() == pytest.approx(
+        0.0, abs=1e-12
+    )
 
 
 def test_ci_brackets_point(tri):

@@ -19,7 +19,6 @@ from lossratio.estimators.pooled_loss import PooledLoss
 # anchor is required.
 _SHARED = [
     "loss_obs", "loss_proj", "incr_loss_proj",
-    "premium_obs", "premium_proj", "incr_premium_proj",
     "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
 ]
 
@@ -30,7 +29,11 @@ def _to_polars(obj) -> pl.DataFrame:
 
 
 def test_ratio_proj_is_loss_over_premium(exp):
-    got = _to_polars(PooledLoss().fit(lr.Triangle(exp, groups="coverage")))
+    # the loss ratio lives on the explicit composition, not the bare LossFit
+    rat = lr.Ratio(loss=PooledLoss(), premium=lr.PooledPremium()).fit(
+        lr.Triangle(exp, groups="coverage")
+    )
+    got = _to_polars(rat)
     lp = got["loss_proj"].to_numpy().astype(float)
     pp = got["premium_proj"].to_numpy().astype(float)
     rp = got["ratio_proj"].to_numpy().astype(float)

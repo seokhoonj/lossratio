@@ -376,18 +376,20 @@ def test_predict_by_covariate_marginalizes_to_report_grain():
     assert np.allclose(a[both], b[both], rtol=1e-9)
 
 
-def test_predict_by_covariate_shows_relativity():
-    """The disaggregated surface carries the loss-ratio relativity: F (1.3x
-    morbidity) projects a higher ratio than M in the same cohort x duration."""
+def test_covariate_coefficients_show_relativity():
+    """The fitted covariate coefficients carry the morbidity relativity basis-
+    independently: F (1.3x morbidity) sits above M. This is the loss-only way to
+    read a relativity -- the intensity model's own parameters, not a ratio of
+    projections whose denominator basis would confound it."""
     df = _experience_source({"F": 1.3, "M": 1.0})
-    cov = _credible(covariates=["sex"], lam_cov=0.0).fit(_tri(df))
-    by = cov.predict(by="sex").filter(pl.col("source") == "own")
-    piv = by.pivot(values="ratio_proj", index=["cohort", "duration"],
-                   on="sex").drop_nulls(["F", "M"])
-    assert piv.height > 0
-    fa, ma = piv["F"].to_numpy(), piv["M"].to_numpy()
-    assert np.all(fa >= ma - 1e-9)
-    assert int(np.sum(fa > ma)) >= piv.height // 2
+    coef = _credible(covariates=["sex"], lam_cov=0.0).fit(_tri(df)).coefficients
+    sex = coef.filter(pl.col("covariate") == "sex")
+    eb = {r["level"]: r["exp_beta"] for r in sex.iter_rows(named=True)}
+    # F is 1.3x M; the fitted relativity recovers that direction and magnitude
+    # (loose bounds absorb the sampling noise + credibility shrink).
+    rel = eb["F"] / eb["M"]
+    assert rel > 1.0
+    assert 1.15 < rel < 1.5
 
 
 def test_pooled_covariate_equals_credible_psi0():

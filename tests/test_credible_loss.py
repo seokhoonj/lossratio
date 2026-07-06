@@ -15,7 +15,7 @@ from lossratio.estimators.credible_loss import CredibleLoss
 from lossratio.estimators.pooled_loss import PooledLoss
 
 KEY = ["coverage", "cohort", "duration"]
-PROJ_COLS = ["loss_proj", "ratio_proj", "premium_proj"]
+PROJ_COLS = ["loss_proj"]
 
 
 def _to_polars(obj) -> pl.DataFrame:

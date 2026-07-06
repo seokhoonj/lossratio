@@ -44,7 +44,7 @@ def test_loss_predict_columns(tri_g):
     out = lr.PooledLoss().fit(tri_g).predict()
     assert list(out.columns) == [
         "coverage", "cohort", "duration",
-        "loss_proj", "incr_loss_proj", "ratio_proj", "source",
+        "loss_proj", "incr_loss_proj", "source",
     ]
     assert set(out["source"].unique().to_list()) <= {"observed", "own", "grafted"}
 
@@ -131,12 +131,11 @@ def test_ratio_plot_metric_variants(tri_g):
             _close(fig)
 
 
-def test_loss_plot_ratio_metric(tri_g):
-    fig = lr.PooledLoss().fit(tri_g).plot(metric="ratio")
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
+def test_loss_plot_rejects_ratio_metric(tri_g):
+    # A bare LossFit projects loss only; the loss ratio is plotted from a
+    # Ratio fit, never a bare loss estimator.
+    with pytest.raises(ValueError, match="metric"):
+        lr.PooledLoss().fit(tri_g).plot(metric="ratio")
 
 
 def test_plot_rejects_unsupported_metric(tri_g):

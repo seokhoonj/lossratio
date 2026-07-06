@@ -17,7 +17,6 @@ from lossratio.estimators.chain_ladder import ChainLadder
 
 _SHARED = [
     "loss_obs", "loss_proj", "incr_loss_proj",
-    "premium_obs", "premium_proj", "incr_premium_proj",
     "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
 ]
 
@@ -89,7 +88,14 @@ def test_odp_bootstrap_populates_se_ci(exp):
     assert (proj["loss_proc_se"] <= proj["loss_total_se"] + 1e-9).all()
     assert (proj["loss_ci_lo"] <= proj["loss_proj"] + 1e-6).all()
     assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-6).all()
-    assert proj["ratio_se"].is_not_null().all()
+    # the bootstrapped loss SE propagates to the ratio band on the composition
+    rat = _to_polars(
+        lr.Ratio(
+            loss=ChainLadder(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)),
+            premium=lr.PooledPremium(),
+        ).fit(tri)
+    )
+    assert rat.filter(pl.col("source") == "own")["ratio_se"].is_not_null().all()
 
 
 def test_odp_bootstrap_reproducible(exp):

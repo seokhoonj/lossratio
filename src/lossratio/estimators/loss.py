@@ -68,16 +68,17 @@ if TYPE_CHECKING:
     from ..core.triangle import Triangle
 
 
-# Columns of the assembled long frame. premium_* sit
-# between the loss point columns and the SE block; ratio_proj closes the row.
+# Columns of the assembled long frame. A LossFit carries the loss projection
+# and its bands ONLY -- the denominator (premium) and the loss ratio are not
+# surfaced here: the intensity model consumes the projected premium internally
+# (incr_loss = g_k * premium), but the loss ratio is a composed quantity,
+# obtained solely through the explicit Ratio(loss=, premium=) surface.
 _LOSS_COLUMNS = [
     "cohort", "duration",
     "loss_obs", "loss_proj", "incr_loss_proj",
-    "premium_obs", "premium_proj", "incr_premium_proj",
     "loss_proc_se", "loss_param_se", "loss_total_se", "loss_total_cv",
     "loss_ci_lo", "loss_ci_hi",
     "loss_graft_se", "loss_graft_ci_lo", "loss_graft_ci_hi",
-    "ratio_proj", "ratio_se", "ratio_ci_lo", "ratio_ci_hi",
     "source",
 ]
 
@@ -706,7 +707,6 @@ def _segment_long_df(
     """
     z = float(norm.ppf((1 + confidence_level) / 2))
     loss_proj = fit["loss_proj"]
-    premium_proj = fit["premium_proj"]
     n_cohorts, n_durations = loss_proj.shape
 
     # Split the SE into DISJOINT own vs graft columns. Own cells carry a
@@ -724,15 +724,10 @@ def _segment_long_df(
     graft_se = np.where(grafted, total_se_full, np.nan)
 
     incr_loss_proj = nan_skip_diff(loss_proj)
-    incr_premium_proj = nan_skip_diff(premium_proj)
 
     safe_lp = np.where(np.isnan(loss_proj) | (loss_proj == 0.0), np.nan, loss_proj)
-    safe_pp = np.where(
-        np.isnan(premium_proj) | (premium_proj == 0.0), np.nan, premium_proj
-    )
     with np.errstate(divide="ignore", invalid="ignore"):
         total_cv = own_se / np.abs(safe_lp)
-        ratio_proj = loss_proj / safe_pp
 
     # Full band (analytical Gaussian from total_se, or bootstrap empirical `ci`),
     # then split own vs graft so the grafted tail's conditional band never
@@ -747,15 +742,6 @@ def _segment_long_df(
     ci_hi = np.where(grafted, np.nan, ci_hi_full)
     graft_ci_lo = np.where(grafted, ci_lo_full, np.nan)
     graft_ci_hi = np.where(grafted, ci_hi_full, np.nan)
-
-    # ratio band: premium is a known allocated exposure (not bootstrapped), so
-    # the loss-ratio uncertainty is the OWN loss band scaled by the projected
-    # premium denominator. The grafted tail's ratio band stays out of the
-    # headline ratio columns (conditional; the loss-side band is in loss_graft_*).
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratio_se = own_se / safe_pp
-        ratio_ci_lo = ci_lo / safe_pp
-        ratio_ci_hi = ci_hi / safe_pp
 
     # provenance: observed cell / own projection / grafted (donor) / null gap
     obs = ~np.isnan(fit["loss_obs"])
@@ -774,9 +760,6 @@ def _segment_long_df(
     data["loss_obs"] = fit["loss_obs"].flatten()
     data["loss_proj"] = loss_proj.flatten()
     data["incr_loss_proj"] = incr_loss_proj.flatten()
-    data["premium_obs"] = fit["premium_obs"].flatten()
-    data["premium_proj"] = premium_proj.flatten()
-    data["incr_premium_proj"] = incr_premium_proj.flatten()
     data["loss_proc_se"] = own_proc.flatten()
     data["loss_param_se"] = own_param.flatten()
     data["loss_total_se"] = own_se.flatten()
@@ -786,10 +769,6 @@ def _segment_long_df(
     data["loss_graft_se"] = graft_se.flatten()
     data["loss_graft_ci_lo"] = graft_ci_lo.flatten()
     data["loss_graft_ci_hi"] = graft_ci_hi.flatten()
-    data["ratio_proj"] = ratio_proj.flatten()
-    data["ratio_se"] = ratio_se.flatten()
-    data["ratio_ci_lo"] = ratio_ci_lo.flatten()
-    data["ratio_ci_hi"] = ratio_ci_hi.flatten()
     data["source"] = source.flatten().tolist()
 
     df = nan_to_null(pl.DataFrame(data))
@@ -835,7 +814,6 @@ def _segment_coefficients_df(
 def _segment_covariate_surface(
     loss_proj: np.ndarray,
     loss_obs: np.ndarray,
-    premium_proj: np.ndarray,
     cov_data: Any,
     cov_fit: Any,
     covariates: list[str],
@@ -850,12 +828,11 @@ def _segment_covariate_surface(
     where ``g_d`` is not estimable; the mix is frozen at the cohort's last
     observed duration for the projected tail). Because the per-cell shares sum
     to one at every duration, summing the surface over the covariates reproduces
-    the reporting-grain cohort x duration ``loss_proj`` and ``premium_proj``
-    EXACTLY -- robust to a duration-varying mix, premium-only cells, and
-    left-truncated cohorts. The per-cell ratio is
-    ``report_ratio * g_d(x) / g_marginal``. Returns a long frame
-    ``[groups?, cohort, duration, *covariates, loss_proj, incr_loss_proj,
-    premium_proj, ratio_proj, source]``.
+    the reporting-grain cohort x duration ``loss_proj`` EXACTLY -- robust to a
+    duration-varying mix, premium-only cells, and left-truncated cohorts.
+    Returns a long frame ``[groups?, cohort, duration, *covariates, loss_proj,
+    incr_loss_proj, source]`` (loss only; the loss ratio is composed via
+    ``Ratio`` from the premium side).
     """
     n_cohorts, n_dur = loss_proj.shape
     by_cohort_duration = cov_data.by_cohort_duration
@@ -893,24 +870,16 @@ def _segment_covariate_surface(
                 gi = cov_fit.intensity(d, cells[cell_key])
                 w[cell_key] = (gi * c_cp) if (np.isfinite(gi) and gi > 0) else c_cp
             tot_w = sum(w.values())
-            tot_p = sum(v for v in src.values() if v > 0)
             if tot_w <= 0:
                 continue
-            p_k = premium_proj[i, col]
             for cell_key in cells:
                 if w[cell_key] <= 0:
                     continue
                 lp = loss_proj_cell * (w[cell_key] / tot_w)
-                share_p = (src.get(cell_key, 0.0) / tot_p) if tot_p > 0 else 0.0
-                ps = share_p * p_k
                 row: dict[str, Any] = {"cohort": coh, "duration": d}
                 for c in covariates:
                     row[c] = cells[cell_key][c]
                 row["loss_proj"] = float(lp)
-                row["premium_proj"] = float(ps) if np.isfinite(ps) else None
-                row["ratio_proj"] = (
-                    float(lp / ps) if np.isfinite(ps) and ps > 0 else None
-                )
                 row["source"] = "observed" if col <= last_col else "own"
                 parts.append(row)
 
@@ -926,7 +895,7 @@ def _segment_covariate_surface(
         df = df.with_columns([pl.Series(k, v) for k, v in gdata.items()])
     order = ([*normalize_groups(groups)] if groups is not None else []) + [
         "cohort", "duration", *covariates,
-        "loss_proj", "incr_loss_proj", "premium_proj", "ratio_proj", "source",
+        "loss_proj", "incr_loss_proj", "source",
     ]
     return df.select(order)
 
@@ -1434,7 +1403,7 @@ def _fit_loss(
                 )
                 surface_parts.append(
                     _segment_covariate_surface(
-                        fit["loss_proj"], fit["loss_obs"], fit["premium_proj"],
+                        fit["loss_proj"], fit["loss_obs"],
                         cov_data, cov_fit, list(covariates), groups, group_value,
                     )
                 )
@@ -1666,18 +1635,18 @@ class LossFit:
 
         Mechanism: each cell's calendar period (``cohort`` advanced by
         ``duration - 1`` steps) and its cohort are floored to ``grain``, the
-        incremental projected loss / premium are summed per coarse
+        incremental projected loss is summed per coarse
         ``(group, cohort, calendar)`` cell, the coarse duration is re-derived,
-        and the cumulative columns + ``ratio_proj`` are rebuilt. A coarse cell
+        and the cumulative ``loss_proj`` is rebuilt. A coarse cell
         is ``"observed"`` only if every finer sub-cell is observed, ``"grafted"``
         if any sub-cell is grafted, else ``"own"``.
 
         ``grain`` must be the fit's own grain (identity) or coarser
         (``"M" < "Q" < "H" < "Y"``). Returns the long projection frame
-        ``[groups?, cohort, duration, loss_proj, incr_loss_proj, premium_proj,
-        incr_premium_proj, ratio_proj, source]`` (point columns only -- standard
-        errors are not summable cell-wise and are left to a bootstrap run at the
-        target grain).
+        ``[groups?, cohort, duration, loss_proj, incr_loss_proj, source]``
+        (loss point columns only -- the loss ratio is a composed quantity, and
+        standard errors are not summable cell-wise and are left to a bootstrap
+        run at the target grain).
         """
         from .._kernels.period import GRAIN_ORDER, count_periods, floor_to_period
         if grain not in GRAIN_ORDER:
@@ -1690,8 +1659,8 @@ class LossFit:
                 f"{self.grain!r}, cannot view the finer {grain!r}."
             )
         group_cols = normalize_groups(self.groups)
-        out_cols = [*group_cols, "cohort", "duration", "loss_proj", "incr_loss_proj",
-                    "premium_proj", "incr_premium_proj", "ratio_proj", "source"]
+        out_cols = [*group_cols, "cohort", "duration", "loss_proj",
+                    "incr_loss_proj", "source"]
         if grain == self.grain:
             return mirror_output(self._df.select(out_cols), self._output_type)
 
@@ -1710,7 +1679,6 @@ class LossFit:
             df.group_by([*group_cols, "_cohort_floor", "_calendar_floor"])
             .agg(
                 pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
-                pl.col("incr_premium_proj").sum().alias("incr_premium_proj"),
                 (pl.col("source") == "observed").all().alias("_all_obs"),
                 (pl.col("source") == "grafted").any().alias("_any_graft"),
             )
@@ -1725,11 +1693,8 @@ class LossFit:
             .with_columns(
                 pl.col("incr_loss_proj").cum_sum().over([*group_cols, "cohort"])
                   .alias("loss_proj"),
-                pl.col("incr_premium_proj").cum_sum().over([*group_cols, "cohort"])
-                  .alias("premium_proj"),
             )
             .with_columns(
-                (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
                 pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
                   .when(pl.col("_any_graft")).then(pl.lit("grafted"))
                   .otherwise(pl.lit("own")).alias("source"),
@@ -1790,20 +1755,19 @@ class LossFit:
         return mirror_output(agg, self._output_type)
 
     def predict(self, by: str | list[str] | None = None) -> FrameLike:
-        """Per-cell projection surface: cumulative + incremental projected
-        loss, the projected loss ratio, and each cell's ``source`` (observed /
-        own / grafted). A focused view of :attr:`df` without the SE / CI
-        columns.
+        """Per-cell loss-projection surface: cumulative + incremental projected
+        loss and each cell's ``source`` (observed / own / grafted). A focused
+        view of :attr:`df` without the SE / CI columns. The loss ratio is a
+        composed quantity -- obtain it through ``Ratio(loss=, premium=)``.
 
         ``by`` (covariate fits only) disaggregates the surface by one or more
         of the fitted covariates -- one row per ``cohort x duration x by`` cell,
-        summing loss / premium over the covariates NOT in ``by`` (the ratio is
-        recomputed from the summed totals). ``by=None`` (default) returns the
-        reporting-grain cohort x duration surface (marginalized over every
-        covariate)."""
+        summing loss over the covariates NOT in ``by``. ``by=None`` (default)
+        returns the reporting-grain cohort x duration surface (marginalized over
+        every covariate)."""
         keys = (normalize_groups(self.groups) or []) + ["cohort", "duration"]
         if by is None:
-            cols = keys + ["loss_proj", "incr_loss_proj", "ratio_proj", "source"]
+            cols = keys + ["loss_proj", "incr_loss_proj", "source"]
             return mirror_output(self._df.select(cols), self._output_type)
 
         if self._covariate_surface is None:
@@ -1811,8 +1775,7 @@ class LossFit:
         by = [by] if isinstance(by, str) else list(by)
         surf = self._covariate_surface
         covs = [c for c in surf.columns if c not in (
-            *keys, "loss_proj", "incr_loss_proj", "premium_proj", "ratio_proj",
-            "source",
+            *keys, "loss_proj", "incr_loss_proj", "source",
         )]
         unknown = [c for c in by if c not in covs]
         if unknown:
@@ -1823,20 +1786,17 @@ class LossFit:
             .agg(
                 pl.col("loss_proj").sum(),
                 pl.col("incr_loss_proj").sum(),
-                pl.col("premium_proj").sum(),
                 # a cell is observed only if every sub-cell is observed
                 (pl.col("source") == "observed").all().alias("_all_obs"),
             )
             .with_columns(
-                (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
                 pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
                 .otherwise(pl.lit("own")).alias("source"),
             )
             .drop("_all_obs")
             .sort(gb)
         )
-        order = gb + ["loss_proj", "incr_loss_proj", "premium_proj",
-                      "ratio_proj", "source"]
+        order = gb + ["loss_proj", "incr_loss_proj", "source"]
         return mirror_output(out.select(order), self._output_type)
 
     @property
@@ -1859,12 +1819,12 @@ class LossFit:
     ) -> Any:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail a translucent
-        continuation with a frontier dot. ``metric`` is
-        ``"loss"`` (default; cumulative projected loss) or ``"ratio"`` (the
-        projected loss ratio)."""
+        continuation with a frontier dot. ``metric`` is ``"loss"`` (cumulative
+        projected loss); the loss ratio is plotted from a ``Ratio`` fit, not a
+        bare ``LossFit``."""
         from .._plot.fit import plot_fit, resolve_fit_metric
 
-        value_col, ylabel, hline = resolve_fit_metric(metric, ("loss", "ratio"))
+        value_col, ylabel, hline = resolve_fit_metric(metric, ("loss",))
         return plot_fit(
             self._df, value_col=value_col, ylabel=ylabel,
             title=f"{self.model} projection", groups=self.groups, hline=hline,

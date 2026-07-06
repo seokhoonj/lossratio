@@ -50,7 +50,7 @@ def test_balance_is_noop_at_psi_zero(tri):
 def test_credible_psi_zero_point_matches_pooled(tri):
     """At psi=0 the credibility point projection collapses to pooled cell-for-cell
     (the SE block differs: pooled is analytical, credible is point-only null)."""
-    pt = ["loss_proj", "incr_loss_proj", "ratio_proj", "premium_proj"]
+    pt = ["loss_proj", "incr_loss_proj"]
     pooled = _to_polars(PooledLoss().fit(tri).df).select(pt)
     cred0 = _to_polars(CredibleLoss(psi=0).fit(tri).df).select(pt)
     assert pooled.equals(cred0)
@@ -67,15 +67,13 @@ def test_balance_factor_shape_and_range(tri):
 
 
 def test_observed_cells_untouched_by_balance(tri):
-    """Balance rescales only the projected portion -- observed cells (and the
-    premium projection) are identical with and without balance."""
+    """Balance rescales only the projected portion -- observed cells are
+    identical with and without balance."""
     base = _to_polars(CredibleLoss().fit(tri).df)
     bal = _to_polars(CredibleLoss(balance=True).fit(tri).df)
     obs = base.filter(pl.col("loss_obs").is_not_null())
     obs_b = bal.filter(pl.col("loss_obs").is_not_null())
     assert obs.select("loss_obs").equals(obs_b.select("loss_obs"))
-    # premium projection is loss-independent -> unchanged everywhere
-    assert base.select("premium_proj").equals(bal.select("premium_proj"))
 
 
 def test_balance_scales_projected_increment_by_alpha(tri):

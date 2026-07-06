@@ -44,6 +44,13 @@ def _fit_df(estimator, df: pl.DataFrame) -> pl.DataFrame:
     return out.to_polars().sort(KEYS)
 
 
+def _ratio_df(loss_estimator, df: pl.DataFrame) -> pl.DataFrame:
+    """RatioFit frame -- the loss ratio lives only on the composed Ratio, so the
+    ratio/premium invariance is checked here (the bare LossFit is loss-only)."""
+    out = lr.Ratio(loss=loss_estimator, premium=lr.PooledPremium()).fit(_triangle(df))
+    return out.to_polars().sort(KEYS)
+
+
 def _close(a: np.ndarray, b: np.ndarray, rtol: float = 1e-9) -> None:
     m = np.isfinite(a) & np.isfinite(b)
     assert m.any()
@@ -63,12 +70,14 @@ def test_pooled_loss_unit_invariance():
     assert base.height == sc.height
 
     _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())
-    _close(sc["premium_proj"].to_numpy(), C * base["premium_proj"].to_numpy())
-    # dimensionless quantities unchanged by the currency unit
+    # dimensionless quantity unchanged by the currency unit
     _close(sc["loss_total_cv"].to_numpy(), base["loss_total_cv"].to_numpy())
-    ratio_base = base["loss_proj"].to_numpy() / base["premium_proj"].to_numpy()
-    ratio_sc = sc["loss_proj"].to_numpy() / sc["premium_proj"].to_numpy()
-    _close(ratio_sc, ratio_base)
+    # the loss ratio is a composed quantity -> read it off the Ratio: premium
+    # scales by C while the dimensionless ratio is unit-invariant.
+    ratio_base = _ratio_df(lr.PooledLoss(), df)
+    ratio_sc = _ratio_df(lr.PooledLoss(), scaled)
+    _close(ratio_sc["premium_proj"].to_numpy(), C * ratio_base["premium_proj"].to_numpy())
+    _close(ratio_sc["ratio_proj"].to_numpy(), ratio_base["ratio_proj"].to_numpy())
 
 
 def test_chain_ladder_loss_equivariance():

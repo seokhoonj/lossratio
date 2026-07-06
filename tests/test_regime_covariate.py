@@ -42,11 +42,11 @@ def test_covariate_treatment_equals_manual_label_route():
     )
 
     key = ["coverage", "cohort", "duration"]
-    j = new.select([*key, "ratio_proj"]).join(
-        man.select([*key, pl.col("ratio_proj").alias("ref")]), on=key, how="inner"
+    j = new.select([*key, "loss_proj"]).join(
+        man.select([*key, pl.col("loss_proj").alias("ref")]), on=key, how="inner"
     )
     assert j.height == new.height == man.height
-    d = j.select((pl.col("ratio_proj") - pl.col("ref")).abs().max()).item()
+    d = j.select((pl.col("loss_proj") - pl.col("ref")).abs().max()).item()
     assert d == pytest.approx(0.0, abs=1e-9)
 
 

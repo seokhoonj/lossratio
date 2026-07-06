@@ -12,6 +12,7 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
+import lossratio as lr
 from lossratio.estimators.credible_loss import CredibleLoss
 from lossratio.estimators.smooth_loss import SmoothLoss
 
@@ -27,7 +28,9 @@ def test_smooth_fit_runs_and_labels(tri):
     assert fit.converged is True
     d = fit.to_polars()
     assert d.filter(pl.col("source") == "own")["loss_proj"].is_not_null().all()
-    assert {"ratio_proj", "ratio_se"}.issubset(d.columns)
+    # the ratio columns live on the explicit composition, not the bare LossFit
+    rat = lr.Ratio(loss=SmoothLoss(), premium=lr.SmoothPremium()).fit(tri).to_polars()
+    assert {"ratio_proj", "ratio_se"}.issubset(rat.columns)
 
 
 def test_point_only_se_is_null(tri):
@@ -101,7 +104,9 @@ def test_bootstrap_populates_se_ci_and_coverage(tri):
     assert (proj["loss_proc_se"] <= proj["loss_total_se"] + 1e-9).all()
     assert (proj["loss_ci_lo"] <= proj["loss_proj"] + 1e-9).all()
     assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-9).all()
-    assert proj["ratio_se"].is_not_null().all()
+    # the bootstrapped loss SE propagates to the ratio band on the composition
+    rat = lr.Ratio(loss=est, premium=lr.PooledPremium()).fit(tri).to_polars()
+    assert rat.filter(pl.col("source") == "own")["ratio_se"].is_not_null().all()
     # coverage lane flows through a backtest
     ae = _to_polars(Backtest(estimator=est, holdouts=6, target="loss").fit(tri).ae_err)
     assert "expected_se" in ae.columns

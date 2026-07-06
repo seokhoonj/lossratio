@@ -21,7 +21,7 @@ their SEs for transparency.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -57,14 +57,18 @@ class Ratio:
         A loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
         ``SmoothLoss`` / ``ChainLadder``).
     premium
-        A premium-side estimator (``PooledPremium``). Defaults to a plain
-        ``PooledPremium()``.
+        A premium-side estimator (``PooledPremium`` / ``CrediblePremium`` /
+        ``SmoothPremium``). Defaults to the variant MATCHING the loss side --
+        ``CredibleLoss`` -> ``CrediblePremium``, ``SmoothLoss`` ->
+        ``SmoothPremium``, ``PooledLoss`` / ``ChainLadder`` -> ``PooledPremium``
+        -- so numerator and denominator share the same estimation basis. Pass an
+        explicit estimator to override.
     confidence_level
         Two-sided confidence level for the ratio CI columns.
     """
 
     loss: _LossEstimatorBase
-    premium: _PremiumEstimatorBase = field(default_factory=lambda: _default_premium())
+    premium: _PremiumEstimatorBase | None = None
     confidence_level: float = 0.95
 
     def __post_init__(self) -> None:
@@ -73,6 +77,8 @@ class Ratio:
                 "loss must be a loss-side estimator (PooledLoss / CredibleLoss "
                 f"/ SmoothLoss / ChainLadder), got {type(self.loss).__name__}"
             )
+        if self.premium is None:
+            self.premium = _match_premium(self.loss)
         if not isinstance(self.premium, _PremiumEstimatorBase):
             raise TypeError(
                 "premium must be a premium-side estimator (PooledPremium), got "
@@ -85,6 +91,7 @@ class Ratio:
         """Fit both sides on ``triangle`` and compose the loss ratio."""
         loss_fit = self.loss.fit(triangle)
         premium = self.premium
+        assert premium is not None  # matched in __post_init__ when not given
         if premium.treatment is None:
             # Premium treatment defaults to MATCH the loss side so numerator and
             # denominator share the same cohort/regime basis -- an un-matched cut
@@ -184,11 +191,30 @@ class Ratio:
         )
 
 
-def _default_premium() -> _PremiumEstimatorBase:
-    # local import avoids a module-load cycle (pooled_premium -> premium_fit;
-    # ratio -> pooled_premium would otherwise import at module scope).
-    from .pooled_premium import PooledPremium
+def _match_premium(loss: _LossEstimatorBase) -> _PremiumEstimatorBase:
+    """The premium estimator variant matching a loss estimator.
 
+    A composed loss ratio reads best when numerator and denominator are
+    estimated on the same basis: a ``CredibleLoss`` numerator pairs with a
+    ``CrediblePremium`` denominator, ``SmoothLoss`` with ``SmoothPremium``, and
+    the pooled / link-ratio loss rungs (``PooledLoss`` / ``ChainLadder``) with
+    ``PooledPremium``. Only the VARIANT is matched -- the matched premium carries
+    its own defaults; the per-side regime / recent filters are not inherited here
+    (premium's treatment is inherited separately in :meth:`Ratio.fit`).
+    """
+    # local imports avoid a module-load cycle (the estimator modules import the
+    # fit result classes that live alongside Ratio).
+    from .credible_loss import CredibleLoss
+    from .credible_premium import CrediblePremium
+    from .pooled_premium import PooledPremium
+    from .smooth_loss import SmoothLoss
+    from .smooth_premium import SmoothPremium
+
+    # SmoothLoss checked first in case it specializes CredibleLoss.
+    if isinstance(loss, SmoothLoss):
+        return SmoothPremium()
+    if isinstance(loss, CredibleLoss):
+        return CrediblePremium()
     return PooledPremium()
 
 

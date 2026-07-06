@@ -78,4 +78,4 @@ def test_credible_covariate_fit_with_a_fully_held_out_coverage():
     out = fit.to_polars()
     assert out.height > 0
     # the well-populated coverages still project real numbers
-    assert out.filter(pl.col("ratio_proj").is_not_null()).height > 0
+    assert out.filter(pl.col("loss_proj").is_not_null()).height > 0

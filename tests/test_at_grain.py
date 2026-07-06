@@ -18,19 +18,19 @@ def _tri(grain):
 
 
 def _proj_total(frame, group_cols=("coverage",)):
-    """Portfolio projected ratio = sum of each cohort's deepest cumulative."""
+    """Portfolio projected loss = sum of each cohort's deepest cumulative."""
     last = (
         frame.sort([*group_cols, "cohort", "duration"])
         .group_by([*group_cols, "cohort"])
-        .agg(pl.col("loss_proj").last(), pl.col("premium_proj").last())
+        .agg(pl.col("loss_proj").last())
     )
-    return last["loss_proj"].sum() / last["premium_proj"].sum()
+    return last["loss_proj"].sum()
 
 
 def test_at_grain_identity_returns_fit_projection():
     fit = lr.CredibleLoss().fit(_tri("M"))
     cols = ["coverage", "cohort", "duration", "loss_proj", "incr_loss_proj",
-            "premium_proj", "incr_premium_proj", "ratio_proj", "source"]
+            "source"]
     a = fit.at_grain("M").sort(["coverage", "cohort", "duration"])
     b = fit.to_polars().select(cols).sort(["coverage", "cohort", "duration"])
     assert a.equals(b)
@@ -43,8 +43,9 @@ def test_at_grain_preserves_increment_totals():
     m = fit.to_polars()
     for g in ("Q", "H", "Y"):
         q = fit.at_grain(g)
-        for col in ("incr_loss_proj", "incr_premium_proj"):
-            assert m[col].sum() == pytest.approx(q[col].sum(), rel=1e-9)
+        assert m["incr_loss_proj"].sum() == pytest.approx(
+            q["incr_loss_proj"].sum(), rel=1e-9
+        )
 
 
 def test_at_grain_is_grain_invariant_and_differs_from_refit():
@@ -76,8 +77,7 @@ def test_at_grain_matches_manual_increment_aggregation():
             pl.col("_cal").dt.truncate("3mo").alias("cc"),
         )
         .group_by(["coverage", "uc", "cc"])
-        .agg(pl.col("incr_loss_proj").sum().alias("il"),
-             pl.col("incr_premium_proj").sum().alias("ip"))
+        .agg(pl.col("incr_loss_proj").sum().alias("il"))
     )
     q = fit.at_grain("Q").with_columns(
         pl.col("cohort").dt.offset_by(
@@ -86,8 +86,7 @@ def test_at_grain_matches_manual_increment_aggregation():
     ).rename({"cohort": "uc"})
     j = q.join(manual, on=["coverage", "uc", "cc"], how="full", coalesce=True)
     assert j.filter(
-        ((pl.col("incr_loss_proj") - pl.col("il")).abs() > 1e-6)
-        | ((pl.col("incr_premium_proj") - pl.col("ip")).abs() > 1e-6)
+        (pl.col("incr_loss_proj") - pl.col("il")).abs() > 1e-6
     ).height == 0
 
 
