@@ -116,11 +116,11 @@ $$
    tri = lr.Triangle(df, groups="coverage", grain="Q")
    COH = pl.lit("2025-01-01").str.to_date()
 
-   def _traj(model):
-       return (model().fit(tri).df
+   def _traj(loss):
+       return (lr.Ratio(loss=loss, premium=lr.PooledPremium()).fit(tri).df
                .filter(pl.col("cohort") == COH).sort("duration"))
 
-   pooled, cred = _traj(lr.PooledLoss), _traj(lr.CredibleLoss)
+   pooled, cred = _traj(lr.PooledLoss()), _traj(lr.CredibleLoss())
    duration = pooled["duration"].to_list()
    src = pooled["source"].to_list()
    ratio_all = pooled["ratio_proj"].to_list()

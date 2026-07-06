@@ -92,12 +92,16 @@ exp(-1.61) = 0.20      70+ 는 0.20 배
 ## 6.4 속성별 손해율 — predict(by=)
 
 2장의 `predict()` 는 공변량으로 쪼개지 않은 **전체 예측** — 코호트 x 경과 한
-장의 손해율 예측 — 을 준다. 공변량을 넣었으면 `predict(by="age_band")` 로 그
-전체 예측을 속성별로 *나눠* 볼 수 있다.
+장 — 을 준다. 공변량을 넣었으면 `predict(by="age_band")` 로 그 전체 예측을
+속성별로 *나눠* 볼 수 있다. 손해율은 합성값이라 loss 모델을 `Ratio` 로 감싸
+분모(보험료)를 붙여야 나온다 — `LossFit` 자체는 `loss_proj` 만 낸다.
 
 ```python
-fit.predict()               # 전체 예측: 코호트 x 경과 (coverage 단위)
-fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
+rf = lr.Ratio(loss=lr.CredibleLoss(covariates=["age_band"]),
+              premium=lr.PooledPremium()).fit(tri)
+
+rf.predict()               # 전체 예측: 코호트 x 경과 (coverage 단위)
+rf.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 #> coverage cohort     duration age_band loss_proj   ratio_proj source
 #> CANCER   2023-01-01 1        20s        2481.55   0.285      observed
 #> CANCER   2023-01-01 1        30s        2311.91   0.212      observed
@@ -124,8 +128,8 @@ fit.predict(by="age_band")  # 속성별: 코호트 x 경과 x 연령대
 import polars as pl
 from datetime import date
 
-full = fit.predict()
-by   = fit.predict(by="age_band")
+full = rf.predict()
+by   = rf.predict(by="age_band")
 cell = dict(coverage="CANCER", cohort=date(2023, 1, 1), duration=1)
 # CANCER 2023-01-01, 경과 1 한 셀
 full.filter(**{k: pl.lit(v) for k, v in cell.items()})["loss_proj"][0]
@@ -222,8 +226,9 @@ lr.CredibleLoss(covariates=["age_band", "channel"],
 정확히 일치한다:
 
 ```python
-fit = lr.CredibleLoss(covariates=["age_band", "channel"]).fit(tri)
-fit.predict(by=["age_band", "channel"])
+rf = lr.Ratio(loss=lr.CredibleLoss(covariates=["age_band", "channel"]),
+              premium=lr.PooledPremium()).fit(tri)
+rf.predict(by=["age_band", "channel"])
 #> coverage cohort     duration age_band channel loss_proj    ratio_proj
 #> CANCER   2023-01-01 1        20s      FC        923.86     0.252
 #> CANCER   2023-01-01 1        20s      GA        779.52     0.316
