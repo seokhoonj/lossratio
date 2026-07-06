@@ -32,6 +32,7 @@ book.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -703,6 +704,7 @@ class PremiumFit:
         self,
         metric: str = "premium",
         *,
+        cohort: str | date | None = None,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -710,14 +712,18 @@ class PremiumFit:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is
-        ``"premium"`` (the projected cumulative premium)."""
+        ``"premium"`` (the projected cumulative premium).
+
+        With ``cohort`` (an ISO date string like ``"2025-06-01"`` or a
+        ``date``) a single cohort is spotlighted -- observed solid, projected
+        dashed, with a rule at the observation frontier."""
         from .._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(metric, ("premium",))
         return plot_fit(
             self._df, value_col=value_col, ylabel=ylabel,
             title=f"{self.model} projection", groups=self.groups, hline=hline,
-            nrow=nrow, ncol=ncol, figsize=figsize,
+            nrow=nrow, ncol=ncol, figsize=figsize, cohort=cohort,
         )
 
     def __repr__(self) -> str:

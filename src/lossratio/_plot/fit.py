@@ -48,6 +48,56 @@ def resolve_fit_metric(
     return _FIT_METRICS[metric]
 
 
+def _coerce_cohort(cohort: Any) -> Any:
+    """Normalise a ``cohort=`` selector (ISO string or date/datetime) to a
+    ``datetime.date`` for an exact match against the Date ``cohort`` column."""
+    import datetime as _dt
+
+    if isinstance(cohort, str):
+        return _dt.date.fromisoformat(cohort)
+    if isinstance(cohort, _dt.datetime):
+        return cohort.date()
+    if isinstance(cohort, _dt.date):
+        return cohort
+    raise TypeError(
+        "cohort must be an ISO date string (e.g. '2025-06-01') or a "
+        f"datetime.date; got {type(cohort).__name__}."
+    )
+
+
+def _draw_fit_single(ax: Any, sub: pl.DataFrame, value_col: str,
+                     legend: bool) -> None:
+    """One facet, a single cohort spotlighted: the observed portion a solid
+    marked line, the projected tail a dashed continuation, and a dotted
+    vertical line at the observation frontier.
+
+    With only one trajectory per facet there is no overplotting, so the
+    standard forecast convention (solid = observed, dashed = projected, a rule
+    at the hand-off) reads more sharply than the faded-tail treatment used for
+    the all-cohorts view."""
+    gg = sub.sort("duration")
+    x = gg["duration"].to_numpy()
+    y = gg[value_col].cast(pl.Float64).to_numpy()
+    src = gg["source"].to_list()
+    obs = np.array([s == "observed" for s in src])
+
+    accent = "#1f6fb2"
+    ax.plot(x, np.where(obs, y, np.nan), "-o", color="black", markersize=3.5,
+            linewidth=1.4, zorder=3, label="observed")
+
+    proj = ~obs & np.isfinite(y)
+    if proj.any():
+        obs_idx = np.where(obs)[0]
+        start = int(obs_idx[-1]) if obs_idx.size else int(np.where(proj)[0][0])
+        ax.plot(x[start:], y[start:], linestyle="--", color=accent,
+                linewidth=1.6, zorder=2, label="projected")
+        if obs_idx.size:
+            ax.axvline(float(x[obs_idx[-1]]) + 0.5, color="0.6", linestyle=":",
+                       linewidth=1.0, zorder=1)
+    if legend:
+        ax.legend(loc="best", fontsize=8, frameon=False)
+
+
 def _draw_fit_cohort(ax: Any, sub: pl.DataFrame, value_col: str, coh_color) -> None:
     """One facet: per-cohort cumulative trajectory, observed solid + projected
     as a translucent same-colour continuation, with a small dot marking the
@@ -98,12 +148,25 @@ def plot_fit(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
+    cohort: Any = None,
 ) -> Any:
     """Faceted per-cohort projection plot for a fit's long frame.
 
     ``df`` carries ``cohort`` / ``duration`` / ``source`` / ``value_col`` (plus
     the group column(s) when grouped) -- the result class's polars frame.
+
+    With ``cohort`` given (an ISO string or a ``date``) a single cohort is
+    spotlighted per facet -- observed solid, projected dashed, with a rule at
+    the frontier -- instead of the faded all-cohorts fan.
     """
+    if cohort is not None:
+        coh_key = _coerce_cohort(cohort)
+        df = df.filter(pl.col("cohort") == pl.lit(coh_key))
+        if df.height == 0:
+            raise ValueError(
+                f"cohort {cohort!r} is not in this fit; no rows to plot."
+            )
+
     grid = open_facets(
         iter_group_frames(df, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
@@ -117,8 +180,11 @@ def plot_fit(
     n_coh = len(cohorts)
     coh_color = cohort_gradient(cohorts)
 
-    for _, group_value, sub, ax in grid:
-        _draw_fit_cohort(ax, sub, value_col, coh_color)
+    for i, (_, group_value, sub, ax) in enumerate(grid):
+        if cohort is not None:
+            _draw_fit_single(ax, sub, value_col, legend=(i == 0))
+        else:
+            _draw_fit_cohort(ax, sub, value_col, coh_color)
         if hline is not None:
             ax.axhline(hline, linestyle=":", color="0.5", linewidth=0.8, zorder=1)
         grid.title(ax, group_value)

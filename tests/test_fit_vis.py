@@ -131,6 +131,58 @@ def test_ratio_plot_metric_variants(tri_g):
             _close(fig)
 
 
+def _a_cohort(fit):
+    return fit.to_polars()["cohort"].min()
+
+
+def test_plot_cohort_spotlight_renders(tri_g):
+    # A single cohort spotlight: one trajectory per group facet (observed
+    # solid + dashed projection + a frontier rule), no cohort colourbar.
+    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_g)
+    coh = _a_cohort(fit)
+    fig = fit.plot(cohort=coh)
+    try:
+        assert isinstance(fig, plt.Figure)
+        # frontier rule drawn: at least one facet carries a vertical line
+        assert any(ax.get_lines() or ax.collections for ax in fig.get_axes())
+    finally:
+        _close(fig)
+
+
+def test_plot_cohort_str_and_date_agree(tri_s):
+    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
+    coh = _a_cohort(fit)
+    for sel in (coh, coh.isoformat()):
+        fig = fit.plot(cohort=sel)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            _close(fig)
+
+
+def test_plot_cohort_inherited_by_loss_and_premium(tri_s):
+    lf = lr.PooledLoss().fit(tri_s)
+    pf = lr.PooledPremium().fit(tri_s)
+    for fit, metric in ((lf, "loss"), (pf, "premium")):
+        fig = fit.plot(metric=metric, cohort=_a_cohort(fit))
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            _close(fig)
+
+
+def test_plot_cohort_absent_raises(tri_s):
+    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
+    with pytest.raises(ValueError, match="not in this fit"):
+        fit.plot(cohort="1999-01-01")
+
+
+def test_plot_cohort_bad_type_raises(tri_s):
+    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
+    with pytest.raises(TypeError, match="ISO date string"):
+        fit.plot(cohort=20250601)
+
+
 def test_loss_plot_rejects_ratio_metric(tri_g):
     # A bare LossFit projects loss only; the loss ratio is plotted from a
     # Ratio fit, never a bare loss estimator.

@@ -21,6 +21,7 @@ count, so a degraded fit reports WHY in a field rather than a printed warning.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -1813,6 +1814,7 @@ class LossFit:
         self,
         metric: str = "loss",
         *,
+        cohort: str | date | None = None,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -1821,14 +1823,18 @@ class LossFit:
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is ``"loss"`` (cumulative
         projected loss); the loss ratio is plotted from a ``Ratio`` fit, not a
-        bare ``LossFit``."""
+        bare ``LossFit``.
+
+        With ``cohort`` (an ISO date string like ``"2025-06-01"`` or a
+        ``date``) a single cohort is spotlighted -- observed solid, projected
+        dashed, with a rule at the observation frontier."""
         from .._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(metric, ("loss",))
         return plot_fit(
             self._df, value_col=value_col, ylabel=ylabel,
             title=f"{self.model} projection", groups=self.groups, hline=hline,
-            nrow=nrow, ncol=ncol, figsize=figsize,
+            nrow=nrow, ncol=ncol, figsize=figsize, cohort=cohort,
         )
 
     def __repr__(self) -> str:

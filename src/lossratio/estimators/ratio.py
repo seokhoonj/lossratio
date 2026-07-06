@@ -22,6 +22,7 @@ their SEs for transparency.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -377,6 +378,7 @@ class RatioFit:
         self,
         metric: str = "ratio",
         *,
+        cohort: str | date | None = None,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -385,7 +387,11 @@ class RatioFit:
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is
         ``"ratio"`` (default; the projected loss ratio), ``"loss"``, or
-        ``"premium"``."""
+        ``"premium"``.
+
+        With ``cohort`` (an ISO date string like ``"2025-06-01"`` or a
+        ``date``) a single cohort is spotlighted -- observed solid, projected
+        dashed, with a rule at the observation frontier."""
         from .._plot.fit import plot_fit, resolve_fit_metric
 
         value_col, ylabel, hline = resolve_fit_metric(
@@ -394,7 +400,7 @@ class RatioFit:
         return plot_fit(
             self._df, value_col=value_col, ylabel=ylabel,
             title="loss ratio projection", groups=self.groups, hline=hline,
-            nrow=nrow, ncol=ncol, figsize=figsize,
+            nrow=nrow, ncol=ncol, figsize=figsize, cohort=cohort,
         )
 
     def extend(
