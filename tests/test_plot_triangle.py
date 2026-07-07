@@ -1,4 +1,4 @@
-"""Smoke tests for ``Triangle.plot_triangle(kind='value')``.
+"""Smoke tests for ``Triangle.plot_triangle`` (the value / metric heatmap).
 
 ggplot <-> matplotlib bit-parity is intentionally out of scope; these
 tests assert that figures render, expected metadata lands on the axes,
@@ -82,9 +82,10 @@ def test_invalid_metric_raises(tri_with_groups):
         tri_with_groups.plot_triangle(metric="not_a_metric")
 
 
-def test_invalid_view_raises(tri_with_groups):
-    with pytest.raises(ValueError, match="kind"):
-        tri_with_groups.plot_triangle(kind="bogus")
+def test_kind_argument_removed(tri_with_groups):
+    # `kind` no longer exists on plot_triangle -- passing it is a TypeError.
+    with pytest.raises(TypeError):
+        tri_with_groups.plot_triangle(kind="usage")
 
 
 def test_invalid_label_style_raises(tri_with_groups):
@@ -121,14 +122,14 @@ def test_label_style_detail_uses_two_line_labels(tri_with_groups):
         _close(fig)
 
 
-def test_label_style_value_no_newlines(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(metric="ratio", label_style="value")
+def test_label_style_plain_no_newlines(tri_with_groups):
+    fig = tri_with_groups.plot_triangle(metric="ratio", label_style="plain")
     try:
         ax = fig.get_axes()[0]
         labels = [t.get_text() for t in ax.texts if t.get_text()]
         assert labels
         assert not any("\n" in lab for lab in labels), (
-            "value style labels should be single-line"
+            "plain style labels should be single-line"
         )
     finally:
         _close(fig)
@@ -190,9 +191,7 @@ def test_x_axis_calendar_value(tri_single):
 def test_x_axis_calendar_usage(tri_single):
     # Usage view honours the calendar axis too, with the calendar-diagonal
     # recent / holdout masks overlaid.
-    fig = tri_single.plot_triangle(
-        kind="usage", x_axis="calendar", recent=12, holdout=6
-    )
+    fig = tri_single.plot_usage(x_axis="calendar", recent=12, holdout=6)
     try:
         assert fig.get_axes()
         assert "calendar" in fig._supxlabel.get_text()
@@ -204,7 +203,7 @@ def test_invalid_x_axis_raises(tri_with_groups):
     with pytest.raises(ValueError, match="x_axis"):
         tri_with_groups.plot_triangle(x_axis="cy")
     with pytest.raises(ValueError, match="x_axis"):
-        tri_with_groups.plot_triangle(kind="usage", x_axis="cy")
+        tri_with_groups.plot_usage(x_axis="cy")
 
 
 def test_x_axis_calendar_periods_match(tri_single):
@@ -230,9 +229,12 @@ def test_x_axis_calendar_periods_match(tri_single):
 
 
 def test_x_axis_calendar_multigroup_facets(tri_with_groups):
-    # The calendar layout faces out per group like the duration layout.
-    for kind in ("value", "usage"):
-        fig = tri_with_groups.plot_triangle(kind=kind, x_axis="calendar")
+    # The calendar layout faces out per group like the duration layout,
+    # for both the value and the usage heatmap.
+    for fig in (
+        tri_with_groups.plot_triangle(x_axis="calendar"),
+        tri_with_groups.plot_usage(x_axis="calendar"),
+    ):
         try:
             visible = [a for a in fig.get_axes() if a.get_visible()]
             assert len(visible) == 4

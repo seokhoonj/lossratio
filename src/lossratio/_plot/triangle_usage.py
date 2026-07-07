@@ -1,6 +1,6 @@
 """Triangle usage-status heatmap -- matplotlib backend.
 
-The categorical view of ``Triangle.plot_triangle(kind="usage")``: each
+The categorical view behind ``Triangle.plot_usage``: each
 ``(cohort, duration)`` cell coloured by its training / held-out / excluded /
 future / donor status, with regime change-point hlines. The status grid itself
 is computed in :mod:`lossratio.core.usage`; this module only renders it.
@@ -76,11 +76,16 @@ def plot_triangle_usage(
     figsize: tuple[float, float] | None,
     x_axis: str = "duration",
 ) -> Any:
-    """Categorical status heatmap; see ``plot_triangle.Triangle(kind="usage")``."""
+    """Categorical status heatmap; see :meth:`lossratio.Triangle.plot_usage`."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
     from ..diagnostics.regime import Regime, _resolve_regime, _resolve_to_regime
+
+    if x_axis not in ("duration", "calendar"):
+        raise ValueError(
+            f"`x_axis` must be 'duration' or 'calendar', got {x_axis!r}."
+        )
 
     # a RegimeDetector resolves to a concrete Regime here (an already-concrete
     # Regime passes through unchanged). `treatment` is the estimator's

@@ -1,10 +1,10 @@
 """Triangle visualisation -- matplotlib backend.
 
-``plot_triangle`` is the heatmap entry point: ``kind="value"`` (this module's
-metric heatmap) or ``kind="usage"`` (dispatched to :mod:`triangle_usage`). The
-cohort-line plot ``plot`` lives in :mod:`triangle_line` and is re-exported here
-so :meth:`lossratio.Triangle.plot` keeps importing it from one place. Metric
-metadata is shared from :mod:`metric`.
+``plot_triangle`` renders the cell-value / metric heatmap. The categorical
+fit-usage status heatmap lives in :mod:`triangle_usage`
+(:meth:`lossratio.Triangle.plot_usage`), and the cohort-line plot ``plot`` in
+:mod:`triangle_line` (re-exported here so :meth:`lossratio.Triangle.plot` keeps
+importing it from one place). Metric metadata is shared from :mod:`metric`.
 """
 
 from __future__ import annotations
@@ -32,7 +32,6 @@ from .metric import (
 )
 from .theme import draw_facet_strip, finalize_figure
 from .triangle_line import plot
-from .triangle_usage import plot_triangle_usage
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -54,49 +53,29 @@ _PANEL_BORDER_WIDTH = 1.0    # outer panel frame (heavier)
 
 def plot_triangle(
     triangle: Triangle,
-    kind: str = "value",
     metric: str = "ratio",
-    label_style: str = "value",
+    label_style: str = "plain",
     label_size: float | None = None,
     amount_divisor: float | str = "auto",
+    *,
+    x_axis: str = "duration",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-    *,
-    x_axis: str = "duration",
-    recent: int | None = None,
-    regime: Any = None,
-    treatment: str = "latest_only",
-    holdout: int | None = None,
 ) -> Any:
-    """Triangle heatmap dispatcher. See
+    """Cell-value / metric heatmap. See
     :meth:`lossratio.Triangle.plot_triangle` for the public docs.
     """
     import matplotlib.pyplot as plt
 
-    if kind not in ("value", "usage"):
-        raise ValueError(f"`kind` must be 'value' or 'usage', got {kind!r}.")
     if x_axis not in ("duration", "calendar"):
         raise ValueError(
             f"`x_axis` must be 'duration' or 'calendar', got {x_axis!r}."
         )
 
-    if kind == "usage":
-        return plot_triangle_usage(
-            triangle,
-            recent=recent,
-            regime=regime,
-            treatment=treatment,
-            holdout=holdout,
-            nrow=nrow,
-            ncol=ncol,
-            figsize=figsize,
-            x_axis=x_axis,
-        )
-
-    if label_style not in ("value", "detail"):
+    if label_style not in ("plain", "detail"):
         raise ValueError(
-            f"`label_style` must be 'value' or 'detail', got {label_style!r}."
+            f"`label_style` must be 'plain' or 'detail', got {label_style!r}."
         )
     if metric not in _VALID_METRICS:
         raise ValueError(
@@ -228,7 +207,7 @@ def _cell_labels(
     vals = df[metric].to_numpy()
     if metric in _RATIO_METRICS:
         scaled = vals * 100.0
-        if label_style == "value":
+        if label_style == "plain":
             return [_fmt_or_blank(v, "%.0f") for v in scaled]
         loss_col = "loss" if metric == "ratio" else "incr_loss"
         premium_col = "premium" if metric == "ratio" else "incr_premium"

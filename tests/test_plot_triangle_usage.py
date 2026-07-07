@@ -1,4 +1,4 @@
-"""Smoke tests for ``Triangle.plot_triangle(kind='usage')``.
+"""Smoke tests for ``Triangle.plot_usage`` (the status heatmap).
 
 ggplot <-> matplotlib bit-parity is intentionally out of scope. These
 tests assert that the categorical-status figure renders for the
@@ -43,7 +43,7 @@ def _close(fig):
 
 
 def test_renders_no_overlays(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(kind="usage")
+    fig = tri_with_groups.plot_usage()
     try:
         assert fig.get_axes()
         assert "Data usage" in fig._suptitle.get_text()
@@ -53,7 +53,7 @@ def test_renders_no_overlays(tri_with_groups):
 
 
 def test_renders_recent_only(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(kind="usage", recent=12)
+    fig = tri_with_groups.plot_usage(recent=12)
     try:
         assert "recent=12" in fig._suptitle.get_text()
     finally:
@@ -61,7 +61,7 @@ def test_renders_recent_only(tri_with_groups):
 
 
 def test_renders_holdout_only(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(kind="usage", holdout=6)
+    fig = tri_with_groups.plot_usage(holdout=6)
     try:
         assert "holdout=6" in fig._suptitle.get_text()
     finally:
@@ -70,7 +70,7 @@ def test_renders_holdout_only(tri_with_groups):
 
 def test_renders_regime_only(tri_with_groups):
     r = lr.RegimeDetector().detect(tri_with_groups)
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=r)
+    fig = tri_with_groups.plot_usage(regime=r)
     try:
         assert "regime=" in fig._suptitle.get_text()
     finally:
@@ -79,8 +79,8 @@ def test_renders_regime_only(tri_with_groups):
 
 def test_renders_full_filters(tri_with_groups):
     r = lr.RegimeDetector().detect(tri_with_groups)
-    fig = tri_with_groups.plot_triangle(
-        kind="usage", recent=18, regime=r, holdout=6
+    fig = tri_with_groups.plot_usage(
+        recent=18, regime=r, holdout=6
     )
     try:
         title = fig._suptitle.get_text()
@@ -92,7 +92,7 @@ def test_renders_full_filters(tri_with_groups):
 
 
 def test_renders_single_group(tri_single):
-    fig = tri_single.plot_triangle(kind="usage", recent=10, holdout=3)
+    fig = tri_single.plot_usage(recent=10, holdout=3)
     try:
         visible = [ax for ax in fig.get_axes() if ax.get_visible()]
         assert len(visible) == 1
@@ -101,7 +101,7 @@ def test_renders_single_group(tri_single):
 
 
 def test_legend_present_with_four_states(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(kind="usage", recent=12, holdout=6)
+    fig = tri_with_groups.plot_usage(recent=12, holdout=6)
     try:
         legends = fig.legends
         assert legends, "expected a figure-level legend"
@@ -116,7 +116,7 @@ def test_legend_present_with_four_states(tri_with_groups):
 
 def test_regime_default_detector_renders(tri_with_groups):
     # a default RegimeDetector runs detection inline and resolves to the cut.
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=lr.RegimeDetector())
+    fig = tri_with_groups.plot_usage(regime=lr.RegimeDetector())
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -124,8 +124,7 @@ def test_regime_default_detector_renders(tri_with_groups):
 
 
 def test_regime_detector_renders(tri_with_groups):
-    fig = tri_with_groups.plot_triangle(
-        kind="usage",
+    fig = tri_with_groups.plot_usage(
         regime=lr.RegimeDetector(window=12),
     )
     try:
@@ -136,12 +135,12 @@ def test_regime_detector_renders(tri_with_groups):
 
 def test_negative_recent_rejected(tri_with_groups):
     with pytest.raises(ValueError, match="recent"):
-        tri_with_groups.plot_triangle(kind="usage", recent=0)
+        tri_with_groups.plot_usage(recent=0)
 
 
 def test_negative_holdout_rejected(tri_with_groups):
     with pytest.raises(ValueError, match="holdout"):
-        tri_with_groups.plot_triangle(kind="usage", holdout=0)
+        tri_with_groups.plot_usage(holdout=0)
 
 
 # --- Classifier unit tests ------------------------------------------
@@ -210,7 +209,7 @@ def test_regime_cut_affects_only_changed_groups(tri_with_groups):
 
 def test_regime_cut_renders(tri_with_groups):
     reg = lr.RegimeDetector(window=12).detect(tri_with_groups)
-    fig = tri_with_groups.plot_triangle(kind="usage", regime=reg)
+    fig = tri_with_groups.plot_usage(regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -222,7 +221,7 @@ def test_regime_cut_pooled_render(tri_single):
     reg = lr.RegimeDetector(window=12).detect(tri_single)
     if reg.changes.height == 0:
         pytest.skip("no change points detected for this fixture")
-    fig = tri_single.plot_triangle(kind="usage", regime=reg)
+    fig = tri_single.plot_usage(regime=reg)
     try:
         assert isinstance(fig, plt.Figure)
         cut = _resolve_regime(reg, tri_single)
@@ -361,7 +360,7 @@ def test_usage_plot_renders_for_pandas_input():
     pytest.importorskip("pandas")
     df = lr.make_experience(seed=1).to_pandas()
     tri = lr.Triangle(df, groups="coverage")
-    fig = tri.plot_triangle(kind="usage", holdout=6)
+    fig = tri.plot_usage(holdout=6)
     try:
         assert isinstance(fig, plt.Figure)
     finally:
@@ -431,8 +430,8 @@ def test_usage_covariate_keeps_all_regimes_no_donor():
 
 
 def test_plot_usage_segment_wise_renders():
-    fig = _surgery_q().plot_triangle(
-        kind="usage", regime=lr.Regime(change="2024-07-01"), treatment="segment_wise"
+    fig = _surgery_q().plot_usage(
+        regime=lr.Regime(change="2024-07-01"), treatment="segment_wise"
     )
     try:
         assert isinstance(fig, plt.Figure)

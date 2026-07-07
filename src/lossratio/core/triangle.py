@@ -687,16 +687,15 @@ class Triangle:
         treatment: str = "latest_only",
         holdout: int | None = None,
     ) -> FrameLike:
-        """Per-cell fit-usage status grid (the data behind ``kind="usage"``).
+        """Per-cell fit-usage status grid (the data behind :meth:`plot_usage`).
 
         Returns one row per ``group x cohort x duration`` cell with a ``status``
         of ``"used"`` / ``"unused"`` / ``"holdout"`` / ``"future"`` / ``"donor"``
         under the given filters -- so a caller can render the usage view itself
         instead of the bundled matplotlib plot. Only OBSERVED cells are ever
         flagged used / donor; projection cells stay ``"future"``.
-        :meth:`plot_triangle` with ``kind="usage"`` is exactly the chart over
-        this frame, with the same input resolution; this is its data source
-        of truth.
+        :meth:`plot_usage` is exactly the chart over this frame, with the same
+        input resolution; this is its data source of truth.
 
         Parameters
         ----------
@@ -741,69 +740,48 @@ class Triangle:
 
     def plot_triangle(
         self,
-        kind: str = "value",
         metric: str = "ratio",
-        label_style: str = "value",
+        label_style: str = "plain",
         label_size: float | None = None,
         amount_divisor: float | str = "auto",
+        *,
+        x_axis: str = "duration",
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-        *,
-        x_axis: str = "duration",
-        recent: int | None = None,
-        regime: RegimeArg = None,
-        treatment: str = "latest_only",
-        holdout: int | None = None,
     ) -> Any:
-        """Triangle heatmap (cell-value or status), backed by matplotlib.
+        """Cell-value heatmap of the aligned cohort x duration triangle.
+
+        For the categorical fit-usage status heatmap, use
+        :meth:`plot_usage`.
 
         Parameters
         ----------
-        kind
-            ``"value"`` (default; cell-value heatmap of one metric) or
-            ``"usage"`` (status heatmap showing which cells the fit
-            would use vs. drop under the given ``recent`` / ``regime`` /
-            ``holdout`` masks).
+        metric
+            One of: ``"ratio"``, ``"incr_ratio"``, ``"loss"``,
+            ``"incr_loss"``, ``"premium"``, ``"incr_premium"``,
+            ``"margin"``, ``"incr_margin"``, ``"loss_share"``,
+            ``"incr_loss_share"``, ``"premium_share"``,
+            ``"incr_premium_share"``.
+        label_style
+            ``"plain"`` (default; one number per cell) or ``"detail"``
+            (ratio metrics get a second-line ``"(loss/premium)"``
+            breakdown).
+        label_size
+            matplotlib font size for cell labels. Defaults to ``8`` for
+            ``"plain"`` and ``7`` for ``"detail"``.
+        amount_divisor
+            Numeric divisor for amount metrics (and for the ratio
+            ``"detail"`` breakdown). ``"auto"`` selects the largest of
+            ``{1, 1e3, 1e6, 1e9, 1e12}`` that keeps the median formatting
+            non-zero at ``%.1f``.
         x_axis
             ``"duration"`` (default; columns are the duration index, the
             aligned right-triangle layout) or ``"calendar"`` (columns
             are the calendar period of each cell, so cohorts sit on
             their own diagonal -- the staircase layout the raw data sits
             in before alignment). Each cell's calendar period is
-            ``cohort + (duration - 1)`` at the triangle grain. Applies to
-            both views; in the usage view the ``recent`` / ``holdout``
-            calendar-diagonal masks become clean vertical bands.
-        metric
-            (value view) One of: ``"ratio"``, ``"incr_ratio"``,
-            ``"loss"``, ``"incr_loss"``, ``"premium"``,
-            ``"incr_premium"``, ``"margin"``, ``"incr_margin"``,
-            ``"loss_share"``, ``"incr_loss_share"``, ``"premium_share"``,
-            ``"incr_premium_share"``.
-        label_style
-            (value view) ``"value"`` (default; one number per cell) or
-            ``"detail"`` (ratio metrics get a second-line
-            ``"(loss/premium)"`` breakdown).
-        label_size
-            (value view) matplotlib font size for cell labels. Defaults
-            to ``8`` for ``"value"`` and ``7`` for ``"detail"``.
-        amount_divisor
-            (value view) Numeric divisor for amount metrics (and for the
-            ratio ``"detail"`` breakdown). ``"auto"`` selects the
-            largest of ``{1, 1e3, 1e6, 1e9, 1e12}`` that keeps the
-            median formatting non-zero at ``%.1f``.
-        recent
-            (usage view) Number of trailing calendar diagonals to keep
-            as "used".
-        regime
-            (usage view) ``None``, a :class:`Regime` instance, or a
-            :class:`RegimeDetector` -- resolved to the same
-            cohort cut the fit uses; cohorts before the change show as
-            "unused", with a dashed hline at the cut.
-        holdout
-            (usage view) Number of trailing calendar diagonals to flag
-            as "holdout" (the hold-out pattern used by
-            :class:`Backtest`).
+            ``cohort + (duration - 1)`` at the triangle grain.
         nrow, ncol
             Facet wrap layout when ``groups`` is set. Defaults to a
             near-square grid.
@@ -818,19 +796,83 @@ class Triangle:
         from .._plot.triangle import plot_triangle as _impl
         return _impl(
             self,
-            kind=kind,
             metric=metric,
             label_style=label_style,
             label_size=label_size,
             amount_divisor=amount_divisor,
+            x_axis=x_axis,
             nrow=nrow,
             ncol=ncol,
             figsize=figsize,
-            x_axis=x_axis,
+        )
+
+    def plot_usage(
+        self,
+        recent: int | None = None,
+        regime: RegimeArg = None,
+        treatment: str = "latest_only",
+        holdout: int | None = None,
+        *,
+        x_axis: str = "duration",
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Categorical fit-usage status heatmap, backed by matplotlib.
+
+        Each ``(cohort, duration)`` cell is coloured by its status
+        (``"used"`` / ``"unused"`` / ``"holdout"`` / ``"future"`` /
+        ``"donor"``) under the given ``recent`` / ``regime`` / ``holdout``
+        masks -- the chart over the same grid :meth:`usage` returns. For
+        the cell-value metric heatmap, use :meth:`plot_triangle`.
+
+        Parameters
+        ----------
+        recent
+            Number of trailing calendar diagonals to keep as "used".
+        regime
+            ``None``, a :class:`Regime` instance, or a
+            :class:`RegimeDetector` -- resolved to the same cohort cut the
+            fit uses; cohorts before the change show as "unused", with a
+            dashed hline at the cut.
+        treatment
+            How the regime is consumed (the estimator's knob, mirrored
+            here): ``"latest_only"`` (default) drops the pre-change
+            cohorts to "unused"; ``"segment_wise"`` / ``"covariate"`` keep
+            every regime, and under ``"segment_wise"`` the older regimes'
+            observed cells past the newest regime's depth are flagged
+            "donor".
+        holdout
+            Number of trailing calendar diagonals to flag as "holdout"
+            (the hold-out pattern used by :class:`Backtest`).
+        x_axis
+            ``"duration"`` (default; the aligned right-triangle layout) or
+            ``"calendar"`` (each cohort on its own diagonal -- the
+            staircase layout). On the calendar axis the ``recent`` /
+            ``holdout`` calendar-diagonal masks become clean vertical
+            bands.
+        nrow, ncol
+            Facet wrap layout when ``groups`` is set. Defaults to a
+            near-square grid.
+        figsize
+            Passed to ``plt.subplots``. Defaults to a size scaled by
+            the cell count.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from .._plot.triangle_usage import plot_triangle_usage as _impl
+        return _impl(
+            self,
             recent=recent,
             regime=regime,
             treatment=treatment,
             holdout=holdout,
+            x_axis=x_axis,
+            nrow=nrow,
+            ncol=ncol,
+            figsize=figsize,
         )
 
     def plot(
