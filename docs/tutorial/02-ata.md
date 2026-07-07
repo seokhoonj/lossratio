@@ -155,7 +155,7 @@ tri.link(target="loss").ata().df.select(["duration", "ata", "n_cohorts"])
    :context: close-figs
    :caption: 수술담보의 경과별 ATA 인자(월 단위). 초기에는 누적 손해가 한 기간에 빠르게 늘어 인자가 크고, 경과가 길어질수록 1에 가까워진다.
 
-   link.plot(model="ata", kind="summary", show_factor_stability=False)
+   link.ata().plot(kind="line")
 ```
 
 초기 경과의 인자는 6.0으로 매우 큽니다. 갓 인수된 계약은 누적 손해가 작은
@@ -225,9 +225,9 @@ tri.link(target="loss").ata().df.select(["duration", "ata", "cv", "rse", "n_coho
      +------------------- cohort
 ```
 
-`link.plot(model="ata", kind="cv")`에 `show_factor_stability=True`를 주면,
-인자의 CV·RSE가 문턱(`max_cv=0.05`, `max_rse=0.05`) 아래로 내려가 안정되는
-경과 구간을 음영으로 표시해 줍니다.
+`link.ata().plot_dispersion()`은 인자의 CV·RSE를 함께 그리며,
+`show_factor_stability=True`(기본값)면 CV·RSE가 문턱(`max_cv=0.05`,
+`max_rse=0.05`) 아래로 내려가 안정되는 경과 구간을 음영으로 표시해 줍니다.
 
 ```{eval-rst}
 .. plot::
@@ -239,9 +239,9 @@ tri.link(target="loss").ata().df.select(["duration", "ata", "cv", "rse", "n_coho
 
 .. plot::
    :context: close-figs
-   :caption: 수술담보의 경과별 ATA 인자 CV(월 단위). 음영은 인자가 코호트 간에 안정되는(CV·RSE 문턱 아래로 내려간) 구간이다.
+   :caption: 수술담보의 경과별 ATA 인자 흩어짐(CV·RSE, 월 단위). 음영은 인자가 코호트 간에 안정되는(CV·RSE 문턱 아래로 내려간) 구간이다.
 
-   link.plot(model="ata", kind="cv", show_factor_stability=True)
+   link.ata().plot_dispersion(show_factor_stability=True)
 ```
 
 ```{admonition} 이 음영은 "손해가 다 발생했다"가 아니다
@@ -334,10 +334,10 @@ base.join(rec, on="duration").head(3)
 6.03 -> 6.09). 코호트가 12개에 못 미치는 꼬리 경과에서는 창이 데이터
 전체를 덮으므로 값이 그대로입니다.
 
-진단 그림도 한 가지가 아닙니다. `link.plot(model="ata", kind=...)`의
-`kind`는 `"cv"`(앞서 본 흩어짐)·`"rse"`(추정 정밀도)·`"summary"`(경과별
-인자)·`"box"`(코호트별 인자 분포)·`"point"`(개별 인자 산점)을 받습니다.
-같은 진단을 흩어짐·정밀도·분포 등 여러 각도에서 번갈아 보는 손잡이입니다.
+진단 그림도 한 가지가 아닙니다. `link.ata().plot(kind=...)`의 `kind`는
+`"line"`(경과별 인자)·`"box"`(코호트별 인자 분포)·`"point"`(개별 인자 산점)을
+받고, 흩어짐·추정 정밀도(CV·RSE)는 `link.ata().plot_dispersion()`으로 따로
+봅니다. 같은 인자를 분포·흩어짐 등 여러 각도에서 번갈아 보는 손잡이입니다.
 
 ## A.7 인자를 곱하면 — 누적 ATA 인자 곱
 

@@ -255,7 +255,7 @@ link.intensity().summary().select(["duration", "intensity", "intensity_se", "n_c
    :context: close-figs
    :caption: 수술담보의 경과별 강도(월 단위). 초기에 보험료 대비 손해가 가장 많이 나고, 경과가 길어질수록 한 기간이 더하는 손해가 0에 가까워진다.
 
-   link.plot(model="intensity", kind="summary")
+   link.intensity().plot(kind="line")
 ```
 
 경과 1의 강도는 1.25로 가장 큽니다 — 보장 초기에 손해가 몰리는 장기
