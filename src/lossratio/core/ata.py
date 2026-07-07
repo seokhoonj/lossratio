@@ -7,7 +7,7 @@ diagnostics that report per-link estimates with standard errors and
 spread, without performing projection.
 
 The CV / RSE factor-stability columns this diagnostic reports are also
-what the ``link.plot(model="ata", show_factor_stability=...)`` overlay
+what the ``ATA.plot_dispersion(show_factor_stability=...)`` overlay
 shades.
 """
 
@@ -235,7 +235,7 @@ class ATA:
     (:func:`lossratio._kernels.recursion.fit_multiplicative`).
 
     The CV / RSE columns are what the
-    ``link.plot(model="ata", show_factor_stability=...)`` overlay shades
+    ``ATA.plot_dispersion(show_factor_stability=...)`` overlay shades
     to mark where the factors become stable.
 
     Properties
@@ -324,18 +324,65 @@ class ATA:
         """Alias for :attr:`df` (parallel to :meth:`Intensity.summary`)."""
         return mirror_output(self._df, self._output_type)
 
-    def plot(self, **kwargs: Any) -> Any:
+    def plot(
+        self,
+        kind: str = "line",
+        *,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
         """ATA factor diagnostic plot (matplotlib).
 
-        Delegates to :meth:`Link.plot` with ``model='ata'`` on the
-        underlying :class:`Link`. Accepts the same kwargs as
-        ``Link.plot(model='ata', ...)``: ``kind``,
-        ``show_factor_stability``, ``max_cv``, ``max_rse``, ``min_run``,
-        ``nrow``, ``ncol``, ``figsize``.
+        Draws the pooled multiplicative factor f_k as
+        ``kind in {"line", "box", "point"}`` (default ``"line"`` -- the
+        mean / median / weighted factor lines). The calendar-diagonal
+        ``recent`` wedge is inherited from this diagnostic. The
+        factor-stability overlay is *not* drawn here; see
+        :meth:`plot_dispersion`.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
-        from .._plot.link import plot_link
-        kwargs.setdefault("recent", self._recent)
-        return plot_link(self._link, model="ata", **kwargs)
+        from .._plot.link import plot_factor
+        return plot_factor(
+            self._link, model="ata", kind=kind, recent=self._recent,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
+    def plot_dispersion(
+        self,
+        *,
+        max_cv: float = 0.05,
+        max_rse: float = 0.05,
+        min_run: int = 1,
+        show_factor_stability: bool = True,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """CV + RSE dispersion diagnostic of the ATA factor (matplotlib).
+
+        Draws the cross-cohort coefficient of variation and relative
+        standard error of the per-link factor together (two series, each
+        with its own dashed threshold line at ``max_cv`` / ``max_rse``).
+        When ``show_factor_stability`` is set, an overlay marks the first
+        duration link where both statistics stay sub-threshold for
+        ``min_run`` consecutive links. The ``recent`` wedge is inherited
+        from this diagnostic.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from .._plot.link import plot_dispersion
+        return plot_dispersion(
+            self._link, recent=self._recent,
+            max_cv=max_cv, max_rse=max_rse, min_run=min_run,
+            show_factor_stability=show_factor_stability,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

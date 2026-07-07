@@ -293,17 +293,32 @@ class Intensity:
         only, with no factor-stability point."""
         return mirror_output(self._df, self._output_type)
 
-    def plot(self, **kwargs: Any) -> Any:
-        """Intensity diagnostic plot (matplotlib).
+    def plot(
+        self,
+        kind: str = "line",
+        *,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Intensity factor diagnostic plot (matplotlib).
 
-        Delegates to :meth:`Link.plot` with ``model='intensity'`` on the
-        underlying :class:`Link`. Accepts ``kind`` (``"summary"`` /
-        ``"box"`` / ``"point"``), ``nrow``, ``ncol``,
-        ``figsize``.
+        Draws the additive intensity g_k as
+        ``kind in {"line", "box", "point"}`` (default ``"line"``). The
+        calendar-diagonal ``recent`` wedge is inherited from this
+        diagnostic. Intensity has *no* ``plot_dispersion``: g_k decays
+        toward zero at long duration, which makes CV / RSE degenerate by
+        construction (not by instability).
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
-        from .._plot.link import plot_link
-        kwargs.setdefault("recent", self._recent)
-        return plot_link(self._link, model="intensity", **kwargs)
+        from .._plot.link import plot_factor
+        return plot_factor(
+            self._link, model="intensity", kind=kind, recent=self._recent,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
 
     def to_polars(self) -> pl.DataFrame:
         return self._df

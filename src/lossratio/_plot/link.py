@@ -1,9 +1,14 @@
 """Link-factor diagnostic visualisation -- matplotlib backend.
 
-Implements ``Link.plot()`` / ``ATA.plot()`` / ``Intensity.plot()``,
-dispatching to two internal branches: ``_plot_link_ata`` (5 kinds:
-``cv`` / ``rse`` / ``summary`` / ``box`` / ``point``) and
-``_plot_link_intensity`` (3 kinds: ``summary`` / ``box`` / ``point``).
+Two public renderers back the committed ``ATA`` / ``Intensity`` classes:
+
+* :func:`plot_factor` -- the pooled factor (``ata`` f_k or ``intensity``
+  g_k) drawn as ``line`` / ``box`` / ``point`` (``ATA.plot`` /
+  ``Intensity.plot``).
+* :func:`plot_dispersion` -- the ATA factor's cross-cohort CV and RSE
+  bundled in one panel with the factor-stability overlay
+  (``ATA.plot_dispersion``). Intensity has no dispersion view (g_k -> 0
+  makes CV / RSE degenerate by construction).
 
 Per-link summaries (``mean`` / ``median`` / weighted) are derived from
 the Link's per-cell ``ata`` / ``intensity`` column on the fly --
@@ -30,8 +35,7 @@ if TYPE_CHECKING:
     from ..core.link import Link
 
 
-_VALID_ATA_KINDS = ("cv", "rse", "summary", "box", "point")
-_VALID_INTENSITY_KINDS = ("summary", "box", "point")
+_VALID_FACTOR_KINDS = ("line", "box", "point")
 _SUMMARY_STATS = ("mean", "median", "weighted")
 
 
@@ -53,21 +57,29 @@ def _style_ggplot(ax: Any) -> None:
     ax.tick_params(length=0, labelsize=8, colors="#555555")
 
 
-def plot_link(
+def plot_factor(
     link: Link,
-    model: str | None = None,
+    *,
+    model: str,
+    kind: str = "line",
     recent: int | None = None,
-    **kwargs: Any,
+    nrow: int | None = None,
+    ncol: int | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """``Link.plot(model=...)`` dispatcher.
+    """Pooled-factor diagnostic plot -- line / box / point.
 
-    ``model = "ata"`` -> :func:`_plot_link_ata`,
-    ``model = "intensity"`` -> :func:`_plot_link_intensity`.
-    Default: ``"intensity"`` if the Link was built with ``exposure``,
-    otherwise ``"ata"``.
+    ``model = "ata"`` draws the multiplicative factor f_k; ``model =
+    "intensity"`` draws the additive intensity g_k. ``kind`` selects the
+    chart form: ``"line"`` (default -- mean / median / weighted factor
+    lines), ``"box"`` (per-link box plot), or ``"point"`` (per-link
+    scatter + mean line). No factor-stability overlay is drawn here; that
+    lives on :func:`plot_dispersion`.
     """
-    if model is None:
-        model = "intensity" if link._premium is not None else "ata"
+    if kind not in _VALID_FACTOR_KINDS:
+        raise ValueError(
+            f"`kind` must be one of {_VALID_FACTOR_KINDS!r}; got {kind!r}."
+        )
     if model not in ("ata", "intensity"):
         raise ValueError(
             f"`model` must be 'ata' or 'intensity'; got {model!r}."
@@ -76,9 +88,73 @@ def plot_link(
         raise ValueError(
             "`model='intensity'` requires a Link built with `exposure`."
         )
+
+    groups = link._groups
+    cells = _filter_cells_recent(link._df, groups, recent)
+
     if model == "ata":
-        return _plot_link_ata(link, recent=recent, **kwargs)
-    return _plot_link_intensity(link, recent=recent, **kwargs)
+        summary = _ata_summary(cells, groups)
+        y_col, y_label, title_noun, hline = "ata", "factor", "ATA Factors", 1.0
+    else:
+        summary = _intensity_summary(cells, groups)
+        y_col, y_label, title_noun, hline = (
+            "intensity", "intensity", "Incremental Loss Intensity (g)", 0.0
+        )
+
+    if kind == "line":
+        return _plot_summary_lines(
+            summary, groups=groups, value_cols=_SUMMARY_STATS,
+            y_label=y_label, title=f"Summary of {title_noun}",
+            hline=hline, factor_stability=None,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+    box = kind == "box"
+    return _plot_per_link_distribution(
+        cells, groups=groups, y_col=y_col, kind=kind, y_label=y_label,
+        title=f"{'Box Plot' if box else 'Distribution'} of {title_noun}",
+        hline=hline, factor_stability=None,
+        nrow=nrow, ncol=ncol, figsize=figsize,
+    )
+
+
+def plot_dispersion(
+    link: Link,
+    *,
+    recent: int | None = None,
+    max_cv: float = 0.05,
+    max_rse: float = 0.05,
+    min_run: int = 1,
+    show_factor_stability: bool = True,
+    nrow: int | None = None,
+    ncol: int | None = None,
+    figsize: tuple[float, float] | None = None,
+) -> Any:
+    """ATA factor dispersion plot -- cross-cohort CV and RSE together.
+
+    Draws the per-link coefficient of variation and relative standard
+    error of the ATA factor in one panel (two series, each with its own
+    dashed threshold line at ``max_cv`` / ``max_rse``). When
+    ``show_factor_stability`` is set, the factor-stability overlay marks
+    the first duration link where both statistics stay sub-threshold for
+    ``min_run`` consecutive links.
+    """
+    groups = link._groups
+    cells = _filter_cells_recent(link._df, groups, recent)
+    summary = _ata_summary(cells, groups)
+
+    factor_stability = (
+        _detect_factor_stability_overlay(
+            summary, groups, max_cv=max_cv, max_rse=max_rse, min_run=min_run
+        )
+        if show_factor_stability
+        else None
+    )
+
+    return _plot_dispersion_panel(
+        summary, groups=groups, max_cv=max_cv, max_rse=max_rse,
+        factor_stability=factor_stability,
+        nrow=nrow, ncol=ncol, figsize=figsize,
+    )
 
 
 def _filter_cells_recent(
@@ -101,132 +177,6 @@ def _filter_cells_recent(
     mx = pl.col("_cal").max()
     mx = mx.over(group_cols) if group_cols else mx
     return c.filter(pl.col("_cal") > mx - recent).drop("_cal")
-
-
-def _plot_shared_kind(
-    kind: str,
-    *,
-    cells: pl.DataFrame,
-    summary: pl.DataFrame,
-    groups: str | list[str] | None,
-    y_col: str,
-    y_label: str,
-    title_noun: str,
-    hline: float,
-    factor_stability: pl.DataFrame | None,
-    nrow: int | None,
-    ncol: int | None,
-    figsize: tuple[float, float] | None,
-) -> Any:
-    """Render the ``summary`` / ``box`` / ``point`` kinds shared by the ATA
-    and intensity branches. Only the factor column, label, title noun, and
-    reference line differ between the two -- everything else is identical, so
-    the model-specific values arrive as arguments.
-    """
-    if kind == "summary":
-        return _plot_summary_lines(
-            summary, groups=groups, value_cols=_SUMMARY_STATS,
-            y_label=y_label, title=f"Summary of {title_noun}",
-            hline=hline, factor_stability=factor_stability,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    box = kind == "box"
-    return _plot_per_link_distribution(
-        cells, groups=groups, y_col=y_col, kind=kind, y_label=y_label,
-        title=f"{'Box Plot' if box else 'Distribution'} of {title_noun}",
-        hline=hline, factor_stability=factor_stability,
-        nrow=nrow, ncol=ncol, figsize=figsize,
-    )
-
-
-def _plot_link_ata(
-    link: Link,
-    kind: str = "cv",
-    show_factor_stability: bool = True,
-    max_cv: float = 0.05,
-    max_rse: float = 0.05,
-    min_run: int = 1,
-    nrow: int | None = None,
-    ncol: int | None = None,
-    figsize: tuple[float, float] | None = None,
-    recent: int | None = None,
-) -> Any:
-    """ATA-mode link diagnostic plot -- 5 kind variants."""
-    if kind not in _VALID_ATA_KINDS:
-        raise ValueError(
-            f"`kind` must be one of {_VALID_ATA_KINDS!r}; got {kind!r}."
-        )
-
-    groups = link._groups
-    cells = _filter_cells_recent(link._df, groups, recent)
-    summary = _ata_summary(cells, groups)
-
-    # Factor-stability overlay (per-group duration_from where CV / RSE drop
-    # below thresholds and stay there for `min_run` consecutive links).
-    factor_stability = _detect_factor_stability_overlay(
-        summary, groups, max_cv=max_cv, max_rse=max_rse, min_run=min_run
-    ) if show_factor_stability else None
-
-    if kind == "cv":
-        return _plot_per_link_scalar(
-            summary,
-            groups=groups,
-            y_col="cv",
-            y_label="CV",
-            title="Coefficient of Variation of ATA Factors",
-            hline=max_cv,
-            factor_stability=factor_stability,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    if kind == "rse":
-        return _plot_per_link_scalar(
-            summary,
-            groups=groups,
-            y_col="rse",
-            y_label="RSE",
-            title="Relative Standard Error of ATA Factors",
-            hline=max_rse,
-            factor_stability=factor_stability,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    # summary / box / point share one renderer with the intensity branch.
-    return _plot_shared_kind(
-        kind, cells=cells, summary=summary, groups=groups,
-        y_col="ata", y_label="factor", title_noun="ATA Factors",
-        hline=1.0, factor_stability=factor_stability,
-        nrow=nrow, ncol=ncol, figsize=figsize,
-    )
-
-
-def _plot_link_intensity(
-    link: Link,
-    kind: str = "summary",
-    nrow: int | None = None,
-    ncol: int | None = None,
-    figsize: tuple[float, float] | None = None,
-    recent: int | None = None,
-) -> Any:
-    """Intensity-mode link diagnostic plot -- 3 kind variants."""
-    if kind not in _VALID_INTENSITY_KINDS:
-        raise ValueError(
-            f"`kind` must be one of {_VALID_INTENSITY_KINDS!r}; got {kind!r}."
-        )
-    if link._premium is None:
-        raise ValueError(
-            "Intensity-mode plot requires a Link built with `exposure`."
-        )
-
-    groups = link._groups
-    cells = _filter_cells_recent(link._df, groups, recent)
-    summary = _intensity_summary(cells, groups)
-
-    return _plot_shared_kind(
-        kind, cells=cells, summary=summary, groups=groups,
-        y_col="intensity", y_label="intensity",
-        title_noun="Incremental Loss Intensity (g)",
-        hline=0.0, factor_stability=None,
-        nrow=nrow, ncol=ncol, figsize=figsize,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +344,66 @@ def _plot_per_link_scalar(
     grid.hide_unused()
     finalize_figure(grid.fig, title=title, xlabel="duration link",
                     ylabel=y_label)
+    return grid.fig
+
+
+def _plot_dispersion_panel(
+    summary: pl.DataFrame,
+    *,
+    groups: str | list[str] | None,
+    max_cv: float,
+    max_rse: float,
+    factor_stability: pl.DataFrame | None,
+    nrow: int | None,
+    ncol: int | None,
+    figsize: tuple[float, float] | None,
+) -> Any:
+    """Per-link CV + RSE dispersion plot: two series, two threshold lines.
+
+    Models :func:`_plot_per_link_scalar` but draws the cross-cohort CV and
+    RSE of the ATA factor together, each in its own colour with a dashed
+    threshold line at ``max_cv`` / ``max_rse``, plus a legend. The
+    factor-stability overlay shades the sub-threshold band up to the larger
+    of the two thresholds.
+    """
+    series = (
+        ("cv", "CV", "#1f77b4", max_cv),
+        ("rse", "RSE", "#d62728", max_rse),
+    )
+    grid = open_facets(
+        iter_group_frames(summary, groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
+    )
+    for _, group_value, sub, ax in grid:
+        sub_sorted = sub.sort("duration_from")
+        x = sub_sorted["duration_from"].to_numpy()
+        link_labels = _link_label_lookup(sub_sorted)
+        for col, label, color, threshold in series:
+            y = sub_sorted[col].to_numpy()
+            m = np.isfinite(y)
+            if m.any():
+                ax.plot(
+                    x[m], y[m], color=color, linewidth=1.0,
+                    marker="o", markersize=3.2, markeredgewidth=0,
+                    label=label,
+                )
+            ax.axhline(threshold, color=color, linestyle="--", linewidth=0.8)
+        # Set xticks (which finalises xlim) BEFORE the overlay so its shaded
+        # band tracks the panel's true right edge, not a pre-xtick xlim.
+        _set_link_xticks(ax, x, link_labels)
+        _apply_factor_stability_overlay(
+            ax, factor_stability, group_value, groups,
+            y_max=max(max_cv, max_rse),
+        )
+        grid.title(ax, group_value)
+        ax.legend(loc="best", fontsize=8, frameon=False)
+        _style_ggplot(ax)
+    grid.hide_unused()
+    finalize_figure(
+        grid.fig, title="ATA factor dispersion (CV / RSE)",
+        xlabel="duration link", ylabel="relative",
+    )
     return grid.fig
 
 

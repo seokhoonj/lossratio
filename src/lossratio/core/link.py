@@ -13,7 +13,7 @@ across cohorts to per-link summaries that pair with each other:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import polars as pl
 
@@ -340,34 +340,6 @@ class Link:
         return Intensity._from_link(
             self, sigma_method=sigma_method, recent=recent
         )
-
-    def plot(
-        self,
-        model: str | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Link-factor diagnostic plot, backed by matplotlib.
-
-        Dispatches on ``model``: ``"ata"`` (multiplicative ATA factor
-        diagnostic, 5 kind variants) or ``"intensity"`` (additive intensity
-        diagnostic, 3 kind variants). Default ``model`` is ``"intensity"`` when
-        the Link was built with ``exposure``, otherwise ``"ata"``.
-
-        For ``model="ata"`` accepts:
-        ``kind in {"cv","rse","summary","box","point"}``,
-        ``show_factor_stability``, ``max_cv``, ``max_rse``,
-        ``min_run``, ``nrow``, ``ncol``, ``figsize``.
-
-        For ``model="intensity"`` accepts:
-        ``kind in {"summary","box","point"}``, ``nrow``,
-        ``ncol``, ``figsize``.
-
-        Returns
-        -------
-        matplotlib.figure.Figure
-        """
-        from .._plot.link import plot_link
-        return plot_link(self, model=model, **kwargs)
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
