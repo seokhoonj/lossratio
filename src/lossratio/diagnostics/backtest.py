@@ -11,7 +11,6 @@ import polars as pl
 from .._kernels.io import collapse_groups, mirror_output, normalize_groups, scalar_int
 
 if TYPE_CHECKING:
-    from .._types import RegimeArg
     from ..core.triangle import Triangle
 
 
@@ -329,9 +328,12 @@ class _FoldFit:
         ``incr_`` columns are the per-period (incremental) counterparts.
     col_summary : DataFrame
         Aggregated by duration:
-        ``[groups?, duration, n, ae_err_mean, ae_err_med, ae_err_wt]``.
-        ``ae_err_wt = sum(actual - expected) / sum(expected)`` is the
-        exposure-weighted pooled A/E - 1.
+        ``[groups?, duration, n, aeg_mean, aeg_med, abs_err_mean,
+        ae_err_mean, ae_err_med, ae_err_wt]`` (plus the ``incr_*``
+        companions when the refit carries an incremental projection).
+        ``abs_err_mean = mean(|actual - expected|)`` is the target-unit
+        absolute error; ``ae_err_wt = sum(actual - expected) / sum(expected)``
+        is the exposure-weighted pooled A/E - 1.
     diag_summary : DataFrame
         Aggregated by cal_idx with the same statistics as
         ``col_summary``.
@@ -568,6 +570,9 @@ class _FoldFit:
             pl.len().alias("n"),
             pl.col("aeg").mean().alias("aeg_mean"),
             pl.col("aeg").median().alias("aeg_med"),
+            (pl.col("actual") - pl.col("expected")).abs().mean().alias(
+                "abs_err_mean"
+            ),
             pl.col("ae_err").mean().alias("ae_err_mean"),
             pl.col("ae_err").median().alias("ae_err_med"),
             (
@@ -583,6 +588,10 @@ class _FoldFit:
             aggs += [
                 pl.col("incr_aeg").mean().alias("incr_aeg_mean"),
                 pl.col("incr_aeg").median().alias("incr_aeg_med"),
+                (pl.col("incr_actual") - pl.col("incr_expected"))
+                .abs()
+                .mean()
+                .alias("incr_abs_err_mean"),
                 pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
                 pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
                 (
@@ -612,22 +621,34 @@ class _FoldFit:
     def fit(self):
         return self._refit
 
-    def plot(
+    def plot_error(
         self,
-        kind: str = "col",
+        by: str = "duration",
+        metric: str = "ae_err",
+        stat: str = "all",
         basis: str = "cumulative",
+        *,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> Any:
-        """Backtest A/E error plot, backed by matplotlib.
+        """Per-fold A/E error curves, backed by matplotlib.
 
         Parameters
         ----------
-        kind
-            The aggregation the error is viewed over: ``"col"`` (default;
-            by duration), ``"diag"`` (by calendar diagonal), or
-            ``"cell"`` (per-cell scatter / line, one line per cohort).
+        by
+            The per-fold aggregation axis: ``"duration"`` (default; x =
+            duration), ``"calendar"`` (x = calendar diagonal index), or
+            ``"cohort"`` (one line per cohort across duration).
+        metric
+            ``"ae_err"`` (default; relative ``actual / expected - 1``) or
+            ``"abs_err"`` (``mean |actual - expected|``, target units).
+            ``"abs_err"`` supports only ``stat="mean"``.
+        stat
+            The aggregation statistic for the duration / calendar axes:
+            ``"mean"`` / ``"median"`` / ``"weighted"`` or ``"all"`` (default;
+            the Mean/Median/Weighted trio). ``by="cohort"`` is a per-cohort
+            breakout, so it takes only ``stat="all"``.
         basis
             ``"cumulative"`` (default; uses ``ae_err_*`` columns) or
             ``"incremental"`` (uses ``incr_ae_err_*`` columns).
@@ -642,81 +663,78 @@ class _FoldFit:
         """
         from .._plot.backtest import plot_backtest
         return plot_backtest(
-            self, kind=kind, basis=basis,
+            self, by=by, metric=metric, stat=stat, basis=basis,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
     def plot_triangle(
         self,
-        kind: str = "value",
         basis: str = "cumulative",
+        *,
+        x_axis: str = "duration",
         label_size: float = 7.0,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-        *,
-        recent: int | None = None,
-        regime: RegimeArg = None,
-        x_axis: str = "duration",
     ) -> Any:
-        """A/E error heatmap (``kind='value'``) or cell-status
-        heatmap (``kind='usage'``), backed by matplotlib.
+        """A/E error heatmap on the held-out wedge, backed by matplotlib.
 
         Parameters
         ----------
-        kind
-            ``"value"`` (default; diverging A/E-error heatmap on the
-            held-out wedge) or ``"usage"`` (categorical status
-            heatmap of training / held-out / regime-excluded /
-            future cells, driven by the masking + filter metadata
-            inherited from this Backtest's estimator).
         basis
-            (``kind='value'`` only) ``"cumulative"`` (default; uses
-            ``ae_err``) or ``"incremental"`` (uses ``incr_ae_err``).
+            ``"cumulative"`` (default; uses ``ae_err``) or ``"incremental"``
+            (uses ``incr_ae_err``).
+        x_axis
+            Horizontal axis: ``"duration"`` (default; cohort x duration) or
+            ``"calendar"`` (cohort x calendar period -- each cell at its
+            actual calendar date, so the held-out diagonal reads as a block of
+            recent calendar columns).
         label_size
-            (``kind='value'`` only) matplotlib font size for the
-            per-cell percent labels.
+            Matplotlib font size for the per-cell percent labels.
         nrow, ncol
             Facet layout.
         figsize
             Passed to ``plt.subplots``.
-        recent, regime
-            (``kind='usage'`` only) override values for the filter
-            overlays. By default the usage view reads ``recent`` and
-            ``regime`` from the estimator that drove the backtest; pass an
-            explicit value to override.
-        x_axis
-            (``kind='value'`` only) horizontal axis: ``"duration"`` (default;
-            cohort x duration) or ``"calendar"`` (cohort x calendar
-            period -- each cell at its actual calendar date, so the held-out
-            diagonal reads as a block of recent calendar columns).
 
         Returns
         -------
         matplotlib.figure.Figure
         """
-        if kind not in ("value", "usage"):
-            raise ValueError(
-                f"`kind` must be 'value' or 'usage'; got {kind!r}."
-            )
-        if kind == "value":
-            from .._plot.backtest import plot_triangle_backtest
-            return plot_triangle_backtest(
-                self,
-                basis=basis,
-                label_size=label_size,
-                nrow=nrow, ncol=ncol, figsize=figsize,
-                x_axis=x_axis,
-            )
-        # kind == "usage": forward to the Triangle-side usage
-        # renderer with `holdout=self.holdout` and filter args
-        # inherited from `self.estimator` (overridable via kwargs).
-        # A RegimeDetector inherited from the estimator is resolved on the
-        # masked fold triangle just below before being passed on.
+        from .._plot.backtest import plot_triangle_backtest
+        return plot_triangle_backtest(
+            self,
+            basis=basis,
+            label_size=label_size,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+            x_axis=x_axis,
+        )
+
+    def plot_usage(
+        self,
+        *,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Any:
+        """Cell-status heatmap of training / held-out / regime-excluded /
+        future cells, backed by matplotlib.
+
+        The masking depth (``holdout``) and the estimator's filters
+        (``recent`` / ``regime``) are read from this fold itself -- a result
+        reads its own config -- so this view takes no filter arguments.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        # Forward to the Triangle-side usage renderer with `holdout=self.holdout`
+        # and filter args inherited from `self.estimator`. A RegimeDetector
+        # inherited from the estimator is resolved on the masked fold triangle
+        # before being passed on.
         from .._plot.triangle_usage import plot_triangle_usage
         from .regime import _resolve_to_regime
-        eff_recent = recent if recent is not None else self._infer_recent()
-        eff_regime = regime if regime is not None else self._infer_regime()
+        eff_recent = self._infer_recent()
+        eff_regime = self._infer_regime()
         # Resolve a RegimeDetector on the MASKED fold triangle -- the same data
         # the fold fit on -- so the overlay shows the cut the fold actually
         # used, never one a full-data detect could derive from held-out cells.
@@ -810,10 +828,10 @@ class Backtest:
     >>> # Single-origin (equivalent to old Backtest(holdout=6)):
     >>> bt = lr.Backtest(lr.CredibleLoss(), holdouts=6).fit(tri)
     >>> bt.col_summary      # single-origin convenience property
-    >>> bt.plot()           # A/E heatmap
+    >>> bt.plot_triangle()  # A/E heatmap
     >>> # Multi-origin (rolling):
     >>> bt = lr.Backtest(lr.ChainLadder(), holdouts=(6, 12, 18, 24)).fit(tri)
-    >>> bt.horizon_summary  # reliability curve
+    >>> bt.horizon_summary  # error profile
     >>> bt.fits[6].col_summary
     """
 
@@ -888,7 +906,7 @@ class BacktestFit:
         :class:`_FoldFit`); the internal ``cal_idx`` is
         dropped (``horizon`` supersedes it).
     horizon_summary : DataFrame
-        The reliability curve -- error aggregated by ``horizon`` (within
+        The error profile -- error aggregated by ``horizon`` (within
         group): ``[groups?, horizon, n, abs_err_mean, ae_err_mean, ae_err_med,
         ae_err_wt]`` plus the incremental block ``[incr_abs_err_mean,
         incr_ae_err_mean, incr_ae_err_med, incr_ae_err_wt]`` when available.
@@ -1151,52 +1169,149 @@ class BacktestFit:
             )
         return fold
 
-    def plot_triangle(self, **kwargs):
-        """Delegate to the fold's plot_triangle (single-origin only)."""
-        return self._single_fold_or_raise("plot_triangle").plot_triangle(**kwargs)
+    def _resolve_fold_for_plot(self, name, fold):
+        """Resolve which fold a heatmap-style plot draws.
 
-    def plot(self, kind="auto", **kwargs):
-        """A/E error plot (single-origin) or reliability curve (multi-origin).
+        Single-origin: the sole fold (``fold=`` optional). Multi-origin:
+        ``fold=`` is required and must name an evaluated hold-out depth.
+        """
+        if fold is not None:
+            if fold not in self._fits:
+                raise ValueError(
+                    f"fold={fold!r} is not an evaluated hold-out depth; "
+                    f"available folds: {sorted(self._fits)}."
+                )
+            return self._fits[fold]
+        if self.is_single_origin:
+            return self._single_fold_or_raise(name)
+        sorted_hs = sorted(self._fits)
+        raise ValueError(
+            f"{name}() needs an explicit fold= on a rolling (multi-origin) "
+            f"backtest; pick one of {sorted_hs} "
+            f"(e.g. bt.{name}(fold={sorted_hs[0]}))."
+        )
+
+    def plot_error(
+        self,
+        by="horizon",
+        metric="ae_err",
+        basis="cumulative",
+        *,
+        nrow=None,
+        ncol=None,
+        figsize=None,
+    ):
+        """A/E error curves against a rolling or per-fold axis.
 
         Parameters
         ----------
-        kind
-            ``"auto"`` (default): draws the single-fold A/E plot when
-            ``is_single_origin``, otherwise draws the reliability curve.
-            ``"reliability"``: always the rolling reliability line plot.
-            ``"col"``, ``"diag"``, ``"cell"``, ``"triangle"``: single-origin
-            fold views (raise when multi-origin).
-        **kwargs
-            Forwarded to the underlying plot function.
+        by
+            The axis the error is drawn against. The whole-fit axes
+            ``"horizon"`` (default), ``"anchor"``, and ``"holdout"`` pool
+            across all folds and render the error profile. The per-fold axes
+            ``"duration"``, ``"calendar"``, and ``"cohort"`` are only
+            well-defined on a single fold: single-origin delegates to the sole
+            fold, multi-origin raises (pick a fold via ``bt.fits[h]``).
+        metric
+            ``"ae_err"`` (default; relative ``actual / expected - 1``) or
+            ``"abs_err"`` (``mean |actual - expected|``, target units).
+        basis
+            ``"cumulative"`` (default) or ``"incremental"``.
+        nrow, ncol
+            Facet layout when ``groups`` is set.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
         """
-        FOLD_KINDS = {"triangle", "cell", "col", "diag"}
-        if kind == "auto":
+        whole_fit_axes = ("horizon", "anchor", "holdout")
+        per_fold_axes = ("duration", "calendar", "cohort")
+        if by in whole_fit_axes:
+            from .._plot.backtest import plot_backtest_error_profile
+            return plot_backtest_error_profile(
+                self, by=by, metric=metric, basis=basis,
+                nrow=nrow, ncol=ncol, figsize=figsize,
+            )
+        if by in per_fold_axes:
             if self.is_single_origin:
-                # the single-origin primary deliverable is the A/E heatmap
-                return self._single_fold_or_raise("plot").plot_triangle(**kwargs)
-            else:
-                from .._plot.backtest_reliability import plot_backtest_reliability
-                return plot_backtest_reliability(self, **kwargs)
-        elif kind == "reliability":
-            from .._plot.backtest_reliability import plot_backtest_reliability
-            return plot_backtest_reliability(self, **kwargs)
-        elif kind in FOLD_KINDS:
-            if self.is_single_origin:
-                fold = self._single_fold_or_raise("plot")
-                if kind == "triangle":
-                    return fold.plot_triangle(**kwargs)
-                return fold.plot(kind=kind, **kwargs)
+                fold = self._single_fold_or_raise("plot_error")
+                return fold.plot_error(
+                    by=by, metric=metric, basis=basis,
+                    nrow=nrow, ncol=ncol, figsize=figsize,
+                )
             sorted_hs = sorted(self._fits)
             raise ValueError(
-                f"kind={kind!r} is a per-fold view undefined across multiple "
-                f"hold-out depths. Use .fits[h].plot(kind={kind!r}) "
-                f"where h is one of {sorted_hs}."
+                f"by={by!r} is a per-fold axis; on a rolling (multi-origin) "
+                f"backtest pick a fold: bt.fits[h].plot_error(by={by!r}) "
+                f"where h in {sorted_hs}."
             )
-        else:
-            raise ValueError(
-                f"kind must be \'auto\', \'reliability\', or one of "
-                f"{{\'cell\', \'col\', \'diag\', \'triangle\'}}; got {kind!r}"
-            )
+        raise ValueError(
+            f"by must be one of {whole_fit_axes + per_fold_axes}; got {by!r}."
+        )
+
+    def plot_triangle(
+        self,
+        basis="cumulative",
+        *,
+        x_axis="duration",
+        fold=None,
+        nrow=None,
+        ncol=None,
+        figsize=None,
+    ):
+        """A/E error heatmap on the held-out wedge.
+
+        Parameters
+        ----------
+        basis
+            ``"cumulative"`` (default) or ``"incremental"``.
+        x_axis
+            ``"duration"`` (default) or ``"calendar"``.
+        fold
+            Which fold's wedge to draw. Optional (and inferred) when
+            single-origin; required on a rolling (multi-origin) backtest,
+            where it must name an evaluated hold-out depth.
+        nrow, ncol
+            Facet layout.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        return self._resolve_fold_for_plot("plot_triangle", fold).plot_triangle(
+            basis=basis, x_axis=x_axis,
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
+    def plot_usage(self, *, fold=None, nrow=None, ncol=None, figsize=None):
+        """Cell-status heatmap of training / held-out / regime-excluded /
+        future cells.
+
+        The masking depth and the estimator's ``recent`` / ``regime`` filters
+        are read from the fit itself -- a result reads its own config -- so
+        this view takes no filter arguments.
+
+        Parameters
+        ----------
+        fold
+            Which fold to draw. Optional (and inferred) when single-origin;
+            required on a rolling (multi-origin) backtest.
+        nrow, ncol
+            Facet layout.
+        figsize
+            Passed to ``plt.subplots``.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        return self._resolve_fold_for_plot("plot_usage", fold).plot_usage(
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
 
     @staticmethod
     def _run_holdout(
@@ -1245,7 +1360,7 @@ class BacktestFit:
         for ``"ratio"``); the relative ``ae_err_*`` are dimensionless. Because
         the per-horizon cell population drifts toward higher durations as
         horizon grows, the incremental lane is the confound-free reading of the
-        reliability curve.
+        error profile.
         """
         agg_exprs = cls._agg_exprs(has_incr)
         if ae_err.height == 0:

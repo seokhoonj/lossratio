@@ -1,7 +1,6 @@
-"""Smoke tests for ``BacktestFit.plot(kind=...)`` and ``.plot_triangle()``.
-
-Mirrors the R sibling's ``plot.Backtest`` 3-type dispatcher and
-``plot_triangle.Backtest`` value-view heatmap.
+"""Smoke tests for the single-origin ``BacktestFit`` plot methods
+(``plot_error`` / ``plot_triangle`` / ``plot_usage``) and the per-fold
+``_FoldFit`` plot methods reached via ``.fits[h]``.
 """
 
 from __future__ import annotations
@@ -37,141 +36,167 @@ def bt_single(tri_single):
 def _close(fig):
     plt.close(fig)
 
-@pytest.mark.parametrize("type_", ["col", "diag", "cell"])
-def test_backtest_plot_types(bt_multi, type_):
-    fig = bt_multi.plot(kind=type_)
+
+# --- plot_error: per-fold axes on a single-origin fit (delegates) ---------
+
+@pytest.mark.parametrize("by", ["duration", "calendar", "cohort"])
+def test_plot_error_per_fold_axes(bt_multi, by):
+    fig = bt_multi.plot_error(by=by)
     try:
         assert isinstance(fig, plt.Figure)
         title = fig._suptitle.get_text()
-        assert "A/E Error" in title
+        assert "A/E error" in title
         assert "cumulative" in title
     finally:
         _close(fig)
 
-@pytest.mark.parametrize("type_", ["col", "diag", "cell"])
-def test_backtest_plot_incremental(bt_multi, type_):
-    fig = bt_multi.plot(kind=type_, basis="incremental")
+@pytest.mark.parametrize("by", ["duration", "calendar", "cohort"])
+def test_plot_error_per_fold_incremental(bt_multi, by):
+    fig = bt_multi.plot_error(by=by, basis="incremental")
     try:
         assert isinstance(fig, plt.Figure)
         assert "incremental" in fig._suptitle.get_text()
     finally:
         _close(fig)
 
-def test_backtest_plot_single_group(bt_single):
-    fig = bt_single.plot()
+def test_plot_error_stat_single(bt_single):
+    fig = bt_single.plot_error(by="duration")
     try:
         assert isinstance(fig, plt.Figure)
     finally:
         _close(fig)
 
-def test_backtest_plot_invalid_type(bt_single):
-    with pytest.raises(ValueError, match="kind"):
-        bt_single.plot(kind="bogus")
 
-def test_backtest_plot_invalid_basis(bt_single):
-    with pytest.raises(ValueError, match="basis"):
-        bt_single.plot(basis="bogus")
+# --- plot_error: whole-fit axes -------------------------------------------
 
-def test_backtest_plot_triangle_default(bt_single):
+@pytest.mark.parametrize("by", ["horizon", "anchor", "holdout"])
+def test_plot_error_whole_fit_axes(bt_single, by):
+    fig = bt_single.plot_error(by=by)
+    try:
+        assert isinstance(fig, plt.Figure)
+        title = fig._suptitle.get_text()
+        assert "error profile" in title
+        assert by in title
+    finally:
+        _close(fig)
+
+def test_plot_error_default_is_horizon(bt_single):
+    fig = bt_single.plot_error()
+    try:
+        assert "by horizon" in fig._suptitle.get_text()
+    finally:
+        _close(fig)
+
+@pytest.mark.parametrize(
+    "metric,word", [("ae_err", "A/E error"), ("abs_err", "mean absolute error")]
+)
+def test_plot_error_metric(bt_single, metric, word):
+    fig = bt_single.plot_error(metric=metric)
+    try:
+        assert isinstance(fig, plt.Figure)
+        assert word in fig._suptitle.get_text()
+    finally:
+        _close(fig)
+
+def test_plot_error_invalid_by(bt_single):
+    with pytest.raises(ValueError, match="by must be one of"):
+        bt_single.plot_error(by="bogus")
+
+def test_plot_error_invalid_metric(bt_single):
+    with pytest.raises(ValueError, match="metric"):
+        bt_single.plot_error(metric="bogus")
+
+
+# --- plot() and _FoldFit.plot() are gone ----------------------------------
+
+def test_backtestfit_plot_removed(bt_single):
+    assert not hasattr(bt_single, "plot")
+
+def test_foldfit_plot_removed(bt_single):
+    fold = bt_single.fits[4]
+    assert not hasattr(fold, "plot")
+
+def test_backtestfit_plot_error_no_kind(bt_single):
+    with pytest.raises(TypeError):
+        bt_single.plot_error(kind="col")
+
+
+# --- plot_triangle: A/E heatmap -------------------------------------------
+
+def test_plot_triangle_default(bt_single):
     fig = bt_single.plot_triangle()
     try:
         assert isinstance(fig, plt.Figure)
         title = fig._suptitle.get_text()
-        assert "A/E Error" in title
+        assert "A/E error" in title
         assert "cumulative" in title
     finally:
         _close(fig)
 
-def test_backtest_plot_triangle_multi(bt_multi):
-    fig = bt_multi.plot_triangle()
-    try:
-        assert isinstance(fig, plt.Figure)
-        # one facet per group (plus colorbar axis)
-        n_groups = bt_multi._ae_err["coverage"].n_unique()
-        # at least n_groups visible axes
-        visible_data_axes = [
-            ax for ax in fig.axes
-            if ax.get_visible() and ax.get_xticks().size > 0
-        ]
-        assert len(visible_data_axes) >= n_groups
-    finally:
-        _close(fig)
-
-def test_backtest_plot_triangle_incremental(bt_single):
+def test_plot_triangle_incremental(bt_single):
     fig = bt_single.plot_triangle(basis="incremental")
     try:
         assert "incremental" in fig._suptitle.get_text()
     finally:
         _close(fig)
 
-def test_backtest_plot_triangle_invalid_basis(bt_single):
+def test_plot_triangle_invalid_basis(bt_single):
     with pytest.raises(ValueError, match="basis"):
         bt_single.plot_triangle(basis="bogus")
 
-def test_backtest_plot_triangle_duration_axis_default(bt_single):
-    # default x_axis="duration" keeps the duration-period axis label.
+def test_plot_triangle_duration_axis_default(bt_single):
     fig = bt_single.plot_triangle()
     try:
         assert "duration" in fig._supxlabel.get_text()
     finally:
         _close(fig)
 
-def test_backtest_plot_triangle_calendar_axis(bt_single):
-    # x_axis="calendar" repositions each cell at its actual calendar date.
+def test_plot_triangle_calendar_axis(bt_single):
     fig = bt_single.plot_triangle(x_axis="calendar")
     try:
         assert isinstance(fig, plt.Figure)
         assert fig._supxlabel.get_text() == "calendar"
-        # the held-out wedge spans recent calendar columns -> labelled dates
         ax = next(a for a in fig.axes if a.get_xticklabels())
         labels = [t.get_text() for t in ax.get_xticklabels() if t.get_text()]
-        assert labels  # non-empty, formatted calendar labels
+        assert labels
     finally:
         _close(fig)
 
-def test_backtest_plot_triangle_calendar_multi(bt_multi):
-    fig = bt_multi.plot_triangle(x_axis="calendar")
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
-
-def test_backtest_plot_triangle_invalid_x(bt_single):
+def test_plot_triangle_invalid_x(bt_single):
     with pytest.raises(ValueError, match="'duration' or 'calendar'"):
         bt_single.plot_triangle(x_axis="bogus")
 
-# --- kind='usage' ---------------------------------------------------------
+def test_plot_triangle_no_kind(bt_single):
+    with pytest.raises(TypeError):
+        bt_single.plot_triangle(kind="value")
 
-def test_backtest_plot_triangle_usage_multi(bt_multi):
-    fig = bt_multi.plot_triangle(kind="usage")
+
+# --- plot_usage -----------------------------------------------------------
+
+def test_plot_usage_single(bt_single):
+    fig = bt_single.plot_usage()
     try:
         assert isinstance(fig, plt.Figure)
     finally:
         _close(fig)
 
-def test_backtest_plot_triangle_usage_single(bt_single):
-    fig = bt_single.plot_triangle(kind="usage")
-    try:
-        assert isinstance(fig, plt.Figure)
-    finally:
-        _close(fig)
-
-def test_backtest_plot_triangle_invalid_view(bt_single):
-    with pytest.raises(ValueError, match="kind"):
-        bt_single.plot_triangle(kind="bogus")
-
-def test_backtest_plot_triangle_usage_inherits_recent_from_estimator(tri_single):
+def test_plot_usage_inherits_recent_from_estimator(tri_single):
     # Backtest built on a ChainLadder with recent=12 -- usage view should
     # respect that recent without the caller re-passing it.
     bt = lr.Backtest(
         estimator=lr.ChainLadder(recent=12), holdouts=4, target="loss"
     ).fit(tri_single)
     assert bt._infer_recent() == 12
-    fig = bt.plot_triangle(kind="usage")
+    fig = bt.plot_usage()
     try:
         assert isinstance(fig, plt.Figure)
     finally:
         _close(fig)
+
+def test_plot_usage_takes_no_filter_args(bt_single):
+    # A result reads its own config -- recent/regime are NOT accepted.
+    with pytest.raises(TypeError):
+        bt_single.plot_usage(recent=12)
 
 def test_backtest_usage_resolves_regime_on_masked_fold(monkeypatch):
     # A deferred RegimeDetector inherited from the estimator must be resolved on
@@ -200,10 +225,58 @@ def test_backtest_usage_resolves_regime_on_masked_fold(monkeypatch):
         return plt.figure()
 
     monkeypatch.setattr(tv, "plot_triangle_usage", _fake)
-    fig = bt.plot_triangle(kind="usage")
+    fig = bt.plot_usage()
     _close(fig)
 
     # the overlay receives the concrete Regime detected on the masked fold; its
     # cut must match the masked detection, not the full-data one.
     assert _resolve_regime(captured["regime"], tri) == cut_masked
     assert _resolve_regime(captured["regime"], tri) != cut_full
+
+
+# --- _FoldFit plot methods via .fits[h] -----------------------------------
+
+@pytest.mark.parametrize("by", ["duration", "calendar", "cohort"])
+def test_foldfit_plot_error_axes(bt_single, by):
+    fig = bt_single.fits[4].plot_error(by=by)
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+@pytest.mark.parametrize("stat", ["mean", "median", "weighted", "all"])
+def test_foldfit_plot_error_stat(bt_single, stat):
+    fig = bt_single.fits[4].plot_error(by="duration", stat=stat)
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+def test_foldfit_plot_error_cohort_rejects_stat(bt_single):
+    with pytest.raises(ValueError, match="cohort"):
+        bt_single.fits[4].plot_error(by="cohort", stat="mean")
+
+def test_foldfit_plot_error_abs_err_needs_mean(bt_single):
+    with pytest.raises(ValueError, match="abs_err"):
+        bt_single.fits[4].plot_error(metric="abs_err", stat="median")
+
+def test_foldfit_plot_error_abs_err_mean_ok(bt_single):
+    fig = bt_single.fits[4].plot_error(metric="abs_err", stat="mean")
+    try:
+        assert "mean absolute error" in fig._suptitle.get_text()
+    finally:
+        _close(fig)
+
+def test_foldfit_plot_triangle(bt_single):
+    fig = bt_single.fits[4].plot_triangle()
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)
+
+def test_foldfit_plot_usage(bt_single):
+    fig = bt_single.fits[4].plot_usage()
+    try:
+        assert isinstance(fig, plt.Figure)
+    finally:
+        _close(fig)

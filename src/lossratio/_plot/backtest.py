@@ -1,8 +1,14 @@
 """Backtest result visualisation -- matplotlib backend.
 
-Implements ``BacktestFit.plot(kind=...)`` (per-duration / per-diagonal /
-per-cell A/E error aggregates) and ``BacktestFit.plot_triangle()``
-(diverging red/blue heatmap of A/E error on the held-out wedge).
+Implements the backtest curve and heatmap renderers:
+
+* :func:`plot_backtest` -- per-fold A/E error curves aggregated over one of
+  the per-fold axes (``by="duration"`` / ``"calendar"`` / ``"cohort"``);
+* :func:`plot_backtest_error_profile` -- the whole-fit error profile, a line
+  plot of A/E error against one of the rolling axes (``by="horizon"`` /
+  ``"anchor"`` / ``"holdout"``);
+* :func:`plot_triangle_backtest` -- diverging red/blue heatmap of A/E error on
+  the held-out wedge.
 """
 
 from __future__ import annotations
@@ -33,71 +39,229 @@ from .theme import (
 )
 
 if TYPE_CHECKING:
-    from ..diagnostics.backtest import _FoldFit
+    from ..diagnostics.backtest import BacktestFit, _FoldFit
 
 
-_VALID_KINDS = ("col", "diag", "cell")
+# ---------------------------------------------------------------------------
+# per-fold error curves (by = duration / calendar / cohort)
+# ---------------------------------------------------------------------------
+
+_VALID_BY = ("duration", "calendar", "cohort")
+_VALID_METRIC = ("ae_err", "abs_err")
+_VALID_STAT = ("mean", "median", "weighted", "all")
 _VALID_BASIS = ("cumulative", "incremental")
 _STAT_COLUMNS = (
     ("Mean",     "ae_err_mean", "incr_ae_err_mean"),
     ("Median",   "ae_err_med",  "incr_ae_err_med"),
     ("Weighted", "ae_err_wt",   "incr_ae_err_wt"),
 )
+_STAT_LABEL = {"mean": "Mean", "median": "Median", "weighted": "Weighted"}
+_AE_ERR_YLABEL = "A/E error = actual / expected - 1"
+_ABS_ERR_YLABEL = "mean absolute error"
 
 
 def plot_backtest(
     fit: _FoldFit,
-    kind: str = "col",
+    by: str = "duration",
+    metric: str = "ae_err",
+    stat: str = "all",
     basis: str = "cumulative",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
 ) -> Any:
-    """Backtest plot dispatcher."""
-    if kind not in _VALID_KINDS:
+    """Per-fold A/E error curves.
+
+    ``by`` selects the per-fold aggregation axis: ``"duration"`` (default;
+    x = duration), ``"calendar"`` (x = calendar diagonal index), or
+    ``"cohort"`` (one line per cohort across duration). ``metric`` selects
+    ``"ae_err"`` (relative ``actual / expected - 1``) or ``"abs_err"``
+    (``mean |actual - expected|``, target units). ``stat`` selects which
+    aggregation statistic(s) of the metric to draw for the duration / calendar
+    axes: ``"mean"`` / ``"median"`` / ``"weighted"`` or ``"all"`` (the
+    Mean/Median/Weighted trio). ``basis`` selects the cumulative or the
+    incremental lane.
+    """
+    if by not in _VALID_BY:
+        raise ValueError(f"`by` must be one of {_VALID_BY!r}; got {by!r}.")
+    if metric not in _VALID_METRIC:
         raise ValueError(
-            f"`kind` must be one of {_VALID_KINDS!r}; got {kind!r}."
+            f"`metric` must be one of {_VALID_METRIC!r}; got {metric!r}."
         )
+    if stat not in _VALID_STAT:
+        raise ValueError(f"`stat` must be one of {_VALID_STAT!r}; got {stat!r}.")
     if basis not in _VALID_BASIS:
         raise ValueError(
-            f"`basis` must be one of {_VALID_BASIS!r}; "
-            f"got {basis!r}."
+            f"`basis` must be one of {_VALID_BASIS!r}; got {basis!r}."
+        )
+    if by == "cohort" and stat != "all":
+        raise ValueError(
+            "by='cohort' is a per-cohort breakout (one line per cohort); the "
+            "Mean/Median/Weighted trio does not apply, so leave stat='all'."
+        )
+    if metric == "abs_err" and stat != "mean":
+        raise ValueError(
+            "metric='abs_err' supports only stat='mean' (no median / weighted / "
+            "trio summaries are computed for the absolute error)."
         )
 
     is_incr = basis == "incremental"
     mode_word = "incremental" if is_incr else "cumulative"
-    stat_cols = [(lab, incr if is_incr else cum) for lab, cum, incr in _STAT_COLUMNS]
-    ae_err_col = "incr_ae_err" if is_incr else "ae_err"
+    metric_word = "A/E error" if metric == "ae_err" else "mean absolute error"
+    ylabel = _AE_ERR_YLABEL if metric == "ae_err" else _ABS_ERR_YLABEL
 
-    if kind == "col":
+    if by == "cohort":
+        # one line per cohort across duration (metric is always ae_err here --
+        # abs_err was rejected above because it needs stat='mean' but cohort
+        # forces stat='all').
+        ae_err_col = "incr_ae_err" if is_incr else "ae_err"
+        return _plot_cell_curves(
+            fit._ae_err,
+            groups=fit._groups,
+            ae_err_col=ae_err_col,
+            x_label=pretty_var_label(fit._duration),
+            ylabel=ylabel,
+            title=f"Backtest {metric_word} by cohort ({mode_word})",
+            nrow=nrow, ncol=ncol, figsize=figsize,
+        )
+
+    # duration / calendar aggregated-line views: build the stat columns.
+    if metric == "ae_err":
+        if stat == "all":
+            chosen = list(_STAT_COLUMNS)
+        else:
+            key = _STAT_LABEL[stat]
+            chosen = [c for c in _STAT_COLUMNS if c[0] == key]
+        stat_cols = [(lab, incr if is_incr else cum) for lab, cum, incr in chosen]
+    else:  # abs_err, stat == "mean"
+        stat_cols = [("Mean", "incr_abs_err_mean" if is_incr else "abs_err_mean")]
+
+    if by == "duration":
         return _plot_aggregated_lines(
             fit._col_summary,
             groups=fit._groups,
             x_col="duration",
             x_label=pretty_var_label(fit._duration),
             stat_cols=stat_cols,
-            title=f"Backtest A/E Error by duration ({mode_word})",
+            ylabel=ylabel,
+            title=f"Backtest {metric_word} by duration ({mode_word})",
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
-    if kind == "diag":
-        return _plot_aggregated_lines(
-            fit._diag_summary,
-            groups=fit._groups,
-            x_col="cal_idx",
-            x_label="calendar diagonal index",
-            stat_cols=stat_cols,
-            title=f"Backtest A/E Error by calendar diagonal ({mode_word})",
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
-    # cell
-    return _plot_cell_curves(
-        fit._ae_err,
+    # by == "calendar"
+    return _plot_aggregated_lines(
+        fit._diag_summary,
         groups=fit._groups,
-        ae_err_col=ae_err_col,
-        x_label=pretty_var_label(fit._duration),
-        title=f"Backtest A/E Error per held-out cell ({mode_word})",
+        x_col="cal_idx",
+        x_label="calendar diagonal index",
+        stat_cols=stat_cols,
+        ylabel=ylabel,
+        title=f"Backtest {metric_word} by calendar diagonal ({mode_word})",
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
+
+
+# ---------------------------------------------------------------------------
+# whole-fit error profile (by = horizon / anchor / holdout)
+# ---------------------------------------------------------------------------
+
+_VALID_PROFILE_BY = ("horizon", "anchor", "holdout")
+_VALID_PROFILE_METRIC = ("ae_err", "abs_err")
+_PROFILE_BY_XCOL = {
+    "horizon": "horizon",
+    "anchor": "anchor_duration",
+    "holdout": "holdout",
+}
+_PROFILE_BY_XLABEL = {
+    "horizon": "horizon (periods ahead)",
+    "anchor": "anchor duration (history at the as-of date)",
+    "holdout": "hold-out depth",
+}
+
+
+def plot_backtest_error_profile(
+    fit: BacktestFit,
+    by: str = "horizon",
+    metric: str = "ae_err",
+    basis: str = "cumulative",
+    nrow: int | None = None,
+    ncol: int | None = None,
+    figsize: tuple[float, float] | None = None,
+) -> Any:
+    """Error profile: A/E error vs a rolling axis.
+
+    ``by`` selects the axis (``"horizon"`` -- how far ahead, the primary
+    error profile; ``"anchor"`` -- how much history the cohort had;
+    ``"holdout"`` -- the as-of depth). ``metric`` selects ``"ae_err"``
+    (relative ``actual / expected - 1``, dimensionless -- the natural read for
+    ``target="ratio"``) or ``"abs_err"`` (``mean |actual - expected|``,
+    target-unit). ``basis`` picks the single lane drawn: ``"cumulative"``
+    (default) or ``"incremental"`` (the confound-free read for ``horizon`` --
+    see the class docstring); the two are no longer overlaid -- the lane is an
+    explicit choice.
+    """
+    if by not in _VALID_PROFILE_BY:
+        raise ValueError(
+            f"`by` must be one of {_VALID_PROFILE_BY!r}; got {by!r}."
+        )
+    if metric not in _VALID_PROFILE_METRIC:
+        raise ValueError(
+            f"`metric` must be one of {_VALID_PROFILE_METRIC!r}; got {metric!r}."
+        )
+    if basis not in _VALID_BASIS:
+        raise ValueError(
+            f"`basis` must be one of {_VALID_BASIS!r}; got {basis!r}."
+        )
+
+    summary = {
+        "horizon": fit._horizon_summary,
+        "anchor": fit._anchor_summary,
+        "holdout": fit._holdout_summary,
+    }[by]
+    xcol = _PROFILE_BY_XCOL[by]
+    base_col = "ae_err_mean" if metric == "ae_err" else "abs_err_mean"
+    value_col = ("incr_" + base_col) if basis == "incremental" else base_col
+    if value_col not in summary.columns:
+        raise ValueError(
+            'basis="incremental" is unavailable for this fit: not every '
+            "surviving hold-out depth carried an incremental projection, so "
+            "the summaries have no incr_* lane (see the module docstring)."
+        )
+
+    is_incr = basis == "incremental"
+    mode_word = "incremental" if is_incr else "cumulative"
+    metric_word = "A/E error" if metric == "ae_err" else "mean absolute error"
+    lane_color = RED if is_incr else BLUE
+
+    grid = open_facets(
+        iter_group_frames(summary, fit._groups),
+        nrow=nrow, ncol=ncol, figsize=figsize,
+        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
+    )
+    for _, group_value, sub, ax in grid:
+        sub = sub.sort(xcol)
+        xs = sub[xcol].to_list()
+        ax.plot(
+            xs, sub[value_col].to_list(),
+            marker="o", markersize=3, linewidth=1.2,
+            color=lane_color, label=mode_word,
+        )
+        if metric == "ae_err":
+            ax.axhline(0.0, color="grey", linewidth=0.6, linestyle="--")
+        faint_grid(ax)
+        integer_xaxis(ax)
+        ax.tick_params(labelsize=8)
+        grid.title(ax, group_value)
+
+    grid.hide_unused()
+
+    ylabel = _AE_ERR_YLABEL if metric == "ae_err" else _ABS_ERR_YLABEL
+    finalize_figure(
+        grid.fig,
+        title=f"Backtest error profile -- {metric_word} by {by} ({mode_word})",
+        xlabel=_PROFILE_BY_XLABEL[by],
+        ylabel=ylabel,
+    )
+    return grid.fig
 
 
 def plot_triangle_backtest(
@@ -268,7 +432,7 @@ def plot_triangle_backtest(
     mode_word = "incremental" if is_incr else "cumulative"
     finalize_figure(
         fig,
-        title=f"Backtest A/E Error -- held-out cells ({mode_word})",
+        title=f"Backtest A/E error -- held-out cells ({mode_word})",
         xlabel=x_axis_label,
         ylabel=cohort_label(coh, grain=grain),
     )
@@ -277,7 +441,7 @@ def plot_triangle_backtest(
         sm = ScalarMappable(norm=norm, cmap=cmap)
         cb = fig.colorbar(
             sm, ax=axes.ravel().tolist(),
-            shrink=0.6, label="A/E Error",
+            shrink=0.6, label="A/E error",
         )
         cb.formatter = percent_formatter()
         cb.update_ticks()
@@ -291,8 +455,9 @@ def plot_triangle_backtest(
 
 
 def _draw_ae_band(ax: Any) -> None:
-    """Draw the 10% A/E reference band shared by the col / diag / cell views:
-    a shaded +/-10% span, dotted +/-10% lines, and a dashed zero line."""
+    """Draw the 10% A/E reference band shared by the duration / calendar /
+    cohort views: a shaded +/-10% span, dotted +/-10% lines, and a dashed
+    zero line."""
     ax.axhspan(-0.1, 0.1, facecolor="grey", alpha=0.12)
     ax.axhline(0.1, color="grey", linestyle=":", linewidth=0.4)
     ax.axhline(-0.1, color="grey", linestyle=":", linewidth=0.4)
@@ -306,12 +471,13 @@ def _plot_aggregated_lines(
     x_col: str,
     x_label: str,
     stat_cols: list[tuple[str, str]],
+    ylabel: str,
     title: str,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
 ) -> Any:
-    """col / diag plot: line per stat across x_col, faceted by group."""
+    """duration / calendar plot: line per stat across x_col, faceted by group."""
     grid = open_facets(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
@@ -344,8 +510,7 @@ def _plot_aggregated_lines(
 
     grid.hide_unused()
 
-    finalize_figure(grid.fig, title=title, xlabel=x_label,
-                    ylabel="A/E Error = Actual / Projected - 1")
+    finalize_figure(grid.fig, title=title, xlabel=x_label, ylabel=ylabel)
     return grid.fig
 
 
@@ -355,12 +520,13 @@ def _plot_cell_curves(
     groups: str | list[str] | None,
     ae_err_col: str,
     x_label: str,
+    ylabel: str,
     title: str,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
 ) -> Any:
-    """cell plot: one line per cohort across duration, faceted by group."""
+    """cohort plot: one line per cohort across duration, faceted by group."""
     from matplotlib import colormaps
     from matplotlib.colors import Normalize
 
@@ -405,6 +571,5 @@ def _plot_cell_curves(
 
     grid.hide_unused()
 
-    finalize_figure(grid.fig, title=title, xlabel=x_label,
-                    ylabel="A/E Error = Actual / Projected - 1")
+    finalize_figure(grid.fig, title=title, xlabel=x_label, ylabel=ylabel)
     return grid.fig
