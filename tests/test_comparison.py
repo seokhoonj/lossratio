@@ -422,7 +422,7 @@ def test_incr_all_or_nothing():
     with pytest.raises(ValueError, match="incremental"):
         fit.crossover(basis="incremental")
     with pytest.raises(ValueError, match="incremental"):
-        fit.plot(basis="incremental")
+        fit.plot_error(basis="incremental")
 
 
 # ---------------------------------------------------------------------------

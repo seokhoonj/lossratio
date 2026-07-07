@@ -101,7 +101,7 @@ class EstimatorComparison:
     ... ).fit(tri)
     >>> cmp.horizon_comparison   # challenger vs baseline, by horizon
     >>> cmp.crossover()          # where (if anywhere) the better method flips
-    >>> cmp.plot()               # matched reliability curves, one line each
+    >>> cmp.plot_error()         # matched error-profile curves, one line each
     """
 
     def __init__(
@@ -1295,27 +1295,36 @@ class EstimatorComparisonFit:
 
     # -- plotting --------------------------------------------------------------
 
-    def plot(
+    def plot_error(
         self,
         by: str = "horizon",
         metric: str = "abs_err",
+        stat: str = "mean",
         basis: str = "cumulative",
+        *,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
     ) -> Any:
-        """Matched reliability curves, one line per estimator, backed by
+        """Matched error-profile curves, one line per estimator, backed by
         matplotlib.
 
         ``by`` selects the axis: ``"horizon"`` (default), ``"anchor"``, or
-        ``"holdout"``. ``metric`` selects the y statistic from the matched
-        summaries: ``"abs_err"`` (default) -> ``abs_err_mean``;
-        ``"ae_err"`` -> ``ae_err_mean`` (the SIGNED mean, with a zero
-        line); ``"bias"`` -> ``ae_err_wt`` (signed pooled bias, zero
-        line). ``basis="incremental"`` switches to the ``incr_*`` companions
-        (available only when every estimator carried the incremental
-        lane). One facet per group; the estimator insertion order fixes the
-        line / colour order and the single legend.
+        ``"holdout"``. ``(metric, stat)`` selects the y column from the
+        matched summaries. ``metric="abs_err"`` (default) draws
+        ``abs_err_mean`` -- the mean absolute error in target units -- and
+        supports only ``stat="mean"`` (the single absolute statistic
+        computed); any other ``stat`` raises. ``metric="ae_err"`` draws the
+        signed relative A/E error, with ``stat="mean"`` -> ``ae_err_mean``,
+        ``stat="median"`` -> ``ae_err_med``, and ``stat="weighted"`` ->
+        ``ae_err_wt`` (the pooled/weighted bias -- the former
+        ``metric="bias"`` is now ``metric="ae_err", stat="weighted"``); a
+        zero line is drawn for the signed family. ``stat="all"`` is not
+        valid here (each line is already an estimator, so a stat trio would
+        be ambiguous). ``basis="incremental"`` switches to the ``incr_*``
+        companions (available only when every estimator carried the
+        incremental lane). One facet per group; the estimator insertion
+        order fixes the line / colour order and the single legend.
 
         Returns
         -------
@@ -1323,7 +1332,7 @@ class EstimatorComparisonFit:
         """
         from .._plot.comparison import plot_estimator_comparison
         return plot_estimator_comparison(
-            self, by=by, metric=metric, basis=basis,
+            self, by=by, metric=metric, stat=stat, basis=basis,
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
