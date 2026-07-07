@@ -21,6 +21,7 @@ from .core.triangle import Triangle, TriangleValidation
 from .datasets import load_experience, make_experience
 from .diagnostics.backtest import Backtest, BacktestFit
 from .diagnostics.comparison import EstimatorComparison, EstimatorComparisonFit
+from .diagnostics.overlay import ProjectionOverlay, ProjectionOverlayFit
 from .diagnostics.regime import Regime, RegimeDetector
 from .diagnostics.stability import Stability, StabilityReport
 from .estimators.chain_ladder import ChainLadder
@@ -52,6 +53,8 @@ __all__ = [
     "PooledLoss",
     "PooledPremium",
     "PremiumFit",
+    "ProjectionOverlay",
+    "ProjectionOverlayFit",
     "Ratio",
     "RatioFit",
     "Regime",

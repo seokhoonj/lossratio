@@ -104,54 +104,47 @@ $$
 예측 증분이 0.93배로 눌리니, 이 코호트의 CredibleLoss 예측 손해율(아래 표의
 1.23)이 PooledLoss(1.30) 아래로 내려앉는다.
 
+여러 추정기의 예측 궤적을 한 축에 겹쳐 보려면 `ProjectionOverlay`를 쓴다. 라벨을
+붙인 추정기 묶음을 같은 삼각형에 각각 적합해, 코호트별 누적 예측 손해율을 나란히
+그린다. `cohort=`를 주면 그 코호트 하나만 조명한다 — 관측 구간은 (추정기와 무관하게
+같은 셀이므로) 검정 실선으로 한 번, 각 추정기의 예측 꼬리는 점선으로 겹쳐 그린다.
+
 ```{eval-rst}
 .. plot::
-   :caption: 같은 최근 수술담보 코호트(2025-1분기)에 CredibleLoss를 적용. 형상은 PooledLoss와 같지만, 이 코호트가 포트폴리오 평균보다 낮게 달려온 만큼 수준이 아래로 보정되어 약 1.23에 닿는다(PooledLoss는 약 1.30).
+   :caption: 같은 최근 수술담보 코호트(2025-1분기)에 PooledLoss와 CredibleLoss를 겹쳐 본다. 형상은 같지만, 이 코호트가 포트폴리오 평균보다 낮게 달려온 만큼 CredibleLoss의 수준이 아래로 보정되어 약 1.23에 닿는다(PooledLoss는 약 1.30).
 
    import polars as pl
    import lossratio as lr
-   import matplotlib.pyplot as plt
 
    df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
    tri = lr.Triangle(df, groups="coverage", grain="Q")
-   COH = pl.lit("2025-01-01").str.to_date()
 
-   def _traj(loss):
-       return (lr.Ratio(loss=loss, premium=lr.PooledPremium()).fit(tri).df
-               .filter(pl.col("cohort") == COH).sort("duration"))
-
-   pooled, cred = _traj(lr.PooledLoss()), _traj(lr.CredibleLoss())
-   duration = pooled["duration"].to_list()
-   src = pooled["source"].to_list()
-   ratio_all = pooled["ratio_proj"].to_list()
-   # 관측된 손해율 = source == "observed" 인 셀의 ratio_proj
-   obs_pairs = [(d, r) for d, r, s in zip(duration, ratio_all, src) if s == "observed"]
-
-   fig, ax = plt.subplots(figsize=(6.2, 3.6))
-   ax.plot([d for d, r in obs_pairs], [r for d, r in obs_pairs],
-           "-o", color="black", ms=4, label="observed")
-   ax.plot(duration, pooled["ratio_proj"].to_list(), "--", color="#1f77b4",
-           alpha=0.4, label="PooledLoss")
-   ax.plot(duration, cred["ratio_proj"].to_list(), "-", color="#2ca02c", lw=2,
-           label="CredibleLoss")
-   ax.set_xlabel("duration (quarters)")
-   ax.set_ylabel("cumulative loss ratio")
-   ax.legend()
+   ov = lr.ProjectionOverlay({
+       "pooled":   lr.Ratio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
+       "credible": lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
+   }).fit(tri)
+   ov.plot(cohort="2025-01-01")
 ```
 
-코호트별 예측 손해율을 PooledLoss와 나란히 두면 보정의 방향이 보인다.
+코호트별 예측 손해율을 추정기별로 나란히 두면 보정의 방향이 보인다.
+`ProjectionOverlayFit.summary()`는 `(코호트 x 추정기)`마다 예측 손해율 한 줄을 준다.
 
 ```python
 df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
-pooled = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).summary()
-cred = lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()).fit(tri).summary()
-#> cohort        PooledLoss ratio_proj   CredibleLoss ratio_proj
-#> 2025-01-01    1.299                   1.227    <- 평균보다 낮게 달려온 코호트: 아래로
-#> 2025-04-01    1.345                   1.237
-#> 2025-07-01    1.375                   1.346
-#> 2025-10-01    1.406                   1.406    <- 관측 1개뿐: 스케일이 1에 묶여 PooledLoss와 같음
+ov = lr.ProjectionOverlay({
+    "pooled":   lr.Ratio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
+    "credible": lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
+}).fit(tri)
+
+# (코호트 x 추정기)를 넓혀 나란히 비교
+ov.summary().pivot(values="ratio_proj", index="cohort", on="estimator")
+#> cohort        pooled   credible
+#> 2025-01-01    1.299    1.227     <- 평균보다 낮게 달려온 코호트: 아래로
+#> 2025-04-01    1.345    1.237
+#> 2025-07-01    1.375    1.346
+#> 2025-10-01    1.406    1.406     <- 관측 1개뿐: 스케일이 1에 묶여 PooledLoss와 같음
 ```
 
 ```{admonition} CredibleLoss는 어디에 좋고 어디에 좋지 않나
