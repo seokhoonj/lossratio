@@ -1,4 +1,4 @@
-"""Link table — per (cohort, adjacent duration pair) intermediate.
+"""Link table -- per (cohort, adjacent duration pair) intermediate.
 
 Built via :meth:`Triangle.link`. Carries per-cell age-to-age
 factors and (when an ``exposure`` column is supplied) the
@@ -7,8 +7,8 @@ per-cell additive intensity.
 Diagnostic methods :meth:`ata` and :meth:`intensity` aggregate
 across cohorts to per-link summaries that pair with each other:
 
-* :meth:`Link.ata` — multiplicative ATA factor diagnostic
-* :meth:`Link.intensity` — additive intensity diagnostic
+* :meth:`Link.ata` -- multiplicative ATA factor diagnostic
+* :meth:`Link.intensity` -- additive intensity diagnostic
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def _validate_target_arg(name: str, value: str) -> str:
 
 
 class Link:
-    """Long-format link table — one row per (cohort, adjacent duration pair).
+    """Long-format link table -- one row per (cohort, adjacent duration pair).
 
     Built via :meth:`Triangle.link`. Stores the per-cell ATA factor
     and, in dual mode, the per-cell additive intensity. Methods

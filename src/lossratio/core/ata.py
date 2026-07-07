@@ -1,14 +1,18 @@
 """ATA factor diagnostic.
 
-Per-development-link diagnostic of the multiplicative age-to-age
-factor :math:`f_k = E[C^L_{k+1} / C^L_k]`. Parallel to :class:`Intensity`
-for the additive side; both are *factor-level*
-diagnostics that report per-link estimates with standard errors and
-spread, without performing projection.
+Per-link diagnostic of the multiplicative age-to-age factor
+:math:`f_k = E[C^L_{k+1} / C^L_k]`. Parallel to :class:`Intensity` for
+the additive side; both are *factor-level* diagnostics that report
+per-link estimates with standard errors and spread, without projecting.
 
-The CV / RSE factor-stability columns this diagnostic reports are also
-what the ``ATA.plot_dispersion(show_factor_stability=...)`` overlay
-shades.
+Single source of truth: every per-link statistic -- the pooled volume-
+weighted ``f_k`` and Mack ``sigma2`` (from
+:func:`lossratio._kernels.recursion.fit_multiplicative`), the cross-cohort
+mean / median / CV of the individual link factors, the Mack RSE of the
+pooled factor, and the contributing-cohort count -- is computed exactly
+once here and stored on the :class:`ATA` result. The plotting layer
+(:mod:`lossratio._plot.link`) only renders these stored columns; it
+never re-derives them.
 """
 
 from __future__ import annotations
@@ -30,73 +34,135 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Internal computation
+# Internal computation -- the ONE place per-link ATA statistics are derived
 # ---------------------------------------------------------------------------
 
 
-def _compute_cv_rse(
+@dataclass
+class _CrossCohortStats:
+    """Cross-cohort per-link statistics of the individual link factors."""
+
+    mean_k: np.ndarray      # (n_links,)  mean of individual factors
+    median_k: np.ndarray    # (n_links,)  median of individual factors
+    cv_k: np.ndarray        # (n_links,)  CV of individual factors
+    rse_k: np.ndarray       # (n_links,)  Mack RSE of pooled f_k
+    n_obs_k: np.ndarray     # (n_links,)  count of cohorts contributing
+
+
+def _cross_cohort_link_stats(
     loss_obs: np.ndarray,
     f_k: np.ndarray,
     sigma2_k: np.ndarray,
     link_mask: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute CV (across cohort link factors) and RSE (of pooled f_k).
+) -> _CrossCohortStats:
+    """One pass over the value matrix computing every cross-cohort stat.
+
+    For each link ``k`` (duration ``k + 1`` to ``k + 2``):
+
+    * ``mean`` / ``median`` -- location of the individual link factors
+      ``C_{i,k+1} / C_{i,k}`` over the positive-denominator cohorts.
+    * ``cv`` -- their cross-cohort coefficient of variation
+      (``sd(ddof=1) / mean``; needs >= 2 contributing cohorts).
+    * ``rse`` -- the Mack relative standard error of the *pooled* factor:
+      ``sqrt(sigma2_k / sum_j C_{j,k}) / f_k`` (volume-weighted; honours
+      whatever ``sigma_method`` tail handling produced ``sigma2_k``).
+    * ``n_obs`` -- cohorts with both link endpoints observed.
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._kernels.recent`). When supplied, both the cross-cohort
-    CV and the pooled RSE are computed only from links inside the
-    recent wedge. ``None`` (default) is the byte-identical no-filter
-    path.
+    (see :mod:`lossratio._kernels.recent`). When supplied, every statistic is
+    computed only from links inside the recent wedge. ``None`` (default)
+    is the byte-identical no-filter path.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
-    cv_k = np.full(n_links, np.nan, dtype=np.float64)
-    rse_k = np.full(n_links, np.nan, dtype=np.float64)
+    mean_k   = np.full(n_links, np.nan, dtype=np.float64)
+    median_k = np.full(n_links, np.nan, dtype=np.float64)
+    cv_k     = np.full(n_links, np.nan, dtype=np.float64)
+    rse_k    = np.full(n_links, np.nan, dtype=np.float64)
+    n_obs_k  = np.zeros(n_links, dtype=np.int64)
 
     for k in range(n_links):
-        col_k = loss_obs[:, k]
+        col_k  = loss_obs[:, k]
         col_k1 = loss_obs[:, k + 1]
         mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
         if link_mask is not None:
             mask = mask & link_mask[:, k]
-        n_k = int(mask.sum())
+        n_obs_k[k] = int(mask.sum())
 
-        # Cross-cohort CV of individual link factors (needs n_k >= 2,
-        # and the denominator C^L_{i,k} > 0 for each contributing cohort).
-        if n_k >= 2:
-            c_k = col_k[mask]
-            c_k1 = col_k1[mask]
-            ck_pos = c_k > 0
-            if ck_pos.sum() >= 2:
-                indiv = c_k1[ck_pos] / c_k[ck_pos]
-                f_mean = float(indiv.mean())
-                f_sd = float(indiv.std(ddof=1))
-                if f_mean != 0:
-                    cv_k[k] = f_sd / f_mean
+        # Individual link factors need a positive denominator C_{i,k}.
+        c_k  = col_k[mask]
+        c_k1 = col_k1[mask]
+        positive = c_k > 0
+        n_positive = int(positive.sum())
 
-        # RSE of pooled f_k. Three cases:
-        #   n_k >= 2, sigma^2 > 0  -> RSE = sqrt(sigma^2 / sum_j C_j) / f_k
-        #   n_k >= 2, sigma^2 == 0 -> perfectly stable estimate, RSE = 0
-        #   n_k <  2               -> insufficient samples, leave NaN
+        if n_positive >= 1:
+            individual = c_k1[positive] / c_k[positive]
+            mean_k[k]   = float(individual.mean())
+            median_k[k] = float(np.median(individual))
+            # Cross-cohort CV of the individual factors (needs >= 2 cohorts).
+            if n_positive >= 2:
+                sd = float(individual.std(ddof=1))
+                if mean_k[k] != 0:
+                    cv_k[k] = sd / mean_k[k]
+
+        # RSE of the pooled f_k. Three cases:
+        #   n >= 2, sigma^2 > 0  -> RSE = sqrt(sigma^2 / sum_j C_j) / f_k
+        #   n >= 2, sigma^2 == 0 -> perfectly stable estimate, RSE = 0
+        #   n <  2               -> insufficient samples, leave NaN
         #
         # The denominator must match the cohorts that actually contributed
         # to f_k: those with both c_k > 0 and c_{k+1} finite (the pooled
         # factor fit uses the same subset). Summing all finite c_k would
-        # understate SE and bias rse downward.
-        fit_mask = mask & (col_k > 0)
-        n_pos = int(fit_mask.sum())
-        sum_col = float(col_k[fit_mask].sum())
-        # require >= 2 positive-denominator cohorts, matching the CV guard above;
-        # a single contributing cohort is insufficient -> rse stays NaN, not 0.
-        if n_pos >= 2 and sum_col > 0 and f_k[k] > 0:
+        # understate SE and bias rse downward. A single positive-denominator
+        # cohort is insufficient -> rse stays NaN, not 0 (matching the CV
+        # guard above).
+        sum_from = float(c_k[positive].sum())
+        if n_positive >= 2 and sum_from > 0 and f_k[k] > 0:
             if sigma2_k[k] > 0:
-                f_se = np.sqrt(sigma2_k[k] / sum_col)
+                f_se = np.sqrt(sigma2_k[k] / sum_from)
                 rse_k[k] = float(f_se / f_k[k])
             else:
                 rse_k[k] = 0.0
 
-    return cv_k, rse_k
+    return _CrossCohortStats(
+        mean_k=mean_k,
+        median_k=median_k,
+        cv_k=cv_k,
+        rse_k=rse_k,
+        n_obs_k=n_obs_k,
+    )
+
+
+def _first_stable_link(
+    cv_k: np.ndarray,
+    rse_k: np.ndarray,
+    *,
+    max_cv: float,
+    max_rse: float,
+    min_run: int,
+) -> int | None:
+    """0-indexed first link starting a ``min_run``-long sub-threshold run.
+
+    A link is stable when both ``cv < max_cv`` and ``rse < max_rse`` hold
+    (non-finite values are unstable). Returns the index of the first link
+    opening a run of ``min_run`` consecutive stable links, else ``None``.
+    The one run-detection algorithm shared by :func:`_detect_stability_point`
+    and the ``ATA.plot_dispersion`` factor-stability overlay.
+    """
+    cv_k  = np.asarray(cv_k, dtype=np.float64)
+    rse_k = np.asarray(rse_k, dtype=np.float64)
+    n_links = len(cv_k)
+    if min_run < 1 or n_links < min_run:
+        return None
+    stable = (
+        np.isfinite(cv_k) & np.isfinite(rse_k)
+        & (cv_k < max_cv) & (rse_k < max_rse)
+    )
+    for start in range(n_links - min_run + 1):
+        if bool(np.all(stable[start : start + min_run])):
+            return start
+    return None
 
 
 def _detect_stability_point(
@@ -111,62 +177,33 @@ def _detect_stability_point(
 
     Applies ``CV(f_k) < max_cv`` AND ``RSE(f_k) < max_rse`` to the
     per-link factor stats and returns the ``duration_to`` of the first
-    sustained stable run. The returned ``point`` marks where the per-link
-    factors settle into a stable run. An internal factor-stability
-    diagnostic (no projection); used by the
-    ``RegimeDetector(window="auto")`` trajectory-window resolver.
+    sustained stable run. An internal factor-stability diagnostic (no
+    projection); used by the ``RegimeDetector(window="auto")``
+    trajectory-window resolver.
     """
-    mack = fit_multiplicative(loss_obs, link_mask=link_mask)
-    cv_k, rse_k = _compute_cv_rse(
-        loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
+    result = _compute_ata_factor(loss_obs, link_mask=link_mask)
+    start = _first_stable_link(
+        result.cv_k, result.rse_k,
+        max_cv=max_cv, max_rse=max_rse, min_run=min_run,
     )
-    n_links = len(cv_k)
-    stable = np.zeros(n_links, dtype=bool)
-    for k in range(n_links):
-        if not np.isnan(cv_k[k]) and not np.isnan(rse_k[k]):
-            stable[k] = (cv_k[k] < max_cv) and (rse_k[k] < max_rse)
-    if min_run < 1 or n_links < min_run:
+    if start is None:
         return None
-    for k in range(n_links - min_run + 1):
-        if bool(np.all(stable[k : k + min_run])):
-            # link k goes from duration (k+1) -> duration (k+2); duration_to = k + 2.
-            return k + 2
-    return None
+    # link `start` goes from duration (start+1) -> (start+2); duration_to = start + 2.
+    return start + 2
 
 
 @dataclass
 class _ATAResult:
     """Single-group ATA factor diagnostic result."""
 
-    f_k: np.ndarray         # (n_links,)  volume-weighted f_k
+    f_k: np.ndarray         # (n_links,)  volume-weighted pooled f_k
     sigma2_k: np.ndarray    # (n_links,)  residual sigma^2 per link
+    mean_k: np.ndarray      # (n_links,)  mean of individual link factors
+    median_k: np.ndarray    # (n_links,)  median of individual link factors
     cv_k: np.ndarray        # (n_links,)  CV of individual link factors
-    rse_k: np.ndarray       # (n_links,)  RSE of pooled f_k
+    rse_k: np.ndarray       # (n_links,)  Mack RSE of pooled f_k
     n_obs_k: np.ndarray     # (n_links,)  count of cohorts contributing
     n_durations: int
-
-
-def _count_link_obs(
-    loss_obs: np.ndarray,
-    link_mask: np.ndarray | None = None,
-) -> np.ndarray:
-    """Count cohorts contributing to each link (both endpoints finite).
-
-    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._kernels.recent`): when supplied, only links inside the
-    recent wedge are counted.
-    """
-    n_durations = loss_obs.shape[1]
-    n_links = n_durations - 1
-    n_obs_k = np.zeros(n_links, dtype=np.int64)
-    for k in range(n_links):
-        col_k = loss_obs[:, k]
-        col_k1 = loss_obs[:, k + 1]
-        mask = ~np.isnan(col_k) & ~np.isnan(col_k1)
-        if link_mask is not None:
-            mask = mask & link_mask[:, k]
-        n_obs_k[k] = int(mask.sum())
-    return n_obs_k
 
 
 def _compute_ata_factor(
@@ -174,36 +211,37 @@ def _compute_ata_factor(
     sigma_method: str = "locf",
     link_mask: np.ndarray | None = None,
 ) -> _ATAResult:
-    """Compute per-link ATA factor diagnostic (no stability detection).
+    """Compute the per-link ATA factor diagnostic (no stability detection).
 
-    ``link_mask`` is the optional recent-diagonal *link-level* fit mask
-    (see :mod:`lossratio._kernels.recent`). When supplied, every factor-level
-    statistic (``f_k``, ``sigma2_k``, cross-cohort CV, RSE, and the
-    per-link cohort count) is computed only from links inside the
-    recent wedge. ``None`` (default) is the byte-identical no-filter
-    path.
+    The single computation entry point: pooled ``f_k`` / ``sigma2_k`` come
+    from :func:`lossratio._kernels.recursion.fit_multiplicative`, every
+    cross-cohort statistic from :func:`_cross_cohort_link_stats`. Both
+    honour ``link_mask``, the optional recent-diagonal *link-level* fit
+    mask (see :mod:`lossratio._kernels.recent`); ``None`` (default) is the
+    byte-identical no-filter path.
     """
     mack = fit_multiplicative(loss_obs, sigma_method=sigma_method, link_mask=link_mask)
-    cv_k, rse_k = _compute_cv_rse(
+    stats = _cross_cohort_link_stats(
         loss_obs, mack.f_k, mack.sigma2_k, link_mask=link_mask
     )
-    n_obs_k = _count_link_obs(loss_obs, link_mask=link_mask)
     return _ATAResult(
         f_k=mack.f_k,
         sigma2_k=mack.sigma2_k,
-        cv_k=cv_k,
-        rse_k=rse_k,
-        n_obs_k=n_obs_k,
+        mean_k=stats.mean_k,
+        median_k=stats.median_k,
+        cv_k=stats.cv_k,
+        rse_k=stats.rse_k,
+        n_obs_k=stats.n_obs_k,
         n_durations=loss_obs.shape[1],
     )
 
 
-def _diagnostic_to_df(
+def _diagnostic_frame(
     result: _ATAResult,
     groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
-    """Convert an ATA factor result into a long-format diagnostic DataFrame."""
+    """Public per-link diagnostic table (the :attr:`ATA.df` schema)."""
     n = len(result.f_k)
     return arrays_to_long_df(
         {
@@ -219,30 +257,59 @@ def _diagnostic_to_df(
     )
 
 
+def _chart_frame(
+    result: _ATAResult,
+    groups: str | list[str] | None,
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """Plot-facing per-link summary table (consumed by :mod:`.._plot.link`).
+
+    A second projection of the SAME computed arrays as
+    :func:`_diagnostic_frame` -- nothing is recomputed. Link ``k`` runs from
+    ``duration_from = k + 1`` to ``duration_to = k + 2``; ``weighted`` is
+    the pooled volume-weighted ``f_k`` (identical to the ``ata`` column of
+    the public table).
+    """
+    n = len(result.f_k)
+    return arrays_to_long_df(
+        {
+            "duration_from": np.arange(1, n + 1, dtype=np.int64),
+            "duration_to":   np.arange(2, n + 2, dtype=np.int64),
+            "mean":     result.mean_k,
+            "median":   result.median_k,
+            "weighted": result.f_k,
+            "cv":  result.cv_k,
+            "rse": result.rse_k,
+        },
+        groups,
+        group_value,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public result class
 # ---------------------------------------------------------------------------
 
 
 class ATA:
-    """Result of ATA factor diagnostic.
+    """Result of the ATA factor diagnostic.
 
-    Per-development-link estimates of the multiplicative age-to-age
-    factor ``f_k = E[C^L_{k+1} / C^L_k]``, with cross-cohort CV,
-    relative standard error, residual sigma^2, and the per-link cohort
-    count. Parallel to :class:`Intensity` for the additive side;
-    builds on the volume-weighted pooled factor
+    Per-link estimates of the multiplicative age-to-age factor
+    ``f_k = E[C^L_{k+1} / C^L_k]``, with cross-cohort CV, the Mack
+    relative standard error of the pooled factor, residual sigma^2, and
+    the per-link cohort count. Parallel to :class:`Intensity` for the
+    additive side; builds on the volume-weighted pooled factor
     (:func:`lossratio._kernels.recursion.fit_multiplicative`).
 
-    The CV / RSE columns are what the
-    ``ATA.plot_dispersion(show_factor_stability=...)`` overlay shades
-    to mark where the factors become stable.
+    The CV / RSE columns are the same numbers
+    :meth:`plot_dispersion` draws -- the plot renders this table, it does
+    not recompute it.
 
     Properties
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[groups?, duration, f, sigma2, cv, rse, n_cohorts]``.
+        ``[groups?, duration, ata, sigma2, cv, rse, n_cohorts]``.
 
     Examples
     --------
@@ -255,6 +322,7 @@ class ATA:
     # Instance attributes are set in `_from_link` (built via `cls.__new__`,
     # not `__init__`); declared here so the type is visible.
     _df: pl.DataFrame
+    _chart_df: pl.DataFrame
     _link: Link
     _recent: int | None
     _output_type: str
@@ -293,11 +361,11 @@ class ATA:
                 sigma_method=sigma_method,
                 link_mask=recent_link_mask(loss_obs, recent),
             )
-            diag_df = _diagnostic_to_df(
-                result, groups=None, group_value=None
-            )
+            diag_df  = _diagnostic_frame(result, groups=None, group_value=None)
+            chart_df = _chart_frame(result, groups=None, group_value=None)
         else:
-            diag_parts: list[pl.DataFrame] = []
+            diag_parts:  list[pl.DataFrame] = []
+            chart_parts: list[pl.DataFrame] = []
             for g, sub in iter_group_frames(tri_df, groups):
                 loss_obs, _, _ = build_value_matrix(sub, link._target)
                 result = _compute_ata_factor(
@@ -306,13 +374,16 @@ class ATA:
                     link_mask=recent_link_mask(loss_obs, recent),
                 )
                 diag_parts.append(
-                    _diagnostic_to_df(
-                        result, groups=groups, group_value=g
-                    )
+                    _diagnostic_frame(result, groups=groups, group_value=g)
                 )
-            diag_df = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
+                chart_parts.append(
+                    _chart_frame(result, groups=groups, group_value=g)
+                )
+            diag_df  = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
+            chart_df = pl.concat(chart_parts) if chart_parts else pl.DataFrame()
 
         self._df = diag_df
+        self._chart_df = chart_df
         return self
 
     @property
@@ -336,20 +407,17 @@ class ATA:
 
         Draws the pooled multiplicative factor f_k as
         ``kind in {"line", "box", "point"}`` (default ``"line"`` -- the
-        mean / median / weighted factor lines). The calendar-diagonal
-        ``recent`` wedge is inherited from this diagnostic. The
-        factor-stability overlay is *not* drawn here; see
-        :meth:`plot_dispersion`.
+        mean / median / weighted factor lines, read straight from this
+        diagnostic's per-link summary). The calendar-diagonal ``recent``
+        wedge is inherited from this diagnostic. The factor-stability
+        overlay is *not* drawn here; see :meth:`plot_dispersion`.
 
         Returns
         -------
         matplotlib.figure.Figure
         """
-        from .._plot.link import plot_factor
-        return plot_factor(
-            self._link, model="ata", kind=kind, recent=self._recent,
-            nrow=nrow, ncol=ncol, figsize=figsize,
-        )
+        from .._plot.link import plot_ata
+        return plot_ata(self, kind=kind, nrow=nrow, ncol=ncol, figsize=figsize)
 
     def plot_dispersion(
         self,
@@ -364,21 +432,22 @@ class ATA:
     ) -> Any:
         """CV + RSE dispersion diagnostic of the ATA factor (matplotlib).
 
-        Draws the cross-cohort coefficient of variation and relative
-        standard error of the per-link factor together (two series, each
-        with its own dashed threshold line at ``max_cv`` / ``max_rse``).
-        When ``show_factor_stability`` is set, an overlay marks the first
-        duration link where both statistics stay sub-threshold for
-        ``min_run`` consecutive links. The ``recent`` wedge is inherited
-        from this diagnostic.
+        Draws the cross-cohort coefficient of variation and the Mack
+        relative standard error of the pooled per-link factor together --
+        the very ``cv`` / ``rse`` columns of :attr:`df` -- as two series,
+        each with its own dashed threshold line at ``max_cv`` /
+        ``max_rse``. When ``show_factor_stability`` is set, an overlay
+        marks the first duration link where both statistics stay
+        sub-threshold for ``min_run`` consecutive links. The ``recent``
+        wedge is inherited from this diagnostic.
 
         Returns
         -------
         matplotlib.figure.Figure
         """
-        from .._plot.link import plot_dispersion
-        return plot_dispersion(
-            self._link, recent=self._recent,
+        from .._plot.link import plot_ata_dispersion
+        return plot_ata_dispersion(
+            self,
             max_cv=max_cv, max_rse=max_rse, min_run=min_run,
             show_factor_stability=show_factor_stability,
             nrow=nrow, ncol=ncol, figsize=figsize,

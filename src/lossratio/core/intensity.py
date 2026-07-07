@@ -2,13 +2,21 @@
 
 Parallel to :class:`ATA` (the multiplicative side) for the additive
 intensity workflow: exposes the per-link intensity
-``g_k = E[ΔL / C^P]`` along with its standard error and residual sigma,
-computed via weighted least squares on each cohort×link pair.
+``g_k = E[dL / C^P]`` along with its standard error and residual sigma,
+computed via weighted least squares on each cohort x link pair.
 
-Unlike the ATA factor, the intensity has no factor-stability point concept --
-:math:`g_k` decays toward zero at long duration, which makes CV / RSE
-structurally ill-behaved. ``Intensity`` therefore reports diagnostic
-quantities only; there is no stability detection.
+Unlike the ATA factor, the intensity has no factor-stability point
+concept -- :math:`g_k` decays toward zero at long duration, which makes
+CV / RSE structurally ill-behaved. ``Intensity`` therefore reports
+diagnostic quantities only; there is no stability detection and no
+dispersion plot.
+
+Single source of truth: every per-link statistic (WLS ``g_k``, its
+standard error, residual ``sigma2``, cross-cohort mean / median, and the
+contributing-cohort count) is computed exactly once in
+:func:`_compute_intensity` and stored on the :class:`Intensity` result.
+The plotting layer (:mod:`lossratio._plot.link`) only renders these
+stored columns; it never re-derives them.
 """
 
 from __future__ import annotations
@@ -30,7 +38,7 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Internal computation
+# Internal computation -- the ONE place per-link intensity stats are derived
 # ---------------------------------------------------------------------------
 
 
@@ -41,6 +49,8 @@ class _IntensityResult:
     g_k: np.ndarray         # (n_links,)  WLS-estimated intensity
     g_se_k: np.ndarray      # (n_links,)  standard error of g_k
     sigma2_k: np.ndarray    # (n_links,)  residual sigma^2 per link
+    mean_k: np.ndarray      # (n_links,)  mean of individual cell intensities
+    median_k: np.ndarray    # (n_links,)  median of individual cell intensities
     n_obs_k: np.ndarray     # (n_links,)  count of contributing cohorts
     n_durations: int
 
@@ -55,32 +65,36 @@ def _compute_intensity(
 
     ``link_mask`` is the optional recent-diagonal *link-level* fit mask
     (see :mod:`lossratio._kernels.recent`). When supplied, every factor-level
-    statistic (``g_k``, ``g_se_k``, ``sigma2_k``, the per-link cohort
-    count) is computed only from links inside the recent wedge.
-    ``None`` (default) is the byte-identical no-filter path.
+    statistic (``g_k``, ``g_se_k``, ``sigma2_k``, mean / median, the
+    per-link cohort count) is computed only from links inside the recent
+    wedge. ``None`` (default) is the byte-identical no-filter path.
 
     For each link ``k = 0, ..., n_links - 1`` (0-indexed source duration),
     solves the no-intercept WLS regression with alpha = 1:
 
-        ΔL_{i,k} = g_k · C^P_{i,k} + ε,    weights ∝ 1 / C^P_{i,k}
+        dL_{i,k} = g_k * C^P_{i,k} + eps,    weights prop. 1 / C^P_{i,k}
 
     yielding
 
-        g_k    = Σ ΔL / Σ C^P
-        σ²_k   = Σ (ΔL - g_k · C^P)² / C^P  /  (n_k - 1)
-        Var(g_k) = σ²_k / Σ C^P
-        SE(g_k) = sqrt(Var(g_k))
+        g_k       = Sum dL / Sum C^P
+        sigma2_k  = Sum (dL - g_k * C^P)^2 / C^P  /  (n_k - 1)
+        Var(g_k)  = sigma2_k / Sum C^P
+        SE(g_k)   = sqrt(Var(g_k))
 
-    Cohorts with non-finite or non-positive ``C^P_{i,k}`` are dropped
-    for that link.
+    The cross-cohort ``mean`` / ``median`` locate the individual cell
+    intensities ``dL_{i,k} / C^P_{i,k}`` over the same cohorts. Cohorts
+    with non-finite or non-positive ``C^P_{i,k}`` are dropped for that
+    link.
     """
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
 
-    g_k = np.full(n_links, np.nan, dtype=np.float64)
-    g_se_k = np.full(n_links, np.nan, dtype=np.float64)
+    g_k      = np.full(n_links, np.nan, dtype=np.float64)
+    g_se_k   = np.full(n_links, np.nan, dtype=np.float64)
     sigma2_k = np.full(n_links, np.nan, dtype=np.float64)
-    n_obs_k = np.zeros(n_links, dtype=np.int64)
+    mean_k   = np.full(n_links, np.nan, dtype=np.float64)
+    median_k = np.full(n_links, np.nan, dtype=np.float64)
+    n_obs_k  = np.zeros(n_links, dtype=np.int64)
     sum_premium_k = np.zeros(n_links, dtype=np.float64)
 
     for k in range(n_links):
@@ -98,6 +112,12 @@ def _compute_intensity(
 
         premium_k_eff = premium_k[mask]
         dl_eff = delta_loss[mask]
+
+        # Cross-cohort location of the individual cell intensities.
+        individual = dl_eff / premium_k_eff
+        mean_k[k]   = float(individual.mean())
+        median_k[k] = float(np.median(individual))
+
         sum_premium = float(premium_k_eff.sum())
         sum_premium_k[k] = sum_premium
         sum_loss = float(dl_eff.sum())
@@ -130,6 +150,8 @@ def _compute_intensity(
             g_k=g_k,
             g_se_k=g_se_k,
             sigma2_k=sigma2_k,
+            mean_k=mean_k,
+            median_k=median_k,
             n_obs_k=n_obs_k,
             n_durations=n_durations,
         )
@@ -152,17 +174,19 @@ def _compute_intensity(
         g_k=g_k,
         g_se_k=g_se_k,
         sigma2_k=sigma2_k,
+        mean_k=mean_k,
+        median_k=median_k,
         n_obs_k=n_obs_k,
         n_durations=n_durations,
     )
 
 
-def _diagnostic_to_df(
+def _diagnostic_frame(
     result: _IntensityResult,
     groups: str | list[str] | None,
     group_value: Any | None,
 ) -> pl.DataFrame:
-    """Convert an intensity result into a long-format diagnostic DataFrame."""
+    """Public per-link diagnostic table (the :attr:`Intensity.df` schema)."""
     n = len(result.g_k)
     return arrays_to_long_df(
         {
@@ -177,6 +201,33 @@ def _diagnostic_to_df(
     )
 
 
+def _chart_frame(
+    result: _IntensityResult,
+    groups: str | list[str] | None,
+    group_value: Any | None,
+) -> pl.DataFrame:
+    """Plot-facing per-link summary table (consumed by :mod:`.._plot.link`).
+
+    A second projection of the SAME computed arrays as
+    :func:`_diagnostic_frame` -- nothing is recomputed. Link ``k`` runs from
+    ``duration_from = k + 1`` to ``duration_to = k + 2``; ``weighted`` is
+    the WLS pooled ``g_k`` (identical to the ``intensity`` column of the
+    public table).
+    """
+    n = len(result.g_k)
+    return arrays_to_long_df(
+        {
+            "duration_from": np.arange(1, n + 1, dtype=np.int64),
+            "duration_to":   np.arange(2, n + 2, dtype=np.int64),
+            "mean":     result.mean_k,
+            "median":   result.median_k,
+            "weighted": result.g_k,
+        },
+        groups,
+        group_value,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public result class
 # ---------------------------------------------------------------------------
@@ -185,8 +236,8 @@ def _diagnostic_to_df(
 class Intensity:
     """Result of the intensity factor diagnostic.
 
-    Per-development-link estimates of the additive intensity
-    ``g_k = E[ΔL / C^P]``, with standard errors and residual sigma.
+    Per-link estimates of the additive intensity
+    ``g_k = E[dL / C^P]``, with standard errors and residual sigma.
     Parallel to :class:`ATA` for the multiplicative side, but *without*
     a factor-stability point: ``g_k`` decays toward zero at long
     duration, which makes CV / RSE diagnostics ill-behaved by
@@ -196,7 +247,7 @@ class Intensity:
     ----------
     df : DataFrame
         Per-link diagnostic table:
-        ``[groups?, duration, g, g_se, sigma2, n_cohorts]``.
+        ``[groups?, duration, intensity, intensity_se, sigma2, n_cohorts]``.
 
     Examples
     --------
@@ -209,6 +260,7 @@ class Intensity:
     # Instance attributes are set in `_from_link` (built via `cls.__new__`,
     # not `__init__`); declared here so the type is visible.
     _df: pl.DataFrame
+    _chart_df: pl.DataFrame
     _link: Link
     _recent: int | None
     _output_type: str
@@ -257,11 +309,11 @@ class Intensity:
                 sigma_method=sigma_method,
                 link_mask=recent_link_mask(loss_obs, recent),
             )
-            diag_df = _diagnostic_to_df(
-                result, groups=None, group_value=None
-            )
+            diag_df  = _diagnostic_frame(result, groups=None, group_value=None)
+            chart_df = _chart_frame(result, groups=None, group_value=None)
         else:
-            diag_parts: list[pl.DataFrame] = []
+            diag_parts:  list[pl.DataFrame] = []
+            chart_parts: list[pl.DataFrame] = []
             for g, sub in iter_group_frames(tri_df, groups):
                 (loss_obs, premium_obs), _, _ = build_value_matrices(
                     sub, (loss_col, premium_col)
@@ -273,13 +325,16 @@ class Intensity:
                     link_mask=recent_link_mask(loss_obs, recent),
                 )
                 diag_parts.append(
-                    _diagnostic_to_df(
-                        result, groups=groups, group_value=g
-                    )
+                    _diagnostic_frame(result, groups=groups, group_value=g)
                 )
-            diag_df = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
+                chart_parts.append(
+                    _chart_frame(result, groups=groups, group_value=g)
+                )
+            diag_df  = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
+            chart_df = pl.concat(chart_parts) if chart_parts else pl.DataFrame()
 
         self._df = diag_df
+        self._chart_df = chart_df
         return self
 
     @property
@@ -304,20 +359,21 @@ class Intensity:
         """Intensity factor diagnostic plot (matplotlib).
 
         Draws the additive intensity g_k as
-        ``kind in {"line", "box", "point"}`` (default ``"line"``). The
-        calendar-diagonal ``recent`` wedge is inherited from this
-        diagnostic. Intensity has *no* ``plot_dispersion``: g_k decays
-        toward zero at long duration, which makes CV / RSE degenerate by
-        construction (not by instability).
+        ``kind in {"line", "box", "point"}`` (default ``"line"`` -- the
+        mean / median / weighted intensity lines, read straight from this
+        diagnostic's per-link summary). The calendar-diagonal ``recent``
+        wedge is inherited from this diagnostic. Intensity has *no*
+        ``plot_dispersion``: g_k decays toward zero at long duration,
+        which makes CV / RSE degenerate by construction (not by
+        instability).
 
         Returns
         -------
         matplotlib.figure.Figure
         """
-        from .._plot.link import plot_factor
-        return plot_factor(
-            self._link, model="intensity", kind=kind, recent=self._recent,
-            nrow=nrow, ncol=ncol, figsize=figsize,
+        from .._plot.link import plot_intensity
+        return plot_intensity(
+            self, kind=kind, nrow=nrow, ncol=ncol, figsize=figsize
         )
 
     def to_polars(self) -> pl.DataFrame:

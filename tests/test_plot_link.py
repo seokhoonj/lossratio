@@ -251,37 +251,97 @@ def test_overlay_guards_nonpositive_y_max():
 
 
 # ---------------------------------------------------------------------------
-# recent wedge honored end-to-end
+# Plot renders the diagnostic table (single source of truth) + recent wedge
 # ---------------------------------------------------------------------------
 
 
-def test_ata_intensity_plot_honor_recent():
-    # finding: ATA/Intensity .plot delegated to the raw Link and ignored the
-    # diagnostic's `recent`. The plot filters cells to the same recent wedge,
-    # so the summarised cv matches the matrix-based ATA(recent=N) diagnostic
-    # exactly, and differs from the unfiltered plot.
+def _series_by_label(ax, label):
+    return next(ln for ln in ax.lines if ln.get_label() == label)
+
+
+def _expected_finite(df, group_value, column):
+    sub = df.filter(pl.col("coverage") == group_value).sort("duration")
+    arr = sub[column].to_numpy()
+    return arr[np.isfinite(arr)]
+
+
+def test_dispersion_renders_canonical_cv_rse():
+    # THE dedup regression: the dispersion plot must render the very same
+    # Mack RSE the diagnostic table computed (sqrt(sigma2_k / sum_j C_jk) /
+    # f_k, volume-weighted, sigma_method-aware) -- not a cross-cohort
+    # sd/sqrt(n) recompute. Same for CV. Facet order follows the
+    # diagnostic's group order.
     import matplotlib.pyplot as plt
 
-    from lossratio._plot.link import _ata_summary, _filter_cells_recent
+    from lossratio._kernels.io import iter_group_frames
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    ata = tri.link().ata()
+    df = ata.to_polars()
+    fig = ata.plot_dispersion()
+    facets = list(iter_group_frames(df, "coverage"))
+    assert len(facets) > 1
+    for (group_value, _), ax in zip(facets, fig.axes, strict=False):
+        for label, column in (("CV", "cv"), ("RSE", "rse")):
+            plotted = np.asarray(_series_by_label(ax, label).get_ydata(), float)
+            expected = _expected_finite(df, group_value, column)
+            np.testing.assert_array_equal(plotted, expected)
+    plt.close("all")
+
+
+def test_factor_line_plot_renders_pooled_factor():
+    # The `weighted` line of ATA.plot / Intensity.plot must be the pooled
+    # factor from the diagnostic table (`ata` f_k / `intensity` g_k), not a
+    # plot-side re-aggregation of the cells.
+    import matplotlib.pyplot as plt
+
+    from lossratio._kernels.io import iter_group_frames
+
+    tri = lr.Triangle(lr.load_experience(), groups="coverage")
+    link = tri.link()
+    for diagnostic, column in ((link.ata(), "ata"), (link.intensity(), "intensity")):
+        df = diagnostic.to_polars()
+        fig = diagnostic.plot(kind="line")
+        facets = list(iter_group_frames(df, "coverage"))
+        for (group_value, _), ax in zip(facets, fig.axes, strict=False):
+            plotted = np.asarray(
+                _series_by_label(ax, "weighted").get_ydata(), float
+            )
+            expected = _expected_finite(df, group_value, column)
+            np.testing.assert_array_equal(plotted, expected)
+    plt.close("all")
+
+
+def test_ata_intensity_plot_honor_recent():
+    # The plots inherit the diagnostic's `recent` wedge: the recent=12
+    # dispersion renders the recent=12 table (which differs from the
+    # unfiltered one).
+    import matplotlib.pyplot as plt
 
     tri = lr.Triangle(lr.load_experience(), groups="coverage")
     link = tri.link(target="loss", exposure="premium")
 
-    dfa = link.ata(recent=12).to_polars().select(["coverage", "duration", "cv"])
-    plot_r = (_ata_summary(_filter_cells_recent(link._df, "coverage", 12), "coverage")
-              .rename({"duration_from": "duration", "cv": "cvp"})
-              .select(["coverage", "duration", "cvp"]))
-    j = dfa.join(plot_r, on=["coverage", "duration"], how="inner").drop_nulls()
-    assert j.height > 0
-    assert (j["cv"] - j["cvp"]).abs().max() < 1e-12          # exact: recent honored
+    ata_recent = link.ata(recent=12)
+    df_recent = ata_recent.to_polars()
+    df_all = link.ata().to_polars()
+    joined = (
+        df_recent.select(["coverage", "duration", "cv"])
+        .join(
+            df_all.select(["coverage", "duration", pl.col("cv").alias("cv_all")]),
+            on=["coverage", "duration"], how="inner",
+        )
+        .drop_nulls()
+    )
+    assert joined.height > 0
+    assert (joined["cv"] - joined["cv_all"]).abs().max() > 0
 
-    plot_all = (_ata_summary(link._df, "coverage")
-                .rename({"duration_from": "duration", "cv": "cva"})
-                .select(["coverage", "duration", "cva"]))
-    m = plot_r.join(plot_all, on=["coverage", "duration"], how="inner").drop_nulls()
-    assert (m["cvp"] - m["cva"]).abs().max() > 0             # differs from unfiltered
+    fig = ata_recent.plot_dispersion()
+    group_value = df_recent["coverage"][0]
+    plotted = np.asarray(_series_by_label(fig.axes[0], "CV").get_ydata(), float)
+    np.testing.assert_array_equal(
+        plotted, _expected_finite(df_recent, group_value, "cv")
+    )
 
     # both diagnostics still build a figure with recent set
-    link.ata(recent=12).plot_dispersion()
     link.intensity(recent=12).plot(kind="line")
     plt.close("all")

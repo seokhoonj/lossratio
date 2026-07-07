@@ -142,7 +142,7 @@ def test_rse_requires_two_positive_denominators():
     # not a misleading 0 -- matching the CV guard right above it.
     import numpy as np
 
-    from lossratio.core.ata import _compute_cv_rse
+    from lossratio.core.ata import _cross_cohort_link_stats
 
     loss_obs = np.array(
         [
@@ -153,6 +153,6 @@ def test_rse_requires_two_positive_denominators():
     )
     f_k = np.array([26.0 / 10.0])     # pooled sum(to)/sum(from)
     sigma2_k = np.array([0.0])        # the branch that used to yield rse = 0.0
-    cv, rse = _compute_cv_rse(loss_obs, f_k, sigma2_k)
-    assert np.isnan(rse[0])
-    assert np.isnan(cv[0])
+    stats = _cross_cohort_link_stats(loss_obs, f_k, sigma2_k)
+    assert np.isnan(stats.rse_k[0])
+    assert np.isnan(stats.cv_k[0])

@@ -22,6 +22,9 @@ duration the link starts from.
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
+
+from .io import normalize_groups
 
 
 def validate_recent(recent: int | None) -> None:
@@ -99,3 +102,32 @@ def recent_link_mask(
 
     max_cal = int(cal_idx[link_exists].max())
     return link_exists & (cal_idx > (max_cal - int(recent)))
+
+
+def filter_recent_cells(
+    cells: pl.DataFrame,
+    groups: str | list[str] | None,
+    recent: int | None,
+) -> pl.DataFrame:
+    """Long-format counterpart of :func:`recent_link_mask` for Link cells.
+
+    Applies the SAME recent-wedge rule to a long-format link-cell table
+    (one row per cohort x adjacent-duration pair) instead of the value
+    matrix: ``cal_idx = (0-based per-group dense cohort rank) +
+    duration_from``, keep ``cal_idx > max(cal_idx) - recent`` within each
+    group. Both layouts of the rule live in this module so they cannot
+    drift; the cell form feeds the cell-level box / point factor plots,
+    which must show exactly the cells that fed the (matrix-masked)
+    diagnostic. ``recent=None`` returns ``cells`` unchanged.
+    """
+    if recent is None:
+        return cells
+    validate_recent(recent)
+    group_cols = normalize_groups(groups)
+    rank = pl.col("cohort").rank("dense")
+    rank = rank.over(group_cols) if group_cols else rank
+    cal = rank.cast(pl.Int64) - 1 + pl.col("duration_from")
+    with_cal = cells.with_columns(cal.alias("_cal"))
+    max_cal = pl.col("_cal").max()
+    max_cal = max_cal.over(group_cols) if group_cols else max_cal
+    return with_cal.filter(pl.col("_cal") > max_cal - recent).drop("_cal")
