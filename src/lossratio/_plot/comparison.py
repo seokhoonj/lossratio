@@ -14,7 +14,7 @@ import polars as pl
 
 from .._kernels.io import iter_group_frames
 from .base import open_facets
-from .theme import faint_grid, finalize_figure
+from .theme import faint_grid, finalize_figure, integer_xaxis
 
 if TYPE_CHECKING:
     from ..diagnostics.comparison import EstimatorComparisonFit
@@ -109,6 +109,7 @@ def plot_estimator_comparison(
         if metric in ("ae_err", "bias"):
             ax.axhline(0.0, color="grey", linewidth=0.6, linestyle="--")
         faint_grid(ax)
+        integer_xaxis(ax)
         ax.tick_params(labelsize=8)
         grid.title(ax, group_value)
         if idx == 0:

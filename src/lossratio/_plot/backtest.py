@@ -23,7 +23,14 @@ from .base import (
     pretty_var_label,
     resolve_grid,
 )
-from .theme import BLUE, RED, STAT_COLORS, faint_grid, finalize_figure
+from .theme import (
+    BLUE,
+    RED,
+    STAT_COLORS,
+    faint_grid,
+    finalize_figure,
+    integer_xaxis,
+)
 
 if TYPE_CHECKING:
     from ..diagnostics.backtest import _FoldFit
@@ -308,7 +315,7 @@ def _plot_aggregated_lines(
     grid = open_facets(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
     )
     for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort(x_col)
@@ -332,6 +339,8 @@ def _plot_aggregated_lines(
         grid.title(ax, group_value)
         ax.legend(loc="best", fontsize=8, frameon=False)
         faint_grid(ax)
+        integer_xaxis(ax)
+        ax.tick_params(labelsize=8)
 
     grid.hide_unused()
 
@@ -363,7 +372,7 @@ def _plot_cell_curves(
     grid = open_facets(
         iter_group_frames(ae_err, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(5.0, 3.3 * nc), max(3.0, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
     )
     for _, group_value, sub, ax in grid:
         _draw_ae_band(ax)
@@ -391,6 +400,8 @@ def _plot_cell_curves(
         ax.yaxis.set_major_formatter(percent_formatter())
         grid.title(ax, group_value)
         faint_grid(ax)
+        integer_xaxis(ax)
+        ax.tick_params(labelsize=8)
 
     grid.hide_unused()
 

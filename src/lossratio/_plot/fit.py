@@ -22,6 +22,7 @@ from .theme import (
     add_cohort_colorbar,
     cohort_gradient,
     finalize_figure,
+    integer_xaxis,
     period_label_fn,
 )
 
@@ -187,6 +188,7 @@ def plot_fit(
             _draw_fit_cohort(ax, sub, value_col, coh_color)
         if hline is not None:
             ax.axhline(hline, linestyle=":", color="0.5", linewidth=0.8, zorder=1)
+        integer_xaxis(ax)
         grid.title(ax, group_value)
 
     grid.hide_unused()

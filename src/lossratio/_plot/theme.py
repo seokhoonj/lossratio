@@ -72,6 +72,22 @@ def faint_grid(ax: Any, *, axis: str = "both") -> None:
     ax.grid(True, axis=axis, alpha=0.3, linewidth=0.4)
 
 
+def integer_xaxis(ax: Any) -> None:
+    """Constrain the x-axis to integer ticks.
+
+    duration, horizon, and calendar-diagonal index are whole-number
+    quantities; matplotlib's default locator emits half-integer ticks
+    (1.5, 2.5, ...) on a short range, which read as fractional periods.
+
+    ``min_n_ticks=1`` keeps the integer constraint even when a single value
+    is plotted (e.g. one surviving hold-out depth) -- the default
+    ``min_n_ticks=2`` would abandon integer ticks and fall back to the
+    fractional locator when fewer than two integers fall in the view."""
+    from matplotlib.ticker import MaxNLocator
+
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
+
+
 def draw_facet_strip(ax: Any, title: str, panel_h_in: float) -> None:
     """Draw a ggplot2-style grey facet strip with a centred label in the gap
     reserved above ``ax``.
