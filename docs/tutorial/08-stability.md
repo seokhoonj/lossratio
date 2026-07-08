@@ -217,9 +217,9 @@ lr.Stability(min_links=40).assess(tri).to_polars().select(
    import matplotlib.pyplot as plt
 
    tri = lr.Triangle(lr.load_experience(), groups="coverage", grain="M")
-   df = lr.PooledLoss().fit(tri).to_polars().filter(pl.col("source") == "observed")
-   traj = (df.group_by(["coverage", "duration"])
-             .agg((pl.col("loss_obs").sum() / pl.col("premium_obs").sum()).alias("R"))
+   traj = (tri.to_polars()
+             .group_by(["coverage", "duration"])
+             .agg((pl.col("loss").sum() / pl.col("premium").sum()).alias("R"))
              .sort(["coverage", "duration"]))
    rep = lr.Stability().assess(tri).to_polars()
    stable = dict(zip(rep["coverage"].to_list(), rep["stable"].to_list()))
