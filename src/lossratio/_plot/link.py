@@ -253,7 +253,7 @@ def _plot_dispersion_panel(
     grid = open_facets(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort("duration_from")
@@ -303,7 +303,7 @@ def _plot_summary_lines(
     grid = open_facets(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort("duration_from")
@@ -354,7 +354,7 @@ def _plot_per_link_distribution(
     grid = open_facets(
         iter_group_frames(cells, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(4.5, 3.2 * nc), max(3.0, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, group_value, sub, ax in grid:
         sub_valid = sub.filter(pl.col(y_col).is_finite())

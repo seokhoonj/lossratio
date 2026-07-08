@@ -121,7 +121,7 @@ def plot_estimator_comparison(
     grid = open_facets(
         iter_group_frames(summary, fit._groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for idx, group_value, sub, ax in grid:
         for i, label in enumerate(fit._labels):

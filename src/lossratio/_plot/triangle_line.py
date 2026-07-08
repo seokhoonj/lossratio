@@ -226,7 +226,7 @@ def plot(
     nrow, ncol = resolve_grid(n_facets, nrow, ncol)
 
     if figsize is None:
-        figsize = (max(4.0, 2.6 * ncol + 0.8), max(3.0, 2.2 * nrow + 1.0))
+        figsize = (max(5.6, 3.2 * ncol + 0.8), max(3.6, 2.6 * nrow + 0.4))
 
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True

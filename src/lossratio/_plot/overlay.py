@@ -113,8 +113,8 @@ def plot_overlay(
         grid = open_facets(
             iter_group_frames(df, groups),
             nrow=nrow, ncol=ncol, figsize=figsize,
-            figsize_fn=lambda nr, nc: (max(4.0, 2.6 * nc + 0.8),
-                                       max(3.0, 2.2 * nr + 1.0)),
+            figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8),
+                                       max(3.6, 2.6 * nr + 0.4)),
         )
         for i, (_, group_value, sub, ax) in enumerate(grid):
             _draw_overlay_single(ax, sub, value_col, labels, legend=(i == 0))
@@ -146,7 +146,7 @@ def plot_overlay(
     grid = open_facets(
         facets, nrow=nrow, ncol=ncol, figsize=figsize,
         default_ncol=len(labels),
-        figsize_fn=lambda nr, nc: (max(4.0, 3.0 * nc), max(3.0, 2.4 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, key, sub, ax in grid:
         group_value, label = key

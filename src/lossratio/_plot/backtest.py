@@ -235,7 +235,7 @@ def plot_backtest_error_profile(
     grid = open_facets(
         iter_group_frames(summary, fit._groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, group_value, sub, ax in grid:
         sub = sub.sort(xcol)
@@ -481,7 +481,7 @@ def _plot_aggregated_lines(
     grid = open_facets(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, group_value, sub, ax in grid:
         sub_sorted = sub.sort(x_col)
@@ -538,7 +538,7 @@ def _plot_cell_curves(
     grid = open_facets(
         iter_group_frames(ae_err, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
-        figsize_fn=lambda nr, nc: (max(5.0, 3.2 * nc), max(3.5, 2.6 * nr)),
+        figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
     )
     for _, group_value, sub, ax in grid:
         _draw_ae_band(ax)

@@ -59,7 +59,7 @@ plot_include_source = True
 plot_html_show_source_link = False
 plot_html_show_formats = False
 # Higher DPI so figures stay crisp on high-DPI (retina) displays.
-plot_formats = [("png", 220)]
+plot_formats = [("png", 240)]
 
 # sphinx-copybutton -- strip Python REPL and shell prompts on copy.
 # `# ` is *not* a prompt here because it doubles as the Python comment
