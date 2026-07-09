@@ -103,7 +103,7 @@ CLAUDE.md
 
 # Local-only dev scripts and data
 dev/
-references/
+refs/
 
 # AI coding agents
 AGENTS.md
