@@ -60,7 +60,7 @@ $$u_i = Z_i\,\hat\theta_i + (1 - Z_i)\cdot 1, \qquad
   Z_i = \frac{A_i}{A_i + 1/\psi}.$$
 
 - $\hat\theta_i$ = 코호트 자기 추정, $Z_i \in [0,1]$ = 신뢰도 가중(노출량 기반).
-  데이터가 많은 코호트는 $Z_i \to 1$로 자기 추정에, 얇은 코호트는 $Z_i \to 0$으로
+  데이터가 많은 코호트는 $Z_i \to 1$로 자기 추정에, 관측 셀이 적은 코호트는 $Z_i \to 0$으로
   풀링($u_i \to 1$)에 가까워진다.
 - $\psi$ = 코호트 간 분산(between-cohort variance). $\psi \to 0$이면 $u_i = 1$이
   강제되어 **Pooled 단계**가 된다.
@@ -104,7 +104,7 @@ $$C_{i,k+1} = C_{i,k}\, f_k.$$
 ([5장 — 구조 변화 탐지](../tutorial/06-regime)). 각 regime은 자기 코호트로
 **own depth**(자기 관측 최대 경과)까지 자기 레벨·형상으로 적합한다.
 
-최신(얇은) regime이 아직 도달하지 못한 후기 경과를 **borrow 구간**이라 한다 —
+최신(관측 셀이 적은) regime이 아직 도달하지 못한 후기 경과를 **borrow 구간**이라 한다 —
 $[\,d_r + 1,\ K\,]$, 여기서 $d_r$은 그 regime의 own depth, $K$는 **global depth**
 (어느 코호트든 도달한 최대 경과). 이 구간은 *미관측*이 아니라, **더 깊은(옛)
 regime들이 이미 관측한** 경과다. 최신 regime엔 자기 데이터가 없을 뿐이다.

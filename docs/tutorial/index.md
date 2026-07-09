@@ -86,7 +86,7 @@ flowchart TB
   - 완전 풀링 `PooledLoss`(강도 × 보험료), 보험료는 알려진 노출로 자기-발전 `PooledPremium`, `Ratio(loss=, premium=)` 합성으로 예측 손해율 산출과 읽기
 * - 3
   - 코호트 보정 — 신뢰도(Credible)와 평활(Smooth)
-  - 얇은·최근 코호트를 얼마나 믿을지: `CredibleLoss`(코호트 수준 부분 풀링, `.credibility`), `SmoothLoss`(형상 평활)
+  - 관측 셀이 적은 최근 코호트를 얼마나 믿을지: `CredibleLoss`(코호트 수준 부분 풀링, `.credibility`), `SmoothLoss`(형상 평활)
 * - 4
   - 예측 불확실성 — 밴드와 부트스트랩
   - 과정오차와 모수오차, 표준오차·변동계수·신뢰구간, `ResidualBootstrap`(Credible/Smooth는 부트스트랩 전용)

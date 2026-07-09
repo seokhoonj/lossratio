@@ -153,10 +153,10 @@ fit.coefficients
 
 `beta` 를 얼마나 0으로 당길지가 `lam_cov` 다. `0`(기본)은 순수 추정,
 `"auto"` 는 그 공변량의 효과 분산을 데이터에서 추정하는 **신뢰도
-(credibility)** 수축이다 — 레벨별 데이터가 두꺼우면 거의 안 당기고, 얇으면
+(credibility)** 수축이다 — 레벨별 데이터가 많으면 거의 안 당기고, 적으면
 기준 쪽으로 강하게 당긴다. 구현은 Schall(1991)의 분산성분 추정을 차용한다
 (empirical Bayes 계열). 레벨이 많고 셀이 드문 공변량(채널 등)에서, 데이터가
-얇은 레벨의 상대도가 부풀어 오르는 것을 막는다.
+관측 셀이 적은 레벨의 상대도가 부풀어 오르는 것을 막는다.
 
 ```python
 cohs = sorted(df["uy_m"].unique().to_list())
@@ -164,7 +164,7 @@ thin = df.filter((pl.col("coverage") == "CI") & pl.col("uy_m").is_in(cohs[-4:]))
 tri  = lr.Triangle(thin, groups=["coverage", "channel"])
 
 lr.CredibleLoss(covariates=["channel"], lam_cov=0.0).fit(tri).coefficients
-#> CI  ON  beta 0.714  exp_beta 2.04   <- 얇은 데이터에서 부풀어 오름
+#> CI  ON  beta 0.714  exp_beta 2.04   <- 관측 셀이 적은 곳에서 부풀어 오름
 lr.CredibleLoss(covariates=["channel"], lam_cov="auto").fit(tri).coefficients
 #> CI  ON  beta 0.359  exp_beta 1.43   <- 신뢰도가 기준 쪽으로 당김
 ```
