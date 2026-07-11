@@ -104,7 +104,7 @@ flowchart TB
   - go-forward 안정성 진단(`Stability`), freeze 게이트, `extend`로 관측 최대 경과 너머 이어 보기
 * - 부록
   - 발전 인자 진단 — ATA·강도와 ChainLadder 벤치마크
-  - 예측이 이상할 때 속 들여다보기: ATA `f_k`(곱셈, 차용 도너·벤치마크 엔진), 강도 `g_k`(덧셈, 본류 재료), 고전 `ChainLadder`
+  - 예측이 이상할 때 속 들여다보기: ATA `f_k`(곱셈, 접목 도너·벤치마크 엔진), 강도 `g_k`(덧셈, 본류 재료), 고전 `ChainLadder`
 ```
 
 ```{toctree}

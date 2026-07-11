@@ -155,7 +155,7 @@ fit.to_polars().select(["cohort", "duration", "ratio_proj", "ratio_se",
   분위수 밴드를 채우되, `ResidualBootstrap`은 실제 잔차를 복원추출(분포
   무가정)하고 `WeightedBootstrap`은 추정 셀에 연속 가중치를 곱해 배치로
   계산합니다(더 빠름). 다만 FRW 가중은 작은 삼각형에서 모수 퍼짐을 *체계적으로
-  더 넓게* 잡는 경향이 있고, borrow 채움 셀에서는 그 폭이 곱셈 재귀로 증폭되어
+  더 넓게* 잡는 경향이 있고, 접목 채움 셀에서는 그 폭이 곱셈 재귀로 증폭되어
   더 넓게 나옵니다 — 그래서 **기본 권장은 `ResidualBootstrap`**, `WeightedBootstrap`은
   복제본 수가 크고 속도가 관건일 때 고르는 실험적 옵션입니다. 두 부트스트랩
   모두 `n_jobs`로 세그먼트(book의 그룹)를 병렬 처리합니다.

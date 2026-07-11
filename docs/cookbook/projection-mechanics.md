@@ -98,31 +98,31 @@ $$C_{i,k+1} = C_{i,k}\, f_k.$$
 `PooledPremium`은 **보험료의 ChainLadder**로, $f^P_k$에 같은 곱셈 링크비
 메커니즘을 적용한 것 — 같은 메커니즘, 다른 타깃이다.
 
-## 6. segment_wise — regime 간 borrow
+## 6. segment_wise — regime 간 접목(graft)
 
 구조 변화(regime change)가 있으면 코호트를 regime별로 나눠 각자 적합한다
 ([5장 — 구조 변화 탐지](../tutorial/06-regime)). 각 regime은 자기 코호트로
 **own depth**(자기 관측 최대 경과)까지 자기 레벨·형상으로 적합한다.
 
-최신(관측 셀이 적은) regime이 아직 도달하지 못한 후기 경과를 **borrow 구간**이라 한다 —
+최신(관측 셀이 적은) regime이 아직 도달하지 못한 후기 경과를 **접목 구간**이라 한다 —
 $[\,d_r + 1,\ K\,]$, 여기서 $d_r$은 그 regime의 own depth, $K$는 **global depth**
 (어느 코호트든 도달한 최대 경과). 이 구간은 *미관측*이 아니라, **더 깊은(옛)
 regime들이 이미 관측한** 경과다. 최신 regime엔 자기 데이터가 없을 뿐이다.
 
-borrow 구간은 그 옛 regime들(donor)의 **수준 불변(level-invariant) 링크비**
+접목 구간은 그 옛 regime들(donor)의 **수준 불변(level-invariant) 링크비**
 (손해 $f_k$ / 보험료 $f^P_k$)로 채운다. 링크비는 누적의 비율이라 레벨이 상쇄되어,
 *형상만* 빌리고 최신 regime의 자기 레벨은 유지된다:
 
-$$C_{i,k+1} = C_{i,k}\, f^{\text{donor}}_k \quad (k \ge d_r,\ \text{borrow 구간}).$$
+$$C_{i,k+1} = C_{i,k}\, f^{\text{donor}}_k \quad (k \ge d_r,\ \text{접목 구간}).$$
 
 투영은 $K$(global depth)에서 멈춘다 — 관측 최대 경과 너머로 외삽하지 않는다.
-즉 borrow는 코호트 축을 가로지르는 *형상 전이*로, **빌려오는 정보는 donor
+즉 접목은 코호트 축을 가로지르는 *형상 전이*로, **빌려오는 정보는 donor
 regime에서 관측된 것**이고 채워지는 곳은 최신 regime이 자기 관측이 없는 후기
 경과다.
 
-보험료 사다리에서도 같은 borrow가 적용된다: Pooled는 단일 링크비 $f^P_k$로
-borrow 구간을 채우고, Credible/Smooth는 own 구간을 코호트별 $1 + u_i h_k$로
-적합한 뒤 borrow 구간을 donor $f^P_k$로 채운다(거기선 링크비가 레벨을 상쇄하므로
+보험료 사다리에서도 같은 접목이 적용된다: Pooled는 단일 링크비 $f^P_k$로
+접목 구간을 채우고, Credible/Smooth는 own 구간을 코호트별 $1 + u_i h_k$로
+적합한 뒤 접목 구간을 donor $f^P_k$로 채운다(거기선 링크비가 레벨을 상쇄하므로
 $u$ 무관).
 
 ## 7. 함께 보기
