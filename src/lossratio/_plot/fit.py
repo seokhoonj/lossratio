@@ -1,7 +1,7 @@
 """Fit-projection visualisation -- matplotlib backend.
 
 Per-cohort cumulative-projection trajectories for ``LossFit`` /
-``PremiumFit`` / ``RatioFit``: x = duration, y = the projected metric, the
+``PremiumFit`` / ``LossRatioFit``: x = duration, y = the projected metric, the
 observed portion drawn solid and the projected tail as a translucent
 continuation with a frontier dot (split on the ``source`` column), faceted by
 group. The cohort colour gradient mirrors

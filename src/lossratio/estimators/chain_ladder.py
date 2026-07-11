@@ -14,7 +14,7 @@ The link ratio is sourced from ``engine.link_ratios`` (oracle-frozen); the
 variance recursion reuses the kept ``_recursion`` kernel and the process /
 parameter SE on every shared loss column.
 
-The composition ``Ratio`` distinguishes this ``ChainLadder`` (a loss model) from
+The composition ``LossRatio`` distinguishes this ``ChainLadder`` (a loss model) from
 the loss/premium ratio it forms.
 """
 

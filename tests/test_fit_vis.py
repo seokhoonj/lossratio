@@ -1,4 +1,4 @@
-"""Smoke + contract tests for ``LossFit`` / ``PremiumFit`` / ``RatioFit``
+"""Smoke + contract tests for ``LossFit`` / ``PremiumFit`` / ``LossRatioFit``
 ``.predict()`` and ``.plot()``.
 
 ``.predict()`` is a focused projection surface (cohort x duration cells with
@@ -58,7 +58,7 @@ def test_premium_predict_columns(tri_g):
 
 
 def test_ratio_predict_columns(tri_g):
-    out = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(
+    out = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(
         tri_g
     ).predict()
     assert list(out.columns) == [
@@ -122,7 +122,7 @@ def test_chain_ladder_plot_single(tri_s):
 
 
 def test_ratio_plot_metric_variants(tri_g):
-    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_g)
+    fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_g)
     for metric in ("ratio", "loss", "premium"):
         fig = fit.plot(metric=metric)
         try:
@@ -138,7 +138,7 @@ def _a_cohort(fit):
 def test_plot_cohort_spotlight_renders(tri_g):
     # A single cohort spotlight: one trajectory per group facet (observed
     # solid + dashed projection + a frontier rule), no cohort colourbar.
-    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_g)
+    fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_g)
     coh = _a_cohort(fit)
     fig = fit.plot(cohort=coh)
     try:
@@ -150,7 +150,7 @@ def test_plot_cohort_spotlight_renders(tri_g):
 
 
 def test_plot_cohort_str_and_date_agree(tri_s):
-    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
+    fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
     coh = _a_cohort(fit)
     for sel in (coh, coh.isoformat()):
         fig = fit.plot(cohort=sel)
@@ -172,20 +172,20 @@ def test_plot_cohort_inherited_by_loss_and_premium(tri_s):
 
 
 def test_plot_cohort_absent_raises(tri_s):
-    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
+    fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
     with pytest.raises(ValueError, match="not in this fit"):
         fit.plot(cohort="1999-01-01")
 
 
 def test_plot_cohort_bad_type_raises(tri_s):
-    fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
+    fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri_s)
     with pytest.raises(TypeError, match="ISO date string"):
         fit.plot(cohort=20250601)
 
 
 def test_loss_plot_rejects_ratio_metric(tri_g):
     # A bare LossFit projects loss only; the loss ratio is plotted from a
-    # Ratio fit, never a bare loss estimator.
+    # LossRatio fit, never a bare loss estimator.
     with pytest.raises(ValueError, match="metric"):
         lr.PooledLoss().fit(tri_g).plot(metric="ratio")
 

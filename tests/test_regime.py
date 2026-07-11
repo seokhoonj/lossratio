@@ -21,7 +21,7 @@ def test_detect_regime_output_is_usable_in_a_fit():
     # backtest without error
     lr.PooledLoss(regime=lr.RegimeDetector()).fit(tri)
     lr.PooledPremium(regime=reg).fit(tri)
-    lr.Ratio(loss=lr.PooledLoss(regime=reg), premium=lr.PooledPremium()).fit(tri)
+    lr.LossRatio(loss=lr.PooledLoss(regime=reg), premium=lr.PooledPremium()).fit(tri)
     lr.Backtest(estimator=lr.PooledLoss(regime=reg), holdouts=4, target="loss").fit(tri)
 
 
@@ -38,7 +38,7 @@ def test_regime_detector_flows_into_a_fit():
 
     lr.PooledLoss(regime=det).fit(tri)
     lr.PooledPremium(regime=det).fit(tri)
-    lr.Ratio(loss=lr.PooledLoss(regime=det), premium=lr.PooledPremium()).fit(tri)
+    lr.LossRatio(loss=lr.PooledLoss(regime=det), premium=lr.PooledPremium()).fit(tri)
     lr.Backtest(estimator=lr.PooledLoss(regime=det), holdouts=4,
                 target="loss").fit(tri)
 

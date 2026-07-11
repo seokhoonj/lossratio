@@ -52,8 +52,8 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
 
 - `PooledPremium` — returns a `PremiumFit`. Premium has no external exposure,
   so it self-develops by its own volume-weighted link ratio.
-- `Ratio(loss=..., premium=...)` — pairs a loss and a premium estimator into
-  `ratio_proj = loss_proj / premium_proj` (a `RatioFit`). The premium is a
+- `LossRatio(loss=..., premium=...)` — pairs a loss and a premium estimator into
+  `ratio_proj = loss_proj / premium_proj` (a `LossRatioFit`). The premium is a
   known allocated exposure, so the band is loss-only:
   `ratio_se = loss_total_se / premium_proj`.
 
@@ -95,7 +95,7 @@ tri
 # projected ratio per cohort (ratio_se is null for the fully observed first
 # cohort; the premium is a known denominator, so the band is loss-only). Swap in
 # CredibleLoss / SmoothLoss / ChainLadder on the loss side; see Components.
-fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
+fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
 fit.summary().select(["coverage", "cohort", "ratio_proj", "ratio_se"]).head(3)
 #> shape: (3, 4)
 #> ┌──────────┬────────────┬────────────┬──────────┐
@@ -124,7 +124,7 @@ tri.plot(metric="ratio", summary=True, regime=reg)
 # cohorts develop along their own shape). Observed solid, the projection a
 # faded continuation past the frontier dot, coloured by cohort (the colourbar
 # reads 23.01, 23.10, ... period labels).
-reg_fit = lr.Ratio(
+reg_fit = lr.LossRatio(
     loss=lr.PooledLoss(regime=lr.RegimeDetector(treatment="segment_wise")),
     premium=lr.PooledPremium(),
 ).fit(tri)

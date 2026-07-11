@@ -49,7 +49,7 @@ def _cl_backtest(holdouts: int = 2):
 
 
 def test_backtest_covariate_ratio_reaches_reporting_grain():
-    """A covariate-aware Ratio (covariates live on Ratio.loss, not the Ratio)
+    """A covariate-aware LossRatio (covariates live on LossRatio.loss, not the LossRatio)
     must be backtestable at target="ratio": the backtest resolves covariates
     through the loss side and scores at the collapsed reporting grain, instead
     of crashing with an opaque ColumnNotFoundError at the full triangle grain."""
@@ -63,7 +63,7 @@ def test_backtest_covariate_ratio_reaches_reporting_grain():
         loss="incr_loss", premium="incr_premium",
     )
     fit = lr.Backtest(
-        estimator=lr.Ratio(loss=lr.CredibleLoss(covariates=["channel"])),
+        estimator=lr.LossRatio(loss=lr.CredibleLoss(covariates=["channel"])),
         holdouts=(6,), target="ratio",
     ).fit(tri)
     # reporting grain collapses channel -> keyed on coverage only.

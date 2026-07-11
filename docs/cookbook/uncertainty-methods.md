@@ -123,17 +123,17 @@ import lossratio as lr
 tri = lr.Triangle(df, groups="coverage")
 
 # 닫힌형 SE/CI (기본, 가장 싸고 안정적)
-fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
+fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
 
 # 재표집 밴드 (CredibleLoss/SmoothLoss는 이게 유일한 밴드)
-fit = lr.Ratio(
+fit = lr.LossRatio(
     loss=lr.CredibleLoss(uncertainty=lr.ResidualBootstrap(n_replicates=999, seed=1)),
     premium=lr.PooledPremium(),
 ).fit(tri)
 
 # FRW 대안 — 배치 행렬 연산이라 빠름. 시그니처: n_replicates / seed / process /
 # drift / n_jobs (두 부트스트랩 모두 n_jobs로 세그먼트 병렬)
-fit = lr.Ratio(
+fit = lr.LossRatio(
     loss=lr.CredibleLoss(
         uncertainty=lr.WeightedBootstrap(n_replicates=999, seed=1, n_jobs=4)),
     premium=lr.PooledPremium(),

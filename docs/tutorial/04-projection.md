@@ -39,7 +39,7 @@ df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 COH = pl.lit("2025-01-01").str.to_date()
 
-lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).summary().filter(
+lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).summary().filter(
     pl.col("cohort") == COH).select(["cohort", "ratio_proj"])
 #> ┌────────────┬───────────┐
 #> │ cohort     ┆ ratio_proj│
@@ -120,8 +120,8 @@ $$
    tri = lr.Triangle(df, groups="coverage", grain="Q")
 
    ov = lr.ProjectionOverlay({
-       "pooled":   lr.Ratio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
-       "credible": lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
+       "pooled":   lr.LossRatio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
+       "credible": lr.LossRatio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
    }).fit(tri)
    ov.plot(cohort="2025-01-01")
 ```
@@ -134,8 +134,8 @@ df = lr.load_experience().filter(pl.col("coverage") == "SURGERY")
 tri = lr.Triangle(df, groups="coverage", grain="Q")
 
 ov = lr.ProjectionOverlay({
-    "pooled":   lr.Ratio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
-    "credible": lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
+    "pooled":   lr.LossRatio(loss=lr.PooledLoss(),   premium=lr.PooledPremium()),
+    "credible": lr.LossRatio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
 }).fit(tri)
 
 # (코호트 x 추정기)를 넓혀 나란히 비교
@@ -354,7 +354,7 @@ hold-out에서 두 방법의 held-out 셀을 매칭 비교하는 `lr.EstimatorCo
 ## 3.6 함께 보기
 
 - {doc}`2장 — 손해율 예측 <02-projection>`: 이 장이 다듬는 베이스라인
-  PooledLoss·PooledPremium·Ratio와 결과 객체의 `.predict()`·`.plot()`.
+  PooledLoss·PooledPremium·LossRatio와 결과 객체의 `.predict()`·`.plot()`.
 - {doc}`4장 — 예측의 불확실성 <05-uncertainty>`: 이 장의 점추정에 표준오차와
   신뢰구간을 입힌다. CredibleLoss·SmoothLoss는 닫힌형이 없어 부트스트랩으로만
   구간을 얻는다.
@@ -364,4 +364,4 @@ hold-out에서 두 방법의 held-out 셀을 매칭 비교하는 `lr.EstimatorCo
   이 장이 다듬는 강도 $g_k$(와 대비되는 ATA 인자)의 발전 인자 진단.
 - {doc}`투영 메커니즘 <../cookbook/projection-mechanics>`: Pooled/Credible/
   Smooth와 신뢰도 레벨 $u_i$가 각 셀을 어떻게 투영하는지 수식으로 정리.
-- {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `CredibleLoss`, `SmoothLoss`, `Ratio`
+- {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `CredibleLoss`, `SmoothLoss`, `LossRatio`

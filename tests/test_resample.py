@@ -15,7 +15,7 @@ from lossratio.estimators.chain_ladder import ChainLadder
 from lossratio.estimators.credible_loss import CredibleLoss
 from lossratio.estimators.pooled_loss import PooledLoss
 from lossratio.estimators.pooled_premium import PooledPremium
-from lossratio.estimators.ratio import Ratio
+from lossratio.estimators.ratio import LossRatio
 
 
 def _to_polars(x) -> pl.DataFrame:
@@ -267,7 +267,7 @@ def test_ratio_band_is_loss_band_over_fixed_premium(tri):
     # the ratio lives ONLY on the composition; the loss band comes off the
     # bootstrap loss estimator, the premium denominator is deterministic.
     loss = CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=60, seed=3))
-    rf   = Ratio(loss=loss, premium=PooledPremium()).fit(tri).to_polars()
+    rf   = LossRatio(loss=loss, premium=PooledPremium()).fit(tri).to_polars()
     proj = rf.filter(pl.col("source") == "own").drop_nulls(["ratio_se", "premium_proj"])
     # premium is deterministic -> ratio SE / band = loss SE / band over premium
     assert (proj["ratio_se"] - proj["loss_total_se"] / proj["premium_proj"]).abs().max() < 1e-9
@@ -277,16 +277,16 @@ def test_ratio_band_is_loss_band_over_fixed_premium(tri):
 
 def test_pooled_analytical_has_ratio_se(tri):
     # the ratio band rides whatever loss SE the fit has -- analytical for pooled
-    pa = Ratio(loss=PooledLoss(), premium=PooledPremium()).fit(tri).to_polars()
+    pa = LossRatio(loss=PooledLoss(), premium=PooledPremium()).fit(tri).to_polars()
     assert pa.filter(pl.col("source") == "own")["ratio_se"].is_not_null().all()
     # credible point-only: no loss SE -> no ratio SE
-    cred = Ratio(loss=CredibleLoss(), premium=PooledPremium()).fit(tri).to_polars()
+    cred = LossRatio(loss=CredibleLoss(), premium=PooledPremium()).fit(tri).to_polars()
     assert cred["ratio_se"].is_null().all()
 
 
 def test_ratio_coverage_lane_flows_through_backtest(tri):
-    # target="ratio" requires a Ratio estimator (bare loss + "ratio" is rejected)
-    est = Ratio(
+    # target="ratio" requires a LossRatio estimator (bare loss + "ratio" is rejected)
+    est = LossRatio(
         loss=CredibleLoss(uncertainty=ResidualBootstrap(n_replicates=50, seed=2)),
         premium=PooledPremium(),
     )

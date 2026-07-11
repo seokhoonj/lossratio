@@ -466,7 +466,7 @@ tri.mask(holdout=6)
 ## 1.10 함께 보기
 
 - {doc}`손해율 예측 <02-projection>`: 완성한 삼각형의 빈 오른쪽 아래를
-  손해 모델과 보험료 모델로 채워, `Ratio` 합성으로 예측 손해율을 산출합니다.
+  손해 모델과 보험료 모델로 채워, `LossRatio` 합성으로 예측 손해율을 산출합니다.
   (발전 인자 자체의 진단 — ATA·강도 — 는 부록에서 다룹니다.)
 - {doc}`API 레퍼런스 <../api>`의 `Triangle`, `TriangleValidation`,
   `load_experience`, `make_experience`, `validate_experience`,

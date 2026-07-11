@@ -45,9 +45,9 @@ def _fit_df(estimator, df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _ratio_df(loss_estimator, df: pl.DataFrame) -> pl.DataFrame:
-    """RatioFit frame -- the loss ratio lives only on the composed Ratio, so the
+    """LossRatioFit frame -- the loss ratio lives only on the composed LossRatio, so the
     ratio/premium invariance is checked here (the bare LossFit is loss-only)."""
-    out = lr.Ratio(loss=loss_estimator, premium=lr.PooledPremium()).fit(_triangle(df))
+    out = lr.LossRatio(loss=loss_estimator, premium=lr.PooledPremium()).fit(_triangle(df))
     return out.to_polars().sort(KEYS)
 
 
@@ -72,7 +72,7 @@ def test_pooled_loss_unit_invariance():
     _close(sc["loss_proj"].to_numpy(), C * base["loss_proj"].to_numpy())
     # dimensionless quantity unchanged by the currency unit
     _close(sc["loss_total_cv"].to_numpy(), base["loss_total_cv"].to_numpy())
-    # the loss ratio is a composed quantity -> read it off the Ratio: premium
+    # the loss ratio is a composed quantity -> read it off the LossRatio: premium
     # scales by C while the dimensionless ratio is unit-invariant.
     ratio_base = _ratio_df(lr.PooledLoss(), df)
     ratio_sc = _ratio_df(lr.PooledLoss(), scaled)

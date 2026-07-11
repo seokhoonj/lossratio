@@ -923,8 +923,8 @@ def ratio_cmp():
     """Grouped ratio comparison: pooled (analytical SE -> coverage) vs credible
     (point-only -> null coverage). Single holdout keeps the pick unambiguous."""
     return lr.EstimatorComparison(
-        {"pooled": lr.Ratio(loss=lr.PooledLoss()),
-         "credible": lr.Ratio(loss=lr.CredibleLoss())},
+        {"pooled": lr.LossRatio(loss=lr.PooledLoss()),
+         "credible": lr.LossRatio(loss=lr.CredibleLoss())},
         holdouts=12, target="ratio", baseline="pooled",
     ).fit(_triangle(groups="coverage"))
 

@@ -25,7 +25,7 @@ import lossratio as lr
 
 
 def _ratio(loss):
-    return lr.Ratio(loss=loss, premium=lr.PooledPremium())
+    return lr.LossRatio(loss=loss, premium=lr.PooledPremium())
 
 
 @pytest.fixture(scope="module")
@@ -144,7 +144,7 @@ def test_summary_shape(ov_grouped):
 
 def test_fits_keys(ov_grouped):
     assert set(ov_grouped.fits) == {"pooled", "credible"}
-    assert isinstance(ov_grouped.fits["pooled"], lr.RatioFit)
+    assert isinstance(ov_grouped.fits["pooled"], lr.LossRatioFit)
 
 
 # ---------------------------------------------------------------------------

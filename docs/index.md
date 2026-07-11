@@ -62,7 +62,7 @@ ATA 인자(age-to-age factor)·안정성(stability) 진단, 그리고
 ## 30초 미리보기
 
 설치 직후의 전체 흐름은 한 화면에 담깁니다 — 경험 데이터를 불러와
-삼각형으로 집계하고, 손해(분자)와 보험료(분모) 추정기를 `Ratio`로 묶어
+삼각형으로 집계하고, 손해(분자)와 보험료(분모) 추정기를 `LossRatio`로 묶어
 코호트별 예측 손해율과 표준오차를 얻습니다.
 
 ```python
@@ -72,7 +72,7 @@ import lossratio as lr
 df = lr.load_experience()                                   # 시연용 합성 경험 데이터
 tri = lr.Triangle(df.filter(pl.col("coverage") == "SURGERY"), groups="coverage")
 
-fit = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
+fit = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
 fit.summary().select(["cohort", "ratio_proj", "ratio_se"]).head(3)
 #> shape: (3, 3)
 #> ┌────────────┬────────────┬──────────┐

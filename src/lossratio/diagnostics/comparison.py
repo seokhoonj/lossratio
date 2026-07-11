@@ -94,8 +94,8 @@ class EstimatorComparison:
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> cmp = lr.EstimatorComparison(
     ...     {
-    ...         "pooled": lr.Ratio(loss=lr.PooledLoss()),
-    ...         "credible": lr.Ratio(loss=lr.CredibleLoss()),
+    ...         "pooled": lr.LossRatio(loss=lr.PooledLoss()),
+    ...         "credible": lr.LossRatio(loss=lr.CredibleLoss()),
     ...     },
     ...     holdouts=(6, 12, 18, 24),
     ... ).fit(tri)
@@ -114,11 +114,11 @@ class EstimatorComparison:
         if not isinstance(estimators, Mapping):
             raise TypeError(
                 "estimators must be a Mapping of label -> estimator, e.g. "
-                '{"pooled": lr.Ratio(loss=lr.PooledLoss()), '
-                '"credible": lr.Ratio(loss=lr.CredibleLoss())}'
+                '{"pooled": lr.LossRatio(loss=lr.PooledLoss()), '
+                '"credible": lr.LossRatio(loss=lr.CredibleLoss())}'
                 f"; got {type(estimators).__name__}. Labels are required "
                 "because two estimator instances can differ only by "
-                "configuration (two lr.Ratio instances with different "
+                "configuration (two lr.LossRatio instances with different "
                 "loss/premium estimators), so no name can be derived "
                 "automatically."
             )
@@ -145,8 +145,8 @@ class EstimatorComparison:
 
         # Resolve one concrete target for the whole set so the estimators are
         # scored on a single scale: inferred from the estimators when None
-        # (loss -> "loss", premium -> "premium", Ratio -> "ratio"), and rejected
-        # if they disagree (a mixed loss/Ratio set has no common scale). An
+        # (loss -> "loss", premium -> "premium", LossRatio -> "ratio"), and rejected
+        # if they disagree (a mixed loss/LossRatio set has no common scale). An
         # explicit target incompatible with any estimator is rejected here too.
         resolved = {_resolve_target(est, target) for est in estimators.values()}
         if len(resolved) > 1:

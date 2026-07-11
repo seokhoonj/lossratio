@@ -31,7 +31,7 @@ from .estimators.loss import LossFit
 from .estimators.pooled_loss import PooledLoss
 from .estimators.pooled_premium import PooledPremium
 from .estimators.premium import PremiumFit
-from .estimators.ratio import Ratio, RatioFit
+from .estimators.ratio import LossRatio, LossRatioFit
 from .estimators.smooth_loss import SmoothLoss
 from .estimators.smooth_premium import SmoothPremium
 
@@ -55,8 +55,8 @@ __all__ = [
     "PremiumFit",
     "ProjectionOverlay",
     "ProjectionOverlayFit",
-    "Ratio",
-    "RatioFit",
+    "LossRatio",
+    "LossRatioFit",
     "Regime",
     "RegimeDetector",
     "ResidualBootstrap",

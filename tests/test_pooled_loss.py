@@ -30,7 +30,7 @@ def _to_polars(obj) -> pl.DataFrame:
 
 def test_ratio_proj_is_loss_over_premium(exp):
     # the loss ratio lives on the explicit composition, not the bare LossFit
-    rat = lr.Ratio(loss=PooledLoss(), premium=lr.PooledPremium()).fit(
+    rat = lr.LossRatio(loss=PooledLoss(), premium=lr.PooledPremium()).fit(
         lr.Triangle(exp, groups="coverage")
     )
     got = _to_polars(rat)

@@ -1,4 +1,4 @@
-"""Tests for the ``Ratio`` loss/premium composition + ``RatioFit``."""
+"""Tests for the ``LossRatio`` loss/premium composition + ``LossRatioFit``."""
 
 from __future__ import annotations
 
@@ -11,19 +11,19 @@ import lossratio as lr
 
 
 def test_fit_returns_ratio_fit(tri):
-    rf = lr.Ratio(loss=lr.PooledLoss()).fit(tri)
-    assert isinstance(rf, lr.RatioFit)
+    rf = lr.LossRatio(loss=lr.PooledLoss()).fit(tri)
+    assert isinstance(rf, lr.LossRatioFit)
     assert rf.loss_model == "pooled_loss"
     assert rf.premium_model == "pooled_premium"
 
 
 def test_default_premium_is_pooled(tri):
-    rf = lr.Ratio(loss=lr.PooledLoss()).fit(tri)
+    rf = lr.LossRatio(loss=lr.PooledLoss()).fit(tri)
     assert isinstance(rf.premium_fit, lr.PremiumFit)
 
 
 def test_schema_columns(tri):
-    cols = lr.Ratio(loss=lr.PooledLoss()).fit(tri).to_polars().columns
+    cols = lr.LossRatio(loss=lr.PooledLoss()).fit(tri).to_polars().columns
     for c in (
         "coverage", "cohort", "duration",
         "loss_proj", "premium_proj", "ratio_proj",
@@ -33,7 +33,7 @@ def test_schema_columns(tri):
 
 
 def test_ratio_is_loss_over_premium(tri):
-    df = lr.Ratio(loss=lr.PooledLoss()).fit(tri).to_polars().drop_nulls("ratio_proj")
+    df = lr.LossRatio(loss=lr.PooledLoss()).fit(tri).to_polars().drop_nulls("ratio_proj")
     recomputed = df["loss_proj"] / df["premium_proj"]
     assert (df["ratio_proj"] - recomputed).abs().max() == pytest.approx(0.0, abs=1e-12)
 
@@ -44,7 +44,7 @@ def test_lossfit_is_loss_only_ratio_via_composition(tri):
     lf = lr.PooledLoss().fit(tri).to_polars()
     for c in ("ratio_proj", "ratio_se", "premium_proj"):
         assert c not in lf.columns
-    rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).to_polars()
+    rf = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).to_polars()
     for c in ("loss_proj", "premium_proj", "ratio_proj"):
         assert c in rf.columns
     df = rf.drop_nulls("ratio_proj")
@@ -54,7 +54,7 @@ def test_lossfit_is_loss_only_ratio_via_composition(tri):
 
 
 def test_ci_brackets_point(tri):
-    df = lr.Ratio(loss=lr.PooledLoss()).fit(tri).to_polars().drop_nulls(
+    df = lr.LossRatio(loss=lr.PooledLoss()).fit(tri).to_polars().drop_nulls(
         ["ratio_proj", "ratio_se"]
     )
     assert (df["ratio_ci_lo"] <= df["ratio_proj"] + 1e-12).all()
@@ -63,22 +63,22 @@ def test_ci_brackets_point(tri):
 
 
 def test_chain_ladder_loss_side_allowed(tri):
-    rf = lr.Ratio(loss=lr.ChainLadder()).fit(tri)
+    rf = lr.LossRatio(loss=lr.ChainLadder()).fit(tri)
     assert rf.loss_model == "chain_ladder"
 
 
 def test_loss_must_be_estimator():
     with pytest.raises(TypeError, match="loss must be"):
-        lr.Ratio(loss=lr.PooledPremium())
+        lr.LossRatio(loss=lr.PooledPremium())
 
 
 def test_premium_must_be_estimator():
     with pytest.raises(TypeError, match="premium must be"):
-        lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledLoss())
+        lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledLoss())
 
 
 def test_summary_columns(tri):
-    s = lr.Ratio(loss=lr.PooledLoss()).fit(tri).summary()
+    s = lr.LossRatio(loss=lr.PooledLoss()).fit(tri).summary()
     for c in ("coverage", "cohort", "ratio_proj", "ratio_se"):
         assert c in s.columns
 
@@ -99,7 +99,7 @@ def _flat_or_rising(rising: bool):
 
 
 def test_extend_stable_freezes_flat():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     ext = fit.extend(horizon=30)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     frozen = ext.filter(pl.col("status") == "frozen")
@@ -110,7 +110,7 @@ def test_extend_stable_freezes_flat():
 
 
 def test_extend_developing_is_null_uncertain():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=True))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=True))
     ext = fit.extend(horizon=30)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     beyond = ext.filter(pl.col("status") != "projected")
@@ -120,20 +120,20 @@ def test_extend_developing_is_null_uncertain():
 
 
 def test_extend_horizon_within_frontier_adds_nothing():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     ext = fit.extend(horizon=3)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     assert (ext["status"] == "projected").all()
 
 
 def test_extend_invalid_horizon():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     with pytest.raises(ValueError, match="horizon"):
         fit.extend(horizon=0)
 
 
 def test_extend_amounts_columns_and_consistency():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     ext = fit.extend(horizon=30, amounts=True)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     assert {"loss", "premium", "ratio"} <= set(ext.columns)
@@ -149,7 +149,7 @@ def test_extend_amounts_columns_and_consistency():
 
 
 def test_extend_amounts_developing_null():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=True))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=True))
     ext = fit.extend(horizon=30, amounts=True)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     beyond = ext.filter(pl.col("status") == "uncertain")
@@ -159,7 +159,7 @@ def test_extend_amounts_developing_null():
 
 
 def test_extend_amounts_off_has_no_amount_columns():
-    fit = lr.Ratio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
+    fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     ext = fit.extend(horizon=20)
     ext = ext if isinstance(ext, pl.DataFrame) else pl.DataFrame(ext)
     assert "loss" not in ext.columns and "premium" not in ext.columns

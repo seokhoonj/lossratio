@@ -120,11 +120,11 @@ def test_covariate_treatment_detect_path_runs(tri):
 def test_ratio_premium_inherits_covariate_as_segment_wise(tri):
     # A covariate loss keeps EVERY cohort. Premium has no per-regime level to
     # estimate, so it rejects "covariate"; its cohort-keeping counterpart is
-    # "segment_wise". Ratio maps the inherited covariate loss treatment to
+    # "segment_wise". LossRatio maps the inherited covariate loss treatment to
     # segment_wise on the premium (which has no explicit treatment), so the
     # denominator keeps all cohorts and the ratio stays defined on the older
     # regimes rather than going null there. This pins that mapping end-to-end.
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(regime=lr.Regime(change=CHANGE), treatment="covariate"),
         premium=lr.PooledPremium(),  # treatment=None -> inherit -> segment_wise
     )
@@ -139,7 +139,7 @@ def test_ratio_premium_inherits_covariate_as_segment_wise(tri):
 def test_ratio_explicit_premium_treatment_is_not_overridden(tri):
     # An EXPLICIT premium treatment is honoured, never overridden by the loss
     # side's treatment (inheritance only fills a premium treatment of None).
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(regime=lr.Regime(change=CHANGE), treatment="covariate"),
         premium=lr.PooledPremium(treatment="latest_only"),
     )

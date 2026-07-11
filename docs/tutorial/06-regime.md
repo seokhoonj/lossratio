@@ -222,7 +222,7 @@ reg.evaluate(material=0.05, sig=0.05).select(
 실제 예측을 끊는다. 점수화·검토와 적합이 같은 변화점을 쓰도록 닫는 고리다.
 
 ```python
-fit = lr.Ratio(loss=lr.PooledLoss(regime=reg.accepted())).fit(tri)
+fit = lr.LossRatio(loss=lr.PooledLoss(regime=reg.accepted())).fit(tri)
 ```
 
 ## 5.4 예측에 반영하기
@@ -235,12 +235,12 @@ fit = lr.Ratio(loss=lr.PooledLoss(regime=reg.accepted())).fit(tri)
 §5.5에서 다룬다.)
 
 ```python
-base    = lr.Ratio(                       # regime 무시
+base    = lr.LossRatio(                       # regime 무시
     loss=lr.PooledLoss(),
     premium=lr.PooledPremium(),
 ).fit(tri)
 
-trimmed = lr.Ratio(                       # RegimeDetector 의 Regime 을 그대로 반영
+trimmed = lr.LossRatio(                       # RegimeDetector 의 Regime 을 그대로 반영
     loss=lr.PooledLoss(regime=reg),
     premium=lr.PooledPremium(),
 ).fit(tri)
@@ -360,7 +360,7 @@ out = []
 r = lr.RegimeDetector().detect(tri)  # 탐지는 treatment과 무관 — 한 번만
 for tr in ["latest_only", "segment_wise", "covariate"]:
     est = lr.CredibleLoss if tr == "covariate" else lr.PooledLoss
-    s = (lr.Ratio(loss=est(regime=r, treatment=tr), premium=lr.PooledPremium()).fit(tri)
+    s = (lr.LossRatio(loss=est(regime=r, treatment=tr), premium=lr.PooledPremium()).fit(tri)
          .summary().sort("cohort").tail(3)
          .select(["cohort", pl.col("ratio_proj").alias(tr)]))
     out.append(s)
@@ -385,13 +385,13 @@ reduce(lambda a, b: a.join(b, on="cohort"), out)
 구조 변화는 손해 쪽과 보험료 쪽에서 **따로** 일어날 수 있다. 손해 쪽
 변화는 약관 개정·손해사정 변경에서, 보험료 쪽 변화는 요율 개정·판매 채널
 이동에서 온다. 두 사건이 같은 시점일 이유는 없으므로, 손해율
-합성(`Ratio`)에서는 손해쪽 추정기와 보험료쪽 추정기에 `regime`을 **따로**
+합성(`LossRatio`)에서는 손해쪽 추정기와 보험료쪽 추정기에 `regime`을 **따로**
 지정해 서로 다른 변화 시점을 줄 수 있다.
 
 ```python
 from datetime import date
 
-lr.Ratio(
+lr.LossRatio(
     loss=lr.PooledLoss(regime=date(2024, 7, 1)),        # 손해 쪽 변화
     premium=lr.PooledPremium(regime=date(2024, 1, 1)),  # 보험료 쪽 변화
 ).fit(tri)

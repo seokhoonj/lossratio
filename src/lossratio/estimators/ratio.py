@@ -1,6 +1,6 @@
 """Loss-ratio composition (numerator / denominator).
 
-``Ratio`` pairs a loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
+``LossRatio`` pairs a loss-side estimator (``PooledLoss`` / ``CredibleLoss`` /
 ``SmoothLoss`` / ``ChainLadder``) with a premium-side estimator
 (``PooledPremium``) and composes the projected loss ratio
 ``ratio_proj = loss_proj / premium_proj`` cell by cell, banding the result from
@@ -14,7 +14,7 @@ artifact that, where it does not simply cancel against the numerator, only
 widens the ratio band spuriously. The ratio band therefore carries the loss
 fit's own uncertainty, divided by the projected denominator.
 
-The result is a :class:`RatioFit` -- a long-format frame with ``ratio_proj`` +
+The result is a :class:`LossRatioFit` -- a long-format frame with ``ratio_proj`` +
 the ratio band, carrying the contributing ``loss_proj`` / ``premium_proj`` and
 their SEs for transparency.
 """
@@ -49,7 +49,7 @@ _RATIO_COLUMNS = [
 
 
 @dataclass(kw_only=True)
-class Ratio:
+class LossRatio:
     """Loss-ratio composition of a loss estimator and a premium estimator.
 
     Parameters
@@ -88,7 +88,7 @@ class Ratio:
         if not (0.0 < self.confidence_level < 1.0):
             raise ValueError(f"confidence_level must be in (0, 1), got {self.confidence_level!r}")
 
-    def fit(self, triangle: Triangle) -> RatioFit:
+    def fit(self, triangle: Triangle) -> LossRatioFit:
         """Fit both sides on ``triangle`` and compose the loss ratio."""
         loss_fit = self.loss.fit(triangle)
         premium = self.premium
@@ -179,7 +179,7 @@ class Ratio:
         order = (report_groups or []) + _RATIO_COLUMNS
         df = composed.select(order)
 
-        return RatioFit(
+        return LossRatioFit(
             df,
             groups=loss_fit.groups,
             loss_model=loss_fit.model,
@@ -201,10 +201,10 @@ def _match_premium(loss: _LossEstimatorBase) -> _PremiumEstimatorBase:
     the pooled / link-ratio loss rungs (``PooledLoss`` / ``ChainLadder``) with
     ``PooledPremium``. Only the VARIANT is matched -- the matched premium carries
     its own defaults; the per-side regime / recent filters are not inherited here
-    (premium's treatment is inherited separately in :meth:`Ratio.fit`).
+    (premium's treatment is inherited separately in :meth:`LossRatio.fit`).
     """
     # local imports avoid a module-load cycle (the estimator modules import the
-    # fit result classes that live alongside Ratio).
+    # fit result classes that live alongside LossRatio).
     from .credible_loss import CredibleLoss
     from .credible_premium import CrediblePremium
     from .pooled_premium import PooledPremium
@@ -248,7 +248,7 @@ def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:
 # ---------------------------------------------------------------------------
 
 
-class RatioFit:
+class LossRatioFit:
     """Composed loss-ratio projection result.
 
     The long-format frame (one row per cohort x duration cell) carries
@@ -325,7 +325,7 @@ class RatioFit:
         if self._triangle is None:
             raise ValueError(
                 "predict(by=...) requires the source triangle; build the fit via "
-                "Ratio(...).fit(triangle)."
+                "LossRatio(...).fit(triangle)."
             )
         by = [by] if isinstance(by, str) else list(by)
         full_groups = set(normalize_groups(self._triangle.groups) or [])
@@ -439,7 +439,7 @@ class RatioFit:
         if self._triangle is None:
             raise ValueError(
                 "extend requires the source triangle; build the fit via "
-                "Ratio(...).fit(triangle)."
+                "LossRatio(...).fit(triangle)."
             )
         if not isinstance(horizon, int) or horizon < 1:
             raise ValueError(f"horizon must be a positive int, got {horizon!r}")
@@ -548,6 +548,6 @@ class RatioFit:
 
     def __repr__(self) -> str:
         return (
-            f"RatioFit(loss_model={self.loss_model!r}, "
+            f"LossRatioFit(loss_model={self.loss_model!r}, "
             f"premium_model={self.premium_model!r}, rows={self._df.height})"
         )

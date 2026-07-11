@@ -29,7 +29,7 @@ lossratio는 모든 보험 종목을 아우르는 범용 이론 도구가 아닙
 ## 전체 지도 — 파이프라인이 아니라 객체와 옵션
 
 lossratio는 세 가지로 이뤄집니다 — **데이터**(`Triangle`), **모델**(생성한 뒤
-데이터에 적합), **결과**(`RatioFit`). 아래는 그 관계입니다. 왼쪽에서 오른쪽으로
+데이터에 적합), **결과**(`LossRatioFit`). 아래는 그 관계입니다. 왼쪽에서 오른쪽으로
 *반드시 거치는 단계*가 아니라, **필요한 것을 골라 끼우는 구조**입니다.
 
 ```{mermaid}
@@ -37,9 +37,9 @@ flowchart TB
   A["경험 데이터"] --> T["<b>Triangle</b><br/>코호트 × 경과 · 1장"]
   T --> LM["<b>손해 모델</b><br/>Pooled/Credible/Smooth<br/>2·3장"]
   T --> PM["<b>보험료 모델</b><br/>PooledPremium · 2장"]
-  LM --> R["<b>Ratio 합성</b><br/>손해율 = 손해 / 보험료 · 2장"]
+  LM --> R["<b>LossRatio 합성</b><br/>손해율 = 손해 / 보험료 · 2장"]
   PM --> R
-  R --> RF["<b>RatioFit</b><br/>예측 손해율"]
+  R --> RF["<b>LossRatioFit</b><br/>예측 손해율"]
   OPT["<b>옵션 (추정기 인자)</b><br/>불확실성 4장 · 구조 변화 5장 · 공변량 6장"] -. 끼움 .-> LM
   T -. 진단 (선택) .-> DIAG["ATA · 강도 · ChainLadder<br/>부록"]
   RF --> V["<b>검증 (직교)</b><br/>백테스트 7장 · 안정성 8장"]
@@ -82,8 +82,8 @@ flowchart TB
   - 손해율 삼각형 — 경험 데이터 구성
   - 장기 건강보험 손해율이 왜 어려운가(닫히지 않는 흐름), 경험 데이터의 구조, 코호트 × 경과 삼각형, 누적과 증분, 4담보를 `groups`로 올리기
 * - 2
-  - 손해율 예측 — 손해·보험료 모델과 Ratio 합성
-  - 완전 풀링 `PooledLoss`(강도 × 보험료), 보험료는 알려진 노출로 자기-발전 `PooledPremium`, `Ratio(loss=, premium=)` 합성으로 예측 손해율 산출과 읽기
+  - 손해율 예측 — 손해·보험료 모델과 LossRatio 합성
+  - 완전 풀링 `PooledLoss`(강도 × 보험료), 보험료는 알려진 노출로 자기-발전 `PooledPremium`, `LossRatio(loss=, premium=)` 합성으로 예측 손해율 산출과 읽기
 * - 3
   - 코호트 보정 — 신뢰도(Credible)와 평활(Smooth)
   - 관측 셀이 적은 최근 코호트를 얼마나 믿을지: `CredibleLoss`(코호트 수준 부분 풀링, `.credibility`), `SmoothLoss`(형상 평활)

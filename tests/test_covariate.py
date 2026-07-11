@@ -653,11 +653,11 @@ def test_ratio_covariate_headline_no_crash():
     import lossratio as lr
     from lossratio._kernels.io import normalize_groups
     df = _experience_source({"F": 1.3, "M": 1.0})
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
         premium=lr.PooledPremium(),
     ).fit(_tri(df))
-    assert isinstance(rat, lr.RatioFit)
+    assert isinstance(rat, lr.LossRatioFit)
     # groups collapse to the reporting grain (sex was the only group + covariate)
     assert normalize_groups(rat.groups) == []
     head = rat.predict()
@@ -670,7 +670,7 @@ def test_ratio_predict_by_reconciles_loss_and_premium():
     are additive at a fixed cohort x duration)."""
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
         premium=lr.PooledPremium(),
     ).fit(_tri(df))
@@ -700,7 +700,7 @@ def test_ratio_predict_by_shows_ratio_relativity():
     morbidity, same premium) projects a higher loss ratio than M."""
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
         premium=lr.PooledPremium(),
     ).fit(_tri(df))
@@ -721,7 +721,7 @@ def test_ratio_predict_by_rejects_loss_only_covariate():
     predict(by=) rejects any column not among the triangle's real group cols."""
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(covariates=["sex"], lam_cov=0.0),
         premium=lr.PooledPremium(),
     ).fit(_tri(df))
@@ -734,7 +734,7 @@ def test_ratio_predict_by_requires_covariate_fit():
     has no covariate surface to disaggregate."""
     import lossratio as lr
     df = _experience_source({"F": 1.3, "M": 1.0})
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(), premium=lr.PooledPremium()
     ).fit(_tri(df))
     with pytest.raises(ValueError, match="covariates="):
@@ -748,7 +748,7 @@ def test_ratio_predict_by_ragged_spans_reconcile():
     import lossratio as lr
     df = _ragged_source()
     tri = lr.Triangle(df, groups=["coverage", "age_band"])
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(covariates=["age_band"], lam_cov=0.0),
         premium=lr.PooledPremium(),
     ).fit(tri)

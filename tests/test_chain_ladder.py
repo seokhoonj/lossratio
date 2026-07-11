@@ -90,7 +90,7 @@ def test_odp_bootstrap_populates_se_ci(exp):
     assert (proj["loss_proj"] <= proj["loss_ci_hi"] + 1e-6).all()
     # the bootstrapped loss SE propagates to the ratio band on the composition
     rat = _to_polars(
-        lr.Ratio(
+        lr.LossRatio(
             loss=ChainLadder(uncertainty=ResidualBootstrap(n_replicates=80, seed=1)),
             premium=lr.PooledPremium(),
         ).fit(tri)

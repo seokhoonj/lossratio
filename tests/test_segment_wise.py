@@ -199,7 +199,7 @@ def test_both_side_segment_wise_ratio_has_no_null(Prem, tri):
     # could only cut, the old cohorts' ratio would be null. With premium
     # segment_wise both sides keep every cohort -> zero null ratio.
     reg = lr.Regime(change=CHANGE)
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.CredibleLoss(regime=reg, treatment="segment_wise"),
         premium=Prem(regime=reg, treatment="segment_wise"),
     ).fit(tri).to_polars()
@@ -282,7 +282,7 @@ def test_ragged_depth_both_side_ratio_has_no_null():
     # regime shallowest -> zero null ratio.
     tri = lr.Triangle(_ragged_input(), grain="M")
     reg = lr.Regime(change=_RAGGED_CHANGES)
-    rat = lr.Ratio(
+    rat = lr.LossRatio(
         loss=lr.PooledLoss(regime=reg, treatment="segment_wise"),
         premium=lr.PooledPremium(regime=reg, treatment="segment_wise"),
     ).fit(tri).to_polars()

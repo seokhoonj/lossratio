@@ -1,4 +1,4 @@
-# 2장. 손해율 예측 — 손해·보험료 모델과 Ratio 합성
+# 2장. 손해율 예측 — 손해·보험료 모델과 LossRatio 합성
 
 ```{admonition} 이 장에서 배우는 것
 :class: tip
@@ -6,7 +6,7 @@
 - 손해율 예측은 손해와 보험료를 각각 미래로 뻗어 합성하는 것
 - 손해 모델 `PooledLoss` — 강도 x 누적 보험료
 - 보험료 모델 `PooledPremium` — 알려진 노출이라 자기-발전, 점추정
-- `Ratio(loss=, premium=)` 합성과 예측 손해율 읽기
+- `LossRatio(loss=, premium=)` 합성과 예측 손해율 읽기
 - 예측 손해율의 밴드는 분자(손해)에서 온다
 ```
 
@@ -132,13 +132,13 @@ pf = lr.PooledPremium().fit(tri)
 보험료는 *알려진 노출*이라 점추정만 냅니다 — 발전계수에 표준오차를 붙이지
 않습니다. 이유는 2.6에서 밴드를 다룰 때 봅니다.
 
-## 2.4 합성 — Ratio
+## 2.4 합성 — LossRatio
 
-손해와 보험료 두 예측을 나누면 예측 손해율입니다. `Ratio`에 손해 모델과 보험료
+손해와 보험료 두 예측을 나누면 예측 손해율입니다. `LossRatio`에 손해 모델과 보험료
 모델을 넘겨 합성합니다. 각 셀의 `ratio_proj`는 `loss_proj / premium_proj`입니다.
 
 ```python
-rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
+rf = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
 
 (rf.df
     .filter(pl.col("cohort") == pl.date(2025, 6, 1))
@@ -182,12 +182,12 @@ rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri)
    tri = lr.Triangle(
        lr.load_experience().filter(pl.col("coverage") == "CANCER"),
        groups="coverage")
-   lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).plot(metric="ratio")
+   lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()).fit(tri).plot(metric="ratio")
 ```
 
 ## 2.5 결과 읽기 — summary · predict · plot
 
-적합 결과 `RatioFit`은 셀별 진단이 모두 담긴 `.df` 외에, 바로 쓰기 위한 세
+적합 결과 `LossRatioFit`은 셀별 진단이 모두 담긴 `.df` 외에, 바로 쓰기 위한 세
 메서드를 제공합니다.
 
 `.summary()`는 **코호트별 최종 예측**(마지막 경과)을 한 줄씩 냅니다.
@@ -288,4 +288,4 @@ $$
 - {doc}`예측 검증 <07-backtest>`: 방법 선택을 데이터로 가리는 백테스트.
 - 부록 — {doc}`ATA 인자 <02-ata>`·{doc}`강도 <03-intensity>`: `PooledLoss`가
   손해를 채우는 데 쓰는 강도 `g_k`의 정의와 진단.
-- {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `PooledPremium`, `Ratio`.
+- {doc}`API 레퍼런스 <../api>`의 `PooledLoss`, `PooledPremium`, `LossRatio`.

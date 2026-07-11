@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
 def _estimator_covariates(estimator: Any) -> list[str] | None:
     """Covariates driving an estimator's reporting grain, resolved through the
-    loss side of a ``Ratio`` (whose covariates live on ``.loss``, not on the
-    ``Ratio`` itself). A bare loss estimator carries ``covariates`` directly."""
+    loss side of a ``LossRatio`` (whose covariates live on ``.loss``, not on the
+    ``LossRatio`` itself). A bare loss estimator carries ``covariates`` directly."""
     return getattr(estimator, "covariates", None) or getattr(
         getattr(estimator, "loss", None), "covariates", None
     )
@@ -104,7 +104,7 @@ def _resolve_target(estimator: Any, target: str | None) -> str:
     """Resolve the backtest target, inferring it from the estimator when ``None``.
 
     The estimator DETERMINES what can be scored: a loss estimator projects loss
-    only, a premium estimator premium only, and a ``Ratio`` composition the loss
+    only, a premium estimator premium only, and a ``LossRatio`` composition the loss
     ratio (and, on request, either leg). So ``target`` defaults to the
     estimator's own headline projection, and an explicit target the estimator
     cannot produce -- most commonly ``target="ratio"`` against a bare loss
@@ -116,9 +116,9 @@ def _resolve_target(estimator: Any, target: str | None) -> str:
     passed through to the fit-time column lookup.
     """
     from ..estimators._base import _LossEstimatorBase, _PremiumEstimatorBase
-    from ..estimators.ratio import Ratio
+    from ..estimators.ratio import LossRatio
 
-    is_ratio = isinstance(estimator, Ratio)
+    is_ratio = isinstance(estimator, LossRatio)
     is_loss = isinstance(estimator, _LossEstimatorBase)
     is_premium = isinstance(estimator, _PremiumEstimatorBase)
 
@@ -137,7 +137,7 @@ def _resolve_target(estimator: Any, target: str | None) -> str:
     if target not in _VALID_TARGETS:
         raise ValueError(f"target must be one of {_VALID_TARGETS}, got {target!r}")
 
-    # Only a Ratio composition carries a premium denominator, so only it can be
+    # Only a LossRatio composition carries a premium denominator, so only it can be
     # scored on "ratio" (or, as a leg, "loss" / "premium"). A bare loss / premium
     # estimator is pinned to its own projection.
     if is_ratio:
@@ -146,7 +146,7 @@ def _resolve_target(estimator: Any, target: str | None) -> str:
         raise ValueError(
             f"target={target!r} needs a premium denominator, but a bare loss "
             f"estimator ({type(estimator).__name__}) projects loss only. Use "
-            "target='loss', or compose Ratio(loss=..., premium=...) to score the "
+            "target='loss', or compose LossRatio(loss=..., premium=...) to score the "
             "loss ratio."
         )
     if is_premium and target != "premium":
@@ -196,7 +196,7 @@ def _resolve_expected_column(target: str, fit_df_columns: list[str]) -> str:
     """Map ``target`` to the projection column on the refit output frame.
 
     A loss estimator emits ``loss_proj``, a premium estimator ``premium_proj``,
-    and a ``Ratio`` composition all of ``loss_proj`` / ``premium_proj`` /
+    and a ``LossRatio`` composition all of ``loss_proj`` / ``premium_proj`` /
     ``ratio_proj``. The target has already been validated against the estimator
     (see :func:`_resolve_target`), so the role-named lookup resolves.
     """
@@ -269,7 +269,7 @@ class _FoldBacktest:
     estimator
         A ``lr.PooledLoss`` / ``lr.CredibleLoss`` / ``lr.SmoothLoss`` /
         ``lr.ChainLadder`` instance (scored on ``loss``), a premium estimator
-        (scored on ``premium``), or a ``lr.Ratio`` composition (scored on
+        (scored on ``premium``), or a ``lr.LossRatio`` composition (scored on
         ``ratio``).
 
         Attach uncertainty with ``uncertainty=lr.ResidualBootstrap(...)``:
@@ -282,7 +282,7 @@ class _FoldBacktest:
     target
         Which projection to score: ``"loss"``, ``"premium"``, or ``"ratio"``.
         Defaults to ``None`` -- inferred from the estimator (loss -> ``"loss"``,
-        premium -> ``"premium"``, ``Ratio`` -> ``"ratio"``). An explicit target
+        premium -> ``"premium"``, ``LossRatio`` -> ``"ratio"``). An explicit target
         the estimator cannot produce (e.g. ``"ratio"`` on a bare loss estimator)
         is rejected.
     """
@@ -818,7 +818,7 @@ class Backtest:
     target
         Which projection to score: ``"loss"``, ``"premium"``, or ``"ratio"``.
         Defaults to ``None`` -- inferred from the estimator (loss -> ``"loss"``,
-        premium -> ``"premium"``, ``Ratio`` -> ``"ratio"``); an incompatible
+        premium -> ``"premium"``, ``LossRatio`` -> ``"ratio"``); an incompatible
         explicit target is rejected.
 
     Examples

@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 # and its bands ONLY -- the denominator (premium) and the loss ratio are not
 # surfaced here: the intensity model consumes the projected premium internally
 # (incr_loss = g_k * premium), but the loss ratio is a composed quantity,
-# obtained solely through the explicit Ratio(loss=, premium=) surface.
+# obtained solely through the explicit LossRatio(loss=, premium=) surface.
 _LOSS_COLUMNS = [
     "cohort", "duration",
     "loss_obs", "loss_proj", "incr_loss_proj",
@@ -833,7 +833,7 @@ def _segment_covariate_surface(
     duration-varying mix, premium-only cells, and left-truncated cohorts.
     Returns a long frame ``[groups?, cohort, duration, *covariates, loss_proj,
     incr_loss_proj, source]`` (loss only; the loss ratio is composed via
-    ``Ratio`` from the premium side).
+    ``LossRatio`` from the premium side).
     """
     n_cohorts, n_dur = loss_proj.shape
     by_cohort_duration = cov_data.by_cohort_duration
@@ -1759,7 +1759,7 @@ class LossFit:
         """Per-cell loss-projection surface: cumulative + incremental projected
         loss and each cell's ``source`` (observed / own / grafted). A focused
         view of :attr:`df` without the SE / CI columns. The loss ratio is a
-        composed quantity -- obtain it through ``Ratio(loss=, premium=)``.
+        composed quantity -- obtain it through ``LossRatio(loss=, premium=)``.
 
         ``by`` (covariate fits only) disaggregates the surface by one or more
         of the fitted covariates -- one row per ``cohort x duration x by`` cell,
@@ -1822,7 +1822,7 @@ class LossFit:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is ``"loss"`` (cumulative
-        projected loss); the loss ratio is plotted from a ``Ratio`` fit, not a
+        projected loss); the loss ratio is plotted from a ``LossRatio`` fit, not a
         bare ``LossFit``.
 
         With ``cohort`` (an ISO date string like ``"2025-06-01"`` or a

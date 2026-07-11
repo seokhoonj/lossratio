@@ -251,7 +251,7 @@ def test_holdout_summary_aggregates_by_holdout():
 
 
 # ---------------------------------------------------------------------------
-# Ratio target (default) works end to end
+# LossRatio target (default) works end to end
 # ---------------------------------------------------------------------------
 
 

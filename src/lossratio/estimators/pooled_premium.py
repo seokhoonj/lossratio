@@ -6,7 +6,7 @@ cumulative premium. Premium has no external exposure -- it is its
 own volume base -- so it self-develops by a multiplicative link ratio, the
 denominator analogue of the loss-side ``PooledLoss``. It returns the
 engine-backed :class:`~lossratio.estimators.premium.PremiumFit` and feeds the
-:class:`~lossratio.estimators.ratio.Ratio` composition as the chosen denominator model.
+:class:`~lossratio.estimators.ratio.LossRatio` composition as the chosen denominator model.
 
 Thin config dataclass + ``.fit(triangle)`` (sklearn-style), the shared
 estimator contract: a pure-config object (free ``repr`` / ``eq``,

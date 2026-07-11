@@ -93,11 +93,11 @@ exp(-1.61) = 0.20      70+ 는 0.20 배
 
 2장의 `predict()` 는 공변량으로 쪼개지 않은 **전체 예측** — 코호트 x 경과 한
 장 — 을 준다. 공변량을 넣었으면 `predict(by="age_band")` 로 그 전체 예측을
-속성별로 *나눠* 볼 수 있다. 손해율은 합성값이라 loss 모델을 `Ratio` 로 감싸
+속성별로 *나눠* 볼 수 있다. 손해율은 합성값이라 loss 모델을 `LossRatio` 로 감싸
 분모(보험료)를 붙여야 나온다 — `LossFit` 자체는 `loss_proj` 만 낸다.
 
 ```python
-rf = lr.Ratio(loss=lr.CredibleLoss(covariates=["age_band"]),
+rf = lr.LossRatio(loss=lr.CredibleLoss(covariates=["age_band"]),
               premium=lr.PooledPremium()).fit(tri)
 
 rf.predict()               # 전체 예측: 코호트 x 경과 (coverage 단위)
@@ -226,7 +226,7 @@ lr.CredibleLoss(covariates=["age_band", "channel"],
 정확히 일치한다:
 
 ```python
-rf = lr.Ratio(loss=lr.CredibleLoss(covariates=["age_band", "channel"]),
+rf = lr.LossRatio(loss=lr.CredibleLoss(covariates=["age_band", "channel"]),
               premium=lr.PooledPremium()).fit(tri)
 rf.predict(by=["age_band", "channel"])
 #> coverage cohort     duration age_band channel loss_proj    ratio_proj

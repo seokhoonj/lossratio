@@ -51,8 +51,8 @@ class ProjectionOverlay:
     ----------
     estimators
         A ``Mapping`` of label -> estimator, e.g. ``{"pooled":
-        lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()), "credible":
-        lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium())}``. Labels
+        lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()), "credible":
+        lr.LossRatio(loss=lr.CredibleLoss(), premium=lr.PooledPremium())}``. Labels
         are required (two estimator instances can differ only by configuration,
         so no name can be derived automatically); insertion order is canonical
         -- it fixes the estimator order and the line / colour order in the plot.
@@ -61,7 +61,7 @@ class ProjectionOverlay:
     target
         Which projection to overlay: ``"loss"``, ``"premium"``, or ``"ratio"``.
         Defaults to ``None`` -- inferred from the estimators (a loss estimator
-        projects loss, a premium estimator premium, a ``Ratio`` the loss ratio),
+        projects loss, a premium estimator premium, a ``LossRatio`` the loss ratio),
         and rejected if they resolve to different scales.
 
     Examples
@@ -70,8 +70,8 @@ class ProjectionOverlay:
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> ov = lr.ProjectionOverlay(
     ...     {
-    ...         "pooled": lr.Ratio(loss=lr.PooledLoss(), premium=lr.PooledPremium()),
-    ...         "credible": lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
+    ...         "pooled": lr.LossRatio(loss=lr.PooledLoss(), premium=lr.PooledPremium()),
+    ...         "credible": lr.LossRatio(loss=lr.CredibleLoss(), premium=lr.PooledPremium()),
     ...     },
     ... ).fit(tri)
     >>> ov.summary()                       # per-cohort projected ratio, one row per estimator
@@ -87,9 +87,9 @@ class ProjectionOverlay:
         if not isinstance(estimators, Mapping):
             raise TypeError(
                 "estimators must be a Mapping of label -> estimator, e.g. "
-                '{"pooled": lr.Ratio(loss=lr.PooledLoss(), '
+                '{"pooled": lr.LossRatio(loss=lr.PooledLoss(), '
                 'premium=lr.PooledPremium()), "credible": '
-                "lr.Ratio(loss=lr.CredibleLoss(), premium=lr.PooledPremium())}"
+                "lr.LossRatio(loss=lr.CredibleLoss(), premium=lr.PooledPremium())}"
                 f"; got {type(estimators).__name__}. Labels are required "
                 "because two estimator instances can differ only by "
                 "configuration, so no name can be derived automatically."
@@ -113,8 +113,8 @@ class ProjectionOverlay:
 
         # Resolve one concrete target for the whole set so the estimators are
         # overlaid on a single scale: inferred from the estimators when None
-        # (loss -> "loss", premium -> "premium", Ratio -> "ratio"), and rejected
-        # if they disagree (a mixed loss / Ratio set has no common scale).
+        # (loss -> "loss", premium -> "premium", LossRatio -> "ratio"), and rejected
+        # if they disagree (a mixed loss / LossRatio set has no common scale).
         resolved = {_resolve_target(est, target) for est in estimators.values()}
         if len(resolved) > 1:
             raise ValueError(
@@ -148,7 +148,7 @@ class ProjectionOverlayFit:
         the target projection column is ``ratio_proj`` / ``loss_proj`` /
         ``premium_proj`` per the resolved target. Estimator insertion order is
         canonical (it fixes the plot's line / colour order).
-    fits : dict[str, LossFit | PremiumFit | RatioFit]
+    fits : dict[str, LossFit | PremiumFit | LossRatioFit]
         The per-estimator full-data fit, keyed by label -- the drill-down.
     target : str
         The resolved projection scale (``"loss"`` / ``"premium"`` / ``"ratio"``).

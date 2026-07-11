@@ -9,10 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
-- **`Ratio` drops `se_method` and `rho`.** The ratio band is now always
+- **`Ratio` is renamed to `LossRatio`, and `RatioFit` to `LossRatioFit`.** The
+  composition class and its result now name the quantity they produce -- a loss
+  ratio -- rather than a generic ratio. Construction and use are otherwise
+  unchanged: `lr.LossRatio(loss=..., premium=...).fit(triangle)` returns a
+  `LossRatioFit`. The projected metric columns keep their names (`ratio_proj` /
+  `ratio_se` / `ratio_ci_lo` / `ratio_ci_hi`) -- they are the loss-ratio metric,
+  part of the `loss` / `premium` / `ratio` triplet used throughout, and are
+  independent of the class name.
+- **`LossRatio` drops `se_method` and `rho`.** The ratio band is now always
   `ratio_se = loss_total_se / premium_proj` (the former `se_method="fixed"`),
   the single correct path; the `se_method=` and `rho=` arguments, the
-  `RatioFit.se_method` / `.rho` slots, and the internal `_estimate_rho` are
+  `LossRatioFit.se_method` / `.rho` slots, and the internal `_estimate_rho` are
   removed. The risk premium is an allocated exposure (rate x in-force), not a
   stochastic claims-development process, so banding the denominator propagates a
   development-factor artifact -- measured on real books to inflate the ratio CV

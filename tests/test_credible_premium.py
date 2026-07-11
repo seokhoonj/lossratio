@@ -77,6 +77,6 @@ def test_single_cohort_collapses_to_pooled(tri):
 
 
 def test_ratio_with_credible_premium(tri):
-    rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.CrediblePremium()).fit(tri)
+    rf = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.CrediblePremium()).fit(tri)
     assert rf.premium_model == "credible_premium"
     assert "ratio_proj" in rf.to_polars().columns

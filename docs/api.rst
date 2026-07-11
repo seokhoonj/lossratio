@@ -100,10 +100,10 @@ artifact라서 surface하지 않습니다(``premium_*_se`` / ``premium_*_ci_*`` 
 손해율 합성
 -----------
 
-.. autoclass:: lossratio.Ratio
+.. autoclass:: lossratio.LossRatio
    :members:
 
-.. autoclass:: lossratio.RatioFit
+.. autoclass:: lossratio.LossRatioFit
    :members:
 
 Go-forward 안정성

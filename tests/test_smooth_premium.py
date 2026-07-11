@@ -50,6 +50,6 @@ def test_invalid_params_rejected():
 
 
 def test_ratio_with_smooth_premium(tri):
-    rf = lr.Ratio(loss=lr.PooledLoss(), premium=lr.SmoothPremium()).fit(tri)
+    rf = lr.LossRatio(loss=lr.PooledLoss(), premium=lr.SmoothPremium()).fit(tri)
     assert rf.premium_model == "smooth_premium"
     assert "ratio_proj" in rf.to_polars().columns
