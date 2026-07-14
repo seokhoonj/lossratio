@@ -15,6 +15,7 @@ from .._kernels.io import (
     to_polars,
 )
 from .._kernels.period import (
+    Grain,
     coerce_cols_to_date,
     count_periods,
     floor_cols_to_period,
@@ -417,7 +418,7 @@ class Triangle:
         return self._duration
 
     @property
-    def grain(self) -> str:
+    def grain(self) -> Grain:
         """Triangle grain code: ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``.
 
         Matches the standard column suffix (``"M"`` <-> ``duration_m``, etc.).

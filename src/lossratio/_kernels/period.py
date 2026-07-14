@@ -26,12 +26,19 @@ Three concerns, all expressed in domain-neutral terms (no `cohort` /
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, TypeAlias, cast
 
 import numpy as np
 import polars as pl
 
 from .io import scalar_int
+from .provenance import collapse_source_expr
+
+# A resolved grain code: the four legal period granularities, finest -> coarsest.
+# (User-facing entry points also accept the string ``"auto"``, which
+# :func:`resolve_grain` collapses to one of these before it reaches the rest of
+# the codebase.)
+Grain: TypeAlias = Literal["M", "Q", "H", "Y"]
 
 # Grain codes ordered finest -> coarsest.
 GRAIN_ORDER = {"M": 0, "Q": 1, "H": 2, "Y": 3}
@@ -178,7 +185,7 @@ def coerce_cols_to_date(df: pl.DataFrame, col_names: list[str]) -> pl.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def infer_grain(col: pl.Series) -> str:
+def infer_grain(col: pl.Series) -> Grain:
     """Infer grain from a Date column's value spacing.
 
     The algorithm: convert each unique date to a year*12+month index,
@@ -252,7 +259,7 @@ def _validate_grain(input_grain: str, requested: str) -> None:
         )
 
 
-def resolve_grain(input_grain: str, requested: str) -> str:
+def resolve_grain(input_grain: Grain, requested: str) -> Grain:
     """Resolve ``"auto"`` to ``input_grain``, else validate ``requested``.
 
     Convenience wrapper for the common pattern in constructors:
@@ -265,7 +272,7 @@ def resolve_grain(input_grain: str, requested: str) -> str:
     if requested == "auto":
         return input_grain
     _validate_grain(input_grain, requested)
-    return requested
+    return cast(Grain, requested)  # _validate_grain has confirmed it is a Grain
 
 
 # ---------------------------------------------------------------------------
@@ -391,10 +398,11 @@ def sum_increments_to_grain(
     df: pl.DataFrame,
     *,
     group_cols: list[str],
-    from_grain: str,
-    to_grain: str,
+    from_grain: Grain,
+    to_grain: Grain,
     incr_col: str,
     cum_col: str,
+    include_source: bool = True,
 ) -> pl.DataFrame:
     """Aggregate a fine-grain projection frame up to a coarser display grain.
 
@@ -408,8 +416,17 @@ def sum_increments_to_grain(
 
     A deterministic aggregation of an already-projected frame -- not a re-fit --
     so the coarse numbers are exactly the fine frame summed up. ``df`` must carry
-    ``cohort`` / ``duration`` / ``source`` / ``incr_col``. Returns
-    ``[*group_cols, cohort, duration, cum_col, incr_col, source]``.
+    ``cohort`` / ``duration`` / ``incr_col`` (and ``source`` when
+    ``include_source``). ``include_source=False`` skips the provenance collapse
+    and omits ``source`` -- for a leg whose provenance is discarded (e.g. the
+    premium leg of a ratio view). Returns ``[*group_cols, cohort, duration,
+    cum_col, incr_col]`` plus ``source`` when ``include_source``.
+
+    Raises
+    ------
+    ValueError
+        If ``from_grain`` or ``to_grain`` is not one of ``"M"`` / ``"Q"`` /
+        ``"H"`` / ``"Y"`` (surfaced by the underlying period helpers).
     """
     df = df.with_columns(
         add_periods(pl.col("cohort"), pl.col("duration"), from_grain).alias("_cal")
@@ -417,6 +434,7 @@ def sum_increments_to_grain(
         floor_to_period(pl.col("cohort"), to_grain).alias("_cohort_floor"),
         floor_to_period(pl.col("_cal"), to_grain).alias("_calendar_floor"),
     )
+    source_exprs = [collapse_source_expr(include_grafted=True)] if include_source else []
     agg = (
         df.group_by([*group_cols, "_cohort_floor", "_calendar_floor"])
         .agg(
@@ -424,10 +442,7 @@ def sum_increments_to_grain(
               .then(pl.col(incr_col).sum())
               .otherwise(None)
               .alias(incr_col),
-            # observed only if EVERY sub-cell is observed: a null-source gap
-            # sub-cell must count as not-observed (``.all`` ignores nulls).
-            (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
-            (pl.col("source") == "grafted").any().alias("_any_graft"),
+            *source_exprs,
         )
         .with_columns(
             count_periods(
@@ -440,13 +455,11 @@ def sum_increments_to_grain(
         .with_columns(
             pl.col(incr_col).cum_sum().over([*group_cols, "cohort"]).alias(cum_col)
         )
-        .with_columns(
-            pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
-              .when(pl.col("_any_graft")).then(pl.lit("grafted"))
-              .otherwise(pl.lit("own")).alias("source")
-        )
     )
-    return agg.select([*group_cols, "cohort", "duration", cum_col, incr_col, "source"])
+    out_cols = [*group_cols, "cohort", "duration", cum_col, incr_col]
+    if include_source:
+        out_cols.append("source")
+    return agg.select(out_cols)
 
 
 # ---------------------------------------------------------------------------

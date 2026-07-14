@@ -30,7 +30,8 @@ import polars as pl
 from scipy.stats import norm
 
 from .._kernels.io import mirror_output, normalize_groups
-from .._kernels.period import GRAIN_ORDER, sum_increments_to_grain
+from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
+from .._kernels.provenance import collapse_source_expr
 from ._base import _LossEstimatorBase, _PremiumEstimatorBase
 from .loss import LossFit
 from .premium import PremiumFit
@@ -289,11 +290,11 @@ class LossRatioFit:
         return self._df
 
     @property
-    def grain(self) -> str:
+    def grain(self) -> Grain:
         """The grain the legs were fit at (both share the triangle's grain)."""
         return self.loss_fit.grain
 
-    def at_grain(self, grain: str) -> FrameLike:
+    def at_grain(self, grain: Grain) -> FrameLike:
         """View the composed projection at a COARSER display grain.
 
         Both legs' projected increments are summed to ``grain`` and the ratio is
@@ -305,6 +306,12 @@ class LossRatioFit:
         grain (identity) or coarser (``"M" < "Q" < "H" < "Y"``). Returns
         ``[groups?, cohort, duration, loss_proj, premium_proj, ratio_proj,
         source]`` -- ``source`` is the loss leg's provenance, as at native grain.
+
+        Raises
+        ------
+        ValueError
+            If ``grain`` is not one of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``, or is
+            finer than this fit's own grain.
         """
         src_grain = self.loss_fit.grain
         if grain not in GRAIN_ORDER:
@@ -332,6 +339,7 @@ class LossRatioFit:
             self.premium_fit._df, group_cols=group_cols,
             from_grain=src_grain, to_grain=grain,
             incr_col="incr_premium_proj", cum_col="premium_proj",
+            include_source=False,  # the premium leg's provenance is discarded
         ).select([*group_cols, "cohort", "duration", "premium_proj"])
 
         join_key_cols = [*group_cols, "cohort", "duration"]
@@ -410,9 +418,7 @@ class LossRatioFit:
         loss_sub = surf.group_by(gb).agg(
             pl.col("loss_proj").sum(),
             pl.col("incr_loss_proj").sum(),
-            # observed only if EVERY sub-cell is observed; a null-source gap
-            # counts as not-observed (``.all`` ignores nulls).
-            (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
+            collapse_source_expr(include_grafted=False),
         )
         # premium: full-grain premium aggregated to the reporting grain + `by`
         # (fine-then-sum; an all-null cell stays null, matching the headline).
@@ -425,10 +431,7 @@ class LossRatioFit:
             loss_sub.join(prem, on=gb, how="left")
             .with_columns(
                 (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
-                pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
-                .otherwise(pl.lit("own")).alias("source"),
             )
-            .drop("_all_obs")
             .sort(gb)
         )
         order = gb + ["loss_proj", "incr_loss_proj", "premium_proj",

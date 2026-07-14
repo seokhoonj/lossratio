@@ -45,7 +45,8 @@ from .._kernels.io import (
     normalize_groups,
     scalar_int,
 )
-from .._kernels.period import GRAIN_ORDER, sum_increments_to_grain
+from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
+from .._kernels.provenance import collapse_source_expr
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
     build_value_matrices,
@@ -1590,7 +1591,7 @@ class LossFit:
         sigma_method: str,
         regime: Any,
         confidence_level: float,
-        grain: str,
+        grain: Grain,
         output_type: str,
         status: str,
         status_reasons: list[str],
@@ -1625,7 +1626,7 @@ class LossFit:
     def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
 
-    def at_grain(self, grain: str) -> FrameLike:
+    def at_grain(self, grain: Grain) -> FrameLike:
         """View the projection at a COARSER grain by aggregating this fit.
 
         The fit is computed once at its own (finer) grain; a coarser view is a
@@ -1649,6 +1650,12 @@ class LossFit:
         (loss point columns only -- the loss ratio is a composed quantity, and
         standard errors are not summable cell-wise and are left to a bootstrap
         run at the target grain).
+
+        Raises
+        ------
+        ValueError
+            If ``grain`` is not one of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``, or is
+            finer than this fit's own grain.
         """
         if grain not in GRAIN_ORDER:
             raise ValueError(
@@ -1757,15 +1764,8 @@ class LossFit:
             .agg(
                 pl.col("loss_proj").sum(),
                 pl.col("incr_loss_proj").sum(),
-                # a cell is observed only if every sub-cell is observed; a
-                # null-source gap counts as not-observed (``.all`` ignores nulls)
-                (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
+                collapse_source_expr(include_grafted=False),
             )
-            .with_columns(
-                pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
-                .otherwise(pl.lit("own")).alias("source"),
-            )
-            .drop("_all_obs")
             .sort(gb)
         )
         order = gb + ["loss_proj", "incr_loss_proj", "source"]
