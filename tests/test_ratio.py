@@ -98,6 +98,38 @@ def _flat_or_rising(rising: bool):
     return lr.Triangle(pl.DataFrame(rows))
 
 
+def _covariate_frame():
+    """A two-level covariate triangle grouped by the covariate column."""
+    def month(m0):
+        return date(2020 + m0 // 12, 1 + m0 % 12, 1)
+    rows = []
+    for i in range(8):
+        for d in range(1, 10 - i):
+            for sex, mult in (("M", 1.0), ("F", 1.3)):
+                rows.append({
+                    "uy_m": month(i), "cy_m": month(i + d - 1), "sex": sex,
+                    "incr_loss": (10.0 + d) * mult, "incr_premium": 100.0,
+                })
+    return pl.DataFrame(rows)
+
+
+def test_loss_ratio_composition_paths_never_produce_inf():
+    """The denominator is a known exposure: no composition path (fit / at_grain /
+    predict(by=)) may emit an infinite loss ratio -- a zero/null premium cell is a
+    null ratio. Guards the covariate predict(by=) path, which once divided
+    unguarded."""
+    import math
+
+    def finite(frame):
+        return all(math.isfinite(r) for r in frame["ratio_proj"].drop_nulls().to_list())
+
+    tri = lr.Triangle(_covariate_frame(), groups="sex")
+    rf = lr.LossRatio(loss=lr.CredibleLoss(covariates=["sex"])).fit(tri)
+    assert finite(rf.to_polars())          # native fit composition
+    assert finite(rf.at_grain("Q"))        # coarse-grain composition
+    assert finite(rf.predict(by="sex"))    # covariate disaggregation composition
+
+
 def test_extend_stable_freezes_flat():
     fit = lr.LossRatio(loss=lr.PooledLoss()).fit(_flat_or_rising(rising=False))
     ext = fit.extend(horizon=30)

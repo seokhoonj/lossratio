@@ -427,10 +427,18 @@ class LossRatioFit:
             .then(pl.col("premium_proj").sum())
             .otherwise(None),
         )
+        # denominator is known exposure; null/0 premium -> null ratio, never inf
+        # (a covariate level can sum to exactly 0.0 premium in a cohort x duration
+        # cell) -- matches the fit() and at_grain() composition guards.
+        safe_premium_proj = (
+            pl.when(pl.col("premium_proj").is_null() | (pl.col("premium_proj") == 0.0))
+            .then(None)
+            .otherwise(pl.col("premium_proj"))
+        )
         out = (
             loss_sub.join(prem, on=gb, how="left")
             .with_columns(
-                (pl.col("loss_proj") / pl.col("premium_proj")).alias("ratio_proj"),
+                (pl.col("loss_proj") / safe_premium_proj).alias("ratio_proj"),
             )
             .sort(gb)
         )
