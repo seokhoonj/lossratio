@@ -161,11 +161,21 @@ class Triangle:
         # when present, else duration -- both monotone within a cohort.
         if basis == "cumulative":
             sort_axis = calendar if calendar is not None else duration
-            sort_keys: list[str] = normalize_groups(groups)
-            sort_keys.extend([cohort, sort_axis])  # type: ignore[list-item]
+            cell_keys: list[str] = normalize_groups(groups)
+            cell_keys.extend([cohort, sort_axis])  # type: ignore[list-item]
+            # Collapse any sub-tracks sharing a (group, cohort, axis) cell into one
+            # cumulative value BEFORE differencing. Otherwise the per-cohort shift
+            # diffs one cumulative track against an unrelated one and the later
+            # per-cell sum silently drops a track's increments. Sum-of-one is a
+            # no-op for the usual one-row-per-cell input.
+            df_pl = df_pl.group_by(cell_keys).agg(
+                pl.col(loss).sum(),
+                pl.col(premium).sum(),
+                pl.exclude([*cell_keys, loss, premium]).first(),
+            )
             diff_over: list[str] = normalize_groups(groups)
             diff_over.append(cohort)
-            df_pl = df_pl.sort(sort_keys).with_columns(
+            df_pl = df_pl.sort(cell_keys).with_columns(
                 (pl.col(loss) - pl.col(loss).shift(1, fill_value=0.0)
                  .over(diff_over)).alias(loss),
                 (pl.col(premium) - pl.col(premium).shift(1, fill_value=0.0)
@@ -215,6 +225,18 @@ class Triangle:
             assert duration is not None
             df_pl = df_pl.with_columns(
                 pl.col(duration).cast(pl.Int64).alias("_duration_temp")
+            )
+
+        # Duration is 1-indexed: a cell at duration < 1 means the calendar period
+        # precedes the cohort's inception (a dirty export) or a non-positive
+        # duration was supplied. Reject it at the boundary rather than folding a
+        # pre-inception amount into the duration-1 cumulative.
+        n_pre_inception = df_pl.filter(pl.col("_duration_temp") < 1).height
+        if n_pre_inception:
+            raise ValueError(
+                f"{n_pre_inception} row(s) have duration < 1 (calendar precedes "
+                f"cohort, or a non-positive duration was supplied); every cell "
+                f"must be at duration >= 1."
             )
 
         # Aggregate per-period values by (groups, cohort, duration).

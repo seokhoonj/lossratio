@@ -298,6 +298,39 @@ def test_triangle_basis_cumulative():
         )
 
 
+def test_triangle_basis_cumulative_sums_subtracks_before_differencing():
+    """When several raw rows share a (cohort, calendar) cell, the cumulative
+    values must be summed BEFORE differencing -- otherwise the per-cohort shift
+    diffs one track against another and drops a track's increments."""
+    from datetime import date
+    rows = []
+    for k in range(3):
+        # two cumulative sub-tracks in one ungrouped cohort/calendar cell:
+        # A -> cum 10/20/30, B -> cum 100/200/300; combined cum 110/220/330
+        rows.append({"uy_m": date(2022, 1, 1), "cy_m": date(2022, 1 + k, 1),
+                     "incr_loss": 10.0 * (k + 1), "incr_premium": 100.0})
+        rows.append({"uy_m": date(2022, 1, 1), "cy_m": date(2022, 1 + k, 1),
+                     "incr_loss": 100.0 * (k + 1), "incr_premium": 100.0})
+    tri = lr.Triangle(pl.DataFrame(rows), basis="cumulative").to_polars().sort("duration")
+    assert tri["loss"].to_list() == [110.0, 220.0, 330.0]
+    assert tri["incr_loss"].to_list() == [110.0, 110.0, 110.0]
+
+
+def test_triangle_rejects_calendar_before_cohort():
+    """A calendar period preceding the cohort's inception is a duration < 1 cell;
+    the constructor must reject it rather than fold a pre-inception amount into the
+    duration-1 cumulative."""
+    from datetime import date
+    rows = [
+        {"uy_m": date(2022, 2, 1), "cy_m": date(2022, 1, 1),  # calendar < cohort
+         "incr_loss": 99.0, "incr_premium": 100.0},
+        {"uy_m": date(2022, 2, 1), "cy_m": date(2022, 2, 1),
+         "incr_loss": 10.0, "incr_premium": 100.0},
+    ]
+    with pytest.raises(ValueError, match="duration < 1"):
+        lr.Triangle(pl.DataFrame(rows))
+
+
 # ---------------------------------------------------------------------------
 # New output columns: n_cohorts / margin / profit / shares
 # ---------------------------------------------------------------------------
