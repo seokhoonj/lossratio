@@ -33,8 +33,13 @@ from .._kernels.io import mirror_output, normalize_groups
 from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.provenance import collapse_source_expr
 from ._base import _LossEstimatorBase, _PremiumEstimatorBase
+from .credible_loss import CredibleLoss
+from .credible_premium import CrediblePremium
 from .loss import LossFit
+from .pooled_premium import PooledPremium
 from .premium import PremiumFit
+from .smooth_loss import SmoothLoss
+from .smooth_premium import SmoothPremium
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
@@ -205,14 +210,6 @@ def _match_premium(loss: _LossEstimatorBase) -> _PremiumEstimatorBase:
     its own defaults; the per-side regime / recent filters are not inherited here
     (premium's treatment is inherited separately in :meth:`LossRatio.fit`).
     """
-    # local imports avoid a module-load cycle (the estimator modules import the
-    # fit result classes that live alongside LossRatio).
-    from .credible_loss import CredibleLoss
-    from .credible_premium import CrediblePremium
-    from .pooled_premium import PooledPremium
-    from .smooth_loss import SmoothLoss
-    from .smooth_premium import SmoothPremium
-
     # SmoothLoss checked first in case it specializes CredibleLoss.
     if isinstance(loss, SmoothLoss):
         return SmoothPremium()
