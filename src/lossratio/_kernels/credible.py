@@ -81,9 +81,10 @@ def credible_levels(
         # Degenerate cases collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
-        # to carry), and the Bühlmann-Straub psi moment is undefined (0/0) with
-        # a single cohort. Both leave u = 1 = exactly PooledLoss.
-        phi_ok = not np.isnan(phi[np.unique(duration_f)]).any()
+        # to carry), and a zero-phi duration (an exactly-fitting link) would
+        # divide by zero in the conjugate. Both leave u = 1 = exactly PooledLoss.
+        used_phi = phi[np.unique(duration_f)]
+        phi_ok = bool(np.isfinite(used_phi).all() and (used_phi > 0.0).all())
         n_coh = int(np.unique(coh_f).size)
         if phi_ok:
             if psi == "auto":

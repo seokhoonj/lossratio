@@ -120,6 +120,10 @@ def buhlmann_straub_psi(
     sy = _group_sum(response, coh0, n_cohorts)
     sphim = _group_sum(phi[dur0] * fitted, coh0, n_cohorts)
     cohorts = np.flatnonzero(_group_count(coh0, n_cohorts) > 0)
+    # drop cohorts with zero dispersion mass (undefined moment exposure), so
+    # a zero-phi duration degenerates to complete pooling rather than dividing
+    # by zero -- matches engine.buhlmann_straub_psi and the FRW path.
+    cohorts = cohorts[sphim[cohorts] > 0.0]
     if cohorts.size < 2:
         return 0.0
     m_list = (sm[cohorts] ** 2 / sphim[cohorts]).tolist()
@@ -131,7 +135,7 @@ def buhlmann_straub_psi(
         - (len(m_list) - 1)
     )
     den = mplus - sum(mi ** 2 for mi in m_list) / mplus
-    return max(0.0, num / den)
+    return max(0.0, num / den) if den > 0.0 else 0.0
 
 
 def conjugate_levels(

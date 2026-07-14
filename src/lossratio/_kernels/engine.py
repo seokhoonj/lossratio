@@ -149,7 +149,9 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
     sphim: dict = {}
     for m0, i, k in zip(fitted, cohort, duration, strict=False):
         sphim[i] = sphim.get(i, 0.0) + phi[k] * m0
-    cohorts = sorted(sm)
+    # A cohort whose fitted mass sits entirely on zero-dispersion durations has
+    # sphim_i = 0 and an undefined moment exposure -> drop it (complete pooling).
+    cohorts = [i for i in sorted(sm) if sphim.get(i, 0.0) > 0.0]
     if len(cohorts) < 2:        # no between-cohort variance to estimate -> complete pooling
         return 0.0
     r = {i: sy[i] / sm[i] for i in cohorts}
@@ -158,7 +160,7 @@ def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
     rbar = sum(m[i] * r[i] for i in cohorts) / mplus
     num = sum(m[i] * (r[i] - rbar) ** 2 for i in cohorts) - (len(cohorts) - 1)
     den = mplus - sum(m[i] ** 2 for i in cohorts) / mplus
-    return max(0.0, num / den)
+    return max(0.0, num / den) if den > 0.0 else 0.0
 
 
 @dataclass
