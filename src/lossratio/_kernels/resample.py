@@ -441,14 +441,15 @@ def _bootstrap_segment_additive(
     param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
     pred_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
 
+    # cell indices per from-duration cluster are the same every replicate
+    cells_by_link = [np.flatnonzero(kk == k) for k in range(n_links)]
+
     for b in range(B):
         # 1. resample standardized residuals at each cell, within its cluster
         rstar = np.empty(mu.shape, dtype=np.float64)
-        for k in range(n_links):
-            sel = kk == k
-            n_sel = int(sel.sum())
-            if n_sel:
-                rstar[sel] = rng.choice(duration_pools[k], size=n_sel, replace=True)
+        for k, cells in enumerate(cells_by_link):
+            if cells.size:
+                rstar[cells] = rng.choice(duration_pools[k], size=cells.size, replace=True)
         # 2. pseudo increment y* = mu + r* sqrt(phi mu); fall back to the
         #    observed increment where the cell is not resamplable (mu <= 0)
         ystar = np.where(res_ok, mu + rstar * scale, y)
@@ -640,11 +641,15 @@ def _bootstrap_segment_covariate(
     param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
     pred_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
 
+    # sub-cell indices per from-duration (sorted, so the draw order is stable)
+    cells_by_duration = {
+        int(d): np.flatnonzero(duration == d) for d in np.unique(duration)
+    }
+
     for b in range(B):
         rstar = np.empty(mu.shape, dtype=np.float64)
-        for d in np.unique(duration):
-            sel = duration == d
-            rstar[sel] = rng.choice(duration_pools[int(d)], size=int(sel.sum()), replace=True)
+        for d, cells in cells_by_duration.items():
+            rstar[cells] = rng.choice(duration_pools[d], size=cells.size, replace=True)
         ystar = np.where(res_ok, mu + rstar * scale, y)   # pseudo sub-cell dLoss
         # aggregate the pseudo increments to a cohort x duration pseudo cumulative
         dY = np.zeros(n_cohorts * n_links, dtype=np.float64)
@@ -866,13 +871,14 @@ def bootstrap_segment_multiplicative(
     param_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
     pred_draws = np.full((B, n_cohorts, n_durations), np.nan, dtype=np.float64)
 
+    # cell indices per to-duration column are the same every replicate
+    cells_by_col = [np.flatnonzero(jj == j) for j in range(n_durations)]
+
     for b in range(B):
         rstar = np.empty(m.shape, dtype=np.float64)
-        for j in range(n_durations):
-            sel = jj == j
-            n_sel = int(sel.sum())
-            if n_sel:
-                rstar[sel] = rng.choice(col_pools[j], size=n_sel, replace=True)
+        for j, cells in enumerate(cells_by_col):
+            if cells.size:
+                rstar[cells] = rng.choice(col_pools[j], size=cells.size, replace=True)
         ystar = np.where(res_ok, m + rstar * scale, y)
         # pseudo cumulative triangle (per-cohort cumulative sum of the pseudo
         # incrementals over the observed support)
