@@ -7,10 +7,13 @@ independently re-binned coarse fit does.
 """
 from __future__ import annotations
 
+from datetime import date
+
 import polars as pl
 import pytest
 
 import lossratio as lr
+from lossratio._kernels.period import sum_increments_to_grain
 
 
 def _tri(grain):
@@ -122,9 +125,78 @@ def test_at_grain_guards():
 def test_at_grain_carries_graft_provenance():
     """A segment_wise fit's coarse view keeps grafted cells (the increments are
     already graft-filled), labelled 'grafted' when any sub-cell is grafted."""
-    from datetime import date
     fit = lr.CredibleLoss(
         regime=lr.Regime(date(2024, 7, 1)), treatment="segment_wise"
     ).fit(_tri("M"))
     src = set(fit.at_grain("Q")["source"].unique().to_list())
     assert "grafted" in src
+
+
+def test_sum_increments_to_grain_null_source_gap_is_not_observed():
+    """Regression (62cf96a): a coarse cell containing a null-source GAP sub-cell
+    must NOT be labelled 'observed'. polars ``.all()`` ignores nulls, so without
+    the ``fill_null(False)`` guard the middle gap below would vanish and the
+    quarter would be mislabelled observed."""
+    # one quarter = three monthly sub-cells; the middle one is a null-source gap.
+    df = pl.DataFrame({
+        "coverage": ["A", "A", "A"],
+        "cohort": [date(2024, 1, 1)] * 3,
+        "duration": [1, 2, 3],
+        "incr_loss_proj": [10.0, 20.0, 30.0],
+        "source": ["observed", None, "observed"],
+    })
+    out = sum_increments_to_grain(
+        df, group_cols=["coverage"], from_grain="M", to_grain="Q",
+        incr_col="incr_loss_proj", cum_col="loss_proj",
+    )
+    assert out.height == 1                      # the three months fold to one quarter
+    assert out["source"][0] != "observed"       # the gap forbids 'observed'
+    assert out["source"][0] == "own"            # not all observed, none grafted
+    assert out["incr_loss_proj"][0] == pytest.approx(60.0)  # mass conserved
+
+
+def _loss_ratio_fit(grain):
+    return lr.LossRatio(loss=lr.PooledLoss()).fit(_tri(grain))
+
+
+def test_loss_ratio_at_grain_recomposes_loss_over_premium():
+    """LossRatioFit.at_grain sums both legs to the coarse grain and recomposes
+    ratio_proj = loss_proj / premium_proj, with no infinities from the
+    known-exposure denominator (null/0 premium -> null ratio)."""
+    fit = _loss_ratio_fit("M")
+    q = fit.at_grain("Q")
+    priced = q.filter(pl.col("premium_proj") > 0.0)
+    assert priced.height > 0
+    for ratio, loss, prem in zip(
+        priced["ratio_proj"], priced["loss_proj"], priced["premium_proj"],
+        strict=True,
+    ):
+        assert ratio == pytest.approx(loss / prem, rel=1e-9)
+    # known exposure -> the ratio never blows up to +/-inf
+    assert not q["ratio_proj"].is_infinite().any()
+    # where a premium cell is null, the ratio is null (never a fabricated number)
+    missing_premium = q.filter(pl.col("premium_proj").is_null())
+    assert missing_premium["ratio_proj"].is_null().all()
+
+
+def test_loss_ratio_at_grain_conserves_mass_and_identity():
+    """The composed coarse view is a deterministic aggregation of the fit: the
+    identity grain returns it unchanged, and every coarser grain conserves the
+    portfolio projected loss."""
+    fit = _loss_ratio_fit("M")
+    native = fit.to_polars()
+    cols = ["coverage", "cohort", "duration", "loss_proj", "premium_proj",
+            "ratio_proj", "source"]
+    ident = fit.at_grain("M").sort(cols[:3])
+    assert ident.equals(native.select(cols).sort(cols[:3]))
+    base = _proj_total(native)
+    for g in ("Q", "H", "Y"):
+        assert _proj_total(fit.at_grain(g)) == pytest.approx(base, rel=1e-9)
+
+
+def test_loss_ratio_at_grain_rejects_unknown_and_finer_grain():
+    fit = _loss_ratio_fit("Q")
+    with pytest.raises(ValueError, match="grain must be one of"):
+        fit.at_grain("X")
+    with pytest.raises(ValueError, match="COARSER"):
+        fit.at_grain("M")          # finer than the Q fit

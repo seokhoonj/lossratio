@@ -45,6 +45,7 @@ from .._kernels.io import (
     normalize_groups,
     scalar_int,
 )
+from .._kernels.period import GRAIN_ORDER, sum_increments_to_grain
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
     build_value_matrices,
@@ -1649,10 +1650,10 @@ class LossFit:
         standard errors are not summable cell-wise and are left to a bootstrap
         run at the target grain).
         """
-        from .._kernels.period import GRAIN_ORDER, count_periods, floor_to_period
         if grain not in GRAIN_ORDER:
             raise ValueError(
-                f"grain must be one of {sorted(GRAIN_ORDER)}, got {grain!r}"
+                f"grain must be one of {sorted(GRAIN_ORDER, key=lambda g: GRAIN_ORDER[g])}, "
+                f"got {grain!r}"
             )
         if GRAIN_ORDER[grain] < GRAIN_ORDER[self.grain]:
             raise ValueError(
@@ -1665,43 +1666,10 @@ class LossFit:
         if grain == self.grain:
             return mirror_output(self._df.select(out_cols), self._output_type)
 
-        from ..core.model_frame import _GRAIN_MONTHS
-        months = _GRAIN_MONTHS[self.grain]
-        # the cell's calendar period at the fit grain, then floor both axes.
-        df = self._df.with_columns(
-            pl.col("cohort").dt.offset_by(
-                ((pl.col("duration") - 1) * months).cast(pl.Utf8) + "mo"
-            ).alias("_cal")
-        ).with_columns(
-            floor_to_period(pl.col("cohort"), grain).alias("_cohort_floor"),
-            floor_to_period(pl.col("_cal"), grain).alias("_calendar_floor"),
-        )
-        agg = (
-            df.group_by([*group_cols, "_cohort_floor", "_calendar_floor"])
-            .agg(
-                pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
-                # observed only if EVERY sub-cell is observed; a null-source gap
-                # counts as not-observed (``.all`` ignores nulls).
-                (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
-                (pl.col("source") == "grafted").any().alias("_any_graft"),
-            )
-            .with_columns(
-                count_periods(
-                    pl.col("_cohort_floor"), pl.col("_calendar_floor"), grain
-                ).alias("duration")
-            )
-            .rename({"_cohort_floor": "cohort"})
-            .drop("_calendar_floor")
-            .sort([*group_cols, "cohort", "duration"])
-            .with_columns(
-                pl.col("incr_loss_proj").cum_sum().over([*group_cols, "cohort"])
-                  .alias("loss_proj"),
-            )
-            .with_columns(
-                pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
-                  .when(pl.col("_any_graft")).then(pl.lit("grafted"))
-                  .otherwise(pl.lit("own")).alias("source"),
-            )
+        agg = sum_increments_to_grain(
+            self._df, group_cols=group_cols,
+            from_grain=self.grain, to_grain=grain,
+            incr_col="incr_loss_proj", cum_col="loss_proj",
         )
         return mirror_output(agg.select(out_cols), self._output_type)
 

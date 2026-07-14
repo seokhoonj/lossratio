@@ -309,14 +309,15 @@ class LossRatioFit:
         src_grain = self.loss_fit.grain
         if grain not in GRAIN_ORDER:
             raise ValueError(
-                f"grain must be one of {sorted(GRAIN_ORDER)}, got {grain!r}"
+                f"grain must be one of {sorted(GRAIN_ORDER, key=lambda g: GRAIN_ORDER[g])}, "
+                f"got {grain!r}"
             )
         if GRAIN_ORDER[grain] < GRAIN_ORDER[src_grain]:
             raise ValueError(
                 f"at_grain only views a COARSER grain: this fit is at "
                 f"{src_grain!r}, cannot view the finer {grain!r}."
             )
-        group_cols = normalize_groups(self.groups) or []
+        group_cols = normalize_groups(self.groups)
         out_cols = [*group_cols, "cohort", "duration",
                     "loss_proj", "premium_proj", "ratio_proj", "source"]
         if grain == src_grain:
@@ -333,15 +334,15 @@ class LossRatioFit:
             incr_col="incr_premium_proj", cum_col="premium_proj",
         ).select([*group_cols, "cohort", "duration", "premium_proj"])
 
-        keys = [*group_cols, "cohort", "duration"]
+        join_key_cols = [*group_cols, "cohort", "duration"]
         # denominator is known exposure; null/0 premium -> null ratio, never inf
-        safe_pp = (
+        safe_premium_proj = (
             pl.when(pl.col("premium_proj").is_null() | (pl.col("premium_proj") == 0.0))
             .then(None)
             .otherwise(pl.col("premium_proj"))
         )
-        composed = loss.join(premium, on=keys, how="left").with_columns(
-            (pl.col("loss_proj") / safe_pp).alias("ratio_proj")
+        composed = loss.join(premium, on=join_key_cols, how="left").with_columns(
+            (pl.col("loss_proj") / safe_premium_proj).alias("ratio_proj")
         )
         return mirror_output(composed.select(out_cols), self._output_type)
 
