@@ -29,7 +29,7 @@ covariate-adjusted mean, the marginalized projection) is wired on top of it.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import polars as pl
@@ -60,15 +60,21 @@ class CovariateFit:
     levels: dict[str, list]
     beta: dict[tuple[str, object], float]
     converged: bool
+    _index_by_duration: dict[int, int] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        # intensity() is called inside per-cell marginalization loops; build the
+        # duration->row lookup once instead of on every call.
+        self._index_by_duration = {d: i for i, d in enumerate(self.durations)}
 
     def intensity(self, duration: int, cell: dict[str, object] | None = None) -> float:
         """``g_k(x) = exp(s_k + sum_c beta[c, x_c])`` for a covariate cell ``x``
         (a ``{covariate: level}`` mapping; missing / reference levels contribute
         0). Returns ``nan`` for an unobserved duration."""
-        idx = {d: i for i, d in enumerate(self.durations)}
-        if duration not in idx:
+        row = self._index_by_duration.get(duration)
+        if row is None:
             return float("nan")
-        eta = float(self.s[idx[duration]])
+        eta = float(self.s[row])
         if cell:
             for c, lv in cell.items():
                 eta += self.beta.get((c, lv), 0.0)

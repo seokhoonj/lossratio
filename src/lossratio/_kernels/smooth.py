@@ -177,8 +177,8 @@ def penalized_irls(
         # step means we are already at the optimum.
         step = 1.0
         accepted = False
-        beta_try = beta_new
-        eta_try = np.clip(B @ beta_try + offset, _ETA_FLOOR, _ETA_CEIL)
+        # the first pass (step = 1.0) sets beta_try = beta_new, so no pre-loop
+        # seed is needed -- the loop always runs at least once.
         while step > 1e-6:
             beta_try = beta + step * (beta_new - beta)
             eta_try = np.clip(B @ beta_try + offset, _ETA_FLOOR, _ETA_CEIL)
