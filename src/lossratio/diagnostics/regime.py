@@ -1615,9 +1615,11 @@ class Regime:
                         stability_by_combo[combo] = _detect_stability_point(
                             stab_obs
                         )
-                    except (ValueError, KeyError, RuntimeError):
-                        # Degenerate input (no valid links, single-cohort,
-                        # ...): the elbow fallback handles it.
+                    except ValueError:
+                        # Degenerate input (no valid links, single-cohort, ...):
+                        # the elbow fallback handles it. A KeyError (missing
+                        # stability_metric column) or RuntimeError is a genuine
+                        # bug and is left to propagate.
                         stability_by_combo[combo] = None
 
             window_per_combo: list[int] = []

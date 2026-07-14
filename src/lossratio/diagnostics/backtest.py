@@ -4,7 +4,8 @@ rolling-origin (Backtest/BacktestFit) public API."""
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
 
 import polars as pl
 
@@ -12,6 +13,15 @@ from .._kernels.io import collapse_groups, mirror_output, normalize_groups, scal
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
+
+# The metric a backtest scores: the loss ratio, or a single leg.
+Target: TypeAlias = Literal["loss", "premium", "ratio"]
+
+
+class SupportsFit(Protocol):
+    """The one thing a backtest needs of an estimator: it fits a triangle."""
+
+    def fit(self, triangle: Triangle) -> object: ...
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +110,7 @@ def _build_masked_df(
 _VALID_TARGETS = ("ratio", "loss", "premium")
 
 
-def _resolve_target(estimator: Any, target: str | None) -> str:
+def _resolve_target(estimator: Any, target: str | None) -> Target:
     """Resolve the backtest target, inferring it from the estimator when ``None``.
 
     The estimator DETERMINES what can be scored: a loss estimator projects loss
@@ -141,7 +151,7 @@ def _resolve_target(estimator: Any, target: str | None) -> str:
     # scored on "ratio" (or, as a leg, "loss" / "premium"). A bare loss / premium
     # estimator is pinned to its own projection.
     if is_ratio:
-        return target
+        return cast(Target, target)
     if is_loss and target != "loss":
         raise ValueError(
             f"target={target!r} needs a premium denominator, but a bare loss "
@@ -155,7 +165,7 @@ def _resolve_target(estimator: Any, target: str | None) -> str:
             f"({type(estimator).__name__}); use target='premium'."
         )
     # unknown estimator kind: defer to the fit-time column lookup.
-    return target
+    return cast(Target, target)
 
 
 def _assert_leakage_safe_bootstrap(estimator: Any) -> None:
@@ -837,11 +847,11 @@ class Backtest:
 
     def __init__(
         self,
-        estimator,
-        holdouts=(6, 12, 18, 24),
+        estimator: SupportsFit,
+        holdouts: int | Sequence[int] = (6, 12, 18, 24),
         *,
-        target=None,
-    ):
+        target: Target | None = None,
+    ) -> None:
         if not hasattr(estimator, "fit"):
             raise TypeError(
                 f"estimator must implement .fit(triangle); got "
@@ -875,7 +885,7 @@ class Backtest:
         self.holdouts = norm
         self.target = target
 
-    def fit(self, triangle):
+    def fit(self, triangle: Triangle) -> BacktestFit:
         return BacktestFit._from_triangle(triangle, self)
 
 
