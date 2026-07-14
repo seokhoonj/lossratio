@@ -156,3 +156,210 @@ def test_rse_requires_two_positive_denominators():
     stats = _cross_cohort_link_stats(loss_obs, f_k, sigma2_k)
     assert np.isnan(stats.rse_k[0])
     assert np.isnan(stats.cv_k[0])
+
+
+# ---------------------------------------------------------------------------
+# stability() -- factor-stability point (public contract)
+# ---------------------------------------------------------------------------
+
+
+def test_stability_columns_and_one_row_no_group(toy_input):
+    stability = _tri(toy_input).link().ata().stability()
+    assert set(stability.columns) == {"duration_from", "duration_to", "cv", "rse"}
+    assert stability.height == 1
+
+
+def test_stability_one_row_per_group(toy_input):
+    df = pl.concat(
+        [
+            toy_input.with_columns(pl.lit("A").alias("coverage")),
+            toy_input.with_columns(pl.lit("B").alias("coverage")),
+        ]
+    )
+    stability = lr.Triangle(df, groups="coverage").link().ata().stability()
+    assert "coverage" in stability.columns
+    assert sorted(stability["coverage"].to_list()) == ["A", "B"]
+
+
+def test_stability_reaches_first_link_under_generous_thresholds(toy_input):
+    # Thresholds nothing can fail + min_run=1 -> the first finite link is stable;
+    # a real triangle's first link runs duration_from 1 -> duration_to 2.
+    stability = _tri(toy_input).link().ata().stability(
+        max_cv=1e9, max_rse=1e9, min_run=1
+    )
+    assert stability["duration_to"].to_list() == [2]
+
+
+def test_stability_unreachable_thresholds_give_a_null_point(toy_input):
+    # Thresholds no link can clear -> the group is still reported, with a null
+    # point, so "no stable run" is distinguishable from a missing group.
+    stability = _tri(toy_input).link().ata().stability(max_cv=1e-9, max_rse=1e-9)
+    assert stability.height == 1
+    assert stability["duration_to"].to_list() == [None]
+    assert stability["cv"].to_list() == [None]
+
+
+def test_stability_keeps_unstable_group_as_a_null_row(toy_input):
+    # Every group appears even at the public API; a group that never stabilises
+    # is a null row, not dropped.
+    df = pl.concat(
+        [
+            toy_input.with_columns(pl.lit("A").alias("coverage")),
+            toy_input.with_columns(pl.lit("B").alias("coverage")),
+        ]
+    )
+    stability = (
+        lr.Triangle(df, groups="coverage").link().ata()
+        .stability(max_cv=1e-9, max_rse=1e-9)
+        .sort("coverage")
+    )
+    assert stability["coverage"].to_list() == ["A", "B"]
+    assert stability["duration_to"].to_list() == [None, None]
+
+
+def test_stability_empty_grouped_triangle_returns_typed_empty_frame():
+    # An empty grouped triangle yields a column-less chart frame; stability()
+    # must return a typed 0-row frame, not raise an opaque polars error.
+    empty = pl.DataFrame(
+        schema={
+            "coverage": pl.Utf8, "uy_m": pl.Int64, "cy_m": pl.Int64,
+            "incr_loss": pl.Float64, "incr_premium": pl.Float64,
+        }
+    )
+    stability = lr.Triangle(empty, groups="coverage").link().ata().stability()
+    assert stability.height == 0
+    assert set(stability.columns) == {
+        "coverage", "duration_from", "duration_to", "cv", "rse",
+    }
+
+
+def test_stability_invalid_arguments_raise(toy_input):
+    ata = _tri(toy_input).link().ata()
+    with pytest.raises(ValueError):
+        ata.stability(min_run=0)
+    with pytest.raises(ValueError):
+        ata.stability(max_cv=0)
+    with pytest.raises(ValueError):
+        ata.stability(max_rse=-1.0)
+
+
+def test_stability_pandas_input_mirror(toy_input):
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(toy_input.to_pandas())
+    stability = lr.Triangle(df).link().ata().stability()
+    assert isinstance(stability, pd.DataFrame)
+    assert list(stability.columns) == ["duration_from", "duration_to", "cv", "rse"]
+    assert len(stability) == 1
+
+
+# ---------------------------------------------------------------------------
+# stability() detection logic -- deterministic, on hand-built cv/rse frames
+# ---------------------------------------------------------------------------
+
+
+def _make_chart(cv, rse, group=None):
+    """A minimal ATA chart frame with controlled per-link cv / rse."""
+    n = len(cv)
+    cols = {
+        "duration_from": list(range(1, n + 1)),
+        "duration_to":   list(range(2, n + 2)),
+        "cv":  cv,
+        "rse": rse,
+    }
+    if group is not None:
+        cols = {"coverage": [group] * n, **cols}
+    return pl.DataFrame(cols)
+
+
+def test_stability_frame_first_sustained_run():
+    from lossratio.core.ata import _stability_frame
+
+    # links 3 & 4 are the first pair both below cv/rse -> run starts at link 3.
+    chart = _make_chart(cv=[0.30, 0.20, 0.05, 0.04], rse=[0.10, 0.08, 0.02, 0.01])
+    stability = _stability_frame(chart, None, max_cv=0.10, max_rse=0.05, min_run=2)
+    assert stability["duration_from"].to_list() == [3]
+    assert stability["duration_to"].to_list() == [4]
+    # the reported cv / rse belong to the run's START link (link 3), not a neighbour.
+    assert stability["cv"].to_list()[0] == pytest.approx(0.05)
+    assert stability["rse"].to_list()[0] == pytest.approx(0.02)
+
+
+def test_stability_frame_min_run_rejects_a_transient_dip():
+    from lossratio.core.ata import _stability_frame
+
+    # link 2 dips sub-threshold but link 3 spikes back: not a run of 2. The
+    # first sustained pair is links 4 & 5.
+    chart = _make_chart(
+        cv=[0.30, 0.05, 0.30, 0.04, 0.03],
+        rse=[0.10, 0.02, 0.10, 0.01, 0.01],
+    )
+    run2 = _stability_frame(chart, None, max_cv=0.10, max_rse=0.05, min_run=2)
+    assert run2["duration_from"].to_list() == [4]
+    # min_run=1 accepts the lone dip at link 2 instead.
+    run1 = _stability_frame(chart, None, max_cv=0.10, max_rse=0.05, min_run=1)
+    assert run1["duration_from"].to_list() == [2]
+
+
+def test_stability_frame_nan_link_breaks_a_run():
+    from lossratio.core.ata import _stability_frame
+
+    # A non-finite (NaN) cv/rse link is unstable and breaks the run; the first
+    # sustained pair of finite sub-threshold links is links 4 & 5.
+    chart = _make_chart(
+        cv=[0.30, 0.04, float("nan"), 0.03, 0.02],
+        rse=[0.10, 0.01, float("nan"), 0.01, 0.01],
+    )
+    stability = _stability_frame(chart, None, max_cv=0.10, max_rse=0.05, min_run=2)
+    assert stability["duration_from"].to_list() == [4]
+
+
+def test_stability_frame_min_run_exceeds_link_count_is_null():
+    from lossratio.core.ata import _stability_frame
+
+    # One link cannot open a run of two -> reported, but with a null point.
+    chart = _make_chart(cv=[0.04], rse=[0.01])
+    stability = _stability_frame(chart, None, max_cv=0.10, max_rse=0.05, min_run=2)
+    assert stability.height == 1
+    assert stability["duration_to"].to_list() == [None]
+
+
+def test_stability_frame_requires_both_cv_and_rse():
+    from lossratio.core.ata import _stability_frame
+
+    # cv clears the threshold everywhere but rse never does -> no stable link.
+    chart = _make_chart(cv=[0.05, 0.05, 0.05], rse=[0.10, 0.10, 0.10])
+    stability = _stability_frame(chart, None, max_cv=0.10, max_rse=0.05, min_run=1)
+    assert stability["duration_to"].to_list() == [None]
+
+
+def test_stability_frame_per_group_independent_points():
+    from lossratio.core.ata import _stability_frame
+
+    # A stabilises at link 1, B never stabilises -> A carries a point, B null.
+    chart = pl.concat(
+        [
+            _make_chart(cv=[0.04, 0.03], rse=[0.01, 0.01], group="A"),
+            _make_chart(cv=[0.40, 0.40], rse=[0.20, 0.20], group="B"),
+        ]
+    )
+    stability = _stability_frame(
+        chart, "coverage", max_cv=0.10, max_rse=0.05, min_run=1
+    ).sort("coverage")
+    assert stability["duration_to"].to_list() == [2, None]
+
+
+def test_stability_overlay_draws_only_non_null_point_groups():
+    from lossratio.core.ata import _stability_frame
+
+    # The plot overlay is _stability_frame(...) filtered to non-null points;
+    # lock that only the group with a real point is drawn (dedup regression).
+    chart = pl.concat(
+        [
+            _make_chart(cv=[0.04, 0.03], rse=[0.01, 0.01], group="A"),  # stabilises
+            _make_chart(cv=[0.40, 0.40], rse=[0.20, 0.20], group="B"),  # never does
+        ]
+    )
+    full = _stability_frame(chart, "coverage", max_cv=0.10, max_rse=0.05, min_run=1)
+    overlay = full.filter(pl.col("duration_to").is_not_null())
+    assert full.height == 2                        # value form keeps every group
+    assert overlay["coverage"].to_list() == ["A"]  # only the reached group is drawn

@@ -26,9 +26,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import group_eq, iter_group_frames, set_group_values
+from .._kernels.io import group_eq, iter_group_frames
 from .._kernels.recent import filter_recent_cells
-from ..core.ata import _first_stable_link
+from ..core.ata import _stability_frame
 from .base import open_facets
 from .theme import STAT_COLORS_HUE, finalize_figure
 
@@ -118,13 +118,13 @@ def plot_ata_dispersion(
     summary = ata._chart_df
     groups = ata._groups
 
-    factor_stability = (
-        _stability_overlay_frame(
+    # The overlay renders ATA.stability() -- the same table, filtered to the
+    # groups that actually reach a stable run (null-point groups are not drawn).
+    factor_stability = None
+    if show_factor_stability:
+        factor_stability = _stability_frame(
             summary, groups, max_cv=max_cv, max_rse=max_rse, min_run=min_run
-        )
-        if show_factor_stability
-        else None
-    )
+        ).filter(pl.col("duration_to").is_not_null())
 
     return _plot_dispersion_panel(
         summary, groups=groups, max_cv=max_cv, max_rse=max_rse,
@@ -180,47 +180,6 @@ def _plot_factor(
         hline=reference_level,
         nrow=nrow, ncol=ncol, figsize=figsize,
     )
-
-
-# ---------------------------------------------------------------------------
-# Factor-stability overlay rows (detection delegated to core)
-# ---------------------------------------------------------------------------
-
-
-def _stability_overlay_frame(
-    summary: pl.DataFrame,
-    groups: str | list[str] | None,
-    *,
-    max_cv: float,
-    max_rse: float,
-    min_run: int,
-) -> pl.DataFrame:
-    """One overlay row per group whose factors reach a stable run.
-
-    Thin per-group wrapper over the core run detector
-    (:func:`lossratio.core.ata._first_stable_link`) applied to the
-    diagnostic's own ``cv`` / ``rse`` columns -- the detection rule is not
-    re-implemented here. Returns columns
-    ``[groups?, duration_from, duration_to, cv, rse]``.
-    """
-    out_rows: list[dict[str, Any]] = []
-    for value, sub in iter_group_frames(summary, groups):
-        sub = sub.sort("duration_from")
-        cv = sub["cv"].to_numpy()
-        rse = sub["rse"].to_numpy()
-        start = _first_stable_link(
-            cv, rse, max_cv=max_cv, max_rse=max_rse, min_run=min_run
-        )
-        if start is None:
-            continue
-        row: dict[str, Any] = {}
-        set_group_values(row, groups, value)
-        row["duration_from"] = int(sub["duration_from"][start])
-        row["duration_to"] = int(sub["duration_to"][start])
-        row["cv"] = float(cv[start])
-        row["rse"] = float(rse[start])
-        out_rows.append(row)
-    return pl.DataFrame(out_rows) if out_rows else pl.DataFrame()
 
 
 # ---------------------------------------------------------------------------

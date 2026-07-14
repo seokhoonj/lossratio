@@ -23,7 +23,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from .._kernels.io import arrays_to_long_df, iter_group_frames, mirror_output, normalize_groups
+from .._kernels.io import (
+    arrays_to_long_df,
+    iter_group_frames,
+    mirror_output,
+    normalize_groups,
+    set_group_values,
+)
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
 from .._kernels.recursion import build_value_matrix, fit_multiplicative
@@ -190,6 +196,59 @@ def _detect_stability_point(
         return None
     # link `start` goes from duration (start+1) -> (start+2); duration_to = start + 2.
     return start + 2
+
+
+def _stability_frame(
+    chart_df: pl.DataFrame,
+    groups: str | list[str] | None,
+    *,
+    max_cv: float,
+    max_rse: float,
+    min_run: int,
+) -> pl.DataFrame:
+    """First CV/RSE-stable link per group, one row per group.
+
+    Applies the shared run detector (:func:`_first_stable_link`) to each
+    group's own ``cv`` / ``rse`` columns -- the detection rule lives once in
+    :func:`_first_stable_link`, it is not re-implemented here. EVERY group
+    gets a row; ``duration_from`` / ``duration_to`` / ``cv`` / ``rse`` are
+    null for a group whose factors never reach a ``min_run``-long
+    sub-threshold run, so a caller can tell "no stable point" apart from a
+    missing group. Columns ``[groups?, duration_from, duration_to, cv, rse]``.
+    """
+    numeric_schema: dict[str, pl.DataType] = {
+        "duration_from": pl.Int64(), "duration_to": pl.Int64(),
+        "cv": pl.Float64(), "rse": pl.Float64(),
+    }
+    group_cols = normalize_groups(groups)
+    if chart_df.height == 0:
+        # An empty triangle yields a column-less ``_chart_df``; short-circuit
+        # here so the group columns are never partitioned on (they are absent),
+        # returning the typed empty frame instead of an opaque polars error.
+        empty_schema: dict[str, pl.DataType] = {
+            c: chart_df.schema.get(c, pl.Utf8()) for c in group_cols
+        }
+        empty_schema.update(numeric_schema)
+        return pl.DataFrame(schema=empty_schema)
+    rows: list[dict[str, Any]] = []
+    for group_value, sub in iter_group_frames(chart_df, groups):
+        sub = sub.sort("duration_from")
+        cv  = sub["cv"].to_numpy()
+        rse = sub["rse"].to_numpy()
+        start = _first_stable_link(
+            cv, rse, max_cv=max_cv, max_rse=max_rse, min_run=min_run
+        )
+        row: dict[str, Any] = {}
+        set_group_values(row, groups, group_value)
+        if start is None:
+            row.update(duration_from=None, duration_to=None, cv=None, rse=None)
+        else:
+            row["duration_from"] = int(sub["duration_from"][start])
+            row["duration_to"]   = int(sub["duration_to"][start])
+            row["cv"]  = float(cv[start])
+            row["rse"] = float(rse[start])
+        rows.append(row)
+    return pl.DataFrame(rows, schema_overrides=numeric_schema)
 
 
 @dataclass
@@ -394,6 +453,70 @@ class ATA:
     def summary(self) -> FrameLike:
         """Alias for :attr:`df` (parallel to :meth:`Intensity.summary`)."""
         return mirror_output(self._df, self._output_type)
+
+    def stability(
+        self,
+        *,
+        max_cv: float = 0.15,
+        max_rse: float = 0.05,
+        min_run: int = 2,
+    ) -> FrameLike:
+        """First duration at which the ATA factor becomes CV/RSE-stable, per group.
+
+        Walks each group's per-link ``cv`` / ``rse`` (the columns of
+        :attr:`df`) and reports the first link that opens a run of
+        ``min_run`` consecutive links with ``cv < max_cv`` AND
+        ``rse < max_rse`` -- the duration from which the multiplicative
+        development factor is reliable across cohorts. Every group gets one
+        row; ``duration_from`` / ``duration_to`` / ``cv`` / ``rse`` are null
+        for a group whose factors never reach such a run. ``duration_to`` is
+        the boundary the ``RegimeDetector(window="auto")`` resolver keys on
+        (the run's start link runs ``duration_from -> duration_to``).
+
+        This shares the detection path of the :meth:`plot_dispersion`
+        factor-stability overlay -- the plot renders this table, it does not
+        recompute it -- but note the two entry points carry DIFFERENT
+        defaults (``plot_dispersion`` defaults to ``max_cv=0.05, min_run=1``),
+        so pass the same thresholds to both to get the same points.
+        Reliability here is the cross-cohort spread of the factor, not how far
+        development has run -- a large but consistent factor (much tail
+        remaining) can be stable, so a caller reading this as a completeness
+        boundary must judge that separately.
+
+        Parameters
+        ----------
+        max_cv, max_rse : float
+            Per-link cross-cohort CV and Mack RSE thresholds (both positive);
+            a link counts as stable only when it is below BOTH.
+        min_run : int
+            Consecutive stable links required (``>= 1``). ``min_run=1`` accepts
+            a lone stable link; the default ``2`` demands a sustained run, so a
+            single sub-threshold link surrounded by noisy ones does not
+            qualify.
+
+        Returns
+        -------
+        FrameLike
+            Columns ``[groups?, duration_from, duration_to, cv, rse]`` in the
+            original input format, one row per group.
+
+        Raises
+        ------
+        ValueError
+            If ``min_run < 1`` or either threshold is not positive.
+        """
+        if min_run < 1:
+            raise ValueError(f"min_run must be >= 1; got {min_run}.")
+        if max_cv <= 0 or max_rse <= 0:
+            raise ValueError(
+                f"max_cv and max_rse must be positive; "
+                f"got max_cv={max_cv}, max_rse={max_rse}."
+            )
+        frame = _stability_frame(
+            self._chart_df, self._groups,
+            max_cv=max_cv, max_rse=max_rse, min_run=min_run,
+        )
+        return mirror_output(frame, self._output_type)
 
     def plot(
         self,
