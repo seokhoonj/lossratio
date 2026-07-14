@@ -107,6 +107,12 @@ def test_recent_validates(exp):
         PooledLoss(recent=0)
 
 
+def test_sigma_method_validates_at_construction():
+    # a bad sigma_method must fail fast at the estimator, not deep in the tail fill
+    with pytest.raises(ValueError, match="sigma_method must be one of"):
+        PooledLoss(sigma_method="lcof")
+
+
 def test_summary_shape(exp):
     fit = PooledLoss().fit(lr.Triangle(exp, groups="coverage"))
     s = fit.summary()

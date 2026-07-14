@@ -13,15 +13,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from .._kernels.recent import validate_recent
+from .._kernels.sigma import _VALID_SIGMA_METHODS
 
 if TYPE_CHECKING:
+    from .._kernels.resample import ResidualBootstrap
+    from .._kernels.weighted import WeightedBootstrap
     from .._types import RegimeArg
     from ..core.triangle import Triangle
     from .loss import LossFit
     from .premium import PremiumFit
+
+    # A loss estimator's uncertainty engine (premium is point-only).
+    BootstrapArg: TypeAlias = ResidualBootstrap | WeightedBootstrap | None
 
 
 # How a fit CONSUMES a detected/specified regime. This is a consumption knob of
@@ -29,6 +35,7 @@ if TYPE_CHECKING:
 # not a property of the regime structure -- so it sits on the estimator, not on
 # ``Regime`` / ``RegimeDetector``.
 _VALID_TREATMENTS = ("latest_only", "segment_wise", "covariate")
+Treatment: TypeAlias = Literal["latest_only", "segment_wise", "covariate"]
 
 
 def _check_treatment(treatment: str) -> str:
@@ -37,6 +44,13 @@ def _check_treatment(treatment: str) -> str:
             f"treatment must be one of {_VALID_TREATMENTS}, got {treatment!r}"
         )
     return treatment
+
+
+def _check_sigma_method(sigma_method: str) -> None:
+    if sigma_method not in _VALID_SIGMA_METHODS:
+        raise ValueError(
+            f"sigma_method must be one of {_VALID_SIGMA_METHODS}, got {sigma_method!r}"
+        )
 
 
 def _validate_lam_cov(lam_cov: float | str | dict) -> None:
@@ -76,10 +90,10 @@ class _LossEstimatorBase:
 
     recent: int | None = None
     regime: RegimeArg = None
-    treatment: str = "latest_only"
+    treatment: Treatment = "latest_only"
     sigma_method: str = "locf"
     confidence_level: float = 0.95
-    uncertainty: Any = None
+    uncertainty: BootstrapArg = None
 
     def fit(self, triangle: Triangle) -> LossFit:
         """Fit the loss projection on ``triangle`` (overridden per estimator)."""
@@ -88,6 +102,7 @@ class _LossEstimatorBase:
     def __post_init__(self) -> None:
         validate_recent(self.recent)
         _check_treatment(self.treatment)
+        _check_sigma_method(self.sigma_method)
         if self.regime is not None and not isinstance(self.regime, (date, dict)):
             from ..diagnostics.regime import Regime, RegimeDetector
             if not isinstance(self.regime, (Regime, RegimeDetector)):
@@ -119,7 +134,7 @@ class _PremiumEstimatorBase:
 
     recent: int | None = None
     regime: RegimeArg = None
-    treatment: str | None = None
+    treatment: Treatment | None = None
     sigma_method: str = "locf"
     confidence_level: float = 0.95
 
@@ -129,6 +144,7 @@ class _PremiumEstimatorBase:
 
     def __post_init__(self) -> None:
         validate_recent(self.recent)
+        _check_sigma_method(self.sigma_method)
         if self.treatment is not None:
             _check_treatment(self.treatment)
         if self.regime is not None and not isinstance(self.regime, (date, dict)):
