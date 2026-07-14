@@ -30,6 +30,7 @@ import polars as pl
 from scipy.stats import norm
 
 from .._kernels.io import mirror_output, normalize_groups
+from .._kernels.period import GRAIN_ORDER, sum_increments_to_grain
 from ._base import _LossEstimatorBase, _PremiumEstimatorBase
 from .loss import LossFit
 from .premium import PremiumFit
@@ -286,6 +287,63 @@ class LossRatioFit:
 
     def to_polars(self) -> pl.DataFrame:
         return self._df
+
+    @property
+    def grain(self) -> str:
+        """The grain the legs were fit at (both share the triangle's grain)."""
+        return self.loss_fit.grain
+
+    def at_grain(self, grain: str) -> FrameLike:
+        """View the composed projection at a COARSER display grain.
+
+        Both legs' projected increments are summed to ``grain`` and the ratio is
+        recomposed ``ratio_proj = loss_proj / premium_proj`` -- the coarse-grain
+        analogue of the native composition, and a deterministic aggregation of
+        this fit, NOT a re-fit. Point columns only: standard errors are not
+        summable cell-wise, so the ratio band is left to :attr:`df` at the fit
+        grain (or a target-grain bootstrap). ``grain`` must be the fit's own
+        grain (identity) or coarser (``"M" < "Q" < "H" < "Y"``). Returns
+        ``[groups?, cohort, duration, loss_proj, premium_proj, ratio_proj,
+        source]`` -- ``source`` is the loss leg's provenance, as at native grain.
+        """
+        src_grain = self.loss_fit.grain
+        if grain not in GRAIN_ORDER:
+            raise ValueError(
+                f"grain must be one of {sorted(GRAIN_ORDER)}, got {grain!r}"
+            )
+        if GRAIN_ORDER[grain] < GRAIN_ORDER[src_grain]:
+            raise ValueError(
+                f"at_grain only views a COARSER grain: this fit is at "
+                f"{src_grain!r}, cannot view the finer {grain!r}."
+            )
+        group_cols = normalize_groups(self.groups) or []
+        out_cols = [*group_cols, "cohort", "duration",
+                    "loss_proj", "premium_proj", "ratio_proj", "source"]
+        if grain == src_grain:
+            return mirror_output(self._df.select(out_cols), self._output_type)
+
+        loss = sum_increments_to_grain(
+            self.loss_fit._df, group_cols=group_cols,
+            from_grain=src_grain, to_grain=grain,
+            incr_col="incr_loss_proj", cum_col="loss_proj",
+        )
+        premium = sum_increments_to_grain(
+            self.premium_fit._df, group_cols=group_cols,
+            from_grain=src_grain, to_grain=grain,
+            incr_col="incr_premium_proj", cum_col="premium_proj",
+        ).select([*group_cols, "cohort", "duration", "premium_proj"])
+
+        keys = [*group_cols, "cohort", "duration"]
+        # denominator is known exposure; null/0 premium -> null ratio, never inf
+        safe_pp = (
+            pl.when(pl.col("premium_proj").is_null() | (pl.col("premium_proj") == 0.0))
+            .then(None)
+            .otherwise(pl.col("premium_proj"))
+        )
+        composed = loss.join(premium, on=keys, how="left").with_columns(
+            (pl.col("loss_proj") / safe_pp).alias("ratio_proj")
+        )
+        return mirror_output(composed.select(out_cols), self._output_type)
 
     def summary(self) -> FrameLike:
         """Per-cohort summary: the latest within-triangle projected loss ratio

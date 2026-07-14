@@ -383,6 +383,71 @@ def add_periods(
 
 
 # ---------------------------------------------------------------------------
+# Grain aggregation (fine projection frame -> coarser display grain)
+# ---------------------------------------------------------------------------
+
+
+def sum_increments_to_grain(
+    df: pl.DataFrame,
+    *,
+    group_cols: list[str],
+    from_grain: str,
+    to_grain: str,
+    incr_col: str,
+    cum_col: str,
+) -> pl.DataFrame:
+    """Aggregate a fine-grain projection frame up to a coarser display grain.
+
+    Each cell's calendar period (``cohort`` advanced by ``duration - 1`` steps at
+    ``from_grain``) and its cohort are floored to ``to_grain``; the incremental
+    ``incr_col`` is summed per coarse ``(group, cohort, calendar)`` cell, the
+    coarse ``duration`` is re-derived, and the cumulative ``cum_col`` is rebuilt.
+    A coarse cell is ``"observed"`` only if every finer sub-cell is observed,
+    ``"grafted"`` if any is grafted, else ``"own"``. The increment sum is guarded
+    so an all-null coarse cell stays null rather than fabricating ``0.0``.
+
+    A deterministic aggregation of an already-projected frame -- not a re-fit --
+    so the coarse numbers are exactly the fine frame summed up. ``df`` must carry
+    ``cohort`` / ``duration`` / ``source`` / ``incr_col``. Returns
+    ``[*group_cols, cohort, duration, cum_col, incr_col, source]``.
+    """
+    df = df.with_columns(
+        add_periods(pl.col("cohort"), pl.col("duration"), from_grain).alias("_cal")
+    ).with_columns(
+        floor_to_period(pl.col("cohort"), to_grain).alias("_cohort_floor"),
+        floor_to_period(pl.col("_cal"), to_grain).alias("_calendar_floor"),
+    )
+    agg = (
+        df.group_by([*group_cols, "_cohort_floor", "_calendar_floor"])
+        .agg(
+            pl.when(pl.col(incr_col).is_not_null().any())
+              .then(pl.col(incr_col).sum())
+              .otherwise(None)
+              .alias(incr_col),
+            (pl.col("source") == "observed").all().alias("_all_obs"),
+            (pl.col("source") == "grafted").any().alias("_any_graft"),
+        )
+        .with_columns(
+            count_periods(
+                pl.col("_cohort_floor"), pl.col("_calendar_floor"), to_grain
+            ).alias("duration")
+        )
+        .rename({"_cohort_floor": "cohort"})
+        .drop("_calendar_floor")
+        .sort([*group_cols, "cohort", "duration"])
+        .with_columns(
+            pl.col(incr_col).cum_sum().over([*group_cols, "cohort"]).alias(cum_col)
+        )
+        .with_columns(
+            pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
+              .when(pl.col("_any_graft")).then(pl.lit("grafted"))
+              .otherwise(pl.lit("own")).alias("source")
+        )
+    )
+    return agg.select([*group_cols, "cohort", "duration", cum_col, incr_col, "source"])
+
+
+# ---------------------------------------------------------------------------
 # User-facing: derive M/Q/H/Y grain columns from monthly source
 # ---------------------------------------------------------------------------
 
