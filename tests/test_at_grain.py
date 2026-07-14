@@ -200,3 +200,28 @@ def test_loss_ratio_at_grain_rejects_unknown_and_finer_grain():
         fit.at_grain("X")
     with pytest.raises(ValueError, match="COARSER"):
         fit.at_grain("M")          # finer than the Q fit
+
+
+def test_premium_at_grain_identity_and_conserves_mass():
+    """PremiumFit.at_grain is the denominator analogue of LossFit.at_grain: the
+    identity grain returns the fit unchanged and every coarser grain conserves the
+    projected premium increment total."""
+    fit = lr.PooledPremium().fit(_tri("M"))
+    native = fit.to_polars()
+    cols = ["coverage", "cohort", "duration", "premium_proj",
+            "incr_premium_proj", "source"]
+    ident = fit.at_grain("M").sort(cols[:3])
+    assert ident.equals(native.select(cols).sort(cols[:3]))
+    for g in ("Q", "H", "Y"):
+        coarse = fit.at_grain(g)
+        assert native["incr_premium_proj"].sum() == pytest.approx(
+            coarse["incr_premium_proj"].sum(), rel=1e-9
+        )
+
+
+def test_premium_at_grain_guards():
+    fit = lr.PooledPremium().fit(_tri("Q"))
+    with pytest.raises(ValueError, match="grain must be one of"):
+        fit.at_grain("X")
+    with pytest.raises(ValueError, match="COARSER"):
+        fit.at_grain("M")

@@ -49,6 +49,7 @@ from .._kernels.io import (
     normalize_groups,
     scalar_int,
 )
+from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import build_value_matrices, fit_multiplicative
 from ..core.model_frame import _ModelFrame
@@ -599,6 +600,7 @@ def _fit_premium(
         sigma_method=sigma_method,
         regime=regime,
         confidence_level=confidence_level,
+        grain=triangle.grain,
         output_type=triangle._output_type,
         status=status,
         status_reasons=reasons,
@@ -636,6 +638,7 @@ class PremiumFit:
         sigma_method: str,
         regime: Any,
         confidence_level: float,
+        grain: Grain,
         output_type: str,
         status: str,
         status_reasons: list[str],
@@ -651,6 +654,7 @@ class PremiumFit:
         self.sigma_method = sigma_method
         self.regime = regime
         self.confidence_level = confidence_level
+        self.grain = grain
         self.status = status
         self.status_reasons = status_reasons
         self.cell_counts = cell_counts
@@ -660,6 +664,45 @@ class PremiumFit:
     @property
     def df(self) -> FrameLike:
         return mirror_output(self._df, self._output_type)
+
+    def at_grain(self, grain: Grain) -> FrameLike:
+        """View the premium projection at a COARSER grain by aggregating this fit.
+
+        The denominator analogue of :meth:`LossFit.at_grain`: a deterministic
+        aggregation of the projected per-period increments, NOT a re-fit, so the
+        coarse numbers are exactly this fit summed up. ``grain`` must be the fit's
+        own grain (identity) or coarser (``"M" < "Q" < "H" < "Y"``). Returns
+        ``[groups?, cohort, duration, premium_proj, incr_premium_proj, source]``
+        (point columns only).
+
+        Raises
+        ------
+        ValueError
+            If ``grain`` is not one of ``"M"`` / ``"Q"`` / ``"H"`` / ``"Y"``, or is
+            finer than this fit's own grain.
+        """
+        if grain not in GRAIN_ORDER:
+            raise ValueError(
+                f"grain must be one of {sorted(GRAIN_ORDER, key=lambda g: GRAIN_ORDER[g])}, "
+                f"got {grain!r}"
+            )
+        if GRAIN_ORDER[grain] < GRAIN_ORDER[self.grain]:
+            raise ValueError(
+                f"at_grain only views a COARSER grain: this fit is at "
+                f"{self.grain!r}, cannot view the finer {grain!r}."
+            )
+        group_cols = normalize_groups(self.groups)
+        out_cols = [*group_cols, "cohort", "duration", "premium_proj",
+                    "incr_premium_proj", "source"]
+        if grain == self.grain:
+            return mirror_output(self._df.select(out_cols), self._output_type)
+
+        agg = sum_increments_to_grain(
+            self._df, group_cols=group_cols,
+            from_grain=self.grain, to_grain=grain,
+            incr_col="incr_premium_proj", cum_col="premium_proj",
+        )
+        return mirror_output(agg.select(out_cols), self._output_type)
 
     @property
     def credibility(self) -> FrameLike | None:
