@@ -425,18 +425,18 @@ class ATA:
         else:
             diag_parts:  list[pl.DataFrame] = []
             chart_parts: list[pl.DataFrame] = []
-            for g, sub in iter_group_frames(tri_df, groups):
-                loss_obs, _, _ = build_value_matrix(sub, link._target)
+            for group_value, group_sub in iter_group_frames(tri_df, groups):
+                loss_obs, _, _ = build_value_matrix(group_sub, link._target)
                 result = _compute_ata_factor(
                     loss_obs,
                     sigma_method=sigma_method,
                     link_mask=recent_link_mask(loss_obs, recent),
                 )
                 diag_parts.append(
-                    _diagnostic_frame(result, groups=groups, group_value=g)
+                    _diagnostic_frame(result, groups=groups, group_value=group_value)
                 )
                 chart_parts.append(
-                    _chart_frame(result, groups=groups, group_value=g)
+                    _chart_frame(result, groups=groups, group_value=group_value)
                 )
             diag_df  = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
             chart_df = pl.concat(chart_parts) if chart_parts else pl.DataFrame()

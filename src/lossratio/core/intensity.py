@@ -314,9 +314,9 @@ class Intensity:
         else:
             diag_parts:  list[pl.DataFrame] = []
             chart_parts: list[pl.DataFrame] = []
-            for g, sub in iter_group_frames(tri_df, groups):
+            for group_value, group_sub in iter_group_frames(tri_df, groups):
                 (loss_obs, premium_obs), _, _ = build_value_matrices(
-                    sub, (loss_col, premium_col)
+                    group_sub, (loss_col, premium_col)
                 )
                 result = _compute_intensity(
                     loss_obs,
@@ -325,10 +325,10 @@ class Intensity:
                     link_mask=recent_link_mask(loss_obs, recent),
                 )
                 diag_parts.append(
-                    _diagnostic_frame(result, groups=groups, group_value=g)
+                    _diagnostic_frame(result, groups=groups, group_value=group_value)
                 )
                 chart_parts.append(
-                    _chart_frame(result, groups=groups, group_value=g)
+                    _chart_frame(result, groups=groups, group_value=group_value)
                 )
             diag_df  = pl.concat(diag_parts) if diag_parts else pl.DataFrame()
             chart_df = pl.concat(chart_parts) if chart_parts else pl.DataFrame()

@@ -184,19 +184,19 @@ def _compute_triangle_usage(
         )
 
     # 6. Resolve the regime cohort cut into a per-row change-pass expression.
-    cd_scalar, cd_df = _regime_cut_frames(regime_cut, group_cols)
+    change_date_scalar, change_date_frame = _regime_cut_frames(regime_cut, group_cols)
     has_recent = recent is not None
-    has_change = cd_scalar is not None or cd_df is not None
+    has_change = change_date_scalar is not None or change_date_frame is not None
     # segment_wise / covariate KEEP every regime (no pre-change drop); only
     # latest_only (and a plain date / None) drops the pre-change cohorts.
     keeps_all = treatment in ("segment_wise", "covariate")
 
     # normalise the cut into a single per-row column so both the scalar and the
     # per-segment-dict forms share the donor / change logic below.
-    if cd_df is not None:
-        expanded = expanded.join(cd_df, on=group_cols, how="left")
-    elif cd_scalar is not None:
-        expanded = expanded.with_columns(pl.lit(cd_scalar).alias("_change"))
+    if change_date_frame is not None:
+        expanded = expanded.join(change_date_frame, on=group_cols, how="left")
+    elif change_date_scalar is not None:
+        expanded = expanded.with_columns(pl.lit(change_date_scalar).alias("_change"))
     else:
         expanded = expanded.with_columns(pl.lit(None, dtype=pl.Date).alias("_change"))
     change_pass_expr = pl.col("_change").is_null() | (
@@ -211,13 +211,13 @@ def _compute_triangle_usage(
         newest_obs = pl.col("_is_observed") & change_pass_expr
         k_new = pl.when(newest_obs).then(pl.col("duration")).otherwise(None).max()
         expanded = expanded.with_columns(
-            (k_new.over(group_cols) if group_cols else k_new).alias("_K_new")
+            (k_new.over(group_cols) if group_cols else k_new).alias("_k_new")
         )
         donor_expr = (
             pl.col("_is_observed")
             & ~change_pass_expr
-            & pl.col("_K_new").is_not_null()
-            & (pl.col("duration") >= pl.col("_K_new"))
+            & pl.col("_k_new").is_not_null()
+            & (pl.col("duration") >= pl.col("_k_new"))
         )
 
     # 7. pass_filter = recent window AND (the regime cohort cut, unless the

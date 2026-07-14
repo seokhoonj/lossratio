@@ -24,6 +24,8 @@ from .._kernels.period import (
 )
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from .._kernels.io import FrameLike
     from .._types import RegimeArg
     from .calendar import Calendar
@@ -91,7 +93,7 @@ class Triangle:
 
     def __init__(
         self,
-        df: pl.DataFrame | Any,
+        df: FrameLike,
         groups: str | Sequence[str] | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
@@ -372,7 +374,7 @@ class Triangle:
         self._duration = _GRAIN_TO_DURATION_COL[grain]
 
     @property
-    def df(self):
+    def df(self) -> FrameLike:
         """Return the triangle data in the original input format."""
         return mirror_output(self._df, self._output_type)
 
@@ -380,7 +382,7 @@ class Triangle:
         """Return the triangle data as a polars DataFrame."""
         return self._df
 
-    def to_pandas(self):
+    def to_pandas(self) -> pd.DataFrame:
         """Return the triangle data as a pandas DataFrame."""
         return self._df.to_pandas()
 
@@ -903,7 +905,7 @@ class Triangle:
         metric: str = "ratio",
         summary: bool = False,
         summary_min_n: int = 5,
-        regime: Any = None,
+        regime: RegimeArg = None,
         amount_divisor: float | str = "auto",
         nrow: int | None = None,
         ncol: int | None = None,
@@ -997,7 +999,7 @@ class TriangleValidation:
 
     def __init__(
         self,
-        df: pl.DataFrame | Any,
+        df: FrameLike,
         groups: str | Sequence[str] | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
@@ -1192,7 +1194,7 @@ class TriangleValidation:
         """The gaps table as a polars DataFrame."""
         return self._gaps
 
-    def to_pandas(self):
+    def to_pandas(self) -> pd.DataFrame:
         """The gaps table as a pandas DataFrame."""
         return self._gaps.to_pandas()
 
