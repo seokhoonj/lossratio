@@ -409,7 +409,9 @@ class LossRatioFit:
         loss_sub = surf.group_by(gb).agg(
             pl.col("loss_proj").sum(),
             pl.col("incr_loss_proj").sum(),
-            (pl.col("source") == "observed").all().alias("_all_obs"),
+            # observed only if EVERY sub-cell is observed; a null-source gap
+            # counts as not-observed (``.all`` ignores nulls).
+            (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
         )
         # premium: full-grain premium aggregated to the reporting grain + `by`
         # (fine-then-sum; an all-null cell stays null, matching the headline).

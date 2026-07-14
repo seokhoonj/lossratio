@@ -424,7 +424,9 @@ def sum_increments_to_grain(
               .then(pl.col(incr_col).sum())
               .otherwise(None)
               .alias(incr_col),
-            (pl.col("source") == "observed").all().alias("_all_obs"),
+            # observed only if EVERY sub-cell is observed: a null-source gap
+            # sub-cell must count as not-observed (``.all`` ignores nulls).
+            (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
             (pl.col("source") == "grafted").any().alias("_any_graft"),
         )
         .with_columns(

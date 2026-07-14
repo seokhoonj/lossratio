@@ -1680,7 +1680,9 @@ class LossFit:
             df.group_by([*group_cols, "_cohort_floor", "_calendar_floor"])
             .agg(
                 pl.col("incr_loss_proj").sum().alias("incr_loss_proj"),
-                (pl.col("source") == "observed").all().alias("_all_obs"),
+                # observed only if EVERY sub-cell is observed; a null-source gap
+                # counts as not-observed (``.all`` ignores nulls).
+                (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
                 (pl.col("source") == "grafted").any().alias("_any_graft"),
             )
             .with_columns(
@@ -1787,8 +1789,9 @@ class LossFit:
             .agg(
                 pl.col("loss_proj").sum(),
                 pl.col("incr_loss_proj").sum(),
-                # a cell is observed only if every sub-cell is observed
-                (pl.col("source") == "observed").all().alias("_all_obs"),
+                # a cell is observed only if every sub-cell is observed; a
+                # null-source gap counts as not-observed (``.all`` ignores nulls)
+                (pl.col("source") == "observed").fill_null(False).all().alias("_all_obs"),
             )
             .with_columns(
                 pl.when(pl.col("_all_obs")).then(pl.lit("observed"))
