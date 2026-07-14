@@ -28,12 +28,16 @@ def test_engine_fast_matches_engine_oracle(seed):
     loss, premium = _random_triangle(seed)
     n_links = loss.shape[1] - 1
     n_cohorts = loss.shape[0]
-    response, exposure, dur0, coh0 = engine_fast.link_feed(loss, premium)
+    response, exposure, dur0, coh0 = engine_fast.link_feed(
+        loss_obs=loss, premium_obs=premium
+    )
     resp, exp = response.tolist(), exposure.tolist()
     dur, coh = dur0.tolist(), coh0.tolist()
 
     # saturated intensity g_k
-    g_fast = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
+    g_fast = engine_fast.saturated_intensity(
+        response=response, exposure=exposure, dur0=dur0, n_links=n_links
+    )
     g_oracle = engine.saturated_intensity(response=resp, exposure=exp, duration=dur)
     for k in range(n_links):
         if np.isnan(g_fast[k]):
@@ -49,7 +53,9 @@ def test_engine_fast_matches_engine_oracle(seed):
     assert np.allclose(fitted_fast, fitted_oracle, atol=_TOL, rtol=0.0)
 
     # Pearson dispersion phi_k
-    phi_fast = engine_fast.pearson_dispersion(response, fitted_fast, dur0, n_links, "locf")
+    phi_fast = engine_fast.pearson_dispersion(
+        response=response, fitted=fitted_fast, dur0=dur0, n=n_links, sigma_method="locf"
+    )
     phi_oracle = engine.pearson_dispersion(
         response=resp, fitted=fitted_oracle.tolist(), duration=dur, sigma_method="locf"
     )
@@ -61,7 +67,8 @@ def test_engine_fast_matches_engine_oracle(seed):
 
     # Buhlmann-Straub psi
     psi_fast = engine_fast.buhlmann_straub_psi(
-        response, fitted_fast, phi_fast, coh0, dur0, n_cohorts
+        response=response, fitted=fitted_fast, phi=phi_fast,
+        coh0=coh0, dur0=dur0, n_cohorts=n_cohorts,
     )
     psi_oracle = engine.buhlmann_straub_psi(
         response=resp, fitted=fitted_oracle.tolist(), phi=phi_oracle,
@@ -71,7 +78,8 @@ def test_engine_fast_matches_engine_oracle(seed):
 
     # conjugate levels u_i / Z_i
     u_fast, z_fast, present = engine_fast.conjugate_levels(
-        response, fitted_fast, phi_fast, psi_fast, coh0, dur0, n_cohorts
+        response=response, fitted=fitted_fast, phi=phi_fast, psi=psi_fast,
+        coh0=coh0, dur0=dur0, n_cohorts=n_cohorts,
     )
     lev = engine.conjugate_levels(
         response=resp, fitted=fitted_oracle.tolist(), phi=phi_oracle,
@@ -97,8 +105,8 @@ def test_buhlmann_straub_psi_degenerate_zero_phi_agrees():
         response=resp, fitted=fit, phi=phi, cohort=coh, duration=dur
     )
     psi_fast = engine_fast.buhlmann_straub_psi(
-        np.array(resp), np.array(fit), np.array([0.0, 3.0]),
-        np.array(coh), np.array([0, 1, 0]), 2,
+        response=np.array(resp), fitted=np.array(fit), phi=np.array([0.0, 3.0]),
+        coh0=np.array(coh), dur0=np.array([0, 1, 0]), n_cohorts=2,
     )
     assert psi_oracle == 0.0
     assert psi_fast == 0.0

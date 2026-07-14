@@ -250,8 +250,12 @@ def _refit_additive(
         )
         return bf["g_k"], bf["u"]
     n_links = loss_obs.shape[1] - 1
-    response, exposure, dur0, _coh = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
-    g_k = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
+    response, exposure, dur0, _coh = engine_fast.link_feed(
+        loss_obs=loss_obs, premium_obs=premium_obs, link_mask=link_mask
+    )
+    g_k = engine_fast.saturated_intensity(
+        response=response, exposure=exposure, dur0=dur0, n_links=n_links
+    )
     if mechanism == "credible":
         u_vec = credible_levels(
             loss_obs, premium_obs, g_k, sigma_method, psi, link_mask=link_mask
@@ -955,7 +959,9 @@ def _refit_phi(
         return np.full(n_links, np.nan, dtype=np.float64)
     # kk is k-major (from valid_cells), so kk[ok] stays non-decreasing -- the
     # contiguous-run precondition the vectorized pearson needs.
-    return engine_fast.pearson_dispersion(y[ok], mu[ok], kk[ok], n_links, sigma_method)
+    return engine_fast.pearson_dispersion(
+        response=y[ok], fitted=mu[ok], dur0=kk[ok], n=n_links, sigma_method=sigma_method
+    )
 
 
 def _process_draw(

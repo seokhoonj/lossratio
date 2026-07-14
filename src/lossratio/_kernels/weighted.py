@@ -288,7 +288,9 @@ def bootstrap_segment_weighted_additive(
         premium_obs, sigma_method=sigma_method, link_mask=premium_mask
     ).value_proj
 
-    response, exposure, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, loss_mask)
+    response, exposure, dur0, coh0 = engine_fast.link_feed(
+        loss_obs=loss_obs, premium_obs=premium_obs, link_mask=loss_mask
+    )
     J = response.size
     obs_mask = ~np.isnan(loss_obs)
     if J == 0:
@@ -297,7 +299,9 @@ def bootstrap_segment_weighted_additive(
                 "ci_lo": nan.copy(), "ci_hi": nan.copy()}
 
     # point fit -> centering projection + calendar-drift SE (scheme-independent)
-    g_pt = engine_fast.saturated_intensity(response, exposure, dur0, n_links)
+    g_pt = engine_fast.saturated_intensity(
+        response=response, exposure=exposure, dur0=dur0, n_links=n_links
+    )
     if mechanism == "credible":
         from .credible import credible_levels
         u_pt = credible_levels(loss_obs, premium_obs, g_pt, sigma_method, psi,
@@ -347,7 +351,8 @@ def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
     if loss_mask is not None:
         usable = usable & loss_mask[ii, kk]
     phi = engine_fast.pearson_dispersion(
-        y[usable], mu[usable], kk[usable], loss_obs.shape[1] - 1, sigma_method
+        response=y[usable], fitted=mu[usable], dur0=kk[usable],
+        n=loss_obs.shape[1] - 1, sigma_method=sigma_method,
     )
     phi_cell = np.where(np.isfinite(phi[kk]), phi[kk], np.nan)
     scale = np.sqrt(phi_cell * mu)
@@ -490,7 +495,8 @@ def bootstrap_segment_weighted_multiplicative(
         cal = ii + jj
         usable = usable & (cal > int(cal.max()) - recent)
     phi = engine_fast.pearson_dispersion(
-        y[usable], m[usable], jj[usable], n_durations, sigma_method
+        response=y[usable], fitted=m[usable], dur0=jj[usable],
+        n=n_durations, sigma_method=sigma_method,
     )
     phi_link = phi[1:]                                   # dispersion at to-duration k+1
 

@@ -63,7 +63,9 @@ def credible_levels(
     # numpy feed (k-major / cohort-minor); the vectorized engine matches the
     # dict-loop primitives to the rounding floor, so this is the single source
     # of truth for the point fit AND every bootstrap replicate.
-    response, exposure, dur0, coh0 = engine_fast.link_feed(loss_obs, premium_obs, link_mask)
+    response, exposure, dur0, coh0 = engine_fast.link_feed(
+        loss_obs=loss_obs, premium_obs=premium_obs, link_mask=link_mask
+    )
     if g_k.ndim == 1:
         m0 = g_k[dur0] * exposure
     else:
@@ -77,7 +79,10 @@ def credible_levels(
     fin = np.isfinite(m0) & (m0 > 0)
     if fin.any():
         response_f, m0_f, duration_f, coh_f = response[fin], m0[fin], dur0[fin], coh0[fin]
-        phi = engine_fast.pearson_dispersion(response_f, m0_f, duration_f, n_links, sigma_method)
+        phi = engine_fast.pearson_dispersion(
+            response=response_f, fitted=m0_f, dur0=duration_f, n=n_links,
+            sigma_method=sigma_method,
+        )
         # Degenerate cases collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
@@ -90,7 +95,8 @@ def credible_levels(
             if psi == "auto":
                 psi_hat = (
                     engine_fast.buhlmann_straub_psi(
-                        response_f, m0_f, phi, coh_f, duration_f, n_cohorts
+                        response=response_f, fitted=m0_f, phi=phi,
+                        coh0=coh_f, dur0=duration_f, n_cohorts=n_cohorts,
                     )
                     if n_coh >= 2
                     else 0.0
@@ -98,7 +104,8 @@ def credible_levels(
             else:
                 psi_hat = float(psi)
             u_arr, z_arr, present = engine_fast.conjugate_levels(
-                response_f, m0_f, phi, psi_hat, coh_f, duration_f, n_cohorts
+                response=response_f, fitted=m0_f, phi=phi, psi=psi_hat,
+                coh0=coh_f, dur0=duration_f, n_cohorts=n_cohorts,
             )
             u_vec[present] = np.maximum(u_arr[present], 0.0)   # recovery floor
             z_vec[present] = z_arr[present]

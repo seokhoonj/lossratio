@@ -40,6 +40,7 @@ def _group_count(idx: np.ndarray, n: int) -> np.ndarray:
 
 
 def link_feed(
+    *,
     loss_obs: np.ndarray, premium_obs: np.ndarray,
     link_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -56,7 +57,7 @@ def link_feed(
 
 
 def saturated_intensity(
-    response: np.ndarray, exposure: np.ndarray, dur0: np.ndarray, n_links: int
+    *, response: np.ndarray, exposure: np.ndarray, dur0: np.ndarray, n_links: int
 ) -> np.ndarray:
     """Pooled intensity ``g_k`` per from-duration (NaN where absent, ``0.0``
     where the exposure sum is zero)."""
@@ -71,7 +72,7 @@ def saturated_intensity(
 
 
 def pearson_dispersion(
-    response: np.ndarray, fitted: np.ndarray, dur0: np.ndarray, n: int,
+    *, response: np.ndarray, fitted: np.ndarray, dur0: np.ndarray, n: int,
     sigma_method: str = "locf",
 ) -> np.ndarray:
     """Per-from-duration Pearson dispersion ``phi_k`` (NaN where absent), with
@@ -110,7 +111,7 @@ def pearson_dispersion(
 
 
 def buhlmann_straub_psi(
-    response: np.ndarray, fitted: np.ndarray, phi: np.ndarray,
+    *, response: np.ndarray, fitted: np.ndarray, phi: np.ndarray,
     coh0: np.ndarray, dur0: np.ndarray, n_cohorts: int,
 ) -> float:
     """Bühlmann-Straub moment estimate of ``psi`` (array form). The cross-cohort
@@ -139,7 +140,7 @@ def buhlmann_straub_psi(
 
 
 def conjugate_levels(
-    response: np.ndarray, fitted: np.ndarray, phi: np.ndarray, psi: float,
+    *, response: np.ndarray, fitted: np.ndarray, phi: np.ndarray, psi: float,
     coh0: np.ndarray, dur0: np.ndarray, n_cohorts: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Per-cohort conjugate level ``u`` / credibility ``Z`` (array form), plus

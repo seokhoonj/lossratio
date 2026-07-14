@@ -59,8 +59,8 @@ def test_weighted_refit_w1_is_point():
     for i in range(nC):
         last = nD - i
         P[i, :last] = np.cumsum(np.abs(rng.normal(120, 20, last)))
-    resp, expo, dur0, coh0 = ef.link_feed(L, P)
-    g_pt = ef.saturated_intensity(resp, expo, dur0, nD - 1)
+    resp, expo, dur0, coh0 = ef.link_feed(loss_obs=L, premium_obs=P)
+    g_pt = ef.saturated_intensity(response=resp, exposure=expo, dur0=dur0, n_links=nD - 1)
     W = np.ones((1, resp.size))
     g, u, phi = _weighted_refit_additive(resp, expo, dur0, coh0, W, "pooled", "auto", nC, nD - 1)
     # exact up to FP reassociation (matmul vs add.at): the refit IS the point fit
