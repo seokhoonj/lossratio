@@ -403,13 +403,13 @@ def _fit_segment_credible(
 
     Pooled intensity ``g_k`` (the same closed-form saturated mode as
     ``PooledLoss``) plus a per-cohort credibility LEVEL ``u_i`` -- the
-    dispersion-scaled Buhlmann-Straub conjugate computed
+    dispersion-scaled Bühlmann-Straub conjugate computed
     by the oracle-verified engine primitives. The cohort's projected increment
     is ``u_i * g_k * P_k`` (additive, premium-anchored): own loss-ratio level
     shrunk toward the pooled level by its credibility.
 
     ``psi`` is the between-cohort variance: ``"auto"`` estimates it by the
-    Buhlmann-Straub moment (``psi_hat = 0`` degenerates to ``u = 1`` = exact
+    Bühlmann-Straub moment (``psi_hat = 0`` degenerates to ``u = 1`` = exact
     ``PooledLoss`` -- the ladder's automatic collapse), or a fixed
     non-negative float.
 

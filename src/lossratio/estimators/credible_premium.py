@@ -5,7 +5,7 @@
 denominator mirror of :class:`~lossratio.estimators.credible_loss.CredibleLoss`. Premium
 self-develops, so the intensity is ``h_k = f^P_k - 1`` (the pooled link ratio
 minus one) and a per-cohort credibility LEVEL ``u_i`` (the
-dispersion-scaled Buhlmann-Straub conjugate, premium as its own exposure) scales
+dispersion-scaled Bühlmann-Straub conjugate, premium as its own exposure) scales
 it: the projected link factor is ``1 + u_i * (f^P_k - 1)``. It returns the
 engine-backed :class:`~lossratio.estimators.premium.PremiumFit`.
 
@@ -35,7 +35,7 @@ class CrediblePremium(_PremiumEstimatorBase):
     ----------
     psi
         Between-cohort variance component: ``"auto"`` (default) estimates it by
-        the Buhlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
+        the Bühlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
         degenerates to :class:`~lossratio.estimators.pooled_premium.PooledPremium`.
     sigma_method
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).

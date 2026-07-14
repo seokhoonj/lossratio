@@ -41,7 +41,7 @@ pip install "lossratio[pandas] @ git+https://github.com/seokhoonj/lossratio.git"
   intensity per unit premium), premium-anchored additive projection. The safe
   default baseline.
 - `CredibleLoss` — `PooledLoss` plus a per-cohort credibility level
-  (Buhlmann-Straub shrinkage toward the pooled shape); exposes per-cohort
+  (Bühlmann-Straub shrinkage toward the pooled shape); exposes per-cohort
   `u` / `Z` / `psi` via `.credibility`.
 - `SmoothLoss` — `CredibleLoss` with a smooth (penalized P-spline) duration
   shape in place of the saturated one.

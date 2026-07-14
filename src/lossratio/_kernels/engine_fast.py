@@ -113,7 +113,7 @@ def buhlmann_straub_psi(
     response: np.ndarray, fitted: np.ndarray, phi: np.ndarray,
     coh0: np.ndarray, dur0: np.ndarray, n_cohorts: int,
 ) -> float:
-    """Buhlmann-Straub moment estimate of ``psi`` (array form). The cross-cohort
+    """Bühlmann-Straub moment estimate of ``psi`` (array form). The cross-cohort
     reductions stay sequential builtin sums over the sorted cohorts to match the
     engine's ``sum(...)``."""
     sm = _group_sum(fitted, coh0, n_cohorts)

@@ -244,7 +244,7 @@ def _fit_segment_credible_premium(
 
     Premium self-develops, so the growth rate is ``h_k = f^P_k - 1`` (the pooled
     link ratio minus one) and the per-cohort credibility LEVEL
-    ``u_i`` is the dispersion-scaled Buhlmann-Straub conjugate on the premium
+    ``u_i`` is the dispersion-scaled Bühlmann-Straub conjugate on the premium
     increments with premium as its own exposure -- the exact mirror of
     ``CredibleLoss``. The projected link factor is ``1 + u_i * (f^P_k - 1)``.
     ``psi <= 0`` (degenerate / no between-cohort signal) returns the pooled

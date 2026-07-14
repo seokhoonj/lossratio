@@ -3,7 +3,7 @@
 ``CredibleLoss`` is the partial-pooling rung of the structure ladder
 (``PooledLoss`` -> ``CredibleLoss`` -> ``SmoothLoss``): the pooled intensity
 ``g_k`` plus a per-cohort credibility LEVEL ``u_i`` (the dispersion-scaled
-Buhlmann-Straub conjugate), so a cohort's projected increment is
+Bühlmann-Straub conjugate), so a cohort's projected increment is
 ``u_i * g_k * P_k`` -- its own loss-ratio level shrunk toward the pooled level
 by its credibility. It returns the engine-backed
 :class:`~lossratio.estimators.loss.LossFit`.
@@ -41,7 +41,7 @@ class CredibleLoss(_LossEstimatorBase):
     ----------
     psi
         Between-cohort variance component: ``"auto"`` (default) estimates it by
-        the Buhlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
+        the Bühlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
         degenerates to :class:`~lossratio.estimators.pooled_loss.PooledLoss`.
     sigma_method
         Tail-sigma extrapolation for edf-deficient links: ``"locf"`` (default).

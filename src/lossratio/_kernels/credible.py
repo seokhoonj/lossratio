@@ -1,7 +1,7 @@
 """Numerical credibility / backfit projection kernels.
 
 Pure-numeric per-segment projection helpers shared by the loss estimators and
-the bootstrap kernels: the Buhlmann-Straub credible levels, the credible /
+the bootstrap kernels: the Bühlmann-Straub credible levels, the credible /
 graft projections, and the smooth backfit. They live in ``_kernels`` so the
 resampling kernels (``_kernels.resample`` / ``_kernels.weighted``) reuse them
 as same-layer siblings rather than importing upward from ``estimators.loss``.
@@ -45,7 +45,7 @@ def credible_levels(
     The estimation "cells" are the observed loss increments: response =
     ``dLoss``, the ``u = 1`` fitted mean ``m0 = g_k * P_from``, keyed by
     ``(cohort, from-duration)``. ``psi = "auto"`` estimates the between-cohort
-    variance by the Buhlmann-Straub moment; ``psi = 0`` (or any degenerate
+    variance by the Bühlmann-Straub moment; ``psi = 0`` (or any degenerate
     case) leaves ``u = 1`` / ``Z = 0`` = exactly PooledLoss.
 
     Returns ``(u_vec, z_vec, psi_hat)``: ``u_vec`` / ``z_vec`` are per-cohort-row
@@ -81,7 +81,7 @@ def credible_levels(
         # Degenerate cases collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
         # link is edf-rich enough to estimate dispersion (and locf has nothing
-        # to carry), and the Buhlmann-Straub psi moment is undefined (0/0) with
+        # to carry), and the Bühlmann-Straub psi moment is undefined (0/0) with
         # a single cohort. Both leave u = 1 = exactly PooledLoss.
         phi_ok = not np.isnan(phi[np.unique(duration_f)]).any()
         n_coh = int(np.unique(coh_f).size)

@@ -8,7 +8,7 @@ B times, every estimation cell gets a continuous mean-1 random weight
 ``w_{b,j} ~ Gamma(1, 1)`` (Xu-Gotwalt-Hong-King-Meeker 2020, The American
 Statistician; the fractional / Bayesian-bootstrap weight family, Rubin 1981).
 Because each refit quantity -- saturated ``g_k``, Pearson ``phi_k``,
-Buhlmann-Straub ``psi``, conjugate ``u_i`` -- is then a WEIGHTED SUM of FIXED
+Bühlmann-Straub ``psi``, conjugate ``u_i`` -- is then a WEIGHTED SUM of FIXED
 per-cell values, all B replicates compute as batched matrix products with no
 per-replicate Python loop.
 
@@ -151,7 +151,7 @@ def _weighted_refit_additive(
 
     m0z = np.where(okm, m0, 0.0)
     respB = response[None, :]
-    # weighted Buhlmann-Straub psi (per replicate, cross-cohort over axis 1)
+    # weighted Bühlmann-Straub psi (per replicate, cross-cohort over axis 1)
     sm = (Wm * m0z) @ Cind
     sy = (Wm * respB) @ Cind
     sphim = (Wm * np.where(okp, phi_cell, 0.0) * m0z) @ Cind

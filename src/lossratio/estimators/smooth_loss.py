@@ -44,7 +44,7 @@ class SmoothLoss(_LossEstimatorBase):
     ----------
     psi
         Between-cohort variance: ``"auto"`` (default) estimates it by the
-        Buhlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
+        Bühlmann-Straub moment, or a fixed non-negative float. ``psi = 0``
         keeps ``u = 1`` (a single smooth pass).
     lam
         Smoothing parameter for the 2nd-difference P-spline penalty: ``"auto"``

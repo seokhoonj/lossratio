@@ -16,7 +16,7 @@ grain; the next link of ``k`` is ``k + 1``.
 The two exposure aggregates often both written "m_i" are named apart
 here (the oracle flagged the clash): ``A_i = sum(m0/phi)`` is the SHRINKAGE
 exposure (drives Z and the conjugate level); ``m_i = (sum m0)^2 / sum(phi*m0)``
-is the PSI-MOMENT exposure (drives the Buhlmann-Straub psi estimate). They
+is the PSI-MOMENT exposure (drives the Bühlmann-Straub psi estimate). They
 coincide only at constant phi.
 """
 
@@ -139,7 +139,7 @@ def pearson_dispersion(*, response, fitted, duration, sigma_method="locf") -> di
 
 
 def buhlmann_straub_psi(*, response, fitted, phi, cohort, duration) -> float:
-    """Buhlmann-Straub moment estimate of the between-cohort variance ``psi``.
+    """Bühlmann-Straub moment estimate of the between-cohort variance ``psi``.
 
     Uses the PSI-MOMENT exposure ``m_i = (sum m0)^2 / sum(phi_k m0)`` and the
     raw per-cohort A/E ``r_i = sum y / sum m0``; floored at 0 (degeneracy = exact
@@ -171,7 +171,7 @@ class _LevelResult:
 
 
 def conjugate_levels(*, response, fitted, phi, psi, cohort, duration) -> _LevelResult:
-    """Dispersion-scaled conjugate (Buhlmann-Straub) cohort level.
+    """Dispersion-scaled conjugate (Bühlmann-Straub) cohort level.
 
     ``A_i = sum(m0/phi)`` (SHRINKAGE exposure), ``u_i = (1/psi + sum y/phi) /
     (1/psi + A_i)``, ``Z_i = A_i / (A_i + 1/psi)``. ``psi <= 0`` degenerates to

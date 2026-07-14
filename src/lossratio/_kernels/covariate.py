@@ -282,7 +282,7 @@ def fit_covariate_intensity(
 
     Covariates enter as treatment-coded FIXED effects on a shared duration shape,
     with the per-cohort credibility level the only shrinkage: the exposure-
-    weighted credibility of Buhlmann-Straub (1970) on the cohort level, combined
+    weighted credibility of Bühlmann-Straub (1970) on the cohort level, combined
     with a GLM for the duration shape and the covariate effects (the GLM +
     credibility combination, Ohlsson 2008). ``lam`` (default ``0`` = pure MLE
     fixed effects) optionally shrinks the covariate block toward zero relativity.

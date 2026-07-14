@@ -1,6 +1,6 @@
 """CredibleLoss -- partial-pooling credibility estimator.
 
-Pooled intensity g_k + per-cohort credibility level u_i (Buhlmann-Straub
+Pooled intensity g_k + per-cohort credibility level u_i (Bühlmann-Straub
 conjugate), projecting u_i * g_k * P. Tests pin the exact ladder collapse to
 PooledLoss at psi=0, the per-cohort level scaling, point-only SE, and the
 config guards.
