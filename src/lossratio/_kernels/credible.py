@@ -10,13 +10,17 @@ No reporting / Polars assembly here -- that stays in the estimator layer.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, TypeAlias
 
 import numpy as np
 
 from . import engine, engine_fast
 from .recursion import step_additive, step_multiplicative
 from .smooth import smooth_intensity
+
+# The three graft-body mechanics: an additive intensity g_k body, a multiplicative
+# link-ratio f_k body, or a self-exposure premium-growth body.
+GraftBody: TypeAlias = Literal["additive", "multiplicative", "self_exposure"]
 
 _BACKFIT_RELAX = 0.7  # damping for the smooth backfitting (anti-oscillation)
 
@@ -376,7 +380,7 @@ def project_graft(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
     *,
-    body: str,
+    body: GraftBody,
     own_g: np.ndarray, own_sig_g: np.ndarray, own_var_g: np.ndarray,
     own_f: np.ndarray, own_sig_f: np.ndarray, own_var_f: np.ndarray,
     donor_f: np.ndarray, donor_sig_f: np.ndarray, donor_var_f: np.ndarray,

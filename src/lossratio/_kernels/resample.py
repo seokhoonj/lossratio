@@ -52,6 +52,7 @@ import numpy as np
 
 from . import engine, engine_fast
 from .credible import (
+    GraftBody,
     credible_levels,
     project_credible,
     project_graft,
@@ -64,7 +65,7 @@ from .recursion import fit_multiplicative
 def project_graft_cum(
     loss_obs: np.ndarray,
     premium_proj: np.ndarray,
-    body: str,
+    body: GraftBody,
     own: np.ndarray,
     donor: tuple[np.ndarray, np.ndarray, np.ndarray],
     own_u: np.ndarray | None = None,

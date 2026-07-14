@@ -39,7 +39,7 @@ import numpy as np
 import polars as pl
 from scipy.stats import norm
 
-from .._kernels.credible import credible_levels, project_graft, smooth_backfit
+from .._kernels.credible import GraftBody, credible_levels, project_graft, smooth_backfit
 from .._kernels.io import (
     collapse_groups,
     fill_group_columns,
@@ -175,7 +175,7 @@ def _project_self_exposure(
 
 
 def _premium_graft_proj(
-    premium_obs: np.ndarray, *, body: str,
+    premium_obs: np.ndarray, *, body: GraftBody,
     donor: tuple[np.ndarray, np.ndarray, np.ndarray],
     own_f: np.ndarray | None = None,
     own_h: np.ndarray | None = None,
