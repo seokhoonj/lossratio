@@ -330,8 +330,12 @@ def plot_triangle_backtest(
                 "x_axis='calendar' needs a Date cohort axis; this triangle's "
                 "cohort is not a date."
             )
-        # calendar = cohort advanced by (duration - 1) grain periods.
-        months_per = {"M": 1, "Q": 3, "H": 6, "Y": 12}.get(grain or "M", 1)
+        # calendar = cohort advanced by (duration - 1) grain periods. Index
+        # directly (like the value/usage heatmaps) so a missing/unexpected grain
+        # raises rather than silently collapsing to a monthly step.
+        if grain is None:
+            raise ValueError("calendar-axis backtest plot requires a triangle grain")
+        months_per = {"M": 1, "Q": 3, "H": 6, "Y": 12}[grain]
         work = work.with_columns(
             pl.col("cohort")
             .dt.offset_by(

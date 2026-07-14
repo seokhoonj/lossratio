@@ -14,6 +14,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import pytest
@@ -21,6 +22,15 @@ from matplotlib.figure import Figure
 
 import lossratio as lr
 from lossratio.core.link import Link
+
+
+@pytest.fixture(autouse=True)
+def _close_figures():
+    """Close every figure a test opens so the suite doesn't leak figures or hit
+    matplotlib's max-open-figure warning."""
+    yield
+    plt.close("all")
+
 
 # stability band colour the overlay paints (#AED6F1)
 _SHADE_RGB = (174 / 255, 214 / 255, 241 / 255)

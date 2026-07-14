@@ -235,7 +235,7 @@ def _draw_duration_panel(
 
     for row_idx, row in enumerate(sub_sorted.iter_rows(named=True)):
         d_max = int(row["duration_max"])
-        missing = list(row["missing"]) if row["missing"] is not None else []
+        missing = {int(v) for v in row["missing"]} if row["missing"] is not None else set()
         for k in range(1, d_max + 1):
             color = miss_color if k in missing else obs_color
             ax.add_patch(Rectangle(
