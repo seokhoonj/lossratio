@@ -356,7 +356,7 @@ def plot_triangle_backtest(
         x_tick_labels = [str(d) for d in x_levels]
         x_axis_label = pretty_var_label(duration)
         x_rotation = 0
-    duration_levels = x_levels
+    axis_levels = x_levels
     # Cohort ascending (oldest -> newest). With `invert_yaxis()` below, the
     # oldest cohort sits at the top and the most recent cohort lands at the
     # bottom, matching plot_triangle.
@@ -383,14 +383,14 @@ def plot_triangle_backtest(
     if figsize is None:
         cell_w = 0.5
         cell_h = 0.35
-        fig_w = max(5.0, cell_w * len(duration_levels) * ncol + 1.5)
+        fig_w = max(5.0, cell_w * len(axis_levels) * ncol + 1.5)
         fig_h = max(3.5, cell_h * len(y_levels_top_to_bottom) * nrow + 2.0)
         figsize = (fig_w, fig_h)
 
     fig, axes = plt.subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
-    x_idx = {d: i for i, d in enumerate(duration_levels)}
+    x_idx = {d: i for i, d in enumerate(axis_levels)}
     y_idx = {lbl: i for i, lbl in enumerate(y_levels_top_to_bottom)}
 
     last_drawn = None
@@ -416,9 +416,9 @@ def plot_triangle_backtest(
                     color="black",
                 )
 
-        ax.set_xlim(-0.5, len(duration_levels) - 0.5)
+        ax.set_xlim(-0.5, len(axis_levels) - 0.5)
         ax.set_ylim(-0.5, len(y_levels_top_to_bottom) - 0.5)
-        ax.set_xticks(range(len(duration_levels)))
+        ax.set_xticks(range(len(axis_levels)))
         ax.set_xticklabels(x_tick_labels, fontsize=8, rotation=x_rotation)
         ax.set_yticks(range(len(y_levels_top_to_bottom)))
         ax.set_yticklabels(y_levels_top_to_bottom, fontsize=8)

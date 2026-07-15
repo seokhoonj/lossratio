@@ -213,13 +213,13 @@ def _cell_labels(
         premium_col = "premium" if metric == "ratio" else "incr_premium"
         loss_vals = df[loss_col].to_numpy() / divisor
         premium_vals = df[premium_col].to_numpy() / divisor
-        out = []
+        cell_labels = []
         for r, lo, pr in zip(scaled, loss_vals, premium_vals, strict=False):
             if not np.isfinite(r):
-                out.append("")
+                cell_labels.append("")
             else:
-                out.append(f"{r:.0f}\n({lo:.1f}/{pr:.1f})")
-        return out
+                cell_labels.append(f"{r:.0f}\n({lo:.1f}/{pr:.1f})")
+        return cell_labels
     if metric in _AMOUNT_METRICS:
         scaled = vals / divisor
         return [_fmt_or_blank(v, "%.1f") for v in scaled]

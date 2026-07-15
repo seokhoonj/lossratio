@@ -172,11 +172,11 @@ def _plot_factor(
     cells = filter_recent_cells(
         diagnostic._link._df, groups, diagnostic._recent
     )
-    box = kind == "box"
+    is_box_plot = kind == "box"
     return _plot_per_link_distribution(
         cells, summary, groups=groups, y_col=cell_column, kind=kind,
         y_label=y_label,
-        title=f"{'Box Plot' if box else 'Distribution'} of {title_noun}",
+        title=f"{'Box Plot' if is_box_plot else 'Distribution'} of {title_noun}",
         hline=reference_level,
         nrow=nrow, ncol=ncol, figsize=figsize,
     )

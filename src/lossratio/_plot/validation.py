@@ -68,19 +68,19 @@ def plot_validation(
         sub_sorted = sub.sort(coh)
         coh_vals = sub_sorted[coh]
         if coh_type is not None:
-            lab = format_period_series(coh_vals, coh_type)
+            cohort_labels = format_period_series(coh_vals, coh_type)
         else:
-            lab = [str(v) for v in coh_vals.to_list()]
+            cohort_labels = [str(v) for v in coh_vals.to_list()]
         n_duration = sub_sorted["n_duration"].to_numpy()
         n_exp = sub_sorted["n_expected"].to_numpy()
-        x = np.arange(len(lab))
+        x = np.arange(len(cohort_labels))
         width = 0.4
         ax.bar(x - width / 2, n_duration, width=width,
                color=BLUE, label="n_duration")
         ax.bar(x + width / 2, n_exp, width=width,
                color="#bdbdbd", label="n_expected")
         ax.set_xticks(x)
-        ax.set_xticklabels(lab, rotation=45, ha="right", fontsize=8)
+        ax.set_xticklabels(cohort_labels, rotation=45, ha="right", fontsize=8)
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=9)
         ax.legend(loc="best", fontsize=7, frameon=False)
@@ -175,27 +175,27 @@ def plot_triangle_validation(
         # cohort labels (oldest at top)
         cohorts = sub_sorted[coh].to_list()
         if coh_type is not None:
-            lab = format_period_series(sub_sorted[coh], coh_type)
+            cohort_labels = format_period_series(sub_sorted[coh], coh_type)
         else:
-            lab = [str(v) for v in cohorts]
+            cohort_labels = [str(v) for v in cohorts]
 
         if x_axis == "duration":
             _draw_duration_panel(
-                ax, sub_sorted, lab, max_duration,
+                ax, sub_sorted, cohort_labels, max_duration,
                 obs_color=obs_color, miss_color=miss_color,
                 show_label=show_label,
             )
         else:
             _draw_calendar_panel(
-                ax, sub_sorted, lab, max_duration, coh=coh,
+                ax, sub_sorted, cohort_labels, max_duration, coh=coh,
                 grain=grain, coh_type=coh_type,
                 obs_color=obs_color, miss_color=miss_color,
                 show_label=show_label,
             )
 
-        ax.set_ylim(-0.5, len(lab) - 0.5)
-        ax.set_yticks(range(len(lab)))
-        ax.set_yticklabels(lab, fontsize=7)
+        ax.set_ylim(-0.5, len(cohort_labels) - 0.5)
+        ax.set_yticks(range(len(cohort_labels)))
+        ax.set_yticklabels(cohort_labels, fontsize=7)
         ax.invert_yaxis()
         for spine in ax.spines.values():
             spine.set_visible(True)
@@ -223,7 +223,7 @@ def plot_triangle_validation(
 def _draw_duration_panel(
     ax,
     sub_sorted: pl.DataFrame,
-    lab: list[str],
+    cohort_labels: list[str],
     max_duration: int,
     *,
     obs_color: str,
@@ -255,7 +255,7 @@ def _draw_duration_panel(
 def _draw_calendar_panel(
     ax,
     sub_sorted: pl.DataFrame,
-    lab: list[str],
+    cohort_labels: list[str],
     max_duration: int,
     *,
     coh: str,
