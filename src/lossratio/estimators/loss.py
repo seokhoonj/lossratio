@@ -69,6 +69,8 @@ from ._credibility import _segment_credibility_df
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
     from ..core.triangle import Triangle
+    from ..diagnostics.regime import Regime
+    from ._base import BootstrapArg
 
 
 # Columns of the assembled long frame. A LossFit carries the loss projection
@@ -1589,7 +1591,7 @@ class LossFit:
         method: str,
         model: str,
         sigma_method: str,
-        regime: Any,
+        regime: Regime | None,
         confidence_level: float,
         grain: Grain,
         output_type: str,
@@ -1597,7 +1599,7 @@ class LossFit:
         status_reasons: list[str],
         converged: bool,
         cell_counts: dict[str, int],
-        uncertainty: Any = None,
+        uncertainty: BootstrapArg = None,
         credibility: pl.DataFrame | None = None,
         coefficients: pl.DataFrame | None = None,
         covariate_surface: pl.DataFrame | None = None,

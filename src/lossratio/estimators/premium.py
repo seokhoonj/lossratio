@@ -64,6 +64,7 @@ from ._credibility import _segment_credibility_df
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
     from ..core.triangle import Triangle
+    from ..diagnostics.regime import Regime
 
 
 # Columns of the assembled long premium frame. Mirrors the premium block of the
@@ -636,7 +637,7 @@ class PremiumFit:
         method: str,
         model: str,
         sigma_method: str,
-        regime: Any,
+        regime: Regime | None,
         confidence_level: float,
         grain: Grain,
         output_type: str,
