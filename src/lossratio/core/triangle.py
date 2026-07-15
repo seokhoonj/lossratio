@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import polars as pl
 
@@ -100,8 +100,8 @@ class Triangle:
         duration: str | None = None,
         loss: str = "incr_loss",
         premium: str = "incr_premium",
-        grain: str = "auto",
-        basis: str = "incremental",
+        grain: Grain | Literal["auto"] = "auto",
+        basis: Literal["incremental", "cumulative"] = "incremental",
         fill_gaps: bool = False,
     ) -> None:
         self._output_type = detect_input_type(df)
@@ -1006,7 +1006,7 @@ class TriangleValidation:
         duration: str | None = None,
         loss: str | None = None,
         premium: str | None = None,
-        grain: str = "auto",
+        grain: Grain | Literal["auto"] = "auto",
     ) -> None:
         self._output_type = detect_input_type(df)
         df_pl = to_polars(df)

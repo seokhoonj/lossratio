@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import polars as pl
@@ -34,6 +34,7 @@ from .._kernels.io import (
     mirror_output,
     normalize_groups,
 )
+from .._kernels.period import Grain
 
 if TYPE_CHECKING:
     from ..core.triangle import Triangle
@@ -459,7 +460,7 @@ def _coarsen_triangle(tri, target_grain: str):
         calendar="_calendar",
         loss="incr_loss",
         premium="incr_premium",
-        grain=target_grain,
+        grain=cast(Grain, target_grain),  # validated against _GRAIN_MONTHS above
         basis="incremental",
     )
 
