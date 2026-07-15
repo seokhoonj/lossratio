@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 import numpy as np
 import polars as pl
@@ -37,10 +37,15 @@ from .._kernels.io import (
 from .._kernels.period import Grain
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
+    from .._kernels.io import FrameLike
     from ..core.triangle import Triangle
 
 
 _VALID_METHODS = ("e_divisive", "hclust")
+# Closed change-point algorithm vocabulary (validated against _VALID_METHODS).
+Method: TypeAlias = Literal["e_divisive", "hclust"]
 _DERIVED_TARGETS = ("loss_ata", "premium_ata", "loss_intensity")
 # When ``window="auto"`` cannot resolve via the elbow heuristic (flat
 # change-count curve, sweep failure, too few cohorts), fall back to this
@@ -220,7 +225,7 @@ def _detect_regime_single(
     change points carry a ``NaN`` p-value (they are effect-size gated, not
     permutation tested) so a downstream FDR pass leaves them untouched.
     """
-    mat, cohorts, dropped = _build_feature_matrix(sub, target, window)
+    mat, cohorts, dropped = _make_feature_matrix(sub, target, window)
     n = len(cohorts)
     if method == "e_divisive":
         change_idxs, p_vals = _e_divisive_change_points(
@@ -268,7 +273,7 @@ _ASSESS_KEYS = (
 )
 
 
-def _build_candidates_df(
+def _make_candidates_df(
     per_combo_results: list[tuple[Any, dict[str, Any]]],
     grp: str | list[str] | None,
 ) -> pl.DataFrame:
@@ -367,7 +372,7 @@ def _sweep_window_candidates(
 _SWEEP_KEYS = ("change", "window_stability", "n_windows") + _ASSESS_KEYS
 
 
-def _build_sweep_candidates_df(
+def _make_sweep_candidates_df(
     sub_by_combo: dict[Any, pl.DataFrame],
     combos: list[Any],
     grp: str | list[str] | None,
@@ -735,7 +740,7 @@ def _detect_regime_optimal_window(
     return _kneedle_elbow(windows, counts)
 
 
-def _build_feature_matrix(
+def _make_feature_matrix(
     tri_df: pl.DataFrame,
     target: str,
     window: int,
@@ -827,7 +832,7 @@ def _cohort_level_scalar(
     -------
     (cohorts, scalar)
         ``cohorts`` is the sorted-ascending Python list of kept cohort keys
-        (a list, matching :func:`_build_feature_matrix`, so the caller can
+        (a list, matching :func:`_make_feature_matrix`, so the caller can
         ``.index(date)`` and build polars Date columns); ``scalar`` is the
         aligned float numpy array of per-cohort means. Empty list / array
         when no cohort qualifies.
@@ -1588,7 +1593,7 @@ class Regime:
         # change-count sweep; if the elbow is also undefined, falls
         # back to ``_WINDOW_AUTO_FALLBACK``.
         if window_is_auto:
-            from .._kernels.recursion import build_value_matrix
+            from .._kernels.recursion import make_value_matrix
             from ..core.ata import _detect_stability_point
 
             # Map the regime target -> a valid cumulative metric for the
@@ -1610,7 +1615,7 @@ class Regime:
             if grp is not None:
                 for combo in combos:
                     try:
-                        stab_obs, _, _ = build_value_matrix(
+                        stab_obs, _, _ = make_value_matrix(
                             sub_by_combo[combo], value_col=stability_metric
                         )
                         stability_by_combo[combo] = _detect_stability_point(
@@ -1696,7 +1701,7 @@ class Regime:
         # `window_stability` (a change that recurs across windows is robust);
         # otherwise from the single resolved window.
         if window_sweep is not None:
-            candidates_df = _build_sweep_candidates_df(
+            candidates_df = _make_sweep_candidates_df(
                 sub_by_combo, combos, grp,
                 target=target,
                 windows=window_sweep,
@@ -1710,7 +1715,7 @@ class Regime:
                 edge_threshold=edge_threshold,
             )
         else:
-            candidates_df = _build_candidates_df(per_combo_results, grp)
+            candidates_df = _make_candidates_df(per_combo_results, grp)
 
         # With `grain_sweep`, candidates instead come from a cohort-grain
         # sweep (coarsen + re-detect per grain, merge by change), adding
@@ -1765,9 +1770,10 @@ class Regime:
                     continue
                 cohorts = res["cohorts"]
                 n = len(cohorts)
+                cohort_pos = {v: i for i, v in enumerate(cohorts)}
                 change_points = [res["change_points"][bi] for bi in kept]
                 pvs = [res["p_values"][bi] for bi in kept]
-                idx = [cohorts.index(v) for v in change_points]
+                idx = [cohort_pos[v] for v in change_points]
                 regime_ids = _regime_ids_from_changes(n, idx)
                 rebuilt.append((combo, {
                     **res,
@@ -2056,7 +2062,7 @@ class Regime:
             groups=self.groups,
         )
 
-    def graft_screen(self, triangle, target: str = "loss"):
+    def graft_screen(self, triangle: Triangle, target: str = "loss") -> FrameLike:
         """Screen each group's graft safety + calendar effect (2-axis).
 
         For every group, splits the cumulative ``target`` triangle into
@@ -2129,7 +2135,7 @@ class Regime:
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
         palette: str = "tab10",
-    ) -> Any:
+    ) -> Figure:
         """Cohort timeline plot, backed by matplotlib.
 
         One panel per group; each panel shows cohorts coloured by
@@ -2292,14 +2298,19 @@ class RegimeDetector:
     """
 
     target: str = "ratio"
-    window: int | str = "auto"
+    window: int | Literal["auto"] = "auto"
     by: str | Sequence[str] | None = None
-    method: str = "e_divisive"
+    method: Method = "e_divisive"
     n_regimes: int | None = None
     sig_level: float = 0.05
     n_permutations: int = 999
     min_size: int = 3
-    seed: int | None = None
+    # Default to a fixed seed so detection is reproducible out of the box: the
+    # permutation p-values (and the window="auto" elbow, which changes the
+    # dropped-cohort set) otherwise vary run-to-run, so the same triangle could
+    # yield a different Regime -- and a different headline loss ratio -- on each
+    # call. Pass seed=None to opt into fresh entropy.
+    seed: int | None = 0
     window_floor: int | None = None
     fdr: bool = False
     edge_scan: bool = False

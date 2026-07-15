@@ -150,7 +150,7 @@ def plot_triangle_validation(
             grain = resolve_grain(
                 infer_grain(gaps[coh]), tv._grain_arg
             )
-        except Exception as e:
+        except ValueError as e:
             raise ValueError(
                 f"`x_axis='calendar'` could not infer the cohort grain "
                 f"from {coh!r}: {e}"

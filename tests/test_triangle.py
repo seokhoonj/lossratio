@@ -72,6 +72,31 @@ def test_triangle_cumulative():
     assert cohort_1["ratio"].to_list() == [0.1, 0.15, 0.2]
 
 
+def test_triangle_null_increment_contract():
+    """A null raw increment coalesces to 0.0 in the incremental column and the
+    cumulative carries forward unchanged (characterization of current
+    behavior). A null cell must not null / drop the whole cohort row."""
+    df = _exp_input().with_columns(
+        # null the 2nd cell of cohort 2024-01 loss and a premium cell elsewhere.
+        pl.when((pl.col("uy_m") == "2024-01-01") & (pl.col("cy_m") == "2024-02-01"))
+        .then(None)
+        .otherwise(pl.col("incr_loss"))
+        .alias("incr_loss"),
+    )
+    tri = lr.Triangle(df)
+    out = tri.to_polars().sort(["cohort", "duration"])
+    cohort_1 = out.filter(pl.col("cohort") == pl.lit("2024-01-01").cast(pl.Date))
+    # all three duration rows survive -- a null cell does not drop the row
+    assert cohort_1["duration"].to_list() == [1, 2, 3]
+    # the null increment reads as 0.0, not null
+    assert cohort_1["incr_loss"].to_list() == [10.0, 0.0, 30.0]
+    # cumulative carries forward across the zeroed cell: 10, 10, 40
+    assert cohort_1["loss"].to_list() == [10.0, 10.0, 40.0]
+    # no null leaked into the cumulative or incremental loss lane
+    assert cohort_1["loss"].null_count() == 0
+    assert cohort_1["incr_loss"].null_count() == 0
+
+
 def test_triangle_with_group():
     df = _exp_input().with_columns(
         pl.lit("SURGERY").alias("coverage"),

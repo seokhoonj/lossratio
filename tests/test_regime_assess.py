@@ -44,7 +44,7 @@ def _long(levels, window=3, n_duration=None):
 def test_scalar_is_window_mean_and_list():
     df = _long([0.5, 0.7, 0.9], window=3)
     cohorts, scalar = _cohort_level_scalar(df, "ratio", window=3)
-    assert isinstance(cohorts, list)              # list, like _build_feature_matrix
+    assert isinstance(cohorts, list)              # list, like _make_feature_matrix
     assert cohorts == sorted(cohorts)
     np.testing.assert_allclose(scalar, [0.5, 0.7, 0.9])
 

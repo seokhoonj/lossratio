@@ -13,10 +13,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 from .._kernels.recent import validate_recent
 from .._kernels.sigma import _VALID_SIGMA_METHODS
+from .._types import Treatment
 
 if TYPE_CHECKING:
     from .._kernels.resample import ResidualBootstrap
@@ -33,9 +34,9 @@ if TYPE_CHECKING:
 # How a fit CONSUMES a detected/specified regime. This is a consumption knob of
 # the estimator (the segment_wise / covariate machinery lives in the fit cores),
 # not a property of the regime structure -- so it sits on the estimator, not on
-# ``Regime`` / ``RegimeDetector``.
+# ``Regime`` / ``RegimeDetector``. The ``Treatment`` Literal alias lives in
+# ``_types``; this tuple is the runtime validation set.
 _VALID_TREATMENTS = ("latest_only", "segment_wise", "covariate")
-Treatment: TypeAlias = Literal["latest_only", "segment_wise", "covariate"]
 
 
 def _check_treatment(treatment: str) -> str:

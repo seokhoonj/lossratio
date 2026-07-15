@@ -42,6 +42,8 @@ from .._kernels.io import mirror_output, normalize_groups
 from .backtest import Backtest, BacktestFit, _resolve_target
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.triangle import Triangle
 
 
@@ -883,7 +885,7 @@ class EstimatorComparisonFit:
         ``deviance`` / ``coverage_80`` / ``coverage_95``); ranking is
         lower-is-better with ``bias`` and ``coverage_*`` measured as distance
         from 0 and from nominal. ``population`` is ``"all"`` or ``"terminal"``
-        (with ``terminal=T``); ``lane`` is ``"cumulative"`` / ``"incremental"``
+        (with ``terminal=T``); ``basis`` is ``"cumulative"`` / ``"incremental"``
         / ``"anchored"``. Returns ``[groups?, estimator, n, <metric>, rank]``
         sorted within each group, ``rank`` 1 = best. Read several ``metric=``
         calls side by side -- a metric that reorders the table is a real
@@ -1305,7 +1307,7 @@ class EstimatorComparisonFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Matched error-profile curves, one line per estimator, backed by
         matplotlib.
 

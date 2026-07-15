@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 _VALID_TARGETS = ("loss", "premium", "ratio")
 
 
-def _build_link_df(
+def _make_link_df(
     tri_df: pl.DataFrame,
     groups: str | list[str] | None,
     target: str,
@@ -249,7 +249,7 @@ class Link:
         self._weight = weight
         self._tri_df = tri_df
 
-        self._df = _build_link_df(
+        self._df = _make_link_df(
             tri_df,
             self._groups,
             target=target,

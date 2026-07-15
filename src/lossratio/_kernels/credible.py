@@ -10,13 +10,16 @@ No reporting / Polars assembly here -- that stays in the estimator layer.
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import numpy as np
 
 from . import engine, engine_fast
 from .recursion import step_additive, step_multiplicative
 from .smooth import smooth_intensity
+
+if TYPE_CHECKING:
+    from .covariate import SegmentCovariateData
 
 # The three graft-body mechanics: an additive intensity g_k body, a multiplicative
 # link-ratio f_k body, or a self-exposure premium-growth body.
@@ -177,7 +180,7 @@ def smooth_backfit(
     max_outer: int = 100,
     tol: float = 1e-4,
     link_mask: np.ndarray | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Smooth shape + credibility backfitting for one segment.
 
     The single source of truth for the smooth fit: the point fit
@@ -315,7 +318,7 @@ def smooth_backfit(
 def smooth_backfit_covariate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
-    cov_data: Any,
+    cov_data: SegmentCovariateData,
     covariates: list[str],
     sigma_method: str,
     *,
@@ -326,7 +329,7 @@ def smooth_backfit_covariate(
     max_outer: int = 100,
     tol: float = 1e-4,
     link_mask: np.ndarray | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Covariate variant of :func:`smooth_backfit` (SmoothLoss covariates=).
 
     The s-step fits the SMOOTH covariate kernel (P-spline duration shape + ridge
@@ -336,7 +339,7 @@ def smooth_backfit_covariate(
     convergence, mirroring the pooled smooth backfit. Returns ``g_marginal`` / ``u`` /
     ``Z`` / ``psi`` / ``cov_fit`` / ``representable`` / ``converged``.
     """
-    from .covariate import build_g_marginal, fit_covariate_intensity
+    from .covariate import make_g_marginal, fit_covariate_intensity
 
     n_cohorts = loss_obs.shape[0]
     u_vec = np.ones(n_cohorts, dtype=np.float64)
@@ -349,7 +352,7 @@ def smooth_backfit_covariate(
             cov_data.response, adj, cov_data.duration, cov_data.codes,
             lam=lam_cov, n_basis=n_basis, lam_smooth=lam,
         )
-        return cov_fit, build_g_marginal(cov_fit, cov_data)
+        return cov_fit, make_g_marginal(cov_fit, cov_data)
 
     if cov_data.response.size == 0:
         return {"g_marginal": np.full((n_cohorts, loss_obs.shape[1] - 1), np.nan),

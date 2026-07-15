@@ -26,12 +26,12 @@ Three concerns, all expressed in domain-neutral terms (no `cohort` /
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypeAlias, cast
+from typing import Literal, TypeAlias, cast
 
 import numpy as np
 import polars as pl
 
-from .io import scalar_int
+from .io import FrameLike, scalar_int
 from .provenance import collapse_source_expr
 
 # A resolved grain code: the four legal period granularities, finest -> coarsest.
@@ -492,7 +492,7 @@ def sum_increments_to_grain(
 # ---------------------------------------------------------------------------
 
 
-def derive_grain_columns(df: Any) -> Any:
+def derive_grain_columns(df: FrameLike) -> FrameLike:
     """Derive monthly / quarterly / half-yearly / yearly grain columns.
 
     Given a long-format frame with monthly source columns (``uy_m``,

@@ -482,7 +482,7 @@ def covariate_segment_data(
     )
 
 
-def build_g_marginal(cov_fit: CovariateFit, cov_data: SegmentCovariateData) -> np.ndarray:
+def make_g_marginal(cov_fit: CovariateFit, cov_data: SegmentCovariateData) -> np.ndarray:
     """Collapse the per-cell intensity ``g_d(x)`` to the 2-D marginal intensity
     ``g_marginal[i, k] = sum_x g_d(x) * share[i, d, x]`` (mix frozen beyond a cohort's
     last observed from-duration). ``nan`` where the from-duration is unfittable

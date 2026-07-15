@@ -22,17 +22,15 @@ validation + the single-grain enrichment it needs in its ``__init__``.
 
 from __future__ import annotations
 
-from typing import Any
-
 import polars as pl
 
-from .._kernels.io import detect_input_type, mirror_output, to_polars
+from .._kernels.io import FrameLike, detect_input_type, mirror_output, to_polars
 from .._kernels.period import coerce_cols_to_date
 
 REQUIRED_COLS = ("uy_m", "cy_m", "incr_loss", "incr_premium")
 
 
-def validate_experience(df: Any) -> Any:
+def validate_experience(df: FrameLike) -> FrameLike:
     """Validate and coerce an experience DataFrame.
 
     Checks that the required columns are present and coerces them to

@@ -14,6 +14,12 @@ if TYPE_CHECKING:
     # The mirrored output type: polars in -> polars out, pandas in -> out.
     # Used to annotate every `.df` / `.summary()` accessor.
     FrameLike: TypeAlias = pl.DataFrame | pd.DataFrame
+else:
+    # Runtime fallback so ``typing.get_type_hints`` can resolve ``FrameLike``
+    # on public functions annotated with it -- the precise union above needs
+    # pandas (an optional dependency), so at runtime the name resolves to
+    # ``Any`` rather than requiring pandas to be importable.
+    FrameLike = Any
 
 
 def detect_input_type(df: Any) -> str:

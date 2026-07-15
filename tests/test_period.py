@@ -49,12 +49,28 @@ def test_infer_grain(dates, expected):
 
 
 @pytest.mark.parametrize(
-    "grain, expected",
-    [("M", dt.date(2024, 5, 1)), ("Q", dt.date(2024, 4, 1)),
-     ("H", dt.date(2024, 1, 1)), ("Y", dt.date(2024, 1, 1))],
+    "d, grain, expected",
+    [
+        # A first-half / Q2 source date.
+        (dt.date(2024, 5, 15), "M", dt.date(2024, 5, 1)),
+        (dt.date(2024, 5, 15), "Q", dt.date(2024, 4, 1)),
+        (dt.date(2024, 5, 15), "H", dt.date(2024, 1, 1)),
+        (dt.date(2024, 5, 15), "Y", dt.date(2024, 1, 1)),
+        # Second-half floor: Aug -> Jul-01 (H2), and Q3 -> Jul-01.
+        (dt.date(2024, 8, 15), "H", dt.date(2024, 7, 1)),
+        (dt.date(2024, 8, 15), "Q", dt.date(2024, 7, 1)),
+        # Q4 floor: Nov -> Oct-01.
+        (dt.date(2024, 11, 20), "Q", dt.date(2024, 10, 1)),
+        (dt.date(2024, 11, 20), "H", dt.date(2024, 7, 1)),
+        # Leap day floors identically at every grain.
+        (dt.date(2024, 2, 29), "M", dt.date(2024, 2, 1)),
+        (dt.date(2024, 2, 29), "Q", dt.date(2024, 1, 1)),
+        (dt.date(2024, 2, 29), "H", dt.date(2024, 1, 1)),
+        (dt.date(2024, 2, 29), "Y", dt.date(2024, 1, 1)),
+    ],
 )
-def test_floor_to_period(grain, expected):
-    df = pl.DataFrame({"d": [dt.date(2024, 5, 15)]})
+def test_floor_to_period(d, grain, expected):
+    df = pl.DataFrame({"d": [d]})
     assert df.select(floor_to_period(pl.col("d"), grain)).item() == expected
 
 

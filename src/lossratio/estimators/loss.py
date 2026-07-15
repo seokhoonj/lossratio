@@ -49,7 +49,7 @@ from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.provenance import collapse_source_expr
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
-    build_value_matrices,
+    make_value_matrices,
     fit_multiplicative,
     step_additive,
     step_multiplicative,
@@ -67,6 +67,8 @@ from ._cascade import (
 from ._credibility import _segment_credibility_df
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from .._kernels.io import FrameLike
     from ..core.triangle import Triangle
     from ..diagnostics.regime import Regime
@@ -508,7 +510,7 @@ def _fit_segment_smooth(
     cov_data: Any = None,
     covariates: list[str] | None = None,
     lam_cov: float | str | dict = 0.0,
-) -> dict[str, np.ndarray]:
+) -> dict[str, Any]:
     """Smooth (GLMM) fit for one segment -- the top ladder rung.
 
     The credible rung with the saturated per-duration ``g_k`` replaced by the
@@ -741,7 +743,15 @@ def _segment_long_df(
         ci_lo_full, ci_hi_full = ci
     else:
         both = np.isfinite(total_se_full) & np.isfinite(loss_proj)
-        ci_lo_full = np.where(both, np.maximum(0.0, loss_proj - z * total_se_full), np.nan)
+        lo_full = loss_proj - z * total_se_full
+        # Floor the lower band at 0 only where the projection is itself
+        # non-negative; a net-recovery cell (loss_proj < 0) keeps the raw lower
+        # bound so the floor never crosses ABOVE the point and inverts the band.
+        ci_lo_full = np.where(
+            both,
+            np.where(loss_proj >= 0.0, np.maximum(0.0, lo_full), lo_full),
+            np.nan,
+        )
         ci_hi_full = np.where(both, loss_proj + z * total_se_full, np.nan)
     ci_lo = np.where(grafted, np.nan, ci_lo_full)
     ci_hi = np.where(grafted, np.nan, ci_hi_full)
@@ -906,7 +916,7 @@ def _segment_covariate_surface(
 
 
 # mechanism -> (per-segment fitter, public model name); the method label IS the key
-_MECHANISMS: dict[str, tuple[Callable[..., dict[str, np.ndarray]], str]] = {
+_MECHANISMS: dict[str, tuple[Callable[..., dict[str, Any]], str]] = {
     "pooled": (_fit_segment_pooled, "pooled_loss"),
     "credible": (_fit_segment_credible, "credible_loss"),
     "smooth": (_fit_segment_smooth, "smooth_loss"),
@@ -978,7 +988,7 @@ def _fit_segment_cascade(
         own = seg_sub.filter(cond)
         if own.is_empty():
             continue
-        (loss_r, prem_r), cohorts_r, _ = build_value_matrices(
+        (loss_r, prem_r), cohorts_r, _ = make_value_matrices(
             own, value_cols=("loss", "premium")
         )
         donor = premium_donor = None
@@ -1338,7 +1348,7 @@ def _fit_loss(
             seg_states.append((fit, cohorts, group_value))
             boot_tasks.append(None)
             continue
-        (loss_obs, premium_obs), cohorts, _ = build_value_matrices(
+        (loss_obs, premium_obs), cohorts, _ = make_value_matrices(
             sub, value_cols=("loss", "premium")
         )
         donor = None
@@ -1355,7 +1365,7 @@ def _fit_loss(
         if cov_cells is not None:
             assert covariates is not None  # covariates drive the cov_cells path
             from .._kernels.covariate import (
-                build_g_marginal,
+                make_g_marginal,
                 covariate_segment_data,
                 fit_covariate_intensity,
             )
@@ -1387,7 +1397,7 @@ def _fit_loss(
                     cov_data.response, cov_data.exposure, cov_data.duration, cov_data.codes,
                     lam=lam_cov,
                 )
-                extra["g_override"] = build_g_marginal(cov_fit, cov_data)
+                extra["g_override"] = make_g_marginal(cov_fit, cov_data)
         fit = fit_segment(
             loss_obs, premium_obs, sigma_method, recent=recent, donor=donor,
             premium_donor=premium_donor, **extra
@@ -1791,7 +1801,7 @@ class LossFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is ``"loss"`` (cumulative

@@ -26,9 +26,10 @@ from .._kernels.period import (
 
 if TYPE_CHECKING:
     import pandas as pd
+    from matplotlib.figure import Figure
 
     from .._kernels.io import FrameLike
-    from .._types import LabelStyle, RegimeArg, XAxis
+    from .._types import LabelStyle, RegimeArg, Treatment, XAxis
     from .calendar import Calendar
     from .link import Link
     from .total import Total
@@ -708,7 +709,7 @@ class Triangle:
         *,
         recent: int | None = None,
         regime: RegimeArg = None,
-        treatment: str = "latest_only",
+        treatment: Treatment = "latest_only",
         holdout: int | None = None,
     ) -> FrameLike:
         """Per-cell fit-usage status grid (the data behind :meth:`plot_usage`).
@@ -773,7 +774,7 @@ class Triangle:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Cell-value heatmap of the aligned cohort x duration triangle.
 
         For the categorical fit-usage status heatmap, use
@@ -835,13 +836,13 @@ class Triangle:
         *,
         recent: int | None = None,
         regime: RegimeArg = None,
-        treatment: str = "latest_only",
+        treatment: Treatment = "latest_only",
         holdout: int | None = None,
         x_axis: XAxis = "duration",
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Categorical fit-usage status heatmap, backed by matplotlib.
 
         Each ``(cohort, duration)`` cell is coloured by its status
@@ -910,7 +911,7 @@ class Triangle:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Cohort-trajectory line plot.
 
         One line per cohort -- x is the duration index, y the selected
@@ -1151,16 +1152,16 @@ class TriangleValidation:
     # ------------------------------------------------------------------
 
     @property
-    def gaps(self):
+    def gaps(self) -> FrameLike:
         """DataFrame of cohorts with non-consecutive duration sequences."""
         return mirror_output(self._gaps, self._output_type)
 
     @property
-    def invalid_rows(self):
+    def invalid_rows(self) -> FrameLike:
         """DataFrame of rows where ``calendar < cohort``."""
         return mirror_output(self._invalid_rows, self._output_type)
 
-    def summary(self):
+    def summary(self) -> FrameLike:
         """Two-row count summary of findings.
 
         A zero-arg method (not a property) to match every other result
@@ -1205,7 +1206,7 @@ class TriangleValidation:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Bar chart of observed vs expected duration counts per cohort.
 
         One panel per group, with two bars per cohort (``n_duration`` blue,
@@ -1227,7 +1228,7 @@ class TriangleValidation:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Cohort x duration / cohort x calendar heatmap of observed /
         missing cells.
 

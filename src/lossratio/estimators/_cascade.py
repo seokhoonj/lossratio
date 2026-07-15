@@ -18,7 +18,7 @@ import numpy as np
 import polars as pl
 
 from .._kernels.recursion import (
-    build_value_matrices,
+    make_value_matrices,
     fit_multiplicative,
     multiplicative_var,
 )
@@ -57,7 +57,7 @@ def _cohort_subset_donor(
         sub = sub.with_columns(
             pl.col("incr_loss").cum_sum().over("cohort").alias("loss")
         )
-    (mat,), _, _ = build_value_matrices(sub, value_cols=(value,))
+    (mat,), _, _ = make_value_matrices(sub, value_cols=(value,))
     mr = fit_multiplicative(mat, sigma_method=sigma_method)
     return (mr.f_k, mr.sigma2_k, multiplicative_var(mr))
 

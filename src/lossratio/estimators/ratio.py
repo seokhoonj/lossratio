@@ -43,6 +43,8 @@ from .smooth_loss import SmoothLoss
 from .smooth_premium import SmoothPremium
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from .._kernels.io import FrameLike
     from ..core.triangle import Triangle
 
@@ -169,18 +171,22 @@ class LossRatio:
         ).with_columns(
             ratio_se.alias("ratio_se"),
         ).with_columns(
-            # floor the lower bound at 0 (a loss ratio is non-negative) only
-            # when the band exists; a null projection or null SE -> null bounds
-            # (no spurious ci_lo=0 sitting against a null ci_hi).
+            # floor the lower bound at 0 only when the band exists AND the point
+            # is non-negative; a null projection or null SE -> null bounds (no
+            # spurious ci_lo=0 sitting against a null ci_hi), and a negative
+            # ratio (net recoveries) keeps its raw bound so the floor never
+            # crosses above the point.
             ratio_ci_lo=pl.when(
                 pl.col("ratio_proj").is_null() | pl.col("ratio_se").is_null()
             )
             .then(None)
-            .otherwise(
+            .when(pl.col("ratio_proj") >= 0.0)
+            .then(
                 pl.max_horizontal(
                     pl.col("ratio_proj") - z * pl.col("ratio_se"), pl.lit(0.0)
                 )
-            ),
+            )
+            .otherwise(pl.col("ratio_proj") - z * pl.col("ratio_se")),
             ratio_ci_hi=pl.col("ratio_proj") + z * pl.col("ratio_se"),
         )
 
@@ -356,10 +362,10 @@ class LossRatioFit:
         and its SE."""
         keys = (normalize_groups(self.groups) or []) + ["cohort"]
         agg = self._df.group_by(keys, maintain_order=True).agg(
-            loss_proj=pl.col("loss_proj").drop_nulls().last(),
-            premium_proj=pl.col("premium_proj").drop_nulls().last(),
-            ratio_proj=pl.col("ratio_proj").drop_nulls().last(),
-            ratio_se=pl.col("ratio_se").drop_nulls().last(),
+            loss_proj=pl.col("loss_proj").sort_by("duration").drop_nulls().last(),
+            premium_proj=pl.col("premium_proj").sort_by("duration").drop_nulls().last(),
+            ratio_proj=pl.col("ratio_proj").sort_by("duration").drop_nulls().last(),
+            ratio_se=pl.col("ratio_se").sort_by("duration").drop_nulls().last(),
         )
         return mirror_output(agg, self._output_type)
 
@@ -451,7 +457,7 @@ class LossRatioFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is

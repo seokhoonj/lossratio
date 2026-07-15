@@ -51,7 +51,7 @@ from .._kernels.io import (
 )
 from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.recent import recent_link_mask
-from .._kernels.recursion import build_value_matrices, fit_multiplicative
+from .._kernels.recursion import make_value_matrices, fit_multiplicative
 from ..core.model_frame import _ModelFrame
 from ._cascade import (
     _cohort_subset_donor,
@@ -62,6 +62,8 @@ from ._cascade import (
 from ._credibility import _segment_credibility_df
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from .._kernels.io import FrameLike
     from ..core.triangle import Triangle
     from ..diagnostics.regime import Regime
@@ -102,7 +104,12 @@ def _segment_premium_df(
         total_cv = total_se / np.abs(safe_pp)
 
     both = np.isfinite(total_se) & np.isfinite(premium_proj)
-    ci_lo = np.where(both, np.maximum(0.0, premium_proj - z * total_se), np.nan)
+    lo = premium_proj - z * total_se
+    # Floor at 0 only where the projection is non-negative, so the floor never
+    # crosses above a negative point and inverts the band (see loss.py).
+    ci_lo = np.where(
+        both, np.where(premium_proj >= 0.0, np.maximum(0.0, lo), lo), np.nan
+    )
     ci_hi = np.where(both, premium_proj + z * total_se, np.nan)
 
     obs = ~np.isnan(premium_obs)
@@ -380,7 +387,7 @@ def _fit_premium_segment_cascade(
         own = seg_sub.filter(cond)
         if own.is_empty():
             continue
-        (prem_r,), cohorts_r, _ = build_value_matrices(own, value_cols=("premium",))
+        (prem_r,), cohorts_r, _ = make_value_matrices(own, value_cols=("premium",))
         donor = None
         if start is not None:
             older = seg_sub.filter(pl.col("cohort") < start)
@@ -519,7 +526,7 @@ def _fit_premium(
                 converged = converged and bool(res["smooth_converged"])
         else:
             # the frame carries cumulative premium directly (no per-cohort cumsum).
-            (premium_obs,), cohorts, _ = build_value_matrices(
+            (premium_obs,), cohorts, _ = make_value_matrices(
                 sub, value_cols=("premium",)
             )
             grafted = np.zeros(premium_obs.shape, dtype=bool)
@@ -752,7 +759,7 @@ class PremiumFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Per-cohort cumulative-projection trajectories, faceted by group --
         the observed portion solid, the projected tail a translucent
         continuation with a frontier dot. ``metric`` is

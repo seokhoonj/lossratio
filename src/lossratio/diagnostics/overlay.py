@@ -29,6 +29,8 @@ from .._kernels.io import mirror_output, normalize_groups
 from .backtest import _resolve_target
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.triangle import Triangle
 
 # target -> the projected cumulative column the overlay draws.
@@ -265,7 +267,7 @@ class ProjectionOverlayFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Overlay every estimator's projected trajectory.
 
         With ``cohort`` (an ISO date string like ``"2025-06-01"`` or a

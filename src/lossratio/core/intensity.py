@@ -30,9 +30,11 @@ import polars as pl
 from .._kernels.io import arrays_to_long_df, iter_group_frames, mirror_output, normalize_groups
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
-from .._kernels.recursion import build_value_matrices, wls_sigma2
+from .._kernels.recursion import make_value_matrices, wls_sigma2
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from .._kernels.io import FrameLike
     from .._plot.link import FactorKind
     from .link import Link
@@ -301,7 +303,7 @@ class Intensity:
             )
 
         if groups is None:
-            (loss_obs, premium_obs), _, _ = build_value_matrices(
+            (loss_obs, premium_obs), _, _ = make_value_matrices(
                 tri_df, (loss_col, premium_col)
             )
             result = _compute_intensity(
@@ -316,7 +318,7 @@ class Intensity:
             diag_parts:  list[pl.DataFrame] = []
             chart_parts: list[pl.DataFrame] = []
             for group_value, group_sub in iter_group_frames(tri_df, groups):
-                (loss_obs, premium_obs), _, _ = build_value_matrices(
+                (loss_obs, premium_obs), _, _ = make_value_matrices(
                     group_sub, (loss_col, premium_col)
                 )
                 result = _compute_intensity(
@@ -356,7 +358,7 @@ class Intensity:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Intensity factor diagnostic plot (matplotlib).
 
         Draws the additive intensity g_k as

@@ -32,9 +32,11 @@ from .._kernels.io import (
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
-from .._kernels.recursion import build_value_matrix, fit_multiplicative
+from .._kernels.recursion import make_value_matrix, fit_multiplicative
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from .._kernels.io import FrameLike
     from .._plot.link import FactorKind
     from .link import Link
@@ -415,7 +417,7 @@ class ATA:
         groups = link._groups
 
         if groups is None:
-            loss_obs, _, _ = build_value_matrix(tri_df, link._target)
+            loss_obs, _, _ = make_value_matrix(tri_df, link._target)
             result = _compute_ata_factor(
                 loss_obs,
                 sigma_method=sigma_method,
@@ -427,7 +429,7 @@ class ATA:
             diag_parts:  list[pl.DataFrame] = []
             chart_parts: list[pl.DataFrame] = []
             for group_value, group_sub in iter_group_frames(tri_df, groups):
-                loss_obs, _, _ = build_value_matrix(group_sub, link._target)
+                loss_obs, _, _ = make_value_matrix(group_sub, link._target)
                 result = _compute_ata_factor(
                     loss_obs,
                     sigma_method=sigma_method,
@@ -526,7 +528,7 @@ class ATA:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """ATA factor diagnostic plot (matplotlib).
 
         Draws the pooled multiplicative factor f_k as
@@ -553,7 +555,7 @@ class ATA:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """CV + RSE dispersion diagnostic of the ATA factor (matplotlib).
 
         Draws the cross-cohort coefficient of variation and the Mack

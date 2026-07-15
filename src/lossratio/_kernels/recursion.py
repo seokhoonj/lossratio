@@ -29,15 +29,12 @@ core arithmetic is shared so the formula cannot drift between paths.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
 import polars as pl
 
 from .io import scalar_int
-
-if TYPE_CHECKING:
-    pass
 
 
 def wls_sigma2(
@@ -157,7 +154,7 @@ class _MultiplicativeResult:
         and represent the link from duration (k+1) to duration (k+2).
     """
 
-    cohorts: list
+    cohorts: list[Any]
     n_durations: int
     value_obs: np.ndarray    # (n_cohorts, n_durations) -- observed (NaN where unobserved)
     value_proj: np.ndarray   # (n_cohorts, n_durations) -- projected (filled in unobserved)
@@ -182,9 +179,9 @@ def multiplicative_var(result: _MultiplicativeResult) -> np.ndarray:
     return wls_factor_var(result.sigma2_k, result.sum_value_k)
 
 
-def build_value_matrix(
+def make_value_matrix(
     df: pl.DataFrame, value_col: str = "loss"
-) -> tuple[np.ndarray, list, int]:
+) -> tuple[np.ndarray, list[Any], int]:
     """Convert a single-group Triangle subset into a value matrix.
 
     Rows are cohorts (sorted), columns are duration = 1..max_duration. The
@@ -213,12 +210,12 @@ def build_value_matrix(
     return mat, cohorts, max_duration
 
 
-def build_value_matrices(
+def make_value_matrices(
     df: pl.DataFrame, value_cols: tuple[str, ...] = ("loss", "premium")
-) -> tuple[tuple[np.ndarray, ...], list, int]:
+) -> tuple[tuple[np.ndarray, ...], list[Any], int]:
     """Build several value matrices from a single-group Triangle subset.
 
-    Identical to calling :func:`build_value_matrix` once per column, but the
+    Identical to calling :func:`make_value_matrix` once per column, but the
     sort + cohort-unique + cohort x duration cross-join + observed-cell left-join is
     done a single time and each requested column is reshaped from the shared
     filled grid. Returns ``(matrices, cohorts, max_duration)`` where ``matrices`` is
@@ -245,12 +242,12 @@ def build_value_matrices(
     return matrices, cohorts, max_duration
 
 
-def _build_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list, int]:
+def _make_loss_matrix(df: pl.DataFrame) -> tuple[np.ndarray, list[Any], int]:
     """Build the loss value matrix for a single-group Triangle subset.
 
-    Role-specific helper over :func:`build_value_matrix`.
+    Role-specific helper over :func:`make_value_matrix`.
     """
-    return build_value_matrix(df, value_col="loss")
+    return make_value_matrix(df, value_col="loss")
 
 
 def fit_multiplicative(

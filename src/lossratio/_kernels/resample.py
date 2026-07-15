@@ -46,7 +46,7 @@ from __future__ import annotations
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -60,6 +60,9 @@ from .credible import (
 )
 from .recent import recent_link_mask
 from .recursion import fit_multiplicative
+
+if TYPE_CHECKING:
+    from .covariate import SegmentCovariateData
 
 
 def project_graft_cum(
@@ -156,7 +159,10 @@ class ResidualBootstrap:
     min_pool
         A duration's residuals are resampled within its own cluster only when
         the cluster has at least ``min_pool`` cells; thinner durations draw from
-        the global residual pool (default 5).
+        the global residual pool (default 5). A per-duration pool is never used
+        below 2 residuals regardless of ``min_pool`` -- a single-residual pool
+        resamples the same value every replicate and would report a fabricated
+        0.0 SE rather than the global-pool spread.
     hat_adjust
         Apply the ``(1 - h_ii)^{-1/2}`` leverage standardization to the Pearson
         residuals before resampling (default ``True``).
@@ -397,8 +403,9 @@ def _bootstrap_segment_additive(
     if spec.hat_adjust:
         # within-duration Poisson leverage h_i = mu_i / sum_j mu_j; standardize
         # by (1 - h)^{-1/2}. Guard h >= 1 (a singleton duration) -> no inflation.
+        dur1_arr = np.asarray(dur1)
         for d in set(dur1):
-            idx = np.array([j for j in range(len(dur1)) if dur1[j] == d and res_ok[j]])
+            idx = np.flatnonzero((dur1_arr == d) & res_ok)
             if idx.size == 0:
                 continue
             tot = mu[idx].sum()
@@ -419,7 +426,7 @@ def _bootstrap_segment_additive(
     duration_pools: dict[int, np.ndarray] = {}
     for k in range(n_links):
         pool = resid[(kk == k) & np.isfinite(resid)]
-        duration_pools[k] = pool if pool.size >= spec.min_pool else global_pool
+        duration_pools[k] = pool if pool.size >= max(2, spec.min_pool) else global_pool
 
     # projection seed = each cohort's own observed last cell
     obs_mask = ~np.isnan(loss_obs)
@@ -508,7 +515,7 @@ def _bootstrap_segment_additive(
                 )
             else:
                 draw = _process_draw(mean_inc, phi_b[k], active, rng)
-            if eps_b != 0.0 and np.isfinite(phi_b[k]):
+            if drift_se > 0.0 and np.isfinite(phi_b[k]):
                 # accumulated calendar drift at this cell's antidiagonal,
                 # on the Pearson scale -> loss units via sqrt(phi * mean)
                 c = np.maximum((rows + (k + 1)) - frontier, 0)
@@ -523,7 +530,7 @@ def _bootstrap_segment_additive(
 def _bootstrap_segment_covariate(
     loss_obs: np.ndarray,
     premium_obs: np.ndarray,
-    data: Any,
+    data: SegmentCovariateData,
     covariates: list[str],
     *,
     sigma_method: str,
@@ -551,7 +558,7 @@ def _bootstrap_segment_covariate(
     """
     from dataclasses import replace
 
-    from .covariate import build_g_marginal, fit_covariate_intensity
+    from .covariate import make_g_marginal, fit_covariate_intensity
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1
@@ -565,7 +572,7 @@ def _bootstrap_segment_covariate(
             cov_fit = fit_covariate_intensity(
                 response_arr, data.exposure, data.duration, data.codes, lam=lam_cov
             )
-            g = build_g_marginal(cov_fit, data)
+            g = make_g_marginal(cov_fit, data)
             u, _z, _p = credible_levels(loss_mat, premium_obs, g, sigma_method, psi)
             return g, u, cov_fit
         from .credible import smooth_backfit_covariate
@@ -612,7 +619,7 @@ def _bootstrap_segment_covariate(
     duration_pools: dict[int, np.ndarray] = {}
     for d in np.unique(duration):
         pool = resid[(duration == d) & np.isfinite(resid)]
-        duration_pools[int(d)] = pool if pool.size >= spec.min_pool else global_pool
+        duration_pools[int(d)] = pool if pool.size >= max(2, spec.min_pool) else global_pool
 
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
@@ -684,7 +691,7 @@ def _bootstrap_segment_covariate(
                 continue
             mean_inc = param_cum[:, k + 1] - param_cum[:, k]
             draw = _process_draw(mean_inc, phi_b[k], active, rng)
-            if eps_b != 0.0 and np.isfinite(phi_b[k]):
+            if drift_se > 0.0 and np.isfinite(phi_b[k]):
                 c = np.maximum((rows + (k + 1)) - frontier, 0)
                 shift = c * eps_b * np.sqrt(phi_b[k] * np.maximum(mean_inc, 0.0))
                 draw = draw + shift
@@ -707,7 +714,9 @@ def _bootstrap_segment_covariate(
 # shared.
 
 
-def multiplicative_increments(loss_obs: np.ndarray):
+def multiplicative_increments(
+    loss_obs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Observed incremental cells of a cumulative-loss triangle.
 
     Returns parallel ``(ii, jj, y)``: cohort row, 0-based duration, and the
@@ -837,8 +846,9 @@ def bootstrap_segment_multiplicative(
     resid[res_ok] = (y[res_ok] - m[res_ok]) / scale[res_ok]
 
     if spec.hat_adjust:
+        dur1_arr = np.asarray(dur1)
         for d in set(dur1):
-            idx = np.array([t for t in range(len(dur1)) if dur1[t] == d and res_ok[t]])
+            idx = np.flatnonzero((dur1_arr == d) & res_ok)
             if idx.size == 0:
                 continue
             tot = m[idx].sum()
@@ -856,7 +866,7 @@ def bootstrap_segment_multiplicative(
     col_pools: dict[int, np.ndarray] = {}
     for j in range(n_durations):
         pool = resid[(jj == j) & np.isfinite(resid)]
-        col_pools[j] = pool if pool.size >= spec.min_pool else global_pool
+        col_pools[j] = pool if pool.size >= max(2, spec.min_pool) else global_pool
 
     obs_mask = ~np.isnan(loss_obs)
     has_obs = obs_mask.any(axis=1)
@@ -1034,7 +1044,10 @@ def summarize(
         arr[~enough] = np.nan
         arr[obs_mask] = np.nan
 
-    ci_lo = np.maximum(_band(lo_q), 0.0)                  # loss CI floored at 0
+    lo_band = _band(lo_q)
+    # Floor the empirical lower band at 0 only where the point is non-negative,
+    # so a net-recovery cell (point_proj < 0) is not lifted above its own point.
+    ci_lo = np.where(point_proj >= 0.0, np.maximum(lo_band, 0.0), lo_band)
     ci_hi = _band(hi_q)
     ci_lo[obs_mask] = np.nan
     ci_hi[obs_mask] = np.nan
@@ -1104,14 +1117,16 @@ def _run_segment_bootstrap(task: dict) -> dict[str, np.ndarray]:
             confidence_level=task["confidence_level"], rng=rng,
             n_basis=task["n_basis"], lam_smooth=task["lam_smooth"],
         )
-    return _bootstrap_segment_additive(
-        task["loss_obs"], task["premium_obs"],
-        mechanism=task["mechanism"], sigma_method=task["sigma_method"],
-        psi=task["psi"], spec=task["spec"],
-        confidence_level=task["confidence_level"], rng=rng,
-        n_basis=task["n_basis"], lam=task["lam"], recent=task["recent"],
-        donor=task["donor"],
-    )
+    if kind == "additive":
+        return _bootstrap_segment_additive(
+            task["loss_obs"], task["premium_obs"],
+            mechanism=task["mechanism"], sigma_method=task["sigma_method"],
+            psi=task["psi"], spec=task["spec"],
+            confidence_level=task["confidence_level"], rng=rng,
+            n_basis=task["n_basis"], lam=task["lam"], recent=task["recent"],
+            donor=task["donor"],
+        )
+    raise ValueError(f"unknown segment bootstrap kind {kind!r}")
 
 
 def map_segment_bootstraps(tasks: list[dict], n_jobs: int) -> list[dict]:

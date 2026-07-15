@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Protocol, TypeAlias, cast
 
 import polars as pl
 
@@ -13,6 +13,8 @@ from .._kernels.io import collapse_groups, mirror_output, normalize_groups, scal
 from .._kernels.period import calendar_index_expr
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from .._kernels.period import Grain
     from .._types import XAxis
     from ..core.triangle import Triangle
@@ -54,7 +56,7 @@ def _add_cal_idx(tri_df: pl.DataFrame, grain: Grain) -> pl.DataFrame:
     return tri_df.with_columns(calendar_index_expr(grain).alias("cal_idx"))
 
 
-def _build_masked_df(
+def _make_masked_df(
     tri_df: pl.DataFrame,
     holdout: int,
     groups: str | list[str] | None,
@@ -322,12 +324,17 @@ class _FoldFit:
     ae_err : DataFrame
         Per-cell hold-out comparison
         ``[groups?, cohort, duration, actual, expected, aeg, ae_err,
-        incr_actual, incr_expected, incr_aeg, incr_ae_err, cal_idx]``.
+        incr_actual, incr_expected, incr_aeg, incr_ae_err, anchor_value,
+        cal_idx]`` -- the ``incr_*`` block is present only when the refit
+        carries an incremental projection, and an ``expected_se`` column is
+        appended (before ``anchor_value``) when the refit carried uncertainty.
         ``aeg = actual - expected`` (Actual-minus-Expected Gap; signed,
         target units) and
         ``ae_err = actual / expected - 1`` (signed relative error;
         positive = under-projection, negative = over-projection). The
-        ``incr_`` columns are the per-period (incremental) counterparts.
+        ``incr_`` columns are the per-period (incremental) counterparts;
+        ``anchor_value`` is each cohort's origin baseline for the anchored
+        lane.
     col_summary : DataFrame
         Aggregated by duration:
         ``[groups?, duration, n, aeg_mean, aeg_med, abs_err_mean,
@@ -395,7 +402,7 @@ class _FoldFit:
         self.estimator = bt.estimator
 
         # 1. Mask the most recent calendar diagonals (reporting-grain actuals).
-        masked_df, annotated_df = _build_masked_df(
+        masked_df, annotated_df = _make_masked_df(
             report_tri._df, bt.holdout, report_tri._groups, report_tri._grain
         )
 
@@ -578,7 +585,10 @@ class _FoldFit:
             pl.col("ae_err").mean().alias("ae_err_mean"),
             pl.col("ae_err").median().alias("ae_err_med"),
             (
-                pl.when(pl.col("expected").sum() != 0)
+                pl.when(
+                    pl.col("expected").sum().is_finite()
+                    & (pl.col("expected").sum() != 0)
+                )
                 .then(
                     (pl.col("actual") - pl.col("expected")).sum()
                     / pl.col("expected").sum()
@@ -597,7 +607,10 @@ class _FoldFit:
                 pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
                 pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
                 (
-                    pl.when(pl.col("incr_expected").sum() != 0)
+                    pl.when(
+                        pl.col("incr_expected").sum().is_finite()
+                        & (pl.col("incr_expected").sum() != 0)
+                    )
                     .then(
                         (pl.col("incr_actual") - pl.col("incr_expected")).sum()
                         / pl.col("incr_expected").sum()
@@ -633,7 +646,7 @@ class _FoldFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Per-fold A/E error curves, backed by matplotlib.
 
         Parameters
@@ -678,7 +691,7 @@ class _FoldFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """A/E error heatmap on the held-out wedge, backed by matplotlib.
 
         Parameters
@@ -717,7 +730,7 @@ class _FoldFit:
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
-    ) -> Any:
+    ) -> Figure:
         """Cell-status heatmap of training / held-out / regime-excluded /
         future cells, backed by matplotlib.
 
@@ -950,6 +963,7 @@ class BacktestFit:
     target: str
     holdouts: tuple[int, ...]
     _skipped: list[int]
+    _skip_reasons: dict[int, str]
     _fits: dict[int, Any]
     _ae_err: pl.DataFrame
     _has_incr: bool
@@ -1012,16 +1026,23 @@ class BacktestFit:
         per_holdout: list[pl.DataFrame] = []
         fits: dict[int, Any] = {}
         skipped: list[int] = []
+        skip_reasons: dict[int, str] = {}
 
         for h in bt.holdouts:
-            bt_fit = cls._run_holdout(bt, triangle, h)
+            bt_fit, reason = cls._run_holdout(bt, triangle, h)
             if bt_fit is None:
                 skipped.append(h)
+                if reason is not None:
+                    skip_reasons[h] = reason
                 continue
 
             ae = bt_fit._ae_err  # internal polars frame: keeps cal_idx
             if ae.height == 0:
                 skipped.append(h)
+                skip_reasons[h] = (
+                    "no reachable held-out cells at this depth "
+                    "(hold-out meets or exceeds the calendar span)"
+                )
                 continue
 
             # horizon = cal_idx - (max_cal - h); 1..h on held cells.
@@ -1052,6 +1073,7 @@ class BacktestFit:
             fits[h] = bt_fit
 
         self._skipped = skipped
+        self._skip_reasons = skip_reasons
         self._fits = fits
 
         # The incremental lane is available only if every surviving fold
@@ -1116,7 +1138,7 @@ class BacktestFit:
         return mirror_output(self._ae_err, self._output_type)
 
 
-    def _single_only(self, name):
+    def _single_only(self, name: str) -> NoReturn:
         """Raise a teaching ValueError for multi-origin access."""
         sorted_hs = sorted(self._fits)
         raise ValueError(
@@ -1195,14 +1217,14 @@ class BacktestFit:
 
     def plot_error(
         self,
-        by="horizon",
-        metric="ae_err",
-        basis="cumulative",
+        by: str = "horizon",
+        metric: str = "ae_err",
+        basis: str = "cumulative",
         *,
-        nrow=None,
-        ncol=None,
-        figsize=None,
-    ):
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Figure:
         """A/E error curves against a rolling or per-fold axis.
 
         Parameters
@@ -1255,14 +1277,14 @@ class BacktestFit:
 
     def plot_triangle(
         self,
-        basis="cumulative",
+        basis: str = "cumulative",
         *,
-        x_axis="duration",
-        fold=None,
-        nrow=None,
-        ncol=None,
-        figsize=None,
-    ):
+        x_axis: XAxis = "duration",
+        fold: int | None = None,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Figure:
         """A/E error heatmap on the held-out wedge.
 
         Parameters
@@ -1289,7 +1311,14 @@ class BacktestFit:
             nrow=nrow, ncol=ncol, figsize=figsize,
         )
 
-    def plot_usage(self, *, fold=None, nrow=None, ncol=None, figsize=None):
+    def plot_usage(
+        self,
+        *,
+        fold: int | None = None,
+        nrow: int | None = None,
+        ncol: int | None = None,
+        figsize: tuple[float, float] | None = None,
+    ) -> Figure:
         """Cell-status heatmap of training / held-out / regime-excluded /
         future cells.
 
@@ -1318,8 +1347,13 @@ class BacktestFit:
     @staticmethod
     def _run_holdout(
         bt: Backtest, triangle: Triangle, holdout: int
-    ) -> Any | None:
-        """Run one depth's inner Backtest, returning ``None`` if unrunnable.
+    ) -> tuple[Any | None, str | None]:
+        """Run one depth's inner Backtest.
+
+        Returns ``(fold_fit, None)`` on success, or ``(None, reason)`` when the
+        fold raised a :class:`ValueError` -- ``reason`` is that exception's
+        message, recorded on :attr:`skip_reasons` so a silently-skipped fold is
+        diagnosable rather than invisible.
 
         A depth that meets or exceeds the calendar span produces a 0-height
         ``ae_err`` rather than raising (the caller treats a 0-height frame as a
@@ -1335,16 +1369,17 @@ class BacktestFit:
         does not ``.fit``), so a config error that raises only at fit time is
         not caught up front. In practice an over-deep depth yields a 0-height
         frame rather than raising, so ``ValueError`` is rarely the actual skip
-        trigger; the narrow catch is the deliberate trade.
+        trigger; the narrow catch is the deliberate trade, and the captured
+        ``reason`` keeps it inspectable.
         """
         try:
             return _FoldBacktest(
                 estimator=bt.estimator,
                 holdout=holdout,
                 target=bt.target,
-            ).fit(triangle)
-        except ValueError:
-            return None
+            ).fit(triangle), None
+        except ValueError as e:
+            return None, str(e)
 
     # -- aggregation ---------------------------------------------------------
 
@@ -1399,7 +1434,10 @@ class BacktestFit:
             pl.col("ae_err").mean().alias("ae_err_mean"),
             pl.col("ae_err").median().alias("ae_err_med"),
             (
-                pl.when(pl.col("expected").sum() != 0)
+                pl.when(
+                    pl.col("expected").sum().is_finite()
+                    & (pl.col("expected").sum() != 0)
+                )
                 .then(
                     (pl.col("actual") - pl.col("expected")).sum()
                     / pl.col("expected").sum()
@@ -1416,7 +1454,10 @@ class BacktestFit:
                 pl.col("incr_ae_err").mean().alias("incr_ae_err_mean"),
                 pl.col("incr_ae_err").median().alias("incr_ae_err_med"),
                 (
-                    pl.when(pl.col("incr_expected").sum() != 0)
+                    pl.when(
+                        pl.col("incr_expected").sum().is_finite()
+                        & (pl.col("incr_expected").sum() != 0)
+                    )
                     .then(
                         (pl.col("incr_actual") - pl.col("incr_expected")).sum()
                         / pl.col("incr_expected").sum()
@@ -1473,7 +1514,17 @@ class BacktestFit:
         return list(self._skipped)
 
     @property
-    def fits(self) -> dict[int, Any]:
+    def skip_reasons(self) -> dict[int, str]:
+        """Why each skipped hold-out depth was skipped, keyed by depth.
+
+        A depth is skipped either because its refit raised a ``ValueError``
+        (the message is recorded here) or because it left no reachable
+        held-out cells. Makes an otherwise-silent skip diagnosable.
+        """
+        return dict(self._skip_reasons)
+
+    @property
+    def fits(self) -> dict[int, _FoldFit]:
         return dict(self._fits)
 
     # -- evidence readers ----------------------------------------------------
@@ -1754,11 +1805,6 @@ class BacktestFit:
     def _infer_recent(self):
         """Extract `recent` from `self.estimator`, if present."""
         return getattr(self.estimator, "recent", None)
-
-    def _infer_regime(self):
-        """Extract the regime from `self.estimator`, if any."""
-        est = self.estimator
-        return getattr(est, "regime", None)
 
     def __repr__(self) -> str:
         est_name = type(self.estimator).__name__
