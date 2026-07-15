@@ -41,6 +41,7 @@ from .theme import (
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+    from .._types import XAxis
     from ..diagnostics.backtest import BacktestFit, _FoldFit
 
 
@@ -274,7 +275,7 @@ def plot_triangle_backtest(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
     *,
-    x_axis: str = "duration",
+    x_axis: XAxis = "duration",
 ) -> Figure:
     """A/E error heatmap on the held-out wedge.
 

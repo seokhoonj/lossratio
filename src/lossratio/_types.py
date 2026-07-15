@@ -14,7 +14,7 @@ cannot introduce an import cycle.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 if TYPE_CHECKING:
     from .diagnostics.regime import Regime, RegimeDetector
@@ -22,3 +22,11 @@ if TYPE_CHECKING:
     # Regime (cohort-axis) filter: a concrete Regime, a deferred
     # RegimeDetector (detected at fit / backtest time), or None (no filter).
     RegimeArg: TypeAlias = Regime | RegimeDetector | None
+
+# The x-axis of a cohort x period heatmap: the duration index or the
+# synthesised calendar period.
+XAxis: TypeAlias = Literal["duration", "calendar"]
+
+# Cell-label detail in the triangle value heatmap: the metric alone, or the
+# metric plus its loss / premium breakdown.
+LabelStyle: TypeAlias = Literal["plain", "detail"]

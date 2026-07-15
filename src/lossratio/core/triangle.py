@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from .._kernels.io import FrameLike
-    from .._types import RegimeArg
+    from .._types import LabelStyle, RegimeArg, XAxis
     from .calendar import Calendar
     from .link import Link
     from .total import Total
@@ -766,11 +766,11 @@ class Triangle:
     def plot_triangle(
         self,
         metric: str = "ratio",
-        label_style: str = "plain",
+        label_style: LabelStyle = "plain",
         label_size: float | None = None,
         amount_divisor: float | str = "auto",
         *,
-        x_axis: str = "duration",
+        x_axis: XAxis = "duration",
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -838,7 +838,7 @@ class Triangle:
         treatment: str = "latest_only",
         holdout: int | None = None,
         *,
-        x_axis: str = "duration",
+        x_axis: XAxis = "duration",
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -1219,7 +1219,7 @@ class TriangleValidation:
 
     def plot_triangle(
         self,
-        x_axis: str = "duration",
+        x_axis: XAxis = "duration",
         show_label: bool = False,
         nrow: int | None = None,
         ncol: int | None = None,

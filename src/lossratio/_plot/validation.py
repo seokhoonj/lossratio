@@ -25,6 +25,7 @@ from .theme import BLUE, RED, faint_grid, finalize_figure
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+    from .._types import XAxis
     from ..core.triangle import TriangleValidation
 
 
@@ -97,7 +98,7 @@ def plot_validation(
 
 def plot_triangle_validation(
     tv: TriangleValidation,
-    x_axis: str = "duration",
+    x_axis: XAxis = "duration",
     show_label: bool = False,
     nrow: int | None = None,
     ncol: int | None = None,

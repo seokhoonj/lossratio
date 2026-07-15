@@ -12,6 +12,7 @@ import polars as pl
 from .._kernels.io import collapse_groups, mirror_output, normalize_groups, scalar_int
 
 if TYPE_CHECKING:
+    from .._types import XAxis
     from ..core.triangle import Triangle
 
 # The metric a backtest scores: the loss ratio, or a single leg.
@@ -681,7 +682,7 @@ class _FoldFit:
         self,
         basis: str = "cumulative",
         *,
-        x_axis: str = "duration",
+        x_axis: XAxis = "duration",
         label_size: float = 7.0,
         nrow: int | None = None,
         ncol: int | None = None,

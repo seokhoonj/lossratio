@@ -36,6 +36,7 @@ from .triangle_line import plot
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+    from .._types import LabelStyle, XAxis
     from ..core.triangle import Triangle
 
 
@@ -56,11 +57,11 @@ _PANEL_BORDER_WIDTH = 1.0    # outer panel frame (heavier)
 def plot_triangle(
     triangle: Triangle,
     metric: str = "ratio",
-    label_style: str = "plain",
+    label_style: LabelStyle = "plain",
     label_size: float | None = None,
     amount_divisor: float | str = "auto",
     *,
-    x_axis: str = "duration",
+    x_axis: XAxis = "duration",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
@@ -204,7 +205,7 @@ def plot_triangle(
 
 
 def _cell_labels(
-    df: pl.DataFrame, metric: str, label_style: str, divisor: float
+    df: pl.DataFrame, metric: str, label_style: LabelStyle, divisor: float
 ) -> list[str]:
     vals = df[metric].to_numpy()
     if metric in _RATIO_METRICS:
