@@ -379,7 +379,7 @@ def _bootstrap_segment_additive(
         response=y[usable].tolist(),
         fitted=mu[usable].tolist(),
         duration=[dur1[j] for j in np.flatnonzero(usable)],
-        sigma_method=sigma_method,
+        sigma_method="locf",  # ODP dispersion carry; tail-sigma is separate
     )
     phi_cell = np.array(
         [phi_map.get(d) if phi_map.get(d) is not None else np.nan for d in dur1],
@@ -592,7 +592,7 @@ def _bootstrap_segment_covariate(
     usable = np.isfinite(mu) & (mu > 0.0)
     phi_map = engine.pearson_dispersion(
         response=y[usable].tolist(), fitted=mu[usable].tolist(),
-        duration=duration[usable].tolist(), sigma_method=sigma_method,
+        duration=duration[usable].tolist(), sigma_method="locf",
     )
     phi_link = np.array(
         [phi_map.get(int(d)) if phi_map.get(int(d)) is not None else np.nan
@@ -822,7 +822,7 @@ def bootstrap_segment_multiplicative(
         usable = usable & (cal > int(cal.max()) - recent)
     phi_map = engine.pearson_dispersion(
         response=y[usable].tolist(), fitted=m[usable].tolist(),
-        duration=[dur1[t] for t in np.flatnonzero(usable)], sigma_method=sigma_method,
+        duration=[dur1[t] for t in np.flatnonzero(usable)], sigma_method="locf",
     )
     phi_cell = np.array(
         [phi_map.get(d) if phi_map.get(d) is not None else np.nan for d in dur1],
@@ -967,7 +967,7 @@ def _refit_phi(
     # kk is k-major (from valid_cells), so kk[ok] stays non-decreasing -- the
     # contiguous-run precondition the vectorized pearson needs.
     return engine_fast.pearson_dispersion(
-        response=y[ok], fitted=mu[ok], dur0=kk[ok], n=n_links, sigma_method=sigma_method
+        response=y[ok], fitted=mu[ok], dur0=kk[ok], n=n_links, sigma_method="locf"
     )
 
 

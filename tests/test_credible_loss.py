@@ -181,3 +181,26 @@ def test_zero_increment_duration_does_not_nan_the_level():
     fit = lr.CredibleLoss(psi=0.5).fit(lr.Triangle(pl.DataFrame(rows)))
     proj = fit.to_polars()["loss_proj"]
     assert proj.is_nan().sum() == 0
+
+
+@pytest.mark.parametrize(
+    "sigma_method", ["locf", "min_last2", "loglinear", "geometric", "none"]
+)
+def test_credible_loss_fits_every_documented_sigma_method(tri, sigma_method):
+    # Regression: credible_levels forwarded the tail-sigma extrapolation method
+    # into the per-duration ODP dispersion carry, which only implements "locf",
+    # so every documented value except "locf" raised NotImplementedError from a
+    # plain .fit(). The two are distinct concepts -- all five must fit, on both
+    # the point path and the residual-bootstrap path (which also hits the carry).
+    point = lr.CredibleLoss(sigma_method=sigma_method).fit(tri).to_polars()
+    assert point["loss_proj"].drop_nulls().is_finite().all()
+    boot = (
+        lr.CredibleLoss(
+            sigma_method=sigma_method,
+            uncertainty=lr.ResidualBootstrap(n_replicates=40, seed=1),
+        )
+        .fit(tri)
+        .to_polars()
+    )
+    own = boot.filter(pl.col("source") == "own")
+    assert own["loss_total_se"].is_not_null().all()

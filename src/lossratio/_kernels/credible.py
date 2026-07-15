@@ -83,9 +83,13 @@ def credible_levels(
     fin = np.isfinite(m0) & (m0 > 0)
     if fin.any():
         response_f, m0_f, duration_f, coh_f = response[fin], m0[fin], dur0[fin], coh0[fin]
+        # The per-duration ODP dispersion carry only implements "locf"; the
+        # user's tail-sigma extrapolation (min_last2 / loglinear / geometric /
+        # none) is a distinct concept applied on the analytical tail path, not
+        # here -- forwarding it would raise NotImplementedError deep in the fit.
         phi = engine_fast.pearson_dispersion(
             response=response_f, fitted=m0_f, dur0=duration_f, n=n_links,
-            sigma_method=sigma_method,
+            sigma_method="locf",
         )
         # Degenerate cases collapse to pooled (u = 1) instead
         # of crashing the conjugate: phi is NaN for a present duration when NO
