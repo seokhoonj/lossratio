@@ -20,11 +20,11 @@ import polars as pl
 
 from .._kernels.io import format_group_value, iter_group_frames
 from .base import (
-    build_facets,
     cohort_label,
     format_period_series,
     get_period_type,
     hide_unused,
+    make_facet_grid,
     percent_formatter,
     pretty_var_label,
     resolve_grid,
@@ -235,7 +235,7 @@ def plot_backtest_error_profile(
     metric_word = "A/E error" if metric == "ae_err" else "mean absolute error"
     lane_color = RED if is_incr else BLUE
 
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(summary, fit._groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
@@ -485,7 +485,7 @@ def _plot_aggregated_lines(
     figsize: tuple[float, float] | None,
 ) -> Figure:
     """duration / calendar plot: line per stat across x_col, faceted by group."""
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
@@ -542,7 +542,7 @@ def _plot_cell_curves(
             f"Backtest has no `{ae_err_col}` column."
         )
 
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(ae_err, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),

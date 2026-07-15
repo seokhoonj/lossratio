@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from .._kernels.io import iter_group_frames
-from .base import build_facets
+from .base import make_facet_grid
 from .theme import faint_grid, finalize_figure, integer_xaxis
 
 if TYPE_CHECKING:
@@ -120,7 +120,7 @@ def plot_estimator_comparison(
 
     signed = metric == "ae_err"
 
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(summary, fit._groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),

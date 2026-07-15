@@ -29,7 +29,7 @@ import polars as pl
 from .._kernels.io import group_eq, iter_group_frames
 from .._kernels.recent import filter_recent_cells
 from ..core.ata import _stability_frame
-from .base import build_facets
+from .base import make_facet_grid
 from .theme import STAT_COLORS_HUE, finalize_figure
 
 if TYPE_CHECKING:
@@ -212,7 +212,7 @@ def _plot_dispersion_panel(
         ("cv", "CV", "#1f77b4", max_cv),
         ("rse", "RSE", "#d62728", max_rse),
     )
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
@@ -262,7 +262,7 @@ def _plot_summary_lines(
     figsize: tuple[float, float] | None,
 ) -> Figure:
     """Per-link summary: mean / median / weighted lines."""
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(summary, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
@@ -313,7 +313,7 @@ def _plot_per_link_distribution(
     The ``point`` kind overlays the diagnostic's per-link ``mean`` line
     (read from ``summary``, not recomputed from the cells).
     """
-    grid = build_facets(
+    grid = make_facet_grid(
         iter_group_frames(cells, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),

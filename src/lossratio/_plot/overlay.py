@@ -27,7 +27,7 @@ import polars as pl
 
 from .._kernels.io import format_group_value, iter_group_frames
 from .._kernels.period import infer_grain
-from .base import build_facets, get_period_type
+from .base import get_period_type, make_facet_grid
 from .fit import _coerce_cohort, _draw_fit_cohort
 from .theme import (
     add_cohort_colorbar,
@@ -113,7 +113,7 @@ def plot_overlay(
             raise ValueError(
                 f"cohort {cohort!r} is not in this overlay; no rows to plot."
             )
-        grid = build_facets(
+        grid = make_facet_grid(
             iter_group_frames(df, groups),
             nrow=nrow, ncol=ncol, figsize=figsize,
             figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8),
@@ -146,7 +146,7 @@ def plot_overlay(
     if nrow is None and ncol is None:
         nrow, ncol = n_groups, len(labels)
 
-    grid = build_facets(
+    grid = make_facet_grid(
         facets, nrow=nrow, ncol=ncol, figsize=figsize,
         default_ncol=len(labels),
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8), max(3.6, 2.6 * nr + 0.4)),
