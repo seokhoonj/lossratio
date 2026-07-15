@@ -17,7 +17,7 @@ import polars as pl
 
 from .._kernels.io import iter_group_frames
 from .._kernels.period import infer_grain
-from .base import get_period_type, open_facets
+from .base import build_facets, get_period_type
 from .theme import (
     add_cohort_colorbar,
     cohort_gradient,
@@ -168,7 +168,7 @@ def plot_fit(
                 f"cohort {cohort!r} is not in this fit; no rows to plot."
             )
 
-    grid = open_facets(
+    grid = build_facets(
         iter_group_frames(df, groups),
         nrow=nrow, ncol=ncol, figsize=figsize,
         figsize_fn=lambda nr, nc: (max(5.6, 3.2 * nc + 0.8),

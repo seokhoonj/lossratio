@@ -87,7 +87,7 @@ class _FacetGrid:
         hide_unused(self.axes, len(self.facets), self.nrow, self.ncol)
 
 
-def open_facets(
+def build_facets(
     facets: Iterable[tuple[Any, pl.DataFrame]],
     *,
     nrow: int | None,
@@ -96,7 +96,7 @@ def open_facets(
     figsize_fn: Callable[[int, int], tuple[float, float]],
     default_ncol: int = 3,
 ) -> _FacetGrid:
-    """Open a faceted figure: resolve the grid, size it, build the axes.
+    """Build a faceted figure: resolve the grid, size it, and lay out the axes.
 
     ``figsize_fn(nrow, ncol) -> (w, h)`` supplies the per-module default size
     (kept a caller hook because each plot family sizes differently); an
