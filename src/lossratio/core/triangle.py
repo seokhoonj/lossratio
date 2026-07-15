@@ -94,6 +94,7 @@ class Triangle:
     def __init__(
         self,
         df: FrameLike,
+        *,
         groups: str | Sequence[str] | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
@@ -581,6 +582,7 @@ class Triangle:
 
     def link(
         self,
+        *,
         target: str = "loss",
         exposure: str | None = "premium",
         weight: str | None = None,
@@ -766,10 +768,10 @@ class Triangle:
     def plot_triangle(
         self,
         metric: str = "ratio",
+        *,
         label_style: LabelStyle = "plain",
         label_size: float | None = None,
         amount_divisor: float | str = "auto",
-        *,
         x_axis: XAxis = "duration",
         nrow: int | None = None,
         ncol: int | None = None,
@@ -833,11 +835,11 @@ class Triangle:
 
     def plot_usage(
         self,
+        *,
         recent: int | None = None,
         regime: RegimeArg = None,
         treatment: str = "latest_only",
         holdout: int | None = None,
-        *,
         x_axis: XAxis = "duration",
         nrow: int | None = None,
         ncol: int | None = None,
@@ -903,6 +905,7 @@ class Triangle:
     def plot(
         self,
         metric: str = "ratio",
+        *,
         summary: bool = False,
         summary_min_n: int = 5,
         regime: RegimeArg = None,
@@ -1000,6 +1003,7 @@ class TriangleValidation:
     def __init__(
         self,
         df: FrameLike,
+        *,
         groups: str | Sequence[str] | None = None,
         cohort: str = "uy_m",
         calendar: str | None = "cy_m",
@@ -1200,6 +1204,7 @@ class TriangleValidation:
 
     def plot(
         self,
+        *,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -1220,6 +1225,7 @@ class TriangleValidation:
     def plot_triangle(
         self,
         x_axis: XAxis = "duration",
+        *,
         show_label: bool = False,
         nrow: int | None = None,
         ncol: int | None = None,
