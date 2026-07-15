@@ -50,8 +50,12 @@ def _draw_overlay_single(
     coloured by its insertion order (``C0``, ``C1``, ...) to match the estimator
     colours used elsewhere in the comparison surface.
     """
-    # Observed drawn once, from the first estimator present in this facet.
-    first = sub.filter(pl.col("estimator") == labels[0]).sort("duration")
+    # Observed drawn once, from the first estimator PRESENT in this facet. The
+    # canonical labels[0] can be dropped for a group (estimators fit per group),
+    # so keying the observed line to it would make the black line and frontier
+    # vanish even though the observed cells exist (identical across estimators).
+    present = [lbl for lbl in labels if sub.filter(pl.col("estimator") == lbl).height]
+    first = sub.filter(pl.col("estimator") == present[0]).sort("duration")
     x = first["duration"].to_numpy()
     y = first[value_col].cast(pl.Float64).to_numpy()
     obs = np.array([s == "observed" for s in first["source"].to_list()])

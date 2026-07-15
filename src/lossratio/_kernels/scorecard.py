@@ -88,7 +88,11 @@ def _deviance_contrib(y: pl.Expr, mu: pl.Expr) -> pl.Expr:
     ``y >= 0`` -- a negative increment (a recovery) or a non-positive fitted
     mean is left null and dropped from the sum (reported via a smaller cell
     count is out of scope here; the deviance is simply over the valid cells)."""
-    log_term = pl.when(y > 0.0).then(y * (y / mu).log()).otherwise(0.0)
+    # Guard the ratio so log() never sees a non-positive mu: polars evaluates
+    # both branches of a when/then, so (y / mu).log() on a mu <= 0 cell would
+    # emit divide/log RuntimeWarnings before the outer mask nulls it.
+    safe_mu = pl.when(mu > 0.0).then(mu).otherwise(1.0)
+    log_term = pl.when(y > 0.0).then(y * (y / safe_mu).log()).otherwise(0.0)
     dev = 2.0 * (log_term - (y - mu))
     return pl.when((mu > 0.0) & (y >= 0.0)).then(dev).otherwise(None)
 

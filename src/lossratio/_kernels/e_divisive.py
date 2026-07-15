@@ -79,7 +79,12 @@ def _grid_for_segment(
     T, K = np.meshgrid(tau_vals, kappa_vals, indexing="ij")
     n_x = T.astype(np.float64)
     n_y = (K - T).astype(np.float64)
-    valid = K >= T + min_size
+    # Exclude degenerate sides (n < 2): the within-side term S/(n*(n-1)) divides
+    # by zero for a size-1 side, so with min_size < 2 a genuinely valid split
+    # cell would carry NaN and np.argmax would then pick it -- silently reporting
+    # "no split" even when finite splits exist. n_x/n_y >= min_size >= 2 already
+    # when min_size >= 2, so this only bites the unusual min_size < 2 case.
+    valid = (K >= T + min_size) & (n_x >= 2.0) & (n_y >= 2.0)
     return tau_vals, T, K, n_x, n_y, valid
 
 
@@ -263,6 +268,10 @@ def e_divisive(
     For ``n`` < ``2 * min_size``, no split is ever possible and the
     function returns empty results.
     """
+    if not 0.0 < alpha < 2.0:
+        raise ValueError(
+            f"alpha must be in (0, 2) for a valid energy distance, got {alpha!r}."
+        )
     rng = np.random.default_rng(seed)
     X = np.asarray(X, dtype=np.float64)
     n = len(X)

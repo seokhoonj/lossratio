@@ -93,6 +93,14 @@ def _compute_triangle_usage(
         or holdout < 1
     ):
         raise ValueError(f"`holdout` must be a positive integer; got {holdout!r}.")
+    if treatment not in ("latest_only", "segment_wise", "covariate"):
+        # An unrecognised treatment must not fall through to latest_only silently
+        # (segment_wise / covariate KEEP every regime; latest_only drops the
+        # pre-change cohorts, so the wrong one silently changes which cells count).
+        raise ValueError(
+            "`treatment` must be one of 'latest_only', 'segment_wise', "
+            f"'covariate'; got {treatment!r}."
+        )
 
     obs = triangle._df  # internal polars frame (NOT .df, which mirrors to
     # the input type -- this stays polars for the polars-only ops below, and

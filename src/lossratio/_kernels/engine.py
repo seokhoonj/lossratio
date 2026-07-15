@@ -50,7 +50,10 @@ def saturated_intensity(*, response, exposure, duration) -> dict:
     """
     num = sum_by(response, duration)
     den = sum_by(exposure, duration)
-    return {k: (num[k] / den[k] if den[k] != 0.0 else 0.0) for k in num}
+    # Honour the documented degeneracy contract "sum exposure <= 0 -> 0.0":
+    # guard on den > 0, not den != 0, so a negative exposure sum yields 0.0
+    # rather than a sign-flipped rate.
+    return {k: (num[k] / den[k] if den[k] > 0.0 else 0.0) for k in num}
 
 
 def _fitted_mean(*, g, exposure, duration) -> list:
