@@ -32,6 +32,7 @@ from scipy.stats import norm
 from .._kernels.io import mirror_output, normalize_groups
 from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.provenance import collapse_source_expr
+from .._kernels.stability import segment_matrices
 from ._base import _LossEstimatorBase, _PremiumEstimatorBase
 from .credible_loss import CredibleLoss
 from .credible_premium import CrediblePremium
@@ -226,9 +227,8 @@ def _segment_premium_growth(sub: pl.DataFrame, window: int) -> float:
     (no new premium coming in), > 1 if premium is still being paid in. Used to
     grow the frozen-ratio amount projection beyond the frontier.
     """
-    from ..diagnostics.stability import _segment_matrices
 
-    _, P, _ = _segment_matrices(sub.select(["cohort", "duration", "loss", "premium"]))
+    _, P, _ = segment_matrices(sub.select(["cohort", "duration", "loss", "premium"]))
     fp: list[float] = []
     for k in range(P.shape[1] - 1):
         both = ~np.isnan(P[:, k]) & ~np.isnan(P[:, k + 1])
