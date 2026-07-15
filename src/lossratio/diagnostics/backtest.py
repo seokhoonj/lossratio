@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast
 import polars as pl
 
 from .._kernels.io import collapse_groups, mirror_output, normalize_groups, scalar_int
+from .._kernels.period import calendar_index_expr
 
 if TYPE_CHECKING:
+    from .._kernels.period import Grain
     from .._types import XAxis
     from ..core.triangle import Triangle
 
@@ -39,35 +41,24 @@ def _estimator_covariates(estimator: Any) -> list[str] | None:
     )
 
 
-def _add_cal_idx(tri_df: pl.DataFrame, groups: str | list[str] | None) -> pl.DataFrame:
+def _add_cal_idx(tri_df: pl.DataFrame, grain: Grain) -> pl.DataFrame:
     """Add a 1-based calendar index per cell.
 
-    Calendar index counts the antidiagonal:
-    ``cohort_idx + duration - 1`` with ``cohort_idx`` the 1-based dense
-    rank of cohort within its group (ties share the same rank). So the
-    oldest cohort at duration = 1 lands on cal_idx = 1, and the maximum
-    cal_idx equals the number of cohorts (or, for square-ish triangles,
-    the number of durations).
+    ``cal_idx`` is the TRUE calendar diagonal -- the cell's calendar period
+    (``cohort`` advanced by ``duration`` at ``grain``) counted from the
+    earliest cohort. A cohort period with no business leaves a real gap in the
+    index, so a hold-out on ``cal_idx`` removes exactly the recent calendar
+    diagonals even when cohorts are non-consecutive (a dense cohort rank would
+    collapse the gap and leak a held-out calendar cell into the retained set).
     """
-    group_cols = normalize_groups(groups)
-    if group_cols:
-        cohort_idx_expr = (
-            pl.col("cohort").rank(method="dense").over(group_cols).cast(pl.Int64)
-        )
-    else:
-        cohort_idx_expr = pl.col("cohort").rank(method="dense").cast(pl.Int64)
-
-    return tri_df.with_columns(
-        cohort_idx_expr.alias("_cohort_idx"),
-    ).with_columns(
-        (pl.col("_cohort_idx") + pl.col("duration") - 1).alias("cal_idx"),
-    )
+    return tri_df.with_columns(calendar_index_expr(grain).alias("cal_idx"))
 
 
 def _build_masked_df(
     tri_df: pl.DataFrame,
     holdout: int,
     groups: str | list[str] | None,
+    grain: Grain,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Mask the most recent ``holdout`` calendar diagonals.
 
@@ -79,7 +70,7 @@ def _build_masked_df(
     * ``annotated_df`` has the same shape with the original cell values
       preserved and a ``masked`` boolean column.
     """
-    df = _add_cal_idx(tri_df, groups)
+    df = _add_cal_idx(tri_df, grain)
 
     # Determine the calendar-diagonal cutoff per group
     group_cols = normalize_groups(groups)
@@ -102,9 +93,9 @@ def _build_masked_df(
             for c in ("loss", "incr_loss", "premium", "incr_premium", "ratio", "incr_ratio")
             if c in df.columns
         ]
-    ).drop("_cohort_idx", "_max_cal", "cal_idx", "masked")
+    ).drop("_max_cal", "cal_idx", "masked")
 
-    annotated_df = df.drop("_cohort_idx", "_max_cal")  # keeps cal_idx + masked
+    annotated_df = df.drop("_max_cal")  # keeps cal_idx + masked
     return masked_df, annotated_df
 
 
@@ -405,7 +396,7 @@ class _FoldFit:
 
         # 1. Mask the most recent calendar diagonals (reporting-grain actuals).
         masked_df, annotated_df = _build_masked_df(
-            report_tri._df, bt.holdout, report_tri._groups
+            report_tri._df, bt.holdout, report_tri._groups, report_tri._grain
         )
 
         # 2./3. Refit on the masked triangle. The covariate fit needs the FINER
@@ -1008,7 +999,7 @@ class BacktestFit:
         # max_cal from the full triangle (not from a fold's surviving cells)
         # keeps the horizon anchored to the true as-of date even when the
         # oldest cohort does not reach the latest diagonal.
-        full = _add_cal_idx(report_tri._df, report_tri._groups)
+        full = _add_cal_idx(report_tri._df, report_tri._grain)
         max_cal_scalar = 0
         max_cal: pl.DataFrame | None = None
         if group_cols:

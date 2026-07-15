@@ -614,3 +614,36 @@ def test_validation_duration_mode():
     v = TriangleValidation(df, calendar=None, duration="duration_m")
     assert v.gaps.height == 1
     assert v.gaps.row(0, named=True)["missing"] == [3]
+
+
+def test_mask_holds_out_true_calendar_diagonal_with_gapped_cohorts():
+    # Regression: mask derived the hold-out diagonal from dense COHORT RANK, so a
+    # missing cohort period (a paused/seasonal month) collapsed the rank and left
+    # a held-out calendar cell in the retained triangle -- look-ahead leakage in
+    # the backtest. The diagonal must come from the TRUE calendar date.
+    from datetime import date
+
+    rows: list[dict] = []
+
+    def add(uy: date, cy: date, k: int) -> None:
+        rows.append({"uy_m": uy, "cy_m": cy, "incr_loss": 10.0 * k, "incr_premium": 100.0})
+
+    # cohorts Jan / Feb / Apr 2020 (gap at March), all observed through Apr 2020
+    for k, cy in enumerate(
+        [date(2020, 1, 1), date(2020, 2, 1), date(2020, 3, 1), date(2020, 4, 1)], 1
+    ):
+        add(date(2020, 1, 1), cy, k)
+    for k, cy in enumerate([date(2020, 2, 1), date(2020, 3, 1), date(2020, 4, 1)], 1):
+        add(date(2020, 2, 1), cy, k)
+    add(date(2020, 4, 1), date(2020, 4, 1), 1)
+
+    tri = lr.Triangle(pl.DataFrame(rows))
+    retained = {
+        (r["cohort"], r["duration"])
+        for r in tri.mask(holdout=1).to_polars().to_dicts()
+    }
+    # the true 2020-04 calendar diagonal -- holdout=1 must drop ALL of these
+    april = {(date(2020, 1, 1), 4), (date(2020, 2, 1), 3), (date(2020, 4, 1), 1)}
+    assert april.isdisjoint(retained), f"held-out April cell leaked into training: {april & retained}"
+    # earlier calendar diagonals stay in the training set
+    assert (date(2020, 1, 1), 3) in retained  # true 2020-03

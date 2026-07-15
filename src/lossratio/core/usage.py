@@ -17,6 +17,7 @@ import numpy as np
 import polars as pl
 
 from .._kernels.io import normalize_groups
+from .._kernels.period import calendar_index_expr
 
 if TYPE_CHECKING:
     from .triangle import Triangle
@@ -125,17 +126,12 @@ def _compute_triangle_usage(
         obs_marker, on=group_cols + ["cohort", "duration"], how="left"
     ).with_columns(pl.col("_data_present").fill_null(False))
 
-    # 3. Cohort rank + calendar index, optionally per group.
-    if group_cols:
-        expanded = expanded.with_columns(
-            pl.col("cohort").rank(method="dense").over(group_cols).cast(pl.Int64).alias("_coh_rank")
-        )
-    else:
-        expanded = expanded.with_columns(
-            pl.col("cohort").rank(method="dense").cast(pl.Int64).alias("_coh_rank")
-        )
+    # 3. Calendar index from the TRUE calendar date (cohort advanced by duration
+    # at the grain), not a dense cohort rank: a gappy cohort sequence must leave
+    # a real gap in the index so a genuinely future / held-out cell cannot fall
+    # inside a rank-compressed envelope (see the _data_present guard below).
     expanded = expanded.with_columns(
-        (pl.col("_coh_rank") + pl.col("duration") - 1).alias("_cal_idx")
+        calendar_index_expr(triangle._grain).alias("_cal_idx")
     )
 
     # max_cal among data-present cells (not the full grid).

@@ -389,6 +389,31 @@ def add_periods(
     raise ValueError(f"Unknown grain: {grain!r}")
 
 
+def calendar_index_expr(
+    grain: str,
+    *,
+    cohort_col: str = "cohort",
+    duration_col: str = "duration",
+) -> pl.Expr:
+    """1-based true-calendar diagonal index for each ``(cohort, duration)`` cell.
+
+    A cell's calendar period is ``cohort`` advanced by ``duration`` steps at
+    ``grain`` (:func:`add_periods`); the index counts grain periods
+    (:func:`count_periods`) from the earliest cohort in the frame. A cohort
+    period with no business therefore leaves a genuine gap in the index, so
+    cells on the same true calendar diagonal always share an index -- unlike a
+    dense cohort rank, which collapses the gap and mislabels the diagonal (a
+    calendar hold-out then trains on a cell it should have masked).
+
+    The value is Int64. Because callers compare it per group (max - holdout) or
+    difference it (a horizon), the choice of a single global anchor is
+    immaterial to those uses and keeps cells with equal calendar dates aligned
+    across groups.
+    """
+    calendar = add_periods(pl.col(cohort_col), pl.col(duration_col), grain)
+    return count_periods(pl.col(cohort_col).min(), calendar, grain)
+
+
 # ---------------------------------------------------------------------------
 # Grain aggregation (fine projection frame -> coarser display grain)
 # ---------------------------------------------------------------------------

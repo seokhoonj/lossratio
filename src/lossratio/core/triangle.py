@@ -16,6 +16,7 @@ from .._kernels.io import (
 )
 from .._kernels.period import (
     Grain,
+    calendar_index_expr,
     coerce_cols_to_date,
     count_periods,
     floor_cols_to_period,
@@ -676,18 +677,14 @@ class Triangle:
         if holdout == 0:
             return Triangle._from_masked(self, self._df)
 
-        # Compute per-group calendar index = cohort_rank + duration - 1, where
-        # cohort_rank is the dense rank of distinct cohort values (oldest
-        # = 1).
+        # Calendar diagonal from the TRUE calendar date (cohort advanced by
+        # duration at the grain), not a dense cohort rank: a cohort period with
+        # no business must leave a real gap in the index, otherwise a
+        # non-consecutive cohort collapses the gap and this drops the wrong
+        # cells (a held-out calendar period would leak into the retained set).
         partition = normalize_groups(self._groups)
-        coh_rank_expr = (
-            pl.col("cohort").rank(method="dense").over(partition)
-            if partition
-            else pl.col("cohort").rank(method="dense")
-        ).cast(pl.Int64).alias("_coh_rank")
-
-        df = self._df.with_columns(coh_rank_expr).with_columns(
-            (pl.col("_coh_rank") + pl.col("duration") - 1).alias("_cal_idx")
+        df = self._df.with_columns(
+            calendar_index_expr(self._grain).alias("_cal_idx")
         )
         max_cal_expr = (
             pl.col("_cal_idx").max().over(partition)
@@ -696,7 +693,7 @@ class Triangle:
         )
         df = df.with_columns(max_cal_expr.alias("_max_cal")).filter(
             pl.col("_cal_idx") <= (pl.col("_max_cal") - holdout)
-        ).drop(["_coh_rank", "_cal_idx", "_max_cal"])
+        ).drop(["_cal_idx", "_max_cal"])
 
         if df.height == 0:
             raise ValueError(
