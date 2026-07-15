@@ -17,7 +17,10 @@ estimators' projected cumulative trajectories overlaid on one axis. Two views:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 import numpy as np
 import polars as pl
@@ -92,7 +95,7 @@ def plot_overlay(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Overlay several estimators' projected trajectories on one figure.
 
     ``df`` is the stacked long frame carrying ``estimator`` / ``cohort`` /

@@ -8,7 +8,7 @@ line is computed on the same cell population.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import polars as pl
 
@@ -17,6 +17,8 @@ from .base import open_facets
 from .theme import faint_grid, finalize_figure, integer_xaxis
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..diagnostics.comparison import EstimatorComparisonFit
 
 
@@ -54,7 +56,7 @@ def plot_estimator_comparison(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Matched error-profile curves: one line per estimator, faceted by group.
 
     ``by`` selects the axis (``"horizon"`` -- how far ahead; ``"anchor"``

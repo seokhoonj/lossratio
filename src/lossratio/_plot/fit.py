@@ -27,7 +27,7 @@ from .theme import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from matplotlib.figure import Figure
 
 # metric -> (projection column, y-axis label, reference hline)
 _FIT_METRICS: dict[str, tuple[str, str, float | None]] = {
@@ -150,7 +150,7 @@ def plot_fit(
     ncol: int | None,
     figsize: tuple[float, float] | None,
     cohort: Any = None,
-) -> Any:
+) -> Figure:
     """Faceted per-cohort projection plot for a fit's long frame.
 
     ``df`` carries ``cohort`` / ``duration`` / ``source`` / ``value_col`` (plus

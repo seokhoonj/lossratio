@@ -33,6 +33,8 @@ from .theme import (
 )
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.triangle import Triangle
 
 
@@ -147,7 +149,7 @@ def plot(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Cohort-trajectory line plot.
 
     One line per cohort (x = duration index, y = ``metric``), faceted by

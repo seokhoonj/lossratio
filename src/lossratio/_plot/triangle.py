@@ -9,7 +9,7 @@ importing it from one place). Metric metadata is shared from :mod:`metric`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import polars as pl
@@ -34,6 +34,8 @@ from .theme import draw_facet_strip, finalize_figure
 from .triangle_line import plot
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.triangle import Triangle
 
 
@@ -62,7 +64,7 @@ def plot_triangle(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Cell-value / metric heatmap. See
     :meth:`lossratio.Triangle.plot_triangle` for the public docs.
     """

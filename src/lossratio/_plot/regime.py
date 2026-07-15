@@ -11,7 +11,7 @@ that cost.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import polars as pl
@@ -32,6 +32,8 @@ from .base import (
 from .theme import finalize_figure
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..diagnostics.regime import Regime
 
 
@@ -41,7 +43,7 @@ def plot_regime(
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
     palette: str = "tab10",
-) -> Any:
+) -> Figure:
     """Cohort timeline plot, faceted by group when present.
 
     Each panel: x-axis = cohort, scatter color-coded by regime_id,

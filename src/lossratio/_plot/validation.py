@@ -23,6 +23,8 @@ from .base import (
 from .theme import BLUE, RED, faint_grid, finalize_figure
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.triangle import TriangleValidation
 
 
@@ -31,7 +33,7 @@ def plot_validation(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Bar chart of observed vs expected duration counts per cohort."""
     import matplotlib.pyplot as plt
 
@@ -100,7 +102,7 @@ def plot_triangle_validation(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Cohort x duration (or cohort x calendar) heatmap of observed /
     missing cells.
 

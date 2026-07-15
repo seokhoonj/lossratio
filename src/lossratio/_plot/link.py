@@ -33,6 +33,8 @@ from .base import open_facets
 from .theme import STAT_COLORS_HUE, finalize_figure
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.ata import ATA
     from ..core.intensity import Intensity
 
@@ -70,7 +72,7 @@ def plot_ata(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """ATA factor plot -- line / box / point (``ATA.plot``)."""
     return _plot_factor(
         ata, kind=kind, cell_column="ata", y_label="factor",
@@ -86,7 +88,7 @@ def plot_intensity(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Intensity factor plot -- line / box / point (``Intensity.plot``)."""
     return _plot_factor(
         intensity, kind=kind, cell_column="intensity", y_label="intensity",
@@ -105,7 +107,7 @@ def plot_ata_dispersion(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """ATA factor dispersion plot -- cross-cohort CV and Mack RSE together.
 
     Draws the per-link ``cv`` / ``rse`` columns of the diagnostic (the
@@ -144,7 +146,7 @@ def _plot_factor(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-) -> Any:
+) -> Figure:
     """Shared factor-plot dispatcher for :func:`plot_ata` / :func:`plot_intensity`.
 
     ``kind`` selects the chart form: ``"line"`` (mean / median / weighted
@@ -197,7 +199,7 @@ def _plot_dispersion_panel(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-) -> Any:
+) -> Figure:
     """Per-link CV + RSE dispersion plot: two series, two threshold lines.
 
     Draws the cross-cohort CV and Mack RSE of the ATA factor together,
@@ -257,7 +259,7 @@ def _plot_summary_lines(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-) -> Any:
+) -> Figure:
     """Per-link summary: mean / median / weighted lines."""
     grid = open_facets(
         iter_group_frames(summary, groups),
@@ -304,7 +306,7 @@ def _plot_per_link_distribution(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-) -> Any:
+) -> Figure:
     """Per-link box-plot or scatter of a cell-level column (ata / intensity).
 
     The ``point`` kind overlays the diagnostic's per-link ``mean`` line

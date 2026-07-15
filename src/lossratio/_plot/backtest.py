@@ -39,6 +39,8 @@ from .theme import (
 )
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..diagnostics.backtest import BacktestFit, _FoldFit
 
 
@@ -69,7 +71,7 @@ def plot_backtest(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Per-fold A/E error curves.
 
     ``by`` selects the per-fold aggregation axis: ``"duration"`` (default;
@@ -186,7 +188,7 @@ def plot_backtest_error_profile(
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
-) -> Any:
+) -> Figure:
     """Error profile: A/E error vs a rolling axis.
 
     ``by`` selects the axis (``"horizon"`` -- how far ahead, the primary
@@ -273,7 +275,7 @@ def plot_triangle_backtest(
     figsize: tuple[float, float] | None = None,
     *,
     x_axis: str = "duration",
-) -> Any:
+) -> Figure:
     """A/E error heatmap on the held-out wedge.
 
     Diverging palette: red = positive error (under-projected,
@@ -480,7 +482,7 @@ def _plot_aggregated_lines(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-) -> Any:
+) -> Figure:
     """duration / calendar plot: line per stat across x_col, faceted by group."""
     grid = open_facets(
         iter_group_frames(summary, groups),
@@ -529,7 +531,7 @@ def _plot_cell_curves(
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-) -> Any:
+) -> Figure:
     """cohort plot: one line per cohort across duration, faceted by group."""
     from matplotlib import colormaps
     from matplotlib.colors import Normalize

@@ -26,6 +26,8 @@ from .base import (
 from .theme import BLUE, RED, finalize_figure
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from ..core.triangle import Triangle
 
 
@@ -75,7 +77,7 @@ def plot_triangle_usage(
     ncol: int | None,
     figsize: tuple[float, float] | None,
     x_axis: str = "duration",
-) -> Any:
+) -> Figure:
     """Categorical status heatmap; see :meth:`lossratio.Triangle.plot_usage`."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
