@@ -21,7 +21,7 @@ cell-level box / point views additionally read the raw Link cells
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import numpy as np
 import polars as pl
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ..core.intensity import Intensity
 
 _VALID_FACTOR_KINDS = ("line", "box", "point")
+FactorKind: TypeAlias = Literal["line", "box", "point"]
 _SUMMARY_STATS = ("mean", "median", "weighted")
 
 
@@ -68,7 +69,7 @@ def _style_ggplot(ax: Any) -> None:
 def plot_ata(
     ata: ATA,
     *,
-    kind: str = "line",
+    kind: FactorKind = "line",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
@@ -84,7 +85,7 @@ def plot_ata(
 def plot_intensity(
     intensity: Intensity,
     *,
-    kind: str = "line",
+    kind: FactorKind = "line",
     nrow: int | None = None,
     ncol: int | None = None,
     figsize: tuple[float, float] | None = None,
@@ -138,7 +139,7 @@ def plot_ata_dispersion(
 def _plot_factor(
     diagnostic: ATA | Intensity,
     *,
-    kind: str,
+    kind: FactorKind,
     cell_column: str,
     y_label: str,
     title_noun: str,
@@ -299,7 +300,7 @@ def _plot_per_link_distribution(
     *,
     groups: str | list[str] | None,
     y_col: str,
-    kind: str,
+    kind: FactorKind,
     y_label: str,
     title: str,
     hline: float | None,

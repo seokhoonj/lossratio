@@ -34,6 +34,7 @@ from .._kernels.recursion import build_value_matrices, wls_sigma2
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
+    from .._plot.link import FactorKind
     from .link import Link
 
 
@@ -350,7 +351,7 @@ class Intensity:
 
     def plot(
         self,
-        kind: str = "line",
+        kind: FactorKind = "line",
         *,
         nrow: int | None = None,
         ncol: int | None = None,

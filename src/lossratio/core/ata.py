@@ -36,6 +36,7 @@ from .._kernels.recursion import build_value_matrix, fit_multiplicative
 
 if TYPE_CHECKING:
     from .._kernels.io import FrameLike
+    from .._plot.link import FactorKind
     from .link import Link
 
 
@@ -520,7 +521,7 @@ class ATA:
 
     def plot(
         self,
-        kind: str = "line",
+        kind: FactorKind = "line",
         *,
         nrow: int | None = None,
         ncol: int | None = None,
