@@ -96,3 +96,51 @@ def test_weighted_multiplicative_w1_is_point():
     f = _weighted_refit_multiplicative(L, np.ones((1, nC)), ~np.isnan(L), None, nD - 1)
     assert np.allclose(f[0], f_pt, rtol=1e-12, atol=0.0, equal_nan=True)
 
+
+def test_weighted_multiplicative_dispersion_matches_order_independent_engine():
+    # Regression: multiplicative_increments emits COHORT-major cells, but the
+    # fast Pearson reduction requires non-decreasing dur0 and otherwise collapses
+    # every duration to one carried value. The weighted-multiplicative bootstrap
+    # must sort first, so its per-duration dispersion matches the order-
+    # independent dict engine (feeding cohort-major cells to the fast reduction
+    # unsorted was the P0).
+    from lossratio._kernels import engine
+    from lossratio._kernels.recursion import fit_multiplicative
+    from lossratio._kernels.resample import ev_fitted_increments, multiplicative_increments
+
+    rng = np.random.default_rng(0)
+    loss_obs = np.cumsum(np.abs(rng.normal(10.0, 3.0, size=(6, 6))), axis=1)
+    f_pt = fit_multiplicative(loss_obs, sigma_method="locf").f_k
+    m_mat = ev_fitted_increments(loss_obs, f_pt)
+    ii, jj, y = multiplicative_increments(loss_obs)
+    m = m_mat[ii, jj]
+    usable = np.isfinite(m) & (m > 0.0)
+    # the cohort-major hazard is genuinely present in the input
+    assert not bool(np.all(np.diff(jj[usable]) >= 0))
+
+    order = np.flatnonzero(usable)[np.argsort(jj[usable], kind="stable")]
+    phi_fast = ef.pearson_dispersion(
+        response=y[order], fitted=m[order], dur0=jj[order], n=6, sigma_method="locf"
+    )
+    phi_dict = engine.pearson_dispersion(
+        response=y[usable].tolist(), fitted=m[usable].tolist(),
+        duration=(jj[usable] + 1).tolist(), sigma_method="locf",
+    )
+    for d in range(6):
+        expected = phi_dict.get(d + 1)
+        if expected is not None and np.isfinite(phi_fast[d]):
+            assert phi_fast[d] == pytest.approx(expected, rel=1e-9)
+    finite = phi_fast[np.isfinite(phi_fast)]
+    # a correct dispersion is per-duration, not a single collapsed flat value
+    assert finite.size >= 3 and float(finite.std()) > 0.0
+
+
+def test_weighted_multiplicative_bootstrap_band_is_ordered(tri):
+    # End-to-end: ChainLadder is the multiplicative mechanism; its FRW band must
+    # be finite, positive, and ordered (a collapsed dispersion made it wrong).
+    fit = lr.ChainLadder(uncertainty=WeightedBootstrap(n_replicates=120, seed=0)).fit(tri).to_polars()
+    own = fit.filter(pl.col("source") == "own")
+    assert own["loss_total_se"].is_not_null().all()
+    assert (own["loss_total_se"] > 0).all()
+    assert (own["loss_ci_hi"] >= own["loss_ci_lo"]).all()
+

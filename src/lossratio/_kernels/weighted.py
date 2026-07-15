@@ -352,7 +352,7 @@ def _point_drift_se(loss_obs, premium_obs, g_pt, u_pt, sigma_method, loss_mask):
         usable = usable & loss_mask[ii, kk]
     phi = engine_fast.pearson_dispersion(
         response=y[usable], fitted=mu[usable], dur0=kk[usable],
-        n=loss_obs.shape[1] - 1, sigma_method=sigma_method,
+        n=loss_obs.shape[1] - 1, sigma_method="locf",
     )
     phi_cell = np.where(np.isfinite(phi[kk]), phi[kk], np.nan)
     scale = np.sqrt(phi_cell * mu)
@@ -494,9 +494,16 @@ def bootstrap_segment_weighted_multiplicative(
     if recent is not None:
         cal = ii + jj
         usable = usable & (cal > int(cal.max()) - recent)
+    # multiplicative_increments emits cohort-major cells, but the fast Pearson
+    # reduction requires non-decreasing dur0 (it reads each duration as a
+    # contiguous run) -- sort the usable cells by duration first, else every
+    # duration collapses to a single carried value and the dispersion is wrong.
+    # The per-duration carry only implements "locf"; the tail-sigma method
+    # flows through the analytical path, not this ODP dispersion estimate.
+    order = np.flatnonzero(usable)[np.argsort(jj[usable], kind="stable")]
     phi = engine_fast.pearson_dispersion(
-        response=y[usable], fitted=m[usable], dur0=jj[usable],
-        n=n_durations, sigma_method=sigma_method,
+        response=y[order], fitted=m[order], dur0=jj[order],
+        n=n_durations, sigma_method="locf",
     )
     phi_link = phi[1:]                                   # dispersion at to-duration k+1
 
