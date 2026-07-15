@@ -13,7 +13,11 @@ they remove the copy-paste, not the per-plot differences.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 import polars as pl
 
@@ -42,7 +46,7 @@ STRIP_HEIGHT_IN = 0.20    # facet-strip height in inches, constant per panel
 
 
 def finalize_figure(
-    fig: Any,
+    fig: Figure,
     *,
     title: str | None = None,
     xlabel: str | None = None,
@@ -66,13 +70,13 @@ def finalize_figure(
                  fontsize=8.5, color=CAPTION_COLOR)
 
 
-def faint_grid(ax: Any, *, axis: str = "both") -> None:
+def faint_grid(ax: Axes, *, axis: Literal["both", "x", "y"] = "both") -> None:
     """The package's faint background grid (one setting, replacing the
     per-module ``ax.grid`` drift)."""
     ax.grid(True, axis=axis, alpha=0.3, linewidth=0.4)
 
 
-def integer_xaxis(ax: Any) -> None:
+def integer_xaxis(ax: Axes) -> None:
     """Constrain the x-axis to integer ticks.
 
     duration, horizon, and calendar-diagonal index are whole-number
@@ -88,7 +92,7 @@ def integer_xaxis(ax: Any) -> None:
     ax.xaxis.set_major_locator(MaxNLocator(integer=True, min_n_ticks=1))
 
 
-def draw_facet_strip(ax: Any, title: str, panel_h_in: float) -> None:
+def draw_facet_strip(ax: Axes, title: str, panel_h_in: float) -> None:
     """Draw a ggplot2-style grey facet strip with a centred label in the gap
     reserved above ``ax``.
 
@@ -136,7 +140,7 @@ def cohort_gradient(cohorts: list) -> Callable[[Any], tuple]:
 
 
 def add_cohort_colorbar(
-    fig: Any,
+    fig: Figure,
     vis_axes: list,
     cohorts: list,
     coh_color: Callable[[Any], tuple],

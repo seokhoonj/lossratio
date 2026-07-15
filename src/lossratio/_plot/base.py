@@ -8,12 +8,17 @@ modules. The matplotlib backend is used throughout.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
 from .._kernels.io import format_group_value
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 
 def resolve_grid(
@@ -62,18 +67,18 @@ class _FacetGrid:
     the caller -- their fontsize / weight / alignment differ per plot family.
     """
 
-    fig: Any
-    axes: Any
-    facets: list
+    fig: Figure
+    axes: Any                                # squeeze=False axes matrix (np.ndarray of Axes)
+    facets: list[tuple[Any, pl.DataFrame]]
     nrow: int
     ncol: int
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[tuple[int, Any, pl.DataFrame, Any]]:
         for idx, (group_value, sub) in enumerate(self.facets):
             r, c = divmod(idx, self.ncol)
             yield idx, group_value, sub, self.axes[r][c]
 
-    def title(self, ax: Any, group_value: Any, *, fontsize: float = 9) -> None:
+    def title(self, ax: Axes, group_value: Any, *, fontsize: float = 9) -> None:
         """Plain per-facet title (skipped when ``group_value`` is ``None``)."""
         if group_value is not None:
             ax.set_title(format_group_value(group_value), fontsize=fontsize)
@@ -83,12 +88,12 @@ class _FacetGrid:
 
 
 def open_facets(
-    facets: Any,
+    facets: Iterable[tuple[Any, pl.DataFrame]],
     *,
     nrow: int | None,
     ncol: int | None,
     figsize: tuple[float, float] | None,
-    figsize_fn: Any,
+    figsize_fn: Callable[[int, int], tuple[float, float]],
     default_ncol: int = 3,
 ) -> _FacetGrid:
     """Open a faceted figure: resolve the grid, size it, build the axes.
