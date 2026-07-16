@@ -365,22 +365,28 @@ def test_empty_frame_dtype_follows_integer_cohort():
 
 
 # ---------------------------------------------------------------------------
-# Narrow skip: a genuine bug must propagate, not be silently skipped (M2)
+# Structural-only skip: any fold-fit error propagates, not silently skipped
 # ---------------------------------------------------------------------------
 
 
-def test_non_valueerror_in_fold_propagates():
-    # The skip path is narrow (ValueError + 0-height frame only). A bug that
-    # raises a different error type must NOT be swallowed as a skipped fold.
+@pytest.mark.parametrize(
+    "exc, msg",
+    [(RuntimeError, "estimator bug"), (ValueError, "boom")],
+)
+def test_fold_errors_propagate(exc, msg):
+    # A skip is structural only (a 0-height frame when the hold-out meets or
+    # exceeds the calendar span). ANY exception from a fold fit -- including a
+    # ValueError -- must propagate, not be swallowed as a skipped depth (that
+    # would hide a genuine estimator/config bug behind a shrunken population).
     class _Boom:
         def fit(self, triangle):
-            raise RuntimeError("estimator bug")
+            raise exc(msg)
 
     rbt = lr.Backtest.__new__(lr.Backtest)
     rbt.estimator = _Boom()
     rbt.holdouts = (6,)
     rbt.target = "loss"
-    with pytest.raises(RuntimeError, match="estimator bug"):
+    with pytest.raises(exc, match=msg):
         rbt.fit(_triangle())
 
 

@@ -113,8 +113,8 @@ def _resolve_target(estimator: Any, target: str | None) -> Target:
     ratio (and, on request, either leg). So ``target`` defaults to the
     estimator's own headline projection, and an explicit target the estimator
     cannot produce -- most commonly ``target="ratio"`` against a bare loss
-    estimator -- is rejected up front rather than silently yielding empty folds
-    (the rolling path swallows a fit-time column error as a skipped fold).
+    estimator -- is rejected up front, so the mismatch surfaces at construction
+    rather than as a fit-time error on the first fold.
 
     A custom estimator (one of neither known base) carries no static column
     guarantee: ``None`` cannot be inferred (raise), and an explicit target is
@@ -1030,12 +1030,7 @@ class BacktestFit:
         skip_reasons: dict[int, str] = {}
 
         for h in bt.holdouts:
-            bt_fit, reason = cls._run_holdout(bt, triangle, h)
-            if bt_fit is None:
-                skipped.append(h)
-                if reason is not None:
-                    skip_reasons[h] = reason
-                continue
+            bt_fit = cls._run_holdout(bt, triangle, h)
 
             ae = bt_fit._ae_err  # internal polars frame: keeps cal_idx
             if ae.height == 0:
@@ -1389,39 +1384,23 @@ class BacktestFit:
     @staticmethod
     def _run_holdout(
         bt: Backtest, triangle: Triangle, holdout: int
-    ) -> tuple[Any | None, str | None]:
-        """Run one depth's inner Backtest.
+    ) -> _FoldFit:
+        """Run one depth's inner fold and return its :class:`_FoldFit`.
 
-        Returns ``(fold_fit, None)`` on success, or ``(None, reason)`` when the
-        fold raised a :class:`ValueError` -- ``reason`` is that exception's
-        message, recorded on :attr:`skip_reasons` so a silently-skipped fold is
-        diagnosable rather than invisible.
-
-        A depth that meets or exceeds the calendar span produces a 0-height
-        ``ae_err`` rather than raising (the caller treats a 0-height frame as a
-        skip), so the common skip path needs no exception handling. We narrowly
-        guard only :class:`ValueError` (the package's own "no anchor" /
-        degenerate-fold signal) so a genuinely unrunnable fold is skipped
-        without masking unrelated failures (an estimator bug, a polars schema
-        error, an OOM, a keyboard interrupt) -- those propagate.
-
-        Caveat: a misconfigured-estimator error that itself surfaces as a
-        fit-time ``ValueError`` would be absorbed here as a silent skip. The
-        ``__init__`` probe ``Backtest`` only *constructs* on ``holdouts[0]`` (it
-        does not ``.fit``), so a config error that raises only at fit time is
-        not caught up front. In practice an over-deep depth yields a 0-height
-        frame rather than raising, so ``ValueError`` is rarely the actual skip
-        trigger; the narrow catch is the deliberate trade, and the captured
-        ``reason`` keeps it inspectable.
+        Fold-fit exceptions PROPAGATE: a genuine estimator or configuration
+        error (a custom estimator asked for a target it cannot project, an
+        estimator bug, a polars schema error, an OOM, a keyboard interrupt)
+        must surface, not be silently recorded as a skipped depth -- that would
+        shrink the matched population invisibly. The only skip is structural:
+        a hold-out that meets or exceeds the calendar span leaves no reachable
+        held-out cells and yields a 0-height ``ae_err`` frame, which the caller
+        treats as a skip. There is no exception-based skip signal.
         """
-        try:
-            return _FoldBacktest(
-                estimator=bt.estimator,
-                holdout=holdout,
-                target=bt.target,
-            ).fit(triangle), None
-        except ValueError as e:
-            return None, str(e)
+        return _FoldBacktest(
+            estimator=bt.estimator,
+            holdout=holdout,
+            target=bt.target,
+        ).fit(triangle)
 
     # -- aggregation ---------------------------------------------------------
 
@@ -1559,9 +1538,10 @@ class BacktestFit:
     def skip_reasons(self) -> dict[int, str]:
         """Why each skipped hold-out depth was skipped, keyed by depth.
 
-        A depth is skipped either because its refit raised a ``ValueError``
-        (the message is recorded here) or because it left no reachable
-        held-out cells. Makes an otherwise-silent skip diagnosable.
+        A depth is skipped only when it leaves no reachable held-out cells
+        (the hold-out meets or exceeds the calendar span). A refit that raises
+        is NOT a skip -- the error propagates. Makes an otherwise-silent skip
+        diagnosable.
         """
         return dict(self._skip_reasons)
 

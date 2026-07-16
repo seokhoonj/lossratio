@@ -44,9 +44,28 @@ def grouped_cmp():
     ).fit(_triangle(groups="coverage"))
 
 
+class _NullProjFit:
+    """Refit-result wrapper that nulls every projection column, so the
+    hold-out join finds no reachable cells -- a genuinely degenerate
+    (0-height) fold. A skip is structural (no reachable cells), never an
+    exception, so a fold that cannot reach a depth is modelled by an
+    all-null projection, not a raise."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def to_polars(self):
+        df = self._inner.to_polars()
+        proj = [c for c in df.columns if c.endswith("_proj")]
+        return df.with_columns(
+            [pl.lit(None, dtype=pl.Float64).alias(c) for c in proj]
+        )
+
+
 class _SkipSecondFit:
-    """Estimator whose 2nd fold raises the package's degenerate-fold signal
-    (ValueError), so its RollingBacktest skips the 2nd hold-out depth."""
+    """Estimator whose 2nd fold projects all-null -> a degenerate (0-height)
+    fold, so its RollingBacktest skips the 2nd hold-out depth (a real
+    estimator that cannot reach the deeper fold, not a raise)."""
 
     def __init__(self):
         self._inner = lr.ChainLadder()
@@ -54,16 +73,18 @@ class _SkipSecondFit:
 
     def fit(self, triangle):
         self.calls += 1
-        if self.calls == 2:
-            raise ValueError("degenerate fold")
-        return self._inner.fit(triangle)
+        fit = self._inner.fit(triangle)
+        return _NullProjFit(fit) if self.calls == 2 else fit
 
 
 class _NeverFits:
-    """Estimator whose every fold raises the degenerate-fold signal."""
+    """Estimator whose every fold is degenerate (all-null projection)."""
+
+    def __init__(self):
+        self._inner = lr.ChainLadder()
 
     def fit(self, triangle):
-        raise ValueError("no anchor")
+        return _NullProjFit(self._inner.fit(triangle))
 
 
 class _NoIncrFit:
