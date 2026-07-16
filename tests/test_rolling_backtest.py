@@ -242,6 +242,33 @@ def test_all_holdouts_skipped_gives_empty_frames():
     assert rbt.holdout_summary.height == 0
 
 
+def test_fully_masked_fold_skips_without_fitting():
+    # A hold-out that meets or exceeds the calendar span masks every cell,
+    # leaving nothing to fit. The fold must short-circuit to a structural skip
+    # BEFORE calling the estimator -- otherwise the estimator is handed a
+    # nothing-to-fit triangle (a covariate estimator collapses the all-null
+    # finer triangle to an empty frame and raises, instead of the clean skip a
+    # tolerant estimator gives). The reachable depth still fits normally.
+    class _RefusesEmpty:
+        covariates = None  # reads as a bare loss estimator
+
+        def __init__(self):
+            self._inner = lr.PooledLoss()
+
+        def fit(self, triangle):
+            loss = triangle._df["loss"]
+            if loss.null_count() == loss.len():
+                raise RuntimeError("estimator handed a nothing-to-fit triangle")
+            return self._inner.fit(triangle)
+
+    rbt = lr.Backtest(
+        estimator=_RefusesEmpty(), holdouts=(6, 9999), target="loss"
+    ).fit(_triangle())
+    assert rbt.skipped_holdouts == [9999]
+    assert 6 in rbt.fits
+    assert rbt.ae_err.filter(pl.col("holdout") == 9999).height == 0
+
+
 def test_holdout_summary_aggregates_by_holdout():
     rbt = lr.Backtest(
         estimator=lr.ChainLadder(), holdouts=(6, 12, 18), target="loss"

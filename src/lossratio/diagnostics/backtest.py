@@ -102,6 +102,22 @@ def _make_masked_df(
     return masked_df, annotated_df
 
 
+def _empty_ae_err(annotated_df: pl.DataFrame, group_cols: list[str]) -> pl.DataFrame:
+    """A 0-row per-cell A/E frame for a structurally skipped fold.
+
+    Built from ``annotated_df`` so the key columns inherit the true dtypes;
+    the caller only tests ``.height == 0``, so the value columns are the
+    minimal set the summary aggregation reads.
+    """
+    keys = [*group_cols, "cohort", "duration", "cal_idx"]
+    return annotated_df.select(keys).head(0).with_columns(
+        pl.lit(None, dtype=pl.Float64).alias("actual"),
+        pl.lit(None, dtype=pl.Float64).alias("expected"),
+        pl.lit(None, dtype=pl.Float64).alias("aeg"),
+        pl.lit(None, dtype=pl.Float64).alias("ae_err"),
+    )
+
+
 _VALID_TARGETS = ("ratio", "loss", "premium")
 
 
@@ -407,6 +423,27 @@ class _FoldFit:
             report_tri._df, bt.holdout, report_tri._groups, report_tri._grain
         )
 
+        # Structural skip: a hold-out that meets or exceeds the calendar span
+        # masks every cell, leaving no observed cell to anchor a projection.
+        # Short-circuit to a 0-height fold BEFORE fitting rather than handing
+        # the estimator a triangle with nothing to fit -- a covariate estimator
+        # in particular collapses the all-null finer triangle to an empty frame
+        # and raises, instead of yielding the clean 0-height skip a
+        # non-covariate estimator does. The caller treats a 0-height `_ae_err`
+        # as a skipped depth.
+        report_group_cols = normalize_groups(self._groups)
+        if annotated_df.filter(~pl.col("masked")).height == 0:
+            self.target = bt.target
+            self._refit = None
+            self._ae_err = _empty_ae_err(annotated_df, report_group_cols)
+            self._duration_summary = self._aggregate_ae_err(
+                self._ae_err, [*report_group_cols, "duration"], has_incr=False
+            )
+            self._calendar_diagonal_summary = self._aggregate_ae_err(
+                self._ae_err, [*report_group_cols, "cal_idx"], has_incr=False
+            )
+            return self
+
         # 2./3. Refit on the masked triangle. The covariate fit needs the FINER
         # triangle, but the hold-out is defined ONCE at the reporting grain (the
         # scoring grain): null exactly the sub-cells of the held-out report cells.
@@ -416,7 +453,6 @@ class _FoldFit:
         # half-observed -- which collapse would silently under-count. A plain fit
         # uses the reporting-grain masked triangle directly.
         if covs:
-            report_group_cols = normalize_groups(report_tri._groups)
             held = (
                 annotated_df.filter(pl.col("masked"))
                 .select([*report_group_cols, "cohort", "duration"])
