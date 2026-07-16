@@ -87,6 +87,34 @@ class _FacetGrid:
         hide_unused(self.axes, len(self.facets), self.nrow, self.ncol)
 
 
+def new_subplots(
+    nrow: int = 1,
+    ncol: int = 1,
+    *,
+    figsize: tuple[float, float] | None = None,
+    squeeze: bool = True,
+    constrained_layout: bool = False,
+) -> tuple[Figure, Any]:
+    """``pyplot.subplots``, but building an OFF-REGISTRY figure.
+
+    ``pyplot.subplots`` registers the new figure with pyplot's global manager
+    (``Gcf``), which holds a strong reference until an explicit ``plt.close()``.
+    A long-lived process (a dashboard) that renders many figures then leaks one
+    uncollectable figure per plot. A plotting library should not touch that
+    registry, so build the ``Figure`` directly: it is owned only by its caller
+    and freed on the normal reference cycle. Returns ``(fig, axes)`` exactly
+    like ``pyplot.subplots``.
+    """
+    from matplotlib.figure import Figure
+
+    fig = Figure(
+        figsize=figsize,
+        layout="constrained" if constrained_layout else None,
+    )
+    axes = fig.subplots(nrow, ncol, squeeze=squeeze)
+    return fig, axes
+
+
 def make_facet_grid(
     facets: Iterable[tuple[Any, pl.DataFrame]],
     *,
@@ -102,13 +130,11 @@ def make_facet_grid(
     (kept a caller hook because each plot family sizes differently); an
     explicit ``figsize`` overrides it.
     """
-    import matplotlib.pyplot as plt
-
     facets = list(facets)
     nrow, ncol = resolve_grid(len(facets), nrow, ncol, default_ncol=default_ncol)
     if figsize is None:
         figsize = figsize_fn(nrow, ncol)
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
     return _FacetGrid(fig, axes, facets, nrow, ncol)

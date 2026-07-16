@@ -20,6 +20,7 @@ from .base import (
     format_axis,
     get_period_type,
     hide_unused,
+    new_subplots,
     pretty_var_label,
     resolve_grid,
 )
@@ -80,7 +81,6 @@ def plot_triangle_usage(
     x_axis: XAxis = "duration",
 ) -> Figure:
     """Categorical status heatmap; see :meth:`lossratio.Triangle.plot_usage`."""
-    import matplotlib.pyplot as plt
     from matplotlib.patches import Patch, Rectangle
 
     from ..diagnostics.regime import Regime, _resolve_regime, _resolve_to_regime
@@ -169,7 +169,7 @@ def plot_triangle_usage(
         fig_h = max(3.0, 0.30 * len(y_levels) * nrow + 1.8)
         figsize = (fig_w, fig_h)
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 

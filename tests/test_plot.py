@@ -44,6 +44,16 @@ def test_returns_matplotlib_figure(tri_with_groups):
         plt.close(fig)
 
 
+def test_plot_does_not_register_with_pyplot(tri_with_groups):
+    # The renderers build off-registry figures (via base.new_subplots), so a
+    # long-lived process does not leak one uncollectable figure per plot into
+    # pyplot's global manager (Gcf). Guards against a `plt.subplots` regression.
+    before = set(plt.get_fignums())
+    fig = tri_with_groups.plot()
+    assert set(plt.get_fignums()) == before   # nothing added to the pyplot registry
+    assert isinstance(fig, Figure)
+
+
 def test_default_title_is_cumulative_loss_ratio(tri_with_groups):
     fig = tri_with_groups.plot()
     try:

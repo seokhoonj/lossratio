@@ -20,6 +20,7 @@ from .base import (
     format_axis,
     get_period_type,
     hide_unused,
+    new_subplots,
     pretty_var_label,
     resolve_grid,
 )
@@ -69,8 +70,6 @@ def plot_triangle(
     """Cell-value / metric heatmap. See
     :meth:`lossratio.Triangle.plot_triangle` for the public docs.
     """
-    import matplotlib.pyplot as plt
-
     if x_axis not in ("duration", "calendar"):
         raise ValueError(
             f"`x_axis` must be 'duration' or 'calendar', got {x_axis!r}."
@@ -171,7 +170,7 @@ def plot_triangle(
         fig_h = max(3.0, cell_h * len(y_levels) * nrow + 1.5)
         figsize = (fig_w, fig_h)
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 

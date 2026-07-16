@@ -25,6 +25,7 @@ from .base import (
     get_period_type,
     hide_unused,
     make_facet_grid,
+    new_subplots,
     percent_formatter,
     pretty_var_label,
     resolve_grid,
@@ -306,7 +307,6 @@ def plot_triangle_backtest(
             f"(basis={basis!r})."
         )
 
-    import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
     from matplotlib.patches import Rectangle
 
@@ -390,7 +390,7 @@ def plot_triangle_backtest(
         fig_h = max(3.5, cell_h * len(y_levels_top_to_bottom) * nrow + 2.0)
         figsize = (fig_w, fig_h)
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
     x_idx = {d: i for i, d in enumerate(axis_levels)}

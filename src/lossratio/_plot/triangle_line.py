@@ -14,7 +14,13 @@ import numpy as np
 import polars as pl
 
 from .._kernels.io import format_group_value, iter_group_frames
-from .base import get_period_type, hide_unused, pretty_var_label, resolve_grid
+from .base import (
+    get_period_type,
+    hide_unused,
+    new_subplots,
+    pretty_var_label,
+    resolve_grid,
+)
 from .metric import (
     _AMOUNT_METRICS,
     _RATIO_METRICS,
@@ -230,7 +236,7 @@ def plot(
     if figsize is None:
         figsize = (max(5.6, 3.2 * ncol + 0.8), max(3.6, 2.6 * nrow + 0.4))
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 

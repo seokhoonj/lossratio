@@ -27,6 +27,7 @@ from .base import (
     format_period_series,
     get_period_type,
     hide_unused,
+    new_subplots,
     resolve_grid,
 )
 from .theme import finalize_figure
@@ -49,7 +50,6 @@ def plot_regime(
     Each panel: x-axis = cohort, scatter color-coded by regime_id,
     vertical dashed lines at change points.
     """
-    import matplotlib.pyplot as plt
     from matplotlib import colormaps
 
     labels = regime._labels_df
@@ -82,7 +82,7 @@ def plot_regime(
     if figsize is None:
         figsize = (max(6.0, 3.5 * ncol), max(2.0, 1.5 * nrow))
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
     cmap = colormaps[palette]

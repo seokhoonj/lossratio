@@ -18,6 +18,7 @@ from .base import (
     format_period_series,
     get_period_type,
     hide_unused,
+    new_subplots,
     resolve_grid,
 )
 from .theme import BLUE, RED, faint_grid, finalize_figure
@@ -36,12 +37,10 @@ def plot_validation(
     figsize: tuple[float, float] | None = None,
 ) -> Figure:
     """Bar chart of observed vs expected duration counts per cohort."""
-    import matplotlib.pyplot as plt
-
     gaps = tv._gaps if hasattr(tv, "_gaps") else tv.to_polars()
     if gaps.height == 0:
         # nothing to plot
-        fig, ax = plt.subplots(1, 1, figsize=figsize or (5.0, 3.0))
+        fig, ax = new_subplots(1, 1, figsize=figsize or (5.0, 3.0))
         ax.text(
             0.5, 0.5,
             "No duration-sequence gaps to visualise.",
@@ -61,7 +60,7 @@ def plot_validation(
     if figsize is None:
         figsize = (max(5.5, 4.0 * ncol), max(3.0, 2.5 * nrow))
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 
@@ -123,11 +122,9 @@ def plot_triangle_validation(
         raise ValueError(
             f"`x_axis` must be 'duration' or 'calendar'; got {x_axis!r}."
         )
-    import matplotlib.pyplot as plt
-
     gaps = tv._gaps if hasattr(tv, "_gaps") else tv.to_polars()
     if gaps.height == 0:
-        fig, ax = plt.subplots(1, 1, figsize=figsize or (5.0, 3.0))
+        fig, ax = new_subplots(1, 1, figsize=figsize or (5.0, 3.0))
         ax.text(
             0.5, 0.5, "No duration-sequence gaps to visualise.",
             ha="center", va="center", transform=ax.transAxes,
@@ -163,7 +160,7 @@ def plot_triangle_validation(
     if figsize is None:
         figsize = (max(6.0, 4.5 * ncol), max(3.0, 2.8 * nrow))
 
-    fig, axes = plt.subplots(
+    fig, axes = new_subplots(
         nrow, ncol, figsize=figsize, squeeze=False, constrained_layout=True
     )
 
