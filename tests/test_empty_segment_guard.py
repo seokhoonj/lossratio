@@ -79,3 +79,18 @@ def test_credible_covariate_fit_with_a_fully_held_out_coverage():
     assert out.height > 0
     # the well-populated coverages still project real numbers
     assert out.filter(pl.col("loss_proj").is_not_null()).height > 0
+
+
+def test_covariate_surface_all_cells_masked_is_degenerate_not_crash():
+    # A backtest hold-out at or beyond the calendar span masks EVERY cell, so
+    # the covariate surface allocation has no finite projection to spread and
+    # `parts` is empty. It must return a typed 0-row surface (a structural skip),
+    # not crash the `.sort(["cohort", ...])` on a schema-less frame.
+    import polars as pl
+
+    tri = lr.Triangle(lr.load_experience(), groups=["coverage", "channel"])
+    est = lr.CredibleLoss(covariates="channel")
+    bt = lr.Backtest(estimator=est, holdouts=(6, 9999), target="loss").fit(tri)
+    assert 9999 in bt.skipped_holdouts          # over-deep depth skipped, not crashed
+    assert 6 in bt.fits                          # the reachable depth still scored
+    assert bt.ae_err.filter(pl.col("holdout") == 9999).height == 0

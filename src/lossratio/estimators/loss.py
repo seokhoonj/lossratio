@@ -898,6 +898,25 @@ def _segment_covariate_surface(
                 row["source"] = "observed" if col <= last_col else "own"
                 parts.append(row)
 
+    if not parts:
+        # No finite projection to allocate -- every cell is masked (a backtest
+        # hold-out at or beyond the calendar span degenerates the whole fold).
+        # Return a typed 0-row surface so the empty fit flows through as a
+        # structural skip, mirroring the non-covariate path, instead of the
+        # `.sort(["cohort", ...])` below crashing on a schema-less frame.
+        schema: dict[str, Any] = {}
+        if groups is not None:
+            for g in normalize_groups(groups):
+                schema[g] = pl.Utf8
+        schema["cohort"] = pl.Series("cohort", cov_data.cohorts).dtype
+        schema["duration"] = pl.Int64
+        for c in covariates:
+            schema[c] = pl.Utf8
+        schema["loss_proj"] = pl.Float64
+        schema["incr_loss_proj"] = pl.Float64
+        schema["source"] = pl.Utf8
+        return pl.DataFrame(schema=schema)
+
     df = pl.DataFrame(parts)
     df = df.sort(["cohort", *covariates, "duration"]).with_columns(
         (pl.col("loss_proj")
