@@ -49,8 +49,8 @@ from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.provenance import collapse_source_expr
 from .._kernels.recent import recent_link_mask
 from .._kernels.recursion import (
-    make_value_matrices,
     fit_multiplicative,
+    make_value_matrices,
     step_additive,
     step_multiplicative,
     wls_factor_var,
@@ -1365,9 +1365,9 @@ def _fit_loss(
         if cov_cells is not None:
             assert covariates is not None  # covariates drive the cov_cells path
             from .._kernels.covariate import (
-                make_g_marginal,
                 covariate_segment_data,
                 fit_covariate_intensity,
+                make_g_marginal,
             )
             seg_cov = cov_cells
             if group_cols:
