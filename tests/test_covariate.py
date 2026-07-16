@@ -646,6 +646,33 @@ def test_collapse_nulls_any_held_subcell():
     assert row["incr_loss"].item() is None
 
 
+def test_collapse_zero_fills_union_duration_gap():
+    """Triangle.collapse: when the finer sub-groups cover DISJOINT duration
+    ranges within one cohort, the coarser cohort has an interior duration hole
+    that no sub-cell fills. That hole is a structural zero (no activity), so
+    collapse must zero-fill it -- matching a direct raw build at the coarser
+    grain -- not raise on the non-consecutive sequence."""
+    import lossratio as lr
+    coh = date(2023, 1, 1)
+    rows = []
+    # age_band A occupies durations 1-3, B occupies 6-8 (a gap at 4-5).
+    for ab, durs in (("A", range(1, 4)), ("B", range(6, 9))):
+        for d in durs:
+            rows.append({
+                "coverage": "X", "age_band": ab, "uy_m": coh,
+                "cy_m": _add_months(coh, d - 1),
+                "incr_loss": 10.0, "incr_premium": 100.0,
+            })
+    fine = lr.Triangle(pl.DataFrame(rows), groups=["coverage", "age_band"])
+    col = fine.collapse("coverage").to_polars().sort("duration")
+    # the coverage cohort now spans a consecutive 1..8 (no crash) ...
+    assert col["duration"].to_list() == list(range(1, 9))
+    # ... with the union gap (durations 4, 5) zero-filled, not null.
+    gap = col.filter(pl.col("duration").is_in([4, 5]))
+    assert gap["incr_loss"].to_list() == [0.0, 0.0]
+    assert gap["incr_premium"].to_list() == [0.0, 0.0]
+
+
 def test_ratio_covariate_headline_no_crash():
     """A covariate loss fit reports at the collapsed reporting grain; composing
     it with a full-grain premium ladder must not crash on the group-key mismatch

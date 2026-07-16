@@ -529,6 +529,14 @@ class Triangle:
             loss="incr_loss",
             premium="incr_premium",
             grain=self._grain,
+            # A coarser grouping can leave an interior duration hole where the
+            # finer sub-groups covered disjoint duration ranges (e.g. a coverage
+            # sold through one channel early and another later leaves the union
+            # cohort with a gap between them). No sub-cell contributed there, so
+            # the coarser cell is a structural zero, not missing -- zero-fill it,
+            # matching the promise that a collapse equals a direct raw build at
+            # the coarser grain (which would zero-fill the same hole).
+            fill_gaps=True,
         )
         if held is not None and held.height:
             # mirror the backtest mask: null the cumulative + incremental value
