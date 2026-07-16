@@ -18,8 +18,8 @@ import numpy as np
 import polars as pl
 
 from .._kernels.recursion import (
-    make_value_matrices,
     fit_multiplicative,
+    make_value_matrices,
     multiplicative_var,
 )
 

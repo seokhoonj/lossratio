@@ -32,7 +32,7 @@ from .._kernels.io import (
 )
 from .._kernels.recent import recent_link_mask
 from .._kernels.recent import validate_recent as _validate_recent
-from .._kernels.recursion import make_value_matrix, fit_multiplicative
+from .._kernels.recursion import fit_multiplicative, make_value_matrix
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure

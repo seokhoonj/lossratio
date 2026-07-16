@@ -51,7 +51,7 @@ from .._kernels.io import (
 )
 from .._kernels.period import GRAIN_ORDER, Grain, sum_increments_to_grain
 from .._kernels.recent import recent_link_mask
-from .._kernels.recursion import make_value_matrices, fit_multiplicative
+from .._kernels.recursion import fit_multiplicative, make_value_matrices
 from ..core.model_frame import _ModelFrame
 from ._cascade import (
     _cohort_subset_donor,

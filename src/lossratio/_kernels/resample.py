@@ -46,7 +46,7 @@ from __future__ import annotations
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -558,7 +558,7 @@ def _bootstrap_segment_covariate(
     """
     from dataclasses import replace
 
-    from .covariate import make_g_marginal, fit_covariate_intensity
+    from .covariate import fit_covariate_intensity, make_g_marginal
 
     n_cohorts, n_durations = loss_obs.shape
     n_links = n_durations - 1

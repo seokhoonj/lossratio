@@ -339,7 +339,7 @@ def smooth_backfit_covariate(
     convergence, mirroring the pooled smooth backfit. Returns ``g_marginal`` / ``u`` /
     ``Z`` / ``psi`` / ``cov_fit`` / ``representable`` / ``converged``.
     """
-    from .covariate import make_g_marginal, fit_covariate_intensity
+    from .covariate import fit_covariate_intensity, make_g_marginal
 
     n_cohorts = loss_obs.shape[0]
     u_vec = np.ones(n_cohorts, dtype=np.float64)

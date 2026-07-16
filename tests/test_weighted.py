@@ -138,7 +138,11 @@ def test_weighted_multiplicative_dispersion_matches_order_independent_engine():
 def test_weighted_multiplicative_bootstrap_band_is_ordered(tri):
     # End-to-end: ChainLadder is the multiplicative mechanism; its FRW band must
     # be finite, positive, and ordered (a collapsed dispersion made it wrong).
-    fit = lr.ChainLadder(uncertainty=WeightedBootstrap(n_replicates=120, seed=0)).fit(tri).to_polars()
+    fit = (
+        lr.ChainLadder(uncertainty=WeightedBootstrap(n_replicates=120, seed=0))
+        .fit(tri)
+        .to_polars()
+    )
     own = fit.filter(pl.col("source") == "own")
     assert own["loss_total_se"].is_not_null().all()
     assert (own["loss_total_se"] > 0).all()
