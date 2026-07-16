@@ -204,16 +204,16 @@ def test_backtest_ae_err_equals_relative_error():
 # ---------------------------------------------------------------------------
 
 
-def test_backtest_col_summary_columns():
+def test_backtest_duration_summary_columns():
     bt = _cl_backtest(holdouts=2)
-    assert set(bt.col_summary.columns) >= {
+    assert set(bt.duration_summary.columns) >= {
         "duration", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
 
-def test_backtest_diag_summary_columns():
+def test_backtest_calendar_diagonal_summary_columns():
     bt = _cl_backtest(holdouts=2)
-    assert set(bt.diag_summary.columns) >= {
+    assert set(bt.calendar_diagonal_summary.columns) >= {
         "cal_idx", "n", "ae_err_mean", "ae_err_med", "ae_err_wt",
     }
 
@@ -221,8 +221,8 @@ def test_backtest_diag_summary_columns():
 def test_backtest_summary_n_matches_ae_err_total():
     bt = _cl_backtest(holdouts=2)
     ae_err_n = bt.ae_err.shape[0]
-    col_n = bt.col_summary["n"].sum()
-    diag_n = bt.diag_summary["n"].sum()
+    col_n = bt.duration_summary["n"].sum()
+    diag_n = bt.calendar_diagonal_summary["n"].sum()
     assert col_n == ae_err_n
     assert diag_n == ae_err_n
 
@@ -248,7 +248,7 @@ def test_backtest_with_group_var():
     tri = lr.Triangle(df, groups="coverage")
     bt = lr.Backtest(estimator=lr.ChainLadder(), holdouts=1, target="loss").fit(tri)
     assert "coverage" in bt.ae_err.columns
-    assert "coverage" in bt.col_summary.columns
+    assert "coverage" in bt.duration_summary.columns
 
 
 def test_backtest_per_group_independent():
@@ -279,8 +279,8 @@ def test_backtest_pandas_input_mirror():
         lr.Triangle(df)
     )
     assert isinstance(bt.ae_err, pd.DataFrame)
-    assert isinstance(bt.col_summary, pd.DataFrame)
-    assert isinstance(bt.diag_summary, pd.DataFrame)
+    assert isinstance(bt.duration_summary, pd.DataFrame)
+    assert isinstance(bt.calendar_diagonal_summary, pd.DataFrame)
 
 
 # ---------------------------------------------------------------------------

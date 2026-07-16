@@ -15,6 +15,7 @@ from .._kernels.period import calendar_index_expr
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+    from .._kernels.io import FrameLike
     from .._kernels.period import Grain
     from .._types import XAxis
     from ..core.triangle import Triangle
@@ -335,7 +336,7 @@ class _FoldFit:
         ``incr_`` columns are the per-period (incremental) counterparts;
         ``anchor_value`` is each cohort's origin baseline for the anchored
         lane.
-    col_summary : DataFrame
+    duration_summary : DataFrame
         Aggregated by duration:
         ``[groups?, duration, n, aeg_mean, aeg_med, abs_err_mean,
         ae_err_mean, ae_err_med, ae_err_wt]`` (plus the ``incr_*``
@@ -343,9 +344,9 @@ class _FoldFit:
         ``abs_err_mean = mean(|actual - expected|)`` is the target-unit
         absolute error; ``ae_err_wt = sum(actual - expected) / sum(expected)``
         is the exposure-weighted pooled A/E - 1.
-    diag_summary : DataFrame
+    calendar_diagonal_summary : DataFrame
         Aggregated by cal_idx with the same statistics as
-        ``col_summary``.
+        ``duration_summary``.
     fit :
         The refitted estimator's result (a ``LossFit``).
     """
@@ -362,8 +363,8 @@ class _FoldFit:
     _refit: Any
     target: str
     _ae_err: pl.DataFrame
-    _col_summary: pl.DataFrame
-    _diag_summary: pl.DataFrame
+    _duration_summary: pl.DataFrame
+    _calendar_diagonal_summary: pl.DataFrame
 
     def __init__(self) -> None:
         raise TypeError(
@@ -553,13 +554,13 @@ class _FoldFit:
         #    incremental projection is available.
         col_keys: list[str] = [*normalize_groups(self._groups), "duration"]
 
-        self._col_summary = self._aggregate_ae_err(
+        self._duration_summary = self._aggregate_ae_err(
             ae_err, col_keys, has_incr
         ).sort(col_keys)
 
         diag_keys: list[str] = [*normalize_groups(self._groups), "cal_idx"]
 
-        self._diag_summary = self._aggregate_ae_err(
+        self._calendar_diagonal_summary = self._aggregate_ae_err(
             ae_err, diag_keys, has_incr
         ).sort(diag_keys)
 
@@ -625,12 +626,12 @@ class _FoldFit:
         return mirror_output(self._ae_err, self._output_type)
 
     @property
-    def col_summary(self):
-        return mirror_output(self._col_summary, self._output_type)
+    def duration_summary(self) -> FrameLike:
+        return mirror_output(self._duration_summary, self._output_type)
 
     @property
-    def diag_summary(self):
-        return mirror_output(self._diag_summary, self._output_type)
+    def calendar_diagonal_summary(self) -> FrameLike:
+        return mirror_output(self._calendar_diagonal_summary, self._output_type)
 
     @property
     def fit(self):
@@ -638,11 +639,11 @@ class _FoldFit:
 
     def plot_error(
         self,
+        *,
         by: str = "duration",
         metric: str = "ae_err",
         stat: str = "all",
         basis: str = "cumulative",
-        *,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -842,12 +843,12 @@ class Backtest:
     >>> tri = lr.Triangle(df, groups="coverage")
     >>> # Single-origin (equivalent to old Backtest(holdout=6)):
     >>> bt = lr.Backtest(lr.CredibleLoss(), holdouts=6).fit(tri)
-    >>> bt.col_summary      # single-origin convenience property
+    >>> bt.duration_summary  # single-origin convenience property
     >>> bt.plot_triangle()  # A/E heatmap
     >>> # Multi-origin (rolling):
     >>> bt = lr.Backtest(lr.ChainLadder(), holdouts=(6, 12, 18, 24)).fit(tri)
     >>> bt.horizon_summary  # error profile
-    >>> bt.fits[6].col_summary
+    >>> bt.fits[6].duration_summary
     """
 
     def __init__(
@@ -1153,23 +1154,64 @@ class BacktestFit:
             return None
         return self._fits.get(self.holdouts[0])
 
-    @property
-    def col_summary(self):
-        if self.is_single_origin:
-            fold = self._get_single_fold()
-            if fold is not None:
-                return fold.col_summary
-            return None
-        self._single_only("col_summary")
+    def _empty_fold_summary(self, axis: str) -> pl.DataFrame:
+        """A 0-row per-fold summary frame with the fold-level schema.
+
+        Used when the single hold-out was skipped, so the summaries follow
+        the same policy as ``ae_err`` (an empty, well-typed frame -- never
+        ``None``). ``axis`` is the aggregation key (``"duration"`` or
+        ``"cal_idx"``); group / duration dtypes are read from the combined
+        cell frame, and ``cal_idx`` is ``Int64`` by construction
+        (:func:`calendar_index_expr`). The skipped fold carries no
+        incremental lane, so only the cumulative block is emitted.
+        """
+        ae_schema = self._ae_err.schema
+        schema: dict[str, Any] = {
+            c: ae_schema[c] for c in normalize_groups(self._groups)
+        }
+        schema[axis] = ae_schema.get(axis, pl.Int64)
+        schema["n"] = pl.UInt32
+        for name in (
+            "aeg_mean", "aeg_med", "abs_err_mean",
+            "ae_err_mean", "ae_err_med", "ae_err_wt",
+        ):
+            schema[name] = pl.Float64
+        return pl.DataFrame(schema=schema)
 
     @property
-    def diag_summary(self):
+    def duration_summary(self) -> FrameLike:
+        """Per-duration A/E error summary (single-origin convenience).
+
+        Delegates to the sole fold; if that fold was skipped, returns an
+        empty typed frame (the same policy as ``ae_err``). Multi-origin
+        raises -- use ``.fits[h].duration_summary``.
+        """
         if self.is_single_origin:
             fold = self._get_single_fold()
             if fold is not None:
-                return fold.diag_summary
-            return None
-        self._single_only("diag_summary")
+                return fold.duration_summary
+            return mirror_output(
+                self._empty_fold_summary("duration"), self._output_type
+            )
+        self._single_only("duration_summary")
+
+    @property
+    def calendar_diagonal_summary(self) -> FrameLike:
+        """Per-calendar-diagonal A/E error summary (single-origin
+        convenience).
+
+        Delegates to the sole fold; if that fold was skipped, returns an
+        empty typed frame (the same policy as ``ae_err``). Multi-origin
+        raises -- use ``.fits[h].calendar_diagonal_summary``.
+        """
+        if self.is_single_origin:
+            fold = self._get_single_fold()
+            if fold is not None:
+                return fold.calendar_diagonal_summary
+            return mirror_output(
+                self._empty_fold_summary("cal_idx"), self._output_type
+            )
+        self._single_only("calendar_diagonal_summary")
 
     @property
     def fit(self):
@@ -1217,10 +1259,10 @@ class BacktestFit:
 
     def plot_error(
         self,
+        *,
         by: str = "horizon",
         metric: str = "ae_err",
         basis: str = "cumulative",
-        *,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
@@ -1498,15 +1540,15 @@ class BacktestFit:
     # -- accessors -----------------------------------------------------------
 
     @property
-    def horizon_summary(self):
+    def horizon_summary(self) -> FrameLike:
         return mirror_output(self._horizon_summary, self._output_type)
 
     @property
-    def anchor_summary(self):
+    def anchor_summary(self) -> FrameLike:
         return mirror_output(self._anchor_summary, self._output_type)
 
     @property
-    def holdout_summary(self):
+    def holdout_summary(self) -> FrameLike:
         return mirror_output(self._holdout_summary, self._output_type)
 
     @property

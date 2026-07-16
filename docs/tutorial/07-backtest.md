@@ -113,7 +113,7 @@ bt = lr.Backtest(estimator=est, holdouts=3, target="ratio").fit(tri)
 
 `holdouts`에 정수 하나를 주면 as-of 시점 하나만 보는 단일 시점 백테스트다
 (7.6에서는 여러 깊이를 한 번에 돌린다). 결과에는 가린 칸별 오차(`ae_err`)와,
-그것을 경과별로 모은 `col_summary`, 달력 대각선별로 모은 `diag_summary`가
+그것을 경과별로 모은 `duration_summary`, 달력 대각선별로 모은 `calendar_diagonal_summary`가
 들어 있다.
 
 ## 7.4 A/E Error 히트맵 읽기
@@ -259,7 +259,7 @@ print("ae_err_wt    =", round(h1["aeg"].sum() / h1["expected"].sum(), 6))
 편향**이다 — 큰 칸이 더 큰 목소리를 낸다. horizon=1 칸 21개의 격차를 합쳐
 −1.30, 예측값 합 27.88로 나눠 −4.67%다.
 
-`is_single_origin`이 `False`가 되면 `col_summary` / `diag_summary` /
+`is_single_origin`이 `False`가 되면 `duration_summary` / `calendar_diagonal_summary` /
 `plot_triangle`처럼 시점 하나를 전제로 한 단일 시점 뷰는 막힌다(여러
 깊이에 걸쳐 칸을 이중 집계하기 때문). 그 칸별 그림이 필요하면
 `bt.fits[h]`로 깊이를 하나 골라 본다.
@@ -426,7 +426,7 @@ cmp.match_summary
 `population="terminal"`은 `terminal=` 정수와 함께 쓴다.
 
 ```python
-cmp.rank("mae", population="terminal", terminal=3)
+cmp.rank(metric="mae", population="terminal", terminal=3)
 #> shape: (3, 6)
 #> ┌──────────┬─────────┬──────────────┬─────┬──────────┬──────┐
 #> │ coverage ┆ holdout ┆ estimator    ┆ n   ┆ mae      ┆ rank │
@@ -447,7 +447,7 @@ cmp.rank("mae", population="terminal", terminal=3)
 `coverage_*`는 각각 0과 명목값으로부터의 거리로 환산한다).
 
 ```python
-cmp.rank("mae")
+cmp.rank(metric="mae")
 #> shape: (3, 6)
 #> ┌──────────┬─────────┬──────────────┬─────┬──────────┬──────┐
 #> │ coverage ┆ holdout ┆ estimator    ┆ n   ┆ mae      ┆ rank │
@@ -457,7 +457,7 @@ cmp.rank("mae")
 #> │ SURGERY  ┆ 3       ┆ pooled       ┆ 21  ┆ 0.117269 ┆ 3    │
 #> └──────────┴─────────┴──────────────┴─────┴──────────┴──────┘
 
-cmp.rank("bias")
+cmp.rank(metric="bias")
 #> shape: (3, 6)
 #> ┌──────────┬─────────┬──────────────┬─────┬───────────┬──────┐
 #> │ coverage ┆ holdout ┆ estimator    ┆ n   ┆ bias      ┆ rank │
@@ -467,7 +467,7 @@ cmp.rank("bias")
 #> │ SURGERY  ┆ 3       ┆ pooled       ┆ 21  ┆ -0.115242 ┆ 3    │
 #> └──────────┴─────────┴──────────────┴─────┴───────────┴──────┘
 
-cmp.rank("coverage_80")
+cmp.rank(metric="coverage_80")
 #> shape: (3, 6)
 #> ┌──────────┬─────────┬──────────────┬─────┬─────────────┬──────┐
 #> │ coverage ┆ holdout ┆ estimator    ┆ n   ┆ coverage_80 ┆ rank │

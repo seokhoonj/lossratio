@@ -141,7 +141,7 @@ def plot_backtest(
 
     if by == "duration":
         return _plot_aggregated_lines(
-            fit._col_summary,
+            fit._duration_summary,
             groups=fit._groups,
             x_col="duration",
             x_label=pretty_var_label(fit._duration),
@@ -152,7 +152,7 @@ def plot_backtest(
         )
     # by == "calendar"
     return _plot_aggregated_lines(
-        fit._diag_summary,
+        fit._calendar_diagonal_summary,
         groups=fit._groups,
         x_col="cal_idx",
         x_label="calendar diagonal index",

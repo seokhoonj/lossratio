@@ -31,5 +31,5 @@ and resolve any diffs.
 - `ata_selected.csv` / `intensity_selected.csv` — link-level diagnostics.
 - `regime_changes.csv` — `detect_regime(...)$changes`.
 - `backtest_ratio_{ed,sa}_ae_err.csv` — `backtest(target = "ratio", loss_method = ...)$ae_err`, one set per loss method.
-- `backtest_ratio_{ed,sa}_col_summary.csv` / `*_diag_summary.csv`.
+- `backtest_ratio_{ed,sa}_duration_summary.csv` / `*_calendar_diagonal_summary.csv`.
 - `sigma_extrapolation.csv` — `.extrapolate_sigma_ata` outputs (8 input cases x 5 sigma methods).

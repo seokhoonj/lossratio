@@ -873,8 +873,8 @@ class EstimatorComparisonFit:
 
     def rank(
         self,
-        metric: str = "mae",
         *,
+        metric: str = "mae",
         population: str = "all",
         basis: str = "cumulative",
         terminal: int | None = None,
@@ -1299,11 +1299,11 @@ class EstimatorComparisonFit:
 
     def plot_error(
         self,
+        *,
         by: str = "horizon",
         metric: str = "abs_err",
         stat: str = "mean",
         basis: str = "cumulative",
-        *,
         nrow: int | None = None,
         ncol: int | None = None,
         figsize: tuple[float, float] | None = None,
